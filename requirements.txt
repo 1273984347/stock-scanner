@@ -5,3 +5,5 @@ requests>=2.28.0
 scipy>=1.10.0
 backtrader>=1.9.78.123
 tushare>=1.2.89
+fastapi>=0.104.0
+uvicorn>=0.24.0

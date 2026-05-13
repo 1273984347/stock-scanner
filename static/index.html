@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A股盘后选股系统</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #0f1117; --card: #1a1d28; --border: #2a2d3a;
+  --text: #e1e4ea; --text-sub: #8b8fa3; --text-dim: #5a5e72;
+  --up: #ef4444; --down: #22c55e; --accent: #3b82f6;
+  --warn: #f59e0b; --danger: #ef4444;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; }
+.container { max-width: 1400px; margin: 0 auto; padding: 16px; }
+
+.topbar { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.topbar h1 { font-size: 20px; font-weight: 600; flex: 1; }
+.topbar select, .topbar button { background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 16px; font-size: 14px; cursor: pointer; }
+.topbar button { background: var(--accent); border-color: var(--accent); }
+.topbar button:hover { opacity: 0.9; }
+.topbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.bento { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.card-title { font-size: 13px; color: var(--text-sub); margin-bottom: 8px; letter-spacing: 0.5px; }
+.card-value { font-size: 28px; font-weight: 700; }
+.card-sub { font-size: 13px; color: var(--text-sub); margin-top: 4px; }
+.text-up { color: var(--up); }
+.text-down { color: var(--down); }
+
+.strategy-tabs { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.strategy-tab { padding: 6px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text-sub); transition: all 0.15s; }
+.strategy-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.strategy-tab:hover:not(.active) { border-color: var(--text-sub); }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; padding: 10px 12px; color: var(--text-sub); border-bottom: 1px solid var(--border); font-weight: 500; cursor: pointer; user-select: none; white-space: nowrap; }
+th:hover { color: var(--text); }
+td { padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+tr:hover { background: rgba(59,130,246,0.05); }
+
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.chart-card canvas { max-height: 300px; }
+
+.loading { text-align: center; padding: 40px; color: var(--text-sub); }
+.spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 768px) { .bento { grid-template-columns: repeat(2, 1fr); } .charts { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .bento { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <h1>A股盘后选股系统</h1>
+    <select id="presetSelect">
+      <option value="balanced">均衡策略</option>
+      <option value="aggressive">激进策略</option>
+      <option value="conservative">保守策略</option>
+    </select>
+    <button id="refreshBtn">刷新数据</button>
+  </div>
+
+  <div class="bento">
+    <div class="card"><div class="card-title">市场情绪</div><div class="card-value" id="sentiment">--</div><div class="card-sub" id="sentimentLabel">加载中</div></div>
+    <div class="card"><div class="card-title">宏观门控</div><div class="card-value" id="macroState">--</div><div class="card-sub" id="macroLabel">加载中</div></div>
+    <div class="card"><div class="card-title">市场状态</div><div class="card-value" id="marketState">--</div><div class="card-sub" id="marketLabel">加载中</div></div>
+    <div class="card"><div class="card-title">建议仓位</div><div class="card-value" id="exposure">--</div><div class="card-sub" id="exposureLabel">加载中</div></div>
+  </div>
+
+  <div class="strategy-tabs" id="strategyTabs"></div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">选股结果</div>
+    <div class="table-wrap"><table id="resultTable"><thead id="resultHead"></thead><tbody id="resultBody"></tbody></table></div>
+    <div class="loading" id="tableLoading"><span class="spinner"></span>加载中...</div>
+  </div>
+
+  <div class="charts">
+    <div class="chart-card"><div class="card-title">技术信号分布</div><canvas id="signalChart"></canvas></div>
+    <div class="chart-card"><div class="card-title">因子评分</div><canvas id="factorChart"></canvas></div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let scanData = null;
+let currentStrategy = '';
+let signalChart = null;
+let factorChart = null;
+
+document.getElementById('refreshBtn').addEventListener('click', refresh);
+document.getElementById('presetSelect').addEventListener('change', refresh);
+
+async function refresh() {
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true;
+  btn.textContent = '加载中...';
+  document.getElementById('tableLoading').style.display = 'block';
+
+  try {
+    const preset = document.getElementById('presetSelect').value;
+    const [scanRes, marketRes] = await Promise.all([
+      fetch(API + '/api/scan?preset=' + preset).then(function(r) { return r.json(); }),
+      fetch(API + '/api/market').then(function(r) { return r.json(); }),
+    ]);
+    scanData = scanRes;
+    renderMarket(marketRes);
+    renderStrategyTabs(scanRes.results);
+    var firstStrategy = Object.keys(scanRes.results)[0];
+    if (firstStrategy) selectStrategy(firstStrategy);
+  } catch (e) {
+    console.error('加载失败:', e);
+    alert('数据加载失败，请检查后端是否启动 (uvicorn api:app)');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '刷新数据';
+    document.getElementById('tableLoading').style.display = 'none';
+  }
+}
+
+function renderMarket(data) {
+  var s = data.sentiment || 0;
+  var sentEl = document.getElementById('sentiment');
+  sentEl.textContent = s.toFixed(2);
+  sentEl.className = 'card-value ' + (s > 0 ? 'text-up' : s < 0 ? 'text-down' : '');
+  document.getElementById('sentimentLabel').textContent = s > 0.2 ? '偏多' : s < -0.2 ? '偏空' : '中性';
+
+  var macro = data.macro_gate || {};
+  var macroEl = document.getElementById('macroState');
+  macroEl.textContent = macro.state || '--';
+  macroEl.className = 'card-value ' + (macro.state === 'BLOCK_NEW_RISK' ? 'text-down' : '');
+  document.getElementById('macroLabel').textContent = macro.reasoning || '';
+
+  var exp = data.exposure || {};
+  var stateText = exp.state === 'bull' ? '牛市' : exp.state === 'bear' ? '熊市' : '震荡';
+  var stateEl = document.getElementById('marketState');
+  stateEl.textContent = stateText;
+  stateEl.className = 'card-value ' + (exp.state === 'bull' ? 'text-up' : exp.state === 'bear' ? 'text-down' : '');
+  document.getElementById('marketLabel').textContent = '基于沪深300择时';
+
+  document.getElementById('exposure').textContent = ((exp.exposure || 0.7) * 100).toFixed(0) + '%';
+  document.getElementById('exposureLabel').textContent = '仓位乘数: ' + ((macro.multiplier || 1) * 100).toFixed(0) + '%';
+}
+
+function renderStrategyTabs(results) {
+  var container = document.getElementById('strategyTabs');
+  container.textContent = '';
+  Object.keys(results).forEach(function(name) {
+    var tab = document.createElement('div');
+    tab.className = 'strategy-tab';
+    tab.textContent = name + ' (' + results[name].length + ')';
+    tab.addEventListener('click', function() { selectStrategy(name); });
+    container.appendChild(tab);
+  });
+}
+
+function selectStrategy(name) {
+  currentStrategy = name;
+  document.querySelectorAll('.strategy-tab').forEach(function(t) {
+    t.classList.toggle('active', t.textContent.startsWith(name));
+  });
+  renderTable(scanData.results[name] || []);
+  renderCharts(scanData.results[name] || []);
+}
+
+function renderTable(data) {
+  var head = document.getElementById('resultHead');
+  var body = document.getElementById('resultBody');
+  head.textContent = '';
+  body.textContent = '';
+
+  if (!data.length) {
+    var row = document.createElement('tr');
+    var cell = document.createElement('td');
+    cell.textContent = '无候选股';
+    cell.style.textAlign = 'center';
+    cell.style.padding = '20px';
+    cell.style.color = 'var(--text-sub)';
+    cell.colSpan = 10;
+    row.appendChild(cell);
+    body.appendChild(row);
+    return;
+  }
+
+  var cols = Object.keys(data[0]);
+  var headRow = document.createElement('tr');
+  cols.forEach(function(c) {
+    var th = document.createElement('th');
+    th.textContent = c;
+    th.addEventListener('click', function() { sortTable(c); });
+    headRow.appendChild(th);
+  });
+  head.appendChild(headRow);
+
+  data.forEach(function(row) {
+    var tr = document.createElement('tr');
+    cols.forEach(function(c) {
+      var td = document.createElement('td');
+      var val = row[c];
+      if (c === '置信度' && typeof val === 'number') val = (val * 100).toFixed(1) + '%';
+      else if (typeof val === 'number') val = Number.isInteger(val) ? String(val) : val.toFixed(2);
+      td.textContent = val == null ? '' : String(val);
+      if (c === '涨跌幅' && typeof row[c] === 'number') {
+        td.className = row[c] > 0 ? 'text-up' : row[c] < 0 ? 'text-down' : '';
+      }
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+}
+
+var sortCol = '';
+var sortDir = 1;
+function sortTable(col) {
+  if (sortCol === col) sortDir *= -1; else { sortCol = col; sortDir = 1; }
+  var data = (scanData.results[currentStrategy] || []).slice();
+  data.sort(function(a, b) {
+    var va = a[col], vb = b[col];
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * sortDir;
+    return String(va || '').localeCompare(String(vb || '')) * sortDir;
+  });
+  renderTable(data);
+}
+
+function renderCharts(data) {
+  renderSignalChart(data);
+  renderFactorChart(data);
+}
+
+function renderSignalChart(data) {
+  var ctx = document.getElementById('signalChart').getContext('2d');
+  if (signalChart) signalChart.destroy();
+  if (!data.length) return;
+
+  var verdicts = {};
+  data.forEach(function(r) {
+    var v = r['技术研判'] || 'N/A';
+    verdicts[v] = (verdicts[v] || 0) + 1;
+  });
+
+  var labels = Object.keys(verdicts).map(function(v) {
+    return v === 'bullish' ? '看多' : v === 'bearish' ? '看空' : v === 'neutral' ? '中性' : v;
+  });
+
+  signalChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{ data: Object.values(verdicts), backgroundColor: ['#ef4444', '#22c55e', '#8b8fa3', '#3b82f6'], borderWidth: 0 }]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#8b8fa3', padding: 16 } } } }
+  });
+}
+
+function renderFactorChart(data) {
+  var ctx = document.getElementById('factorChart').getContext('2d');
+  if (factorChart) factorChart.destroy();
+  if (!data.length) return;
+
+  var top = data.slice(0, 8);
+  factorChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: top.map(function(r) { return r['名称'] || r['代码'] || ''; }),
+      datasets: [{
+        label: '置信度',
+        data: top.map(function(r) { return typeof r['置信度'] === 'number' ? r['置信度'] * 100 : 0; }),
+        backgroundColor: top.map(function(r) { return (r['涨跌幅'] || 0) > 0 ? 'rgba(239,68,68,0.7)' : 'rgba(34,197,94,0.7)'; }),
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: { beginAtZero: true, max: 100, ticks: { color: '#8b8fa3' }, grid: { color: '#2a2d3a' } },
+        x: { ticks: { color: '#8b8fa3' }, grid: { display: false } }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+window.addEventListener('DOMContentLoaded', refresh);
+</script>
+</body>
+</html>
