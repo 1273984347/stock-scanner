@@ -2,13 +2,23 @@
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, List
 
 
-# 飞书应用配置（优先读环境变量，fallback 为默认值）
-FEISHU_APP_ID = os.environ.get("FEISHU_APP_ID", "cli_xxxxxxxxxxxxxxxx")
-FEISHU_APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "***REMOVED***")
-FEISHU_RECEIVE_ID = os.environ.get("FEISHU_RECEIVE_ID", "ou_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+# 自动加载 .env 文件
+_env_file = Path(__file__).parent / ".env"
+if _env_file.exists():
+    for _line in _env_file.read_text(encoding="utf-8").strip().split("\n"):
+        if "=" in _line and not _line.startswith("#"):
+            _k, _v = _line.split("=", 1)
+            os.environ.setdefault(_k.strip(), _v.strip())
+
+
+# 飞书应用配置（优先读环境变量，未配置则留空）
+FEISHU_APP_ID = os.environ.get("FEISHU_APP_ID", "")
+FEISHU_APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "")
+FEISHU_RECEIVE_ID = os.environ.get("FEISHU_RECEIVE_ID", "")
 FEISHU_RECEIVE_ID_TYPE = os.environ.get("FEISHU_RECEIVE_ID_TYPE", "open_id")
 
 
