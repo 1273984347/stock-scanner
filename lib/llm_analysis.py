@@ -211,10 +211,16 @@ def _format_signals(signals: Dict) -> str:
 
 
 def analyze_stock(code: str, name: str, factors: Dict,
-                  signals: Dict, fundamental_scores: Dict = None) -> str:
+                  signals: Dict, fundamental_scores: Dict = None,
+                  use_llm: bool = True) -> str:
     """分析股票并生成解读
 
-    有 LLM_API_KEY → LLM 深度解读
-    无 LLM_API_KEY → 模板化文本生成
+    有 LLM API key → LLM 深度解读
+    无 LLM API key → 模板化文本生成
+
+    Args:
+        use_llm: 是否尝试用 LLM（设为 False 强制模板模式）
     """
+    if use_llm:
+        return _generate_llm_analysis(code, name, factors, signals)
     return _generate_template_analysis(code, name, factors, signals, fundamental_scores)
