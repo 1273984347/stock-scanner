@@ -98,31 +98,44 @@ let factorChart = null;
 document.getElementById('refreshBtn').addEventListener('click', refresh);
 document.getElementById('presetSelect').addEventListener('change', refresh);
 
+function fetchWithTimeout(url, timeoutMs) {
+  var controller = new AbortController();
+  var timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+  return fetch(url, { signal: controller.signal }).then(function(r) {
+    clearTimeout(timer);
+    return r.json();
+  }).catch(function(e) {
+    clearTimeout(timer);
+    console.error('请求失败:', url, e.message);
+    return null;
+  });
+}
+
 async function refresh() {
   const btn = document.getElementById('refreshBtn');
   btn.disabled = true;
   btn.textContent = '加载中...';
   document.getElementById('tableLoading').style.display = 'block';
 
-  try {
-    const preset = document.getElementById('presetSelect').value;
-    const [scanRes, marketRes] = await Promise.all([
-      fetch(API + '/api/scan?preset=' + preset).then(function(r) { return r.json(); }),
-      fetch(API + '/api/market').then(function(r) { return r.json(); }),
-    ]);
+  const preset = document.getElementById('presetSelect').value;
+
+  // 市场数据（15秒超时）
+  var marketRes = await fetchWithTimeout(API + '/api/market', 15000);
+  if (marketRes) renderMarket(marketRes);
+
+  // 选股数据（60秒超时）
+  var scanRes = await fetchWithTimeout(API + '/api/scan?preset=' + preset, 60000);
+  if (scanRes && scanRes.results) {
     scanData = scanRes;
-    renderMarket(marketRes);
     renderStrategyTabs(scanRes.results);
     var firstStrategy = Object.keys(scanRes.results)[0];
     if (firstStrategy) selectStrategy(firstStrategy);
-  } catch (e) {
-    console.error('加载失败:', e);
-    alert('数据加载失败，请检查后端是否启动 (uvicorn api:app)');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '刷新数据';
-    document.getElementById('tableLoading').style.display = 'none';
+  } else {
+    document.getElementById('tableLoading').textContent = '数据加载失败或超时，请检查网络';
   }
+
+  btn.disabled = false;
+  btn.textContent = '刷新数据';
 }
 
 function renderMarket(data) {
