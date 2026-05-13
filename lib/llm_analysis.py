@@ -84,7 +84,7 @@ def _generate_template_analysis(code: str, name: str, factors: Dict,
     lines.append("")
     lines.append("【投资建议】")
     if signal == "bullish" and confidence > 0.3:
-        lines.append(f"  ✓ 建议关注 (信号确认)")
+        lines.append(f"  [+] 建议关注 (信号确认)")
         lines.append(f"  止损线: -5% | 止盈线: +10% | 最大持仓: 5天")
     elif signal == "bearish" and confidence > 0.3:
         lines.append(f"  ✗ 建议回避 (空头信号)")
@@ -92,7 +92,7 @@ def _generate_template_analysis(code: str, name: str, factors: Dict,
         lines.append(f"  ○ 建议观望 (信号不明确)")
 
     lines.append("")
-    lines.append("⚠️ 以上分析基于量化因子数据，仅供参考，不构成投资建议。")
+    lines.append("[!] 以上分析基于量化因子数据，仅供参考，不构成投资建议。")
 
     return "\n".join(lines)
 
@@ -101,14 +101,25 @@ def _generate_llm_analysis(code: str, name: str, factors: Dict,
                             signals: Dict) -> str:
     """LLM 驱动的深度解读
 
-    需要设置 LLM_API_KEY 环境变量
-    支持 OpenAI (GPT-4) / Anthropic (Claude) / Zhipu (ChatGLM)
+    支持 DeepSeek / Kimi / MiMo 三种 API（按环境变量自动检测）
+    设置对应环境变量即可使用：
+    - DEEPSEEK_API_KEY → 深度求索
+    - KIMI_API_KEY → 月之暗面 Kimi
+    - MIMO_API_KEY → 小米 MiMo
     """
-    api_key = os.environ.get("LLM_API_KEY", "")
-    api_provider = os.environ.get("LLM_PROVIDER", "")
+    # 按优先级检测 API key
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    provider = "deepseek"
 
     if not api_key:
-        logger.info("无 LLM_API_KEY，回退到模板分析")
+        api_key = os.environ.get("KIMI_API_KEY", "")
+        provider = "kimi"
+    if not api_key:
+        api_key = os.environ.get("MIMO_API_KEY", "")
+        provider = "mimo"
+
+    if not api_key:
+        logger.info("无 LLM API key，回退到模板分析")
         return _generate_template_analysis(code, name, factors, signals)
 
     # 构建 prompt
@@ -130,26 +141,25 @@ def _generate_llm_analysis(code: str, name: str, factors: Dict,
 """
 
     try:
-        if api_provider == "openai":
-            return _call_openai(prompt, api_key)
-        elif api_provider == "anthropic":
-            return _call_anthropic(prompt, api_key)
-        elif api_provider == "zhipu":
-            return _call_zhipu(prompt, api_key)
-        else:
-            # 自动检测
-            return _call_openai(prompt, api_key)
+        if provider == "deepseek":
+            return _call_deepseek(prompt, api_key)
+        elif provider == "kimi":
+            return _call_kimi(prompt, api_key)
+        elif provider == "mimo":
+            return _call_mimo(prompt, api_key)
     except Exception as e:
-        logger.error(f"LLM 调用失败: {e}")
+        logger.error(f"LLM 调用失败 ({provider}): {e}")
+        # 尝试下一个 provider
         return _generate_template_analysis(code, name, factors, signals)
 
 
-def _call_openai(prompt: str, api_key: str) -> str:
+def _call_deepseek(prompt: str, api_key: str) -> str:
+    """调用 DeepSeek API（兼容 OpenAI 格式）"""
     import requests
     resp = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}"},
-        json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}],
+        "https://api.deepseek.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}],
               "temperature": 0.3, "max_tokens": 500},
         timeout=30,
     )
@@ -157,25 +167,28 @@ def _call_openai(prompt: str, api_key: str) -> str:
     return data["choices"][0]["message"]["content"]
 
 
-def _call_anthropic(prompt: str, api_key: str) -> str:
+def _call_kimi(prompt: str, api_key: str) -> str:
+    """调用 Kimi API（兼容 OpenAI 格式）"""
     import requests
     resp = requests.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
-        json={"model": "claude-3-haiku-20240307",
-              "max_tokens": 500, "messages": [{"role": "user", "content": prompt}]},
+        "https://api.moonshot.cn/v1/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={"model": "kimi-k2.6", "messages": [{"role": "user", "content": prompt}],
+              "temperature": 0.3, "max_tokens": 500},
         timeout=30,
     )
     data = resp.json()
-    return data["content"][0]["text"]
+    return data["choices"][0]["message"]["content"]
 
 
-def _call_zhipu(prompt: str, api_key: str) -> str:
+def _call_mimo(prompt: str, api_key: str) -> str:
+    """调用 MiMo API（兼容 OpenAI 格式）"""
     import requests
     resp = requests.post(
-        "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}"},
-        json={"model": "glm-4-flash", "messages": [{"role": "user", "content": prompt}]},
+        "https://api.xiaomimimo.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={"model": "mimo-v2.5", "messages": [{"role": "user", "content": prompt}],
+              "temperature": 0.3, "max_tokens": 500},
         timeout=30,
     )
     data = resp.json()
