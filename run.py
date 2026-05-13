@@ -59,7 +59,7 @@ def main():
 
     # 综合评分
     if args.score:
-        run_score_mode(args.score)
+        run_score_mode(args.score, data_source=args.data_source)
         return
 
     # DCF 估值
@@ -112,9 +112,9 @@ def main():
     logger.info("选股完成")
 
 
-def run_score_mode(code):
+def run_score_mode(code, data_source="akshare"):
     """综合评分模式（四维真实数据）"""
-    from scanner import get_stock_hist, get_realtime_quotes
+    from scanner import get_stock_hist_multi_source, get_realtime_quotes
     from factors import compute_all_signals
     from lib.technical_signals import calc_composite_verdict
     from lib.scorer import (comprehensive_score, score_fundamental,
@@ -122,8 +122,8 @@ def run_score_mode(code):
                             calc_deviation_value, check_anomaly_threshold,
                             get_board_type)
 
-    logger.info(f"综合评分: {code}")
-    hist = get_stock_hist(code, days=180)
+    logger.info(f"综合评分: {code} (数据源: {data_source})")
+    hist = get_stock_hist_multi_source(code, days=180, source=data_source)
     if hist.empty:
         logger.error(f"获取 {code} 数据失败")
         return
