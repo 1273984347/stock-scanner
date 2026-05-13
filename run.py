@@ -2,7 +2,7 @@
 
 import sys
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 from scanner import run_all_strategies
 from notifier import send_feishu_message, print_results
 from config import FEISHU_RECEIVE_ID
@@ -41,8 +41,8 @@ def main():
     parser.add_argument("--earnings", action="store_true", help="财报日历")
     parser.add_argument("--anomaly", metavar="CODE", help="财报异常检测")
     parser.add_argument("--macro", action="store_true", help="宏观数据监控")
-    parser.add_argument("--data-source", choices=["akshare", "westock", "tushare"],
-                        default="akshare", help="数据源选择")
+    parser.add_argument("--data-source", choices=["akshare", "adata", "westock", "tushare"],
+                        default="adata", help="数据源选择")
     args = parser.parse_args()
 
     logger.info(f"开始盘后选股 - {datetime.now().strftime('%Y-%m-%d %H:%M')} - {args.preset}")
@@ -397,7 +397,7 @@ def run_anomaly_mode(code):
                     c = cf.iloc[0]
                     entry.update({
                         "operating_cash_flow": c.get("n_cashflow_act"),
-                        "capex": c.get("pay_acq_const_fiam"),
+                        "capex": c.get("c_pay_acq_const_fiam"),
                     })
 
             periods_data.append(entry)
@@ -446,7 +446,7 @@ def _run_anomaly_akshare(code):
         print("  无可用财报数据")
         return
 
-    stock_row = report[report["股票代码"].str.contains(code, na=False)]
+    stock_row = report[report["股票代码"] == code]
     if stock_row.empty:
         print(f"  未找到 {code} 的财报数据")
         return
@@ -576,10 +576,14 @@ def run_factor_evaluation():
 
     因子在 T 日计算，用 T+1 ~ T+20 日的实际收益验证预测能力。
     使用 FactorEvaluator 输出综合记分卡、冗余检测、IC 衰减。
+
+    数据结构：构建 (date, code) 双索引面板，
+    - factor_panel: MultiIndex (date, code) 的因子值 DataFrame
+    - forward_returns: MultiIndex (date, code) 的 20 日前瞻收益 Series
     """
     from factors import compute_all_signals
     from scanner import get_stock_hist, get_realtime_quotes
-    from lib.evaluator import FactorEvaluator, EvalConfig, build_forward_returns
+    from lib.evaluator import FactorEvaluator, EvalConfig
     import pandas as pd
 
     logger.info("开始因子评价...")
@@ -592,49 +596,142 @@ def run_factor_evaluation():
     codes = df.sort_values("成交额", ascending=False).head(100)["代码"].tolist()
 
     FWD_DAYS = 20
-    all_factors = []
-    all_prices = {}
+    EVAL_DATES = 10  # 取最近 10 个截面日期
 
+    # 收集每只股票的历史数据
+    stock_data = {}
     for code in codes:
-        hist = get_stock_hist(code, days=250 + FWD_DAYS)
-        if hist.empty or len(hist) < 60 + FWD_DAYS:
+        hist = get_stock_hist(code, days=300 + FWD_DAYS)
+        if hist.empty or len(hist) < 120 + FWD_DAYS:
             continue
+        hist = hist.copy()
+        if "date" in hist.columns:
+            hist["date"] = pd.to_datetime(hist["date"])
+        stock_data[code] = hist
 
-        hist_factor = hist.iloc[:-FWD_DAYS]
-        result = compute_all_signals(hist_factor)
-        if not result or "factors" not in result:
-            continue
+    if not stock_data:
+        logger.error("无有效历史数据")
+        return
 
-        factors = result["factors"]
-        factors["code"] = code
-        all_factors.append(factors)
-        all_prices[code] = hist["close"]
+    # 找到共同的截面日期（取最近 EVAL_DATES 个，每隔 20 个交易日）
+    all_date_sets = [set(s["date"].tolist()) for s in stock_data.values()]
+    common_dates = sorted(set.intersection(*all_date_sets)) if all_date_sets else []
+    if len(common_dates) < EVAL_DATES + FWD_DAYS:
+        # 退而求其次：用最多股票覆盖的日期
+        date_counts = {}
+        for s in stock_data.values():
+            for d in s["date"].tolist():
+                date_counts[d] = date_counts.get(d, 0) + 1
+        # 按覆盖股票数排序，取前 EVAL_DATES 个（间隔 20 交易日）
+        sorted_dates = sorted(date_counts.keys(), key=lambda d: date_counts[d], reverse=True)
+        sorted_dates = sorted(sorted_dates)
+        # 每 20 个交易日取一个截面
+        step = 20
+        eval_dates = sorted_dates[-(EVAL_DATES * step + FWD_DAYS):]
+        eval_dates = eval_dates[::step][-EVAL_DATES:]
+    else:
+        step = 20
+        eval_dates = common_dates[-(EVAL_DATES * step + FWD_DAYS):]
+        eval_dates = eval_dates[::step][-EVAL_DATES:]
 
-    if not all_factors:
+    if not eval_dates:
+        logger.error("无法构建截面日期")
+        return
+
+    # 按 (date, code) 构建因子面板
+    all_records = []
+    for date in eval_dates:
+        for code, hist in stock_data.items():
+            hist_up_to = hist[hist["date"] <= date]
+            if len(hist_up_to) < 60:
+                continue
+            # 计算因子
+            result = compute_all_signals(hist_up_to)
+            if not result or "factors" not in result:
+                continue
+            factors = result["factors"]
+            factors["date"] = date
+            factors["code"] = code
+
+            # 计算 20 日前瞻收益
+            date_idx = hist[hist["date"] <= date].index[-1]
+            fwd_idx = date_idx + FWD_DAYS
+            if fwd_idx < len(hist):
+                price_t = hist.loc[date_idx, "close"] if "close" in hist.columns else None
+                price_fwd = hist.loc[fwd_idx, "close"] if "close" in hist.columns else None
+                if price_t is not None and price_t > 0 and price_fwd is not None:
+                    factors["forward_return_20d"] = price_fwd / price_t - 1
+
+            all_records.append(factors)
+
+    if not all_records:
         logger.error("无有效因子数据")
         return
 
-    # 构建因子面板（index=code, columns=factor_names）
-    factor_df = pd.DataFrame(all_factors).set_index("code")
+    panel = pd.DataFrame(all_records)
 
-    # 构建前瞻收益（20日）
-    forward_returns = pd.Series(dtype=float)
-    for code in factor_df.index:
-        prices = all_prices.get(code)
-        if prices is not None and len(prices) > FWD_DAYS:
-            price_t = prices.iloc[-FWD_DAYS - 1]
-            price_t_fwd = prices.iloc[-1]
-            if price_t > 0:
-                forward_returns[code] = price_t_fwd / price_t - 1
+    # 构建因子矩阵（单截面：用最近一期截面）
+    # 同时生成 forward_returns Series
+    latest_date = panel["date"].max()
+    latest_panel = panel[panel["date"] == latest_date].copy()
+    latest_panel = latest_panel.set_index("code")
 
-    if forward_returns.empty:
-        logger.error("无有效前瞻收益数据")
+    factor_cols = [c for c in latest_panel.columns
+                   if c not in ("date", "code", "forward_return_20d")]
+    factor_df = latest_panel[factor_cols].dropna(how="all")
+
+    forward_returns = latest_panel["forward_return_20d"].dropna()
+
+    if factor_df.empty or forward_returns.empty:
+        logger.error("因子或前瞻收益数据为空")
         return
 
-    # 使用 FactorEvaluator 生成综合报告
+    # 对齐 index
+    common_idx = factor_df.index.intersection(forward_returns.index)
+    factor_df = factor_df.loc[common_idx]
+    forward_returns = forward_returns.loc[common_idx]
+
+    # 使用 FactorEvaluator 生成综合报告（截面模式）
     evaluator = FactorEvaluator(EvalConfig(rolling_window=min(60, len(factor_df))))
     report = evaluator.generate_report(factor_df, forward_returns)
     print(report)
+
+    # 额外输出：多截面 IC 统计
+    if len(eval_dates) > 1:
+        print(f"\n{'='*70}")
+        print("  【多截面 IC 统计】")
+        print(f"  截面数: {len(eval_dates)}")
+        from scipy import stats as _stats
+        ic_by_date = []
+        for date in eval_dates:
+            date_panel = panel[panel["date"] == date].set_index("code")
+            if "forward_return_20d" not in date_panel.columns:
+                continue
+            fr = date_panel["forward_return_20d"].dropna()
+            for col in factor_cols:
+                if col not in date_panel.columns:
+                    continue
+                fv = date_panel[col].dropna()
+                common = fv.index.intersection(fr.index)
+                if len(common) < 10:
+                    continue
+                _ic, _ = _stats.spearmanr(fv.loc[common], fr.loc[common])
+                ic_by_date.append({"date": date, "factor": col, "rank_ic": _ic})
+
+        if ic_by_date:
+            ic_df = pd.DataFrame(ic_by_date)
+            print(f"\n  {'因子':<25s} {'IC 均值':>10s} {'IC 标准差':>10s} {'IC_IR':>8s} {'IC 胜率':>8s}")
+            print(f"  {'-'*65}")
+            for col in sorted(ic_df["factor"].unique()):
+                col_ic = ic_df[ic_df["factor"] == col]["rank_ic"].dropna()
+                if len(col_ic) < 2:
+                    continue
+                ic_mean = col_ic.mean()
+                ic_std = col_ic.std()
+                ic_ir = ic_mean / ic_std if ic_std > 0 else 0
+                ic_wr = (col_ic > 0).mean()
+                print(f"  {col:<25s} {ic_mean:>+10.4f} {ic_std:>10.4f} {ic_ir:>8.3f} {ic_wr:>8.1%}")
+        print(f"{'='*70}")
 
 
 if __name__ == "__main__":

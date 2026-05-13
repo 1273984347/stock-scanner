@@ -1,0 +1,163 @@
+"""adata 数据源封装 —— 多数据源融合（同花顺/东方财富/新浪/腾讯/百度）
+
+来源：1nchaos/adata (GitHub 4.5k stars)
+安装：pip install adata
+特性：自动多数据源切换 + 自动代理切换，高可用性
+"""
+import pandas as pd
+from datetime import datetime, timedelta
+import logging
+from typing import Optional, Dict, List
+
+logger = logging.getLogger(__name__)
+
+
+def _to_adata_code(code: str) -> str:
+    """转换股票代码格式：000001 → 000001, 600519 → 600519"""
+    code = code.strip().upper()
+    for prefix in ["SH", "SZ", "BJ", "SH.", "SZ.", "BJ."]:
+        code = code.replace(prefix, "")
+    return code
+
+
+def get_kline(code: str, days: int = 180, period: str = "daily") -> pd.DataFrame:
+    """获取 K 线数据
+
+    Args:
+        code: 股票代码（如 "000001"）
+        days: 获取天数
+        period: daily/weekly/monthly
+
+    Returns:
+        DataFrame with columns: date, open, close, high, low, volume, amount, ...
+    """
+    try:
+        import adata.stock.market as mkt
+        acode = _to_adata_code(code)
+        end = datetime.now()
+        start = end - timedelta(days=days)
+        freq_map = {"daily": 1, "weekly": 2, "monthly": 3}
+        df = mkt.get_market( code=acode, start_date=start.strftime("%Y-%m-%d"),
+                            end_date=end.strftime("%Y-%m-%d") )
+        if df.empty:
+            return pd.DataFrame()
+        # 统一列名
+        col_map = {
+            "tradeDate": "date", "tradeDate_stock": "date",
+            "open": "open", "close": "close",
+            "high": "high", "low": "low",
+            "volume": "volume", "turnover": "amount",
+            "changePct": "pct_chg", "changePct_stock": "pct_chg",
+            "turnoverRate": "turnover", "turnoverRate_stock": "turnover",
+        }
+        rename = {}
+        for c in df.columns:
+            if c in col_map:
+                rename[c] = col_map[c]
+        if rename:
+            df = df.rename(columns=rename)
+        # 确保列存在
+        for c in ["open", "close", "high", "low", "volume"]:
+            if c not in df.columns and c in rename.values():
+                pass
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+        return df
+    except Exception as e:
+        logger.error(f"adata 获取 {code} K线失败: {e}")
+        return pd.DataFrame()
+
+
+def get_realtime_quotes() -> pd.DataFrame:
+    """获取实时行情
+
+    Returns:
+        DataFrame with columns: 代码, 名称, 最新价, 涨跌幅, ...
+    """
+    try:
+        import adata.stock.market as mkt
+        df = mkt.list_market_current()
+        if df.empty:
+            return pd.DataFrame()
+        # 解析列名
+        col_map = {
+            "code": "代码", "shortName": "名称",
+            "latestPrice": "最新价", "changePct": "涨跌幅",
+            "volume": "成交量", "turnover": "成交额",
+            "open": "开盘", "high": "最高", "low": "最低",
+            "preClose": "昨收", "amount": "成交额",
+            "pe": "市盈率", "pb": "市净率",
+            "marketValue": "总市值", "circulateValue": "流通市值",
+        }
+        rename = {}
+        for c in df.columns:
+            if c in col_map:
+                rename[c] = col_map[c]
+        if rename:
+            df = df.rename(columns=rename)
+        return df
+    except Exception as e:
+        logger.error(f"adata 获取实时行情失败: {e}")
+        return pd.DataFrame()
+
+
+def get_capital_flow(code: str, days: int = 30) -> pd.DataFrame:
+    """获取资金流向"""
+    try:
+        import adata.stock.market as mkt
+        acode = _to_adata_code(code)
+        df = mkt.get_capital_flow(code=acode)
+        if df.empty:
+            return pd.DataFrame()
+        return df
+    except Exception as e:
+        logger.error(f"adata 获取资金流向失败 {code}: {e}")
+        return pd.DataFrame()
+
+
+def get_market_index() -> pd.DataFrame:
+    """获取主要指数实时行情"""
+    try:
+        import adata.stock.market as mkt
+        df = mkt.get_market_index_current()
+        if df.empty:
+            return pd.DataFrame()
+        return df
+    except Exception as e:
+        logger.error(f"adata 获取指数行情失败: {e}")
+        return pd.DataFrame()
+
+
+def get_stock_list() -> pd.DataFrame:
+    """获取股票列表"""
+    try:
+        import adata.stock.info as sinfo
+        df = sinfo.all_code()
+        if df.empty:
+            return pd.DataFrame()
+        return df
+    except Exception as e:
+        logger.error(f"adata 获取股票列表失败: {e}")
+        return pd.DataFrame()
+
+
+def get_concept_stocks(concept_code: str) -> pd.DataFrame:
+    """获取概念板块成分股"""
+    try:
+        import adata.stock.info as sinfo
+        df = sinfo.concept_constituent_east(concept_code=concept_code)
+        return df
+    except Exception as e:
+        logger.error(f"adata 获取概念成分股失败: {e}")
+        return pd.DataFrame()
+
+
+def get_trade_calendar() -> pd.DataFrame:
+    """获取交易日历"""
+    try:
+        import adata.stock.info as sinfo
+        df = sinfo.trade_calendar()
+        return df
+    except Exception as e:
+        logger.error(f"adata 获取交易日历失败: {e}")
+        return pd.DataFrame()

@@ -37,9 +37,9 @@ class _RateLimiter:
         with self._lock:
             now = time.time()
             wait = self._last_call_time + self._min_interval - now
-            if wait > 0:
-                time.sleep(wait)
-            self._last_call_time = time.time()
+            self._last_call_time = max(now, self._last_call_time + self._min_interval)
+        if wait > 0:
+            time.sleep(wait)
 
 
 _rate_limiter = _RateLimiter(max_calls_per_second=3.0)
@@ -122,6 +122,13 @@ def get_stock_hist_multi_source(code: str, days: int = 180,
     """
     if source == "akshare":
         return get_stock_hist(code, days)
+
+    if source == "adata":
+        from lib.data_adata import get_kline as adata_kline
+        df = adata_kline(code, days=days)
+        if df.empty:
+            return pd.DataFrame()
+        return df
 
     if source == "westock":
         from lib.data_westock import get_kline as westock_kline
