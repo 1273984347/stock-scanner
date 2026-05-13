@@ -547,3 +547,46 @@ class VolCorrRiskManager(RiskManager):
             result["adjusted_signals"] = adjusted_signals
 
         return result
+
+
+# ========== 协方差收缩估计（来自 PyPortfolioOpt） ==========
+
+def covariance_shrinkage(returns_df: pd.DataFrame) -> Optional[pd.DataFrame]:
+    """计算收缩协方差矩阵（比样本协方差数值更稳定）
+
+    适用场景：组合超过 20 只股票时，样本协方差噪声大
+    使用 Ledoit-Wolf 收缩法，将样本协方差向单位矩阵收缩
+
+    Args:
+        returns_df: 收益率 DataFrame，index=date, columns=ticker
+
+    Returns:
+        收缩后的协方差矩阵 DataFrame
+    """
+    if returns_df is None or returns_df.empty:
+        return None
+
+    try:
+        from sklearn.covariance import LedoitWolf
+    except ImportError:
+        # 无 sklearn 时用简单替代
+        n, p = returns_df.shape
+        if n < p:
+            # 高维时使用对角矩阵
+            return returns_df.cov()
+
+    codes = [c for c in returns_df.columns if returns_df[c].nunique() > 1]
+    if len(codes) < 2:
+        return returns_df.cov()
+
+    data = returns_df[codes].dropna()
+    if data.empty or len(data) < 10:
+        return returns_df.cov()
+
+    try:
+        from sklearn.covariance import LedoitWolf
+        lw = LedoitWolf().fit(data.values)
+        shrunk = pd.DataFrame(lw.covariance_, index=codes, columns=codes)
+        return shrunk
+    except Exception:
+        return returns_df.cov()

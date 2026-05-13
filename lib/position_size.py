@@ -102,8 +102,9 @@ class RiskSizedPosition:
         qty = int(raw_qty / cfg.round_lot) * cfg.round_lot
         capped_by_round_lot = qty == 0 and raw_qty > 0
 
-        if qty == 0 and raw_qty > 0:
-            qty = cfg.round_lot
+        # 不再强制最少一手：如果资金不足一手就返回 0
+        # 旧逻辑 if qty == 0 and raw_qty > 0: qty = cfg.round_lot
+        # 会导致超出可用资金
 
         final_notional = qty * entry_price
         weight_pct = (final_notional / equity * 100) if equity > 0 else 0
@@ -275,3 +276,87 @@ class VolTargetPosition:
         recent = returns[-lookback:]
         current_vol = float(np.std(recent) * np.sqrt(252))
         return VolTargetPosition.calculate(target_vol, current_vol, max_leverage)
+
+
+# ========== ATR 风险仓位（来自 QKA 快量化） ==========
+
+def atr_risk_size(cash: float, price: float, atr_value: float,
+                  risk_ratio: float = 0.01, multiplier: float = 2.0,
+                  lot_size: int = 100) -> int:
+    """基于 ATR 的风险仓位计算
+
+    风险预算 = cash * risk_ratio
+    每股风险 = atr_value * multiplier
+    可买股数 = 风险预算 / 每股风险（向下取整到整手）
+
+    Args:
+        cash: 可用资金
+        price: 当前价格
+        atr_value: ATR 值
+        risk_ratio: 单笔风险比例（默认 1%）
+        multiplier: 止损倍数（默认 2 倍 ATR）
+        lot_size: 最小交易单位（A 股 100）
+
+    Returns:
+        可买股数（整手）
+    """
+    if atr_value <= 0 or price <= 0 or cash <= 0:
+        return 0
+    risk_per_share = atr_value * multiplier
+    max_risk = cash * risk_ratio
+    shares = int(max_risk / risk_per_share / lot_size) * lot_size
+    return max(shares, lot_size) if risk_per_share < price else 0
+
+
+# ========== 离散分配（来自 PyPortfolioOpt） ==========
+
+def discrete_allocation(weights: Dict[str, float],
+                        prices: Dict[str, float],
+                        total_value: float,
+                        lot_size: int = 100) -> Dict[str, int]:
+    """连续权重 → A 股整手买入指令
+
+    将最优权重（如 {'000001': 0.3, '600519': 0.7}）
+    转为实际买入股数（如 {'000001': 2400, '600519': 100}）
+
+    Args:
+        weights: {code: target_weight} 权重和为 1
+        prices: {code: current_price}
+        total_value: 总资金
+        lot_size: 最小交易单位（A 股 100）
+
+    Returns:
+        {code: shares_to_buy}
+    """
+    if not weights or not prices or total_value <= 0:
+        return {}
+
+    # 优先分配给权重高的股票
+    sorted_codes = sorted(weights.keys(), key=lambda c: weights[c], reverse=True)
+
+    remaining_cash = total_value
+    allocation = {}
+    leftover_value = 0
+
+    for code in sorted_codes:
+        price = prices.get(code)
+        weight = weights.get(code, 0)
+        if price is None or price <= 0 or weight <= 0:
+            continue
+
+        target_value = total_value * weight
+        target_shares = int(target_value / price / lot_size) * lot_size
+
+        # 确保不超出剩余资金
+        cost = target_shares * price
+        if cost > remaining_cash:
+            target_shares = int(remaining_cash / price / lot_size) * lot_size
+            cost = target_shares * price
+
+        if target_shares >= lot_size:
+            allocation[code] = target_shares
+            remaining_cash -= cost
+
+        leftover_value += weight * total_value - cost
+
+    return allocation
