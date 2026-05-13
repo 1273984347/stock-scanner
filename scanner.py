@@ -262,7 +262,7 @@ def get_volume_breakout_candidates(config: SystemConfig) -> pd.DataFrame:
         candidates = []
         for _, row in df.iterrows():
             code = row["代码"]
-            hist = get_stock_hist(code, days=180)
+            hist = get_stock_hist_multi_source(code, days=180, source="auto")
             if hist.empty or len(hist) < 60:
                 continue
 
@@ -380,7 +380,7 @@ def get_multi_factor_candidates(config: SystemConfig) -> pd.DataFrame:
         candidates = []
         for _, row in df.iterrows():
             code = row["代码"]
-            hist = get_stock_hist(code, days=180)
+            hist = get_stock_hist_multi_source(code, days=180, source="auto")
             if hist.empty or len(hist) < 60:
                 continue
 
