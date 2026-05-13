@@ -41,8 +41,8 @@ def main():
     parser.add_argument("--earnings", action="store_true", help="财报日历")
     parser.add_argument("--anomaly", metavar="CODE", help="财报异常检测")
     parser.add_argument("--macro", action="store_true", help="宏观数据监控")
-    parser.add_argument("--data-source", choices=["akshare", "adata", "westock", "tushare"],
-                        default="adata", help="数据源选择")
+    parser.add_argument("--data-source", choices=["auto", "adata", "westock", "tushare", "akshare"],
+                        default="auto", help="数据源选择（auto=自动选最快）")
     args = parser.parse_args()
 
     logger.info(f"开始盘后选股 - {datetime.now().strftime('%Y-%m-%d %H:%M')} - {args.preset}")

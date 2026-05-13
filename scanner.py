@@ -112,30 +112,21 @@ def get_stock_hist(code: str, days: int = 180) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def get_stock_hist_multi_source(code: str, days: int = 180,
-                                source: str = "akshare") -> pd.DataFrame:
-    """多数据源获取 K 线数据
+# 数据源优先级（越快越稳的排前面）
+DATA_SOURCE_PRIORITY = ["adata", "westock", "tushare", "akshare"]
 
-    Args:
-        code: 股票代码
-        source: "akshare" / "westock" / "tushare"
-    """
-    if source == "akshare":
-        return get_stock_hist(code, days)
 
+def _fetch_from_source(code: str, days: int, source: str) -> pd.DataFrame:
+    """从指定数据源获取数据"""
     if source == "adata":
         from lib.data_adata import get_kline as adata_kline
-        df = adata_kline(code, days=days)
-        if df.empty:
-            return pd.DataFrame()
-        return df
+        return adata_kline(code, days=days)
 
     if source == "westock":
         from lib.data_westock import get_kline as westock_kline
         df = westock_kline(code, period="day", limit=min(days, 2000))
         if df.empty:
             return pd.DataFrame()
-        # 统一列名
         col_map = {"日期": "date", "开盘": "open", "收盘": "close",
                    "最高": "high", "最低": "low", "成交量": "volume"}
         df = df.rename(columns=col_map)
@@ -158,7 +149,36 @@ def get_stock_hist_multi_source(code: str, days: int = 180,
         })
         return df
 
-    return get_stock_hist(code, days)
+    if source == "akshare":
+        return get_stock_hist(code, days)
+
+    logger.warning(f"未知数据源: {source}")
+    return pd.DataFrame()
+
+
+def get_stock_hist_multi_source(code: str, days: int = 180,
+                                source: str = "auto") -> pd.DataFrame:
+    """多数据源获取 K 线数据（自动按优先级尝试）
+
+    Args:
+        code: 股票代码
+        source: "auto"（自动选最快）/ "adata" / "westock" / "tushare" / "akshare"
+    """
+    if source != "auto":
+        return _fetch_from_source(code, days, source)
+
+    # 自动模式：按优先级逐个尝试
+    errors = []
+    for src in DATA_SOURCE_PRIORITY:
+        df = _fetch_from_source(code, days, src)
+        if not df.empty:
+            if src != "akshare":
+                logger.debug(f"使用数据源 [{src}] 获取 {code}")
+            return df
+        errors.append(f"{src}: empty")
+
+    logger.warning(f"所有数据源均无法获取 {code}: {', '.join(errors)}")
+    return pd.DataFrame()
 
 
 def get_realtime_quotes() -> pd.DataFrame:
