@@ -159,7 +159,7 @@ def _call_deepseek(prompt: str, api_key: str) -> str:
     resp = requests.post(
         "https://api.deepseek.com/v1/chat/completions",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}],
+        json={"model": "deepseek-v4-flash", "messages": [{"role": "user", "content": prompt}],
               "temperature": 0.3, "max_tokens": 500},
         timeout=30,
     )
