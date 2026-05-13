@@ -29,9 +29,18 @@ def main():
     parser.add_argument("--walk-forward", action="store_true", help="Walk-forward 验证")
     parser.add_argument("--score", metavar="CODE", help="综合评分（四维加权）")
     parser.add_argument("--dcf", metavar="CODE", help="DCF 估值")
+    parser.add_argument("--fcf", type=float, help="DCF: 基期自由现金流")
+    parser.add_argument("--growth", type=float, help="DCF: 年增长率")
+    parser.add_argument("--discount", type=float, help="DCF: 折现率/WACC")
+    parser.add_argument("--terminal-growth", type=float, default=0.03, help="DCF: 永续增长率")
+    parser.add_argument("--dcf-years", type=int, default=5, help="DCF: 预测期年数")
+    parser.add_argument("--dcf-debt", type=float, default=0, help="DCF: 净负债")
+    parser.add_argument("--dcf-cash", type=float, default=0, help="DCF: 现金")
+    parser.add_argument("--dcf-shares", type=float, default=1, help="DCF: 总股本")
     parser.add_argument("--value", metavar="CODE", help="巴菲特 20 项评分")
     parser.add_argument("--earnings", action="store_true", help="财报日历")
     parser.add_argument("--anomaly", metavar="CODE", help="财报异常检测")
+    parser.add_argument("--macro", action="store_true", help="宏观数据监控")
     parser.add_argument("--data-source", choices=["akshare", "westock", "tushare"],
                         default="akshare", help="数据源选择")
     args = parser.parse_args()
@@ -55,7 +64,15 @@ def main():
 
     # DCF 估值
     if args.dcf:
-        run_dcf_mode(args.dcf)
+        run_dcf_mode(args.dcf, fcf=args.fcf, growth=args.growth,
+                     discount=args.discount, terminal_growth=args.terminal_growth,
+                     years=args.dcf_years, debt=args.dcf_debt,
+                     cash=args.dcf_cash, shares=args.dcf_shares)
+        return
+
+    # 宏观监控
+    if args.macro:
+        run_macro_mode()
         return
 
     # 巴菲特评分
@@ -96,11 +113,14 @@ def main():
 
 
 def run_score_mode(code):
-    """综合评分模式"""
-    from scanner import get_stock_hist
+    """综合评分模式（四维真实数据）"""
+    from scanner import get_stock_hist, get_realtime_quotes
     from factors import compute_all_signals
+    from lib.technical_signals import calc_composite_verdict
     from lib.scorer import (comprehensive_score, score_fundamental,
-                            score_capital_flow, score_news, score_technical)
+                            score_capital_flow, score_news, score_technical,
+                            calc_deviation_value, check_anomaly_threshold,
+                            get_board_type)
 
     logger.info(f"综合评分: {code}")
     hist = get_stock_hist(code, days=180)
@@ -108,53 +128,147 @@ def run_score_mode(code):
         logger.error(f"获取 {code} 数据失败")
         return
 
+    # 技术面：12 信号综合研判
+    tech_result = calc_composite_verdict(hist)
+    tech_signals = tech_result["signals"]
+    tech_summary = tech_result["summary"]
+    bullish_pct = tech_summary.get("bullish_pct", 0)
+    tech_score = min(10, max(0, bullish_pct / 10))
+
+    # 因子数据
     result = compute_all_signals(hist)
-    if not result:
-        logger.error("因子计算失败")
-        return
+    factors = result["factors"] if result else {}
 
-    factors = result["factors"]
-    technical_verdict = result["combined"]
+    # 基本面：用因子近似
+    rsi = factors.get("rsi_14", 50)
+    vol_20 = factors.get("volatility_20", 30)
+    mom_5 = factors.get("momentum_5", 0)
+    fund_score = min(10, max(0,
+        (3 if rsi > 30 and rsi < 70 else 1) +
+        (3 if vol_20 < 30 else 1) +
+        (2 if mom_5 > 0 else 0) + 2
+    ))
 
-    # 技术面评分（基于信号置信度）
-    tech_score = technical_verdict["confidence"] * 10
+    # 资金面：用量比和换手率近似
+    vol_ratio = factors.get("volume_ratio", 1.0)
+    cap_score = min(10, max(0,
+        (4 if vol_ratio > 1.5 else 2 if vol_ratio > 1.0 else 0) + 3
+    ))
 
-    # 基本面评分（基于因子）
-    roe = factors.get("rsi_14", 50)  # 用 RSI 近似
-    fund_score = min(10, max(0, (100 - abs(roe - 50)) / 5))
-
-    # 资金面/消息面用默认值
-    cap_score = 5.0
+    # 消息面：用默认值（无新闻数据源时）
     news_score = 5.0
 
+    # 综合评分
     final = comprehensive_score(fund_score, cap_score, news_score, tech_score)
-    print(f"\n{'='*50}")
-    print(f"  综合评分: {code}")
-    print(f"{'='*50}")
-    print(f"  总分: {final['score']}/10")
-    print(f"  评级: {final['rating']}")
-    print(f"  基本面: {final['breakdown']['fundamental']}")
-    print(f"  资金面: {final['breakdown']['capital_flow']}")
-    print(f"  消息面: {final['breakdown']['news']}")
-    print(f"  技术面: {final['breakdown']['technical']}")
-    print(f"{'='*50}")
+
+    # 偏移值检查
+    board_type = "main"
+    stock_name = ""
+    try:
+        quotes = get_realtime_quotes()
+        if not quotes.empty:
+            row = quotes[quotes["代码"] == code]
+            if not row.empty:
+                stock_name = row.iloc[0].get("名称", "")
+                board_type = get_board_type(code, stock_name)
+    except Exception:
+        pass
+
+    # 输出
+    print(f"\n{'='*60}")
+    print(f"  综合评分: {code} {stock_name}")
+    print(f"{'='*60}")
+    print(f"\n  总分: {final['score']}/10  评级: {final['rating']}")
+    print(f"\n  【评分明细】")
+    print(f"    基本面 (35%): {final['breakdown']['fundamental']}/10")
+    print(f"    资金面 (35%): {final['breakdown']['capital_flow']}/10")
+    print(f"    消息面 (20%): {final['breakdown']['news']}/10")
+    print(f"    技术面 (10%): {final['breakdown']['technical']}/10")
+
+    print(f"\n  【技术信号】({tech_summary['total_indicators']} 个指标)")
+    print(f"    看多: {tech_summary['bullish_count']} ({tech_summary['bullish_pct']}%)")
+    print(f"    看空: {tech_summary['bearish_count']} ({tech_summary['bearish_pct']}%)")
+    print(f"    综合: {tech_summary['verdict']}")
+    for ind, sig in tech_signals.items():
+        label = {"bullish": "看多", "bearish": "看空", "neutral": "中性"}.get(sig, sig)
+        print(f"      {ind:15s} {label}")
+
+    print(f"\n  【关键因子】")
+    print(f"    RSI(14):    {rsi:.1f}")
+    print(f"    波动率(20): {vol_20:.1f}%")
+    print(f"    动量(5):    {mom_5:+.1f}%")
+    print(f"    量比:       {vol_ratio:.2f}")
+    print(f"    板块:       {board_type}")
+
+    print(f"{'='*60}")
 
 
-def run_dcf_mode(code):
+def run_dcf_mode(code, fcf=None, growth=None, discount=None,
+                  terminal_growth=0.03, years=5, debt=0, cash=0, shares=1):
     """DCF 估值模式"""
     from lib.dcf import dcf_valuation, sensitivity_matrix, margin_of_safety
 
     logger.info(f"DCF 估值: {code}")
-    print(f"\n{'='*50}")
+
+    if fcf is None or growth is None or discount is None:
+        print(f"\n{'='*50}")
+        print(f"  DCF 估值: {code}")
+        print(f"{'='*50}")
+        print("  缺少必要参数，请指定:")
+        print("    --fcf <自由现金流>")
+        print("    --growth <增长率>")
+        print("    --discount <折现率>")
+        print(f"\n  示例:")
+        print(f"    python run.py --dcf {code} --fcf 1e9 --growth 0.15 --discount 0.10")
+        print(f"{'='*50}")
+        return
+
+    # DCF 估值
+    result = dcf_valuation(fcf, growth, discount, terminal_growth, years, debt, cash, shares)
+    if "error" in result:
+        logger.error(result["error"])
+        return
+
+    # 敏感性矩阵
+    g_range = [growth - 0.05, growth - 0.025, growth, growth + 0.025, growth + 0.05]
+    d_range = [discount - 0.02, discount - 0.01, discount, discount + 0.01, discount + 0.02]
+    g_range = [g for g in g_range if g > 0]
+    d_range = [d for d in d_range if d > 0]
+    sens = sensitivity_matrix(fcf, g_range, d_range, terminal_growth, years, debt, cash, shares)
+
+    print(f"\n{'='*60}")
     print(f"  DCF 估值: {code}")
-    print(f"{'='*50}")
-    print("  需要手动输入 FCF、增长率、折现率等参数")
-    print("  示例: python -c \"")
-    print("    from lib.dcf import dcf_valuation")
-    print("    r = dcf_valuation(fcf=1e9, growth=0.15, discount=0.10, shares=1e9)")
-    print("    print(r['per_share_value'])")
-    print("  \"")
-    print(f"{'='*50}")
+    print(f"{'='*60}")
+    print(f"\n  【估值结果】")
+    print(f"    企业价值:     {result['enterprise_value']:>15,.2f}")
+    print(f"    股权价值:     {result['equity_value']:>15,.2f}")
+    print(f"    每股价值:     {result['per_share_value']:>15,.2f}")
+    print(f"\n  【假设参数】")
+    print(f"    基期 FCF:     {fcf:>15,.2f}")
+    print(f"    增长率:       {growth:>14.1%}")
+    print(f"    折现率:       {discount:>14.1%}")
+    print(f"    永续增长率:   {terminal_growth:>14.1%}")
+    print(f"    预测期:       {years:>11d} 年")
+    print(f"    净负债:       {debt:>15,.2f}")
+    print(f"    现金:         {cash:>15,.2f}")
+    print(f"    总股本:       {shares:>15,.0f}")
+
+    print(f"\n  【敏感性分析（每股价值）】")
+    header = f"  {'增长率\\\\折现率':>14s}"
+    for d in sens["discount_range"]:
+        header += f"  {d:>8.1%}"
+    print(header)
+    print(f"  {'-'*14}" + f" {'-'*8}" * len(sens["discount_range"]))
+    for i, g in enumerate(sens["growth_range"]):
+        row = f"  {g:>13.1%} "
+        for v in sens["matrix"][i]:
+            if v is None:
+                row += f"  {'N/A':>8s}"
+            else:
+                row += f"  {v:>8.2f}"
+        print(row)
+
+    print(f"{'='*60}")
 
 
 def run_value_mode(code):
@@ -214,32 +328,216 @@ def run_earnings_mode():
 
 
 def run_anomaly_mode(code):
-    """异常检测模式"""
-    from lib.data_earnings import get_earnings_report
+    """异常检测模式（接入多期财务数据）"""
+    from lib.data_tushare import get_financials, _to_ts_code
     from lib.anomaly_detector import detect_anomalies, anomaly_summary
 
     logger.info(f"异常检测: {code}")
-    print(f"\n{'='*50}")
-    print(f"  异常检测: {code}")
-    print(f"{'='*50}")
+    ts_code = _to_ts_code(code)
 
-    # 尝试从财报数据构造 periods_data
+    print(f"\n{'='*60}")
+    print(f"  财报异常检测: {code} ({ts_code})")
+    print(f"{'='*60}")
+
+    # 用 Tushare 获取多期财务数据
+    try:
+        from lib.data_tushare import _get_pro
+        pro = _get_pro()
+        if pro is None:
+            print("  Tushare 未配置（需要 TUSHARE_TOKEN），尝试用 akshare...")
+            _run_anomaly_akshare(code)
+            return
+
+        # 获取近 8 期利润表
+        income_df = pro.income(ts_code=ts_code, fields="ts_code,ann_date,end_date,revenue,n_income,operate_profit,total_cogs")
+        if income_df.empty:
+            print(f"  未找到 {code} 的财务数据")
+            print(f"{'='*60}")
+            return
+
+        # 获取资产负债表
+        balance_df = pro.balancesheet(ts_code=ts_code, fields="ts_code,ann_date,end_date,total_assets,total_liab,total_hldr_eqy_exc_min_int,total_cur_assets,total_cur_liab,inventories,accounts_receiv,goodwill,accounts_payable")
+
+        # 获取现金流量表
+        cf_df = pro.cashflow(ts_code=ts_code, fields="ts_code,ann_date,end_date,n_cashflow_act,c_pay_acq_const_fiam")
+
+        # 构造 periods_data
+        periods_data = []
+        for _, row in income_df.head(8).iterrows():
+            period = str(row.get("end_date", ""))
+            entry = {
+                "period": period,
+                "revenue": row.get("revenue"),
+                "net_income": row.get("n_income"),
+                "operating_income": row.get("operate_profit"),
+                "cost_of_revenue": row.get("total_cogs"),
+            }
+
+            # 匹配资产负债表
+            if not balance_df.empty:
+                bal = balance_df[balance_df["end_date"] == period]
+                if not bal.empty:
+                    b = bal.iloc[0]
+                    entry.update({
+                        "total_assets": b.get("total_assets"),
+                        "total_liabilities": b.get("total_liab"),
+                        "total_equity": b.get("total_hldr_eqy_exc_min_int"),
+                        "total_current_assets": b.get("total_cur_assets"),
+                        "total_current_liabilities": b.get("total_cur_liab"),
+                        "inventory": b.get("inventories"),
+                        "accounts_receivable": b.get("accounts_receiv"),
+                        "goodwill": b.get("goodwill"),
+                        "accounts_payable": b.get("accounts_payable"),
+                    })
+
+            # 匹配现金流量表
+            if not cf_df.empty:
+                cf = cf_df[cf_df["end_date"] == period]
+                if not cf.empty:
+                    c = cf.iloc[0]
+                    entry.update({
+                        "operating_cash_flow": c.get("n_cashflow_act"),
+                        "capex": c.get("pay_acq_const_fiam"),
+                    })
+
+            periods_data.append(entry)
+
+        if len(periods_data) < 2:
+            print(f"  数据不足（仅 {len(periods_data)} 期），需要至少 2 期")
+            print(f"{'='*60}")
+            return
+
+        # 执行异常检测
+        alerts = detect_anomalies(periods_data)
+        summary = anomaly_summary(alerts)
+
+        print(f"\n  数据期数: {len(periods_data)}")
+        print(f"  检测结果: {summary['total']} 条异常")
+        print(f"    高风险: {summary['high']}  中风险: {summary['medium']}  低风险: {summary['low']}")
+        print(f"    扣分: -{summary['score_penalty']}")
+
+        if alerts:
+            print(f"\n  【异常详情】")
+            severity_label = {"high": "高", "medium": "中", "low": "低"}
+            for i, a in enumerate(alerts, 1):
+                sev = severity_label.get(a["severity"], a["severity"])
+                print(f"\n  [{sev}] {a['rule']} | {a['period']}")
+                print(f"    触发: {a['trigger']}")
+                print(f"    详情: {a['detail']}")
+                print(f"    含义: {a['implication']}")
+        else:
+            print(f"\n  未检测到异常信号，财务状况良好。")
+
+        print(f"\n{'='*60}")
+
+    except Exception as e:
+        logger.error(f"异常检测失败: {e}")
+        print(f"  检测失败: {e}")
+        print(f"{'='*60}")
+
+
+def _run_anomaly_akshare(code):
+    """用 akshare 财报数据做简化异常检测"""
+    from lib.data_earnings import get_earnings_report
+    from lib.anomaly_detector import detect_anomalies, anomaly_summary
+
     report = get_earnings_report()
     if report.empty:
-        print("  无财报数据，请使用 --data-source tushare 获取详细财务数据")
-        print(f"{'='*50}")
+        print("  无可用财报数据")
         return
 
-    # 简化：用最新一期数据构造
     stock_row = report[report["股票代码"].str.contains(code, na=False)]
     if stock_row.empty:
         print(f"  未找到 {code} 的财报数据")
-        print(f"{'='*50}")
         return
 
-    print(f"  找到 {code} 财报数据，共 {len(stock_row)} 期")
-    print("  详细异常检测需要多期财务数据，请使用 lib/anomaly_detector.py")
-    print(f"{'='*50}")
+    print(f"  找到 {len(stock_row)} 期数据（akshare 财报）")
+
+    # 构造简化 periods_data
+    periods_data = []
+    for _, row in stock_row.head(8).iterrows():
+        entry = {
+            "period": str(row.get("报告期", "")),
+            "revenue": _to_float(row.get("营业收入")),
+            "net_income": _to_float(row.get("净利润")),
+        }
+        periods_data.append(entry)
+
+    if len(periods_data) < 2:
+        print("  数据不足")
+        return
+
+    alerts = detect_anomalies(periods_data)
+    summary = anomaly_summary(alerts)
+    print(f"  检测结果: {summary['total']} 条异常（高{summary['high']} 中{summary['medium']} 低{summary['low']}）")
+
+
+def run_macro_mode():
+    """宏观数据监控模式"""
+    from lib.data_tushare import get_macro_cpi, get_macro_pmi, get_index_daily, _get_pro
+    from factors import calc_market_exposure
+    import pandas as pd
+
+    logger.info("宏观数据监控...")
+
+    print(f"\n{'='*60}")
+    print(f"  宏观数据监控")
+    print(f"{'='*60}")
+
+    pro = _get_pro()
+
+    # CPI 数据
+    print(f"\n  【CPI 数据】")
+    if pro:
+        cpi = get_macro_cpi()
+        if not cpi.empty:
+            print(f"    最新: {cpi.head(3).to_string(index=False)}")
+        else:
+            print("    无数据（检查 TUSHARE_TOKEN）")
+    else:
+        print("    Tushare 未配置")
+
+    # PMI 数据
+    print(f"\n  【PMI 数据】")
+    if pro:
+        pmi = get_macro_pmi()
+        if not pmi.empty:
+            print(f"    最新: {pmi.head(3).to_string(index=False)}")
+        else:
+            print("    无数据")
+    else:
+        print("    Tushare 未配置")
+
+    # 市场状态（沪深 300 择时）
+    print(f"\n  【市场择时】")
+    try:
+        import akshare as ak
+        end = datetime.now().strftime("%Y%m%d")
+        start = (datetime.now() - timedelta(days=120)).strftime("%Y%m%d")
+        idx = ak.stock_zh_index_daily(symbol="sh000300")
+        if not idx.empty:
+            close = idx["close"].tail(120)
+            volume = idx["volume"].tail(120) if "volume" in idx.columns else None
+            pct_chg = close.pct_change().fillna(0)
+            exposure = calc_market_exposure(close, volume, pct_chg)
+            state_label = {"bull": "牛市", "neutral": "震荡", "bear": "熊市"}.get(
+                exposure["state"], exposure["state"])
+            print(f"    沪深300 状态: {state_label}")
+            print(f"    建议仓位: {exposure['exposure']:.0%}")
+        else:
+            print("    获取沪深300数据失败")
+    except Exception as e:
+        print(f"    择时计算失败: {e}")
+
+    print(f"\n{'='*60}")
+
+
+def _to_float(val):
+    """安全转换为 float"""
+    try:
+        return float(val) if val is not None else None
+    except (ValueError, TypeError):
+        return None
 
 
 def run_backtest_mode(symbols, days, walk_forward):

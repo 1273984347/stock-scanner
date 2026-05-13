@@ -10,6 +10,7 @@ from factors import (compute_all_signals, calc_volatility_adjusted_limit,
                      detect_market_regime, evaluate_macro_gate)
 from lib.constraints import DeterministicConstraints
 from lib.position_size import RiskSizedPosition, PositionSizeConfig
+from lib.technical_signals import calc_composite_verdict
 import logging
 import threading
 import time
@@ -109,6 +110,48 @@ def get_stock_hist(code: str, days: int = 180) -> pd.DataFrame:
     except Exception as e:
         logger.error(f"获取 {code} 数据失败: {e}")
         return pd.DataFrame()
+
+
+def get_stock_hist_multi_source(code: str, days: int = 180,
+                                source: str = "akshare") -> pd.DataFrame:
+    """多数据源获取 K 线数据
+
+    Args:
+        code: 股票代码
+        source: "akshare" / "westock" / "tushare"
+    """
+    if source == "akshare":
+        return get_stock_hist(code, days)
+
+    if source == "westock":
+        from lib.data_westock import get_kline as westock_kline
+        df = westock_kline(code, period="day", limit=min(days, 2000))
+        if df.empty:
+            return pd.DataFrame()
+        # 统一列名
+        col_map = {"日期": "date", "开盘": "open", "收盘": "close",
+                   "最高": "high", "最低": "low", "成交量": "volume"}
+        df = df.rename(columns=col_map)
+        for c in ["open", "close", "high", "low", "volume"]:
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors="coerce")
+        return df
+
+    if source == "tushare":
+        from lib.data_tushare import get_daily, _to_ts_code
+        ts_code = _to_ts_code(code)
+        end = datetime.now().strftime("%Y%m%d")
+        start = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+        df = get_daily(ts_code, start, end)
+        if df.empty:
+            return pd.DataFrame()
+        df = df.rename(columns={
+            "trade_date": "date", "open": "open", "close": "close",
+            "high": "high", "low": "low", "vol": "volume"
+        })
+        return df
+
+    return get_stock_hist(code, days)
 
 
 def get_realtime_quotes() -> pd.DataFrame:
@@ -218,6 +261,10 @@ def get_volume_breakout_candidates(config: SystemConfig) -> pd.DataFrame:
             vol = factors.get("volatility_20", 25) / 100
             position_limit = calc_volatility_adjusted_limit(vol)
 
+            # 技术综合研判
+            tech = calc_composite_verdict(hist)
+            tech_summary = tech.get("summary", {})
+
             candidates.append({
                 "代码": code, "名称": row["名称"],
                 "最新价": row["最新价"], "涨跌幅": row["涨跌幅"],
@@ -225,6 +272,8 @@ def get_volume_breakout_candidates(config: SystemConfig) -> pd.DataFrame:
                 "信号": combined["signal"],
                 "置信度": round(confidence, 3),
                 "市场体制": regime["regime"],
+                "技术研判": tech_summary.get("verdict", "N/A"),
+                "看多信号": f"{tech_summary.get('bullish_count', 0)}/{tech_summary.get('total_indicators', 0)}",
                 "RSI": round(factors.get("rsi_14", 50), 1),
                 "动量5": round(factors.get("momentum_5", 0), 1),
                 "仓位上限": f"{position_limit:.0%}",
@@ -332,6 +381,10 @@ def get_multi_factor_candidates(config: SystemConfig) -> pd.DataFrame:
             vol = factors.get("volatility_20", 25) / 100
             position_limit = calc_volatility_adjusted_limit(vol)
 
+            # 技术综合研判
+            tech = calc_composite_verdict(hist)
+            tech_summary = tech.get("summary", {})
+
             candidates.append({
                 "代码": code, "名称": row["名称"],
                 "最新价": row["最新价"], "涨跌幅": row["涨跌幅"],
@@ -339,6 +392,8 @@ def get_multi_factor_candidates(config: SystemConfig) -> pd.DataFrame:
                 "置信度": round(confidence, 3),
                 "市场体制": regime["regime"],
                 "看多策略": f"{bullish_count}/6",
+                "技术研判": tech_summary.get("verdict", "N/A"),
+                "看多信号": f"{tech_summary.get('bullish_count', 0)}/{tech_summary.get('total_indicators', 0)}",
                 "RSI": round(factors.get("rsi_14", 50), 1),
                 "动量5": round(factors.get("momentum_5", 0), 1),
                 "仓位上限": f"{position_limit:.0%}",
