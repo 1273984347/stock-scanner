@@ -92,11 +92,50 @@ class RiskConfig:
 
 
 @dataclass
+class MLConfig:
+    """机器学习配置"""
+    use_ml: bool = True
+    ml_weight: float = 0.20
+    enable_xgb: bool = True
+    enable_lgbm: bool = True
+    enable_sentiment: bool = True
+    weekly_retrain_day: str = "Mon"
+    model_dir: str = "cache/models/"
+
+
+@dataclass
+class PortfolioConfig:
+    """投资组合配置"""
+    optimize_method: str = "equal_weight"  # equal_weight / risk_parity / mean_variance
+    max_single_weight: float = 0.20
+    max_sector_exposure: float = 0.30
+    top_n: int = 10
+    rebalance_period: int = 5
+    min_daily_volume: float = 5e6
+    max_impact_ratio: float = 0.05
+
+
+@dataclass
+class MonitorConfig:
+    """监控配置"""
+    ic_window: int = 20
+    ic_alert_threshold: float = 0.0
+    ic_alert_consecutive: int = 5
+    model_ttl_days: int = 7
+    rollback_ic_ratio: float = 0.8
+    factor_ic_threshold: float = 0.02
+    factor_corr_threshold: float = 0.95
+
+
+@dataclass
 class SystemConfig:
     """系统全局配置"""
     factor: FactorConfig = field(default_factory=FactorConfig)
     scan: ScanConfig = field(default_factory=ScanConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
+    ml: MLConfig = field(default_factory=MLConfig)
+    portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
+    monitor: MonitorConfig = field(default_factory=MonitorConfig)
 
 
 # 预设策略模板
