@@ -395,9 +395,9 @@ class MLDataPipeline:
         excess_Nd = 股票前视N日收益 - 基准前视N日收益
         """
         bench = bench_close.sort_index()
-        bench_fwd_5d = bench.pct_change(-5).shift(-5)  # forward return
-        bench_fwd_10d = bench.pct_change(-10).shift(-10)
-        bench_fwd_20d = bench.pct_change(-20).shift(-20)
+        bench_fwd_5d = bench.pct_change(5).shift(-5)  # forward return: series[i+5]/series[i]-1
+        bench_fwd_10d = bench.pct_change(10).shift(-10)
+        bench_fwd_20d = bench.pct_change(20).shift(-20)
 
         panel["benchmark_fwd_5d"] = panel["date"].map(bench_fwd_5d)
         panel["benchmark_fwd_10d"] = panel["date"].map(bench_fwd_10d)
