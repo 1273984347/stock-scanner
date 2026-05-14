@@ -59,7 +59,9 @@ class MLTrainer:
         y_train : array-like
             训练标签（超额收益）
         group_train : array-like
-            每组（交易日）的样本数列表
+            每组（交易日）的样本数列表，如 [3, 5, 2] 表示三个交易日各有 3/5/2 只股票。
+            MLDataPipeline.feature_target_split() 返回的是逐样本 qid 标签，
+            需用 `np.bincount(qid_labels)` 转换为此格式。
         X_val, y_val, group_val : array-like, optional
             验证集，用于 early stopping
         search_params : bool
@@ -123,7 +125,9 @@ class MLTrainer:
         y_train : array-like
             训练标签（超额收益）
         group_train : array-like
-            每组（交易日）的样本数列表
+            每组（交易日）的样本数列表，如 [3, 5, 2] 表示三个交易日各有 3/5/2 只股票。
+            MLDataPipeline.feature_target_split() 返回的是逐样本 qid 标签，
+            需用 `np.bincount(qid_labels)` 转换为此格式。
         X_val, y_val, group_val : array-like, optional
             验证集，用于 early stopping
         search_params : bool
@@ -213,8 +217,10 @@ class MLTrainer:
             logger.error(f"模型保存失败 {model_path}: {e}")
             raise
 
+        model_type = "xgboost" if isinstance(model, xgb.Booster) else "lightgbm"
         manifest: Dict[str, Any] = {
             "model_name": name,
+            "model_type": model_type,
             "version": version,
             "train_date": datetime.now().isoformat(),
             "feature_cols": metadata.get("feature_cols", []),
@@ -237,6 +243,22 @@ class MLTrainer:
         self._update_current_link(version_dir, model_root)
 
         logger.info(f"模型已保存: {name} v{version} -> {version_dir}")
+
+    @staticmethod
+    def qid_to_group(qid_labels: np.ndarray) -> np.ndarray:
+        """将逐样本 qid 标签转换为 XGBRanker/LGBMRanker 所需的 group sizes
+
+        Parameters
+        ----------
+        qid_labels : np.ndarray
+            MLDataPipeline.feature_target_split() 返回的逐样本组标签
+
+        Returns
+        -------
+        np.ndarray
+            每组大小数组，如 [3, 5, 2]
+        """
+        return np.bincount(qid_labels)
         return manifest
 
     def load_latest(self, name: str) -> Tuple[Optional[Any], Optional[Dict[str, Any]]]:
@@ -277,10 +299,14 @@ class MLTrainer:
                 logger.warning(f"manifest 读取失败 {manifest_path}: {e}")
 
         try:
-            if "xgb" in name.lower():
+            model_type = manifest.get("model_type", "") if manifest else ""
+            if model_type == "xgboost" or (not model_type and "xgb" in name.lower()):
                 model = xgb.Booster()
                 model.load_model(str(model_path))
+            elif model_type == "lightgbm" or not model_type:
+                model = lgb.Booster(model_file=str(model_path))
             else:
+                logger.warning(f"未知模型类型: {model_type}，尝试 LGBM")
                 model = lgb.Booster(model_file=str(model_path))
         except Exception as e:
             logger.error(f"模型加载失败 {model_path}: {e}")
