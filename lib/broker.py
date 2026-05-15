@@ -11,6 +11,8 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 import logging
 
+import akshare as ak
+
 logger = logging.getLogger(__name__)
 
 
@@ -321,13 +323,33 @@ class ABroker:
         latest = hist.iloc[-1]
         close = latest.get("close", 0)
         volume = latest.get("volume", 0)
-        # 流通市值 = 收盘价 × 流通股本（假设成交量代表流通股份）
-        if close > 0 and volume > 0:
-            # 简化估算：成交额 / 成交股数 × 流通股本 ≈ 收盘价 × 流通股本
-            # 这里用成交量估算流通股本
-            market_cap = close * volume * 100  # 假设 1 手=100股
-            self._market_cap_cache[code] = market_cap
-            return market_cap
+        # 流通市值 = 收盘价 × 流通股本
+        if close > 0:
+            # 优先使用 akshare 获取实际流通股本
+            try:
+                info_df = ak.stock_individual_info_em(symbol=code)
+                if info_df is not None and not info_df.empty:
+                    # 查找流通股本字段（可能有不同命名）
+                    cap_row = info_df[info_df["item"].str.contains("流通", na=False)]
+                    if not cap_row.empty:
+                        cap_str = cap_row.iloc[0]["value"]
+                        # 处理格式：e.g., "4.56亿股" 或 "456000000"
+                        if "亿" in cap_str:
+                            market_cap = float(cap_str.replace("亿股", "")) * 1e8 * close
+                        elif "万" in cap_str:
+                            market_cap = float(cap_str.replace("万股", "")) * 1e4 * close
+                        else:
+                            market_cap = float(cap_str) * close
+                        self._market_cap_cache[code] = market_cap
+                        return market_cap
+            except Exception:
+                pass
+
+            # 降级方案：使用成交量估算（误差大，但不至于完全失效）
+            if volume > 0:
+                market_cap = close * volume * 100  # 假设 1 手=100股
+                self._market_cap_cache[code] = market_cap
+                return market_cap
         return -1
 
     def _get_dynamic_impact_model(self, code: str, market_data: Dict[str, pd.DataFrame],
