@@ -63,6 +63,50 @@ class FactorEvaluator:
     def __init__(self, config: EvalConfig = None):
         self.config = config or EvalConfig()
 
+    def compute_ic(
+        self,
+        factor_values: pd.Series,
+        forward_returns: pd.Series
+    ) -> dict:
+        """计算因子 IC（信息系数）
+
+        Args:
+            factor_values: 因子值 Series
+            forward_returns: 未来收益 Series
+
+        Returns:
+            dict with ic, rank_ic, ic_pvalue, rank_ic_pvalue, n_samples
+        """
+        if not factor_values.index.equals(forward_returns.index):
+            common = factor_values.index.intersection(forward_returns.index)
+            logger.warning(
+                f"factor_values 与 forward_returns index 不一致，"
+                f"对齐后剩余 {len(common)} 个样本"
+            )
+            factor_values = factor_values.loc[common]
+            forward_returns = forward_returns.loc[common]
+
+        valid = factor_values.notna() & forward_returns.notna()
+        if valid.sum() < 10:
+            return {"ic": np.nan, "rank_ic": np.nan, "ic_ir": np.nan,
+                    "ic_pvalue": np.nan, "rank_ic_pvalue": np.nan,
+                    "n_samples": valid.sum()}
+
+        ic, ic_pvalue = stats.pearsonr(
+            factor_values[valid], forward_returns[valid]
+        )
+        rank_ic, rank_pvalue = stats.spearmanr(
+            factor_values[valid], forward_returns[valid]
+        )
+
+        return {
+            "ic": ic,
+            "ic_pvalue": ic_pvalue,
+            "rank_ic": rank_ic,
+            "rank_ic_pvalue": rank_pvalue,
+            "n_samples": int(valid.sum()),
+        }
+
     def compute_rolling_ic(
         self,
         factor_df: pd.DataFrame,
