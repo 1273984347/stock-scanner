@@ -379,7 +379,20 @@ class FactorAudit:
 def summarize_rounds(rounds: List[WalkForwardRound]) -> Dict:
     """汇总推进式回测结果"""
     if not rounds:
-        return {"rounds": 0, "message": "无回测轮次"}
+        return {
+            "rounds": 0,
+            "message": "无回测轮次",
+            "stable_rounds": 0,
+            "fragile_rounds": 0,
+            "insufficient_rounds": 0,
+            "median_return": 0,
+            "worst_return": 0,
+            "median_sharpe": 0,
+            "median_win_rate": 0,
+            "worst_drawdown": 0,
+            "median_profit_factor": 0,
+            "total_trades": 0,
+        }
 
     val_metrics = [r.validation_metrics for r in rounds if r.validation_metrics]
 

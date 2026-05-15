@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pandas as pd
 import numpy as np
-from lib.walkforward import WalkForwardBacktest, WalkForwardConfig, summarize_rounds
+from lib.walkforward import WalkForwardBacktest, WalkForwardConfig, WalkForwardRound, ValidationStatus, summarize_rounds
 
 
 def _make_mock_market_data(codes, dates, base_price=100.0):
@@ -79,31 +79,35 @@ def test_walkforward_backtest_basic():
     )
 
     assert len(rounds) > 0, "应有至少一轮 walk-forward"
-    assert all("train_period" in r for r in rounds)
-    assert all("validation_period" in r for r in rounds)
+    # WalkForwardRound 是 dataclass，有 window_index 和 validation_status 属性
+    assert all(hasattr(r, "window_index") for r in rounds)
+    assert all(hasattr(r, "validation_status") for r in rounds)
 
 
 def test_summarize_rounds():
     """测试轮次汇总"""
     rounds = [
-        {
-            "round_id": 0,
-            "train_period": ("2025-01-01", "2025-03-31"),
-            "validation_period": ("2025-04-01", "2025-04-30"),
-            "metrics": {"total_return": 0.05, "sharpe_ratio": 1.2},
-        },
-        {
-            "round_id": 1,
-            "train_period": ("2025-02-01", "2025-04-30"),
-            "validation_period": ("2025-05-01", "2025-05-31"),
-            "metrics": {"total_return": -0.02, "sharpe_ratio": -0.3},
-        },
-        {
-            "round_id": 2,
-            "train_period": ("2025-03-01", "2025-05-31"),
-            "validation_period": ("2025-06-01", "2025-06-30"),
-            "metrics": {"total_return": 0.08, "sharpe_ratio": 1.5},
-        },
+        WalkForwardRound(
+            window_index=0,
+            strategy="test",
+            validation_status=ValidationStatus.STABLE,
+            train_metrics={},
+            validation_metrics={"total_return": 0.05, "sharpe_ratio": 1.2},
+        ),
+        WalkForwardRound(
+            window_index=1,
+            strategy="test",
+            validation_status=ValidationStatus.STABLE,
+            train_metrics={},
+            validation_metrics={"total_return": -0.02, "sharpe_ratio": -0.3},
+        ),
+        WalkForwardRound(
+            window_index=2,
+            strategy="test",
+            validation_status=ValidationStatus.STABLE,
+            train_metrics={},
+            validation_metrics={"total_return": 0.08, "sharpe_ratio": 1.5},
+        ),
     ]
 
     summary = summarize_rounds(rounds)
