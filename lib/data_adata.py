@@ -37,8 +37,9 @@ def get_kline(code: str, days: int = 180, period: str = "daily") -> pd.DataFrame
         end = datetime.now()
         start = end - timedelta(days=days)
         freq_map = {"daily": 1, "weekly": 2, "monthly": 3}
-        df = mkt.get_market( code=acode, start_date=start.strftime("%Y-%m-%d"),
-                            end_date=end.strftime("%Y-%m-%d") )
+        df = mkt.get_market(stock_code=acode, start_date=start.strftime("%Y-%m-%d"),
+                            end_date=end.strftime("%Y-%m-%d"),
+                            k_type=freq_map.get(period, 1))
         if df.empty:
             return pd.DataFrame()
         # 统一列名

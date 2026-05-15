@@ -28,6 +28,8 @@ def dcf_valuation(fcf: float, growth: float, discount: float,
     """
     if fcf <= 0:
         return {"error": "FCF 必须为正数"}
+    if growth >= discount:
+        return {"error": "预测期增长率不应大于等于折现率"}
     if terminal_growth >= discount:
         return {"error": "永续增长率必须小于折现率"}
 

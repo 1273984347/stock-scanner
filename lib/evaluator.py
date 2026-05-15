@@ -401,8 +401,9 @@ class FactorEvaluator:
         """计算因子换手率（相邻期分位变化的平均比例）
 
         Args:
-            factor_values: 因子值 Series, index=date (multi-index with date+code)
-                          or single period Series
+            factor_values: 因子值 Series
+                - MultiIndex (date, code): 多期面板数据，计算跨期换手率
+                - 单层 index: 单截面数据，无法计算跨期换手，返回 0.0
 
         Returns:
             平均换手率
@@ -424,13 +425,14 @@ class FactorEvaluator:
                 if len(common) < n_groups * 2:
                     continue
 
-                prev_q = pd.qcut(prev[common].rank(pct=True), n_groups, labels=False)
-                curr_q = pd.qcut(curr[common].rank(pct=True), n_groups, labels=False)
+                prev_q = pd.qcut(prev[common].rank(pct=True), n_groups, labels=False, duplicates="drop")
+                curr_q = pd.qcut(curr[common].rank(pct=True), n_groups, labels=False, duplicates="drop")
                 turnover = (prev_q != curr_q).mean()
                 turnovers.append(turnover)
 
             return np.mean(turnovers) if turnovers else 0.0
         else:
+            # 单截面：无法计算换手率
             return 0.0
 
     def generate_scorecard(
@@ -589,7 +591,7 @@ def build_forward_returns(
         if p == 1:
             result[f"{p}d"] = returns
         else:
-            result[f"{p}d"] = prices.pct_change(periods=p).shift(-p)
+            result[f"{p}d"] = prices.pct_change(periods=p).shift(-p - 1)
 
     return result
 

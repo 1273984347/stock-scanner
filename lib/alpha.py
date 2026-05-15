@@ -125,6 +125,12 @@ class AlphaSynthesizer:
         for _, row in ic_df.iterrows():
             weights[row["factor"]] = row["abs_rank_ic"] / total
 
+        # 权重校验
+        total_weight = sum(weights.values())
+        if abs(total_weight - 1.0) >= 1e-6:
+            # 归一化
+            weights = {k: v / total_weight for k, v in weights.items()}
+
         return weights
 
     @staticmethod
@@ -404,7 +410,9 @@ class AlphaSynthesizer:
             w = decay_weights[-n:] if n <= len(decay_weights) else np.ones(n) / n
             w = w / w.sum()
 
-            icir_decay = abs((rolling_ic.iloc[-n:] * w).sum()) / (rolling_ic.iloc[-n:].std() + 1e-10)
+            # 加权 ICIR：分子分母都使用加权计算，保持一致性
+            weighted_ic = rolling_ic.iloc[-n:] * w
+            icir_decay = abs(weighted_ic.sum()) / (weighted_ic.std() + 1e-10)
             icir_weighted[name] = icir_decay
 
         if not icir_weighted:

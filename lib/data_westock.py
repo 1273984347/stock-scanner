@@ -141,11 +141,7 @@ def get_lhb(date: str = None) -> pd.DataFrame:
 
 def batch_kline(codes: List[str], period: str = "day",
                 limit: int = 200) -> Dict[str, pd.DataFrame]:
-    """批量获取 K 线数据"""
-    wc_codes = ",".join(_to_westock_code(c) for c in codes)
-    output = _run_westock(["kline", wc_codes, "--period", period, "--limit", str(limit)])
-    # 批量结果需要按股票分割
-    # 简化处理：逐个获取
+    """批量获取 K 线数据（逐个调用，避免废弃的批量子进程）"""
     results = {}
     for code in codes:
         df = get_kline(code, period, limit)

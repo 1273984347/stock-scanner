@@ -3,12 +3,17 @@
 来源：财报追踪 skill
 直接调用 AKShare 函数，无需 Node.js
 """
-import akshare as ak
 import pandas as pd
 import logging
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _get_ak():
+    """延迟导入 akshare，避免模块导入时依赖缺失"""
+    import akshare as ak
+    return ak
 
 
 def get_earnings_calendar() -> pd.DataFrame:
@@ -18,6 +23,7 @@ def get_earnings_calendar() -> pd.DataFrame:
         DataFrame: 股票代码, 名称, 预计披露日期, 实际披露日期, ...
     """
     try:
+        ak = _get_ak()
         return ak.stock_yysj_em()
     except Exception as e:
         logger.error(f"获取财报日历失败: {e}")
@@ -31,6 +37,7 @@ def get_earnings_forecast() -> pd.DataFrame:
         DataFrame: 股票代码, 名称, 预告类型, 预告净利润, 预告幅度, ...
     """
     try:
+        ak = _get_ak()
         return ak.stock_yjyg_em()
     except Exception as e:
         logger.error(f"获取业绩预告失败: {e}")
@@ -44,6 +51,7 @@ def get_earnings_flash() -> pd.DataFrame:
         DataFrame: 股票代码, 名称, 营业收入, 净利润, 每股收益, ...
     """
     try:
+        ak = _get_ak()
         return ak.stock_yjkb_em()
     except Exception as e:
         logger.error(f"获取业绩快报失败: {e}")
@@ -57,6 +65,7 @@ def get_earnings_report() -> pd.DataFrame:
         DataFrame: 股票代码, 名称, 营业收入, 净利润, 每股收益, ROE, ...
     """
     try:
+        ak = _get_ak()
         return ak.stock_yjbb_em()
     except Exception as e:
         logger.error(f"获取财报数据失败: {e}")

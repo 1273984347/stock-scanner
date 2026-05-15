@@ -31,7 +31,7 @@ class MLPredictor:
     model_dir : str
         模型存储目录，默认 "cache/models/"
     xgb_name : str, optional
-        XGBoost 模型名称，默认 "xgb_5d"
+        XGBoost 模型名称，默认 "xgb_20d_v1"（20日超额收益排序模型）
     lgbm_name : str, optional
         LightGBM 模型名称，默认 "lgbm_20d"
     """
@@ -39,7 +39,7 @@ class MLPredictor:
     def __init__(
         self,
         model_dir: str = "cache/models/",
-        xgb_name: str = "xgb_5d",
+        xgb_name: str = "xgb_20d_v1",
         lgbm_name: str = "lgbm_20d",
     ):
         self.model_dir = model_dir

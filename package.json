@@ -1,0 +1,8 @@
+{
+  "name": "stock-scanner",
+  "version": "1.0.0",
+  "description": "stock-scanner with HTTP server for static files",
+  "scripts": {
+    "serve": "npx serve static -p 8080"
+  }
+}

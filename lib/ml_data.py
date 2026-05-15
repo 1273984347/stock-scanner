@@ -57,7 +57,7 @@ LABEL_COLS: List[str] = [
     "excess_20d",
 ]
 
-LOOKBACK_DAYS: int = 800  # 获取的历史天数（≈3年，含因子计算 + 前视收益）
+LOOKBACK_DAYS: int = 3000  # 获取的历史天数（≈12年，覆盖 2015-至今）
 MIN_HISTORY: int = 60     # 最少所需交易日（因子计算下限）
 NUM_TRADING_DAYS = 252    # A股年化交易天数
 
@@ -87,6 +87,16 @@ class MLDataPipeline:
         self.benchmark_code = benchmark_code
         self.cache_path = Path(cache_path)
         self._benchmark_df: Optional[pd.DataFrame] = None
+    def add_cross_sectional_features(self, panel: pd.DataFrame) -> pd.DataFrame:
+        """为面板添加截面百分位因子（按日期分组，各因子的截面排名分位）"""
+        df = panel.copy()
+        factor_cols = [c for c in FACTOR_COLS if c in df.columns]
+        for col in factor_cols:
+            rank_col = col + '_rank'
+            df[rank_col] = df.groupby('date')[col].rank(pct=True).fillna(0.5)
+        logger.info(f'Added {len(factor_cols)} cross-sectional percentile factors')
+        return df
+
 
     # ========== 基准指数数据 ==========
 
@@ -162,7 +172,7 @@ class MLDataPipeline:
         tp = (high + low + close) / 3.0
         tp_rolling = tp.rolling(period)
         tp_sma = tp_rolling.mean()
-        mad = (tp_rolling.apply(lambda x: (x - x.mean()).abs().mean(), raw=True))
+        mad = (tp_rolling.apply(lambda x: np.abs(x - x.mean()).mean(), raw=True))
         denom = 0.015 * mad.replace(0, np.nan)
         cci = (tp - tp_sma) / denom
         return cci

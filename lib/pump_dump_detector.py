@@ -11,11 +11,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def detect_pump_and_dump(hist: pd.DataFrame) -> List[Dict]:
+def detect_pump_and_dump(hist: pd.DataFrame, code: str = "") -> List[Dict]:
     """检测杀猪盘特征
 
     Args:
         hist: 包含 open/close/high/low/volume 列的 DataFrame
+        code: 股票代码，用于按板块确定涨跌停幅度
 
     Returns:
         [{"type": str, "severity": str, "detail": str, "score": float}]
@@ -84,9 +85,12 @@ def detect_pump_and_dump(hist: pd.DataFrame) -> List[Dict]:
 
     # 5. 封单异常（涨停板上的封单量）
     if n >= 10:
+        # 按板块获取涨跌停幅度
+        from lib.broker import ABroker
+        limit_pct = ABroker.get_limit_pct(code) if code else 0.10
         close_last = close.tail(10)
         pre_close = close.shift(1).tail(10)
-        limit_up_days = ((close_last - pre_close) / pre_close.replace(0, np.nan) > 0.09).sum()
+        limit_up_days = ((close_last - pre_close) / pre_close.replace(0, np.nan) > limit_pct - 0.005).sum()
         if limit_up_days >= 3:
             alerts.append({
                 "type": "频繁涨停",
@@ -124,8 +128,8 @@ def detect_pump_and_dump(hist: pd.DataFrame) -> List[Dict]:
     return alerts
 
 
-def is_pump_dump_risk(hist: pd.DataFrame) -> bool:
+def is_pump_dump_risk(hist: pd.DataFrame, code: str = "") -> bool:
     """快速判断是否有杀猪盘风险"""
-    alerts = detect_pump_and_dump(hist)
+    alerts = detect_pump_and_dump(hist, code=code)
     high_risk = [a for a in alerts if a["severity"] == "high" and a["score"] > 0.5]
     return len(high_risk) >= 2

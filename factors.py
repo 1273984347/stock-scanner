@@ -29,8 +29,15 @@ def calc_rsi(prices: pd.Series, period: int = 14) -> pd.Series:
     loss = (-delta.clip(upper=0)).fillna(0)
     avg_gain = gain.rolling(window=period).mean()
     avg_loss = loss.rolling(window=period).mean()
+    # 边界处理：avg_loss=0 表示持续上涨，RSI=100；avg_gain=0 表示持续下跌，RSI=0
     rs = avg_gain / avg_loss.replace(0, np.nan)
-    return 100 - (100 / (1 + rs))
+    result = 100 - (100 / (1 + rs))
+    # avg_loss 全 0 → 持续上涨 → RSI=100；avg_gain 全 0 → 持续下跌 → RSI=0
+    all_loss = avg_loss == 0
+    all_gain = avg_gain == 0
+    result = result.where(~all_loss, 100)  # 无下跌设为 100
+    result = result.where(~all_gain, 0)    # 无上涨设为 0
+    return result
 
 
 def calc_ema(prices: pd.Series, window: int) -> pd.Series:
@@ -67,7 +74,7 @@ def calc_hurst_exponent(prices: pd.Series, max_lag: int = 20) -> float:
     if len(prices) < max_lag * 2:
         return 0.5
     lags = range(2, max_lag)
-    tau = [max(1e-8, np.sqrt(np.std(np.subtract(prices.values[lag:], prices.values[:-lag])))) for lag in lags]
+    tau = [max(1e-8, np.std(np.subtract(prices.values[lag:], prices.values[:-lag]))) for lag in lags]
     try:
         reg = np.polyfit(np.log(list(lags)), np.log(tau), 1)
         return reg[0]
@@ -266,7 +273,7 @@ def detect_market_regime(prices: pd.Series, volume: pd.Series = None,
     # 趋势分数
     ema_20 = calc_ema(prices, 20).iloc[-1]
     ema_60 = calc_ema(prices, 60).iloc[-1]
-    trend_score = (ema_20 / ema_60 - 1) * 10  # 放大到 -1 到 1 范围
+    trend_score = (ema_20 / ema_60 - 1) * 10 if ema_60 != 0 else 0
     trend_score = max(-1, min(1, trend_score))
 
     # 动量分数
@@ -391,7 +398,8 @@ def calc_trend_signal(prices: pd.Series) -> Dict:
     medium_trend = ema_21.iloc[-1] > ema_55.iloc[-1]
 
     returns = prices.pct_change()
-    adx_approx = abs(returns.rolling(14).mean()) / returns.rolling(14).std() * 100
+    rolling_std_14 = returns.rolling(14).std().replace(0, np.nan)
+    adx_approx = abs(returns.rolling(14).mean()) / rolling_std_14 * 100
     trend_strength = min(adx_approx.iloc[-1] / 100, 1.0) if not np.isnan(adx_approx.iloc[-1]) else 0.5
 
     if short_trend and medium_trend:
@@ -477,7 +485,8 @@ def calc_volatility_signal(prices: pd.Series) -> Dict:
     hist_vol = returns.rolling(21).std() * math.sqrt(252)
     vol_ma = hist_vol.rolling(63).mean()
     vol_regime = hist_vol / vol_ma.replace(0, np.nan)
-    vol_z = (hist_vol - vol_ma) / hist_vol.rolling(63).std()
+    vol_std = hist_vol.rolling(63).std().replace(0, np.nan)
+    vol_z = (hist_vol - vol_ma) / vol_std
 
     current_regime = safe_float(vol_regime.iloc[-1], 1.0)
     current_z = safe_float(vol_z.iloc[-1], 0)
@@ -586,6 +595,11 @@ STRATEGY_WEIGHTS = {
 
 def weighted_signal_combination(signals: Dict[str, Dict], weights: Dict[str, float] = None) -> Dict:
     weights = weights or STRATEGY_WEIGHTS
+
+    # 因子权重校验：权重和必须接近 1.0
+    total_weight = sum(weights.values())
+    assert abs(total_weight - 1.0) < 1e-6, f"因子权重和必须为 1.0，当前为 {total_weight}"
+
     signal_values = {"bullish": 1, "neutral": 0, "bearish": -1}
 
     weighted_sum = 0
@@ -614,8 +628,12 @@ def weighted_signal_combination(signals: Dict[str, Dict], weights: Dict[str, flo
 
 # ========== 综合计算 ==========
 
-def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0) -> Dict:
-    """计算所有策略信号"""
+def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
+                        factor_config=None) -> Dict:
+    """计算所有策略信号
+
+    factor_config: 可选 FactorConfig 实例，控制因子开关；None=全部计算
+    """
     if hist_df.empty or len(hist_df) < 30:
         return {}
 
@@ -626,21 +644,31 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0) -> Dict:
         return {}
 
     # 1. 检测市场体制
-    regime_result = detect_market_regime(close)
+    regime_result = detect_market_regime(close, volume=volume, market_sentiment=macro_score)
     regime = regime_result.regime
 
     # 2. 宏观风险门控
     macro_gate = evaluate_macro_gate(macro_score)
 
-    # 3. 计算 6 大策略信号
-    signals = {
-        "trend": calc_trend_signal(close),
-        "mean_reversion": calc_mean_reversion_signal(close),
-        "momentum": calc_momentum_signal(close, volume),
-        "volatility": calc_volatility_signal(close),
-        "stat_arb": calc_stat_arb_signal(close),
-        "trend_breakout": calc_trend_breakout_signal(close, regime),
-    }
+    # 3. 计算 6 大策略信号（受 Config 开关控制）
+    signals = {}
+    _use = lambda name, default=True: getattr(factor_config, name, default)
+
+    if _use('use_trend'):
+        signals["trend"] = calc_trend_signal(close)
+        signals["trend_breakout"] = calc_trend_breakout_signal(close, regime)
+
+    if _use('use_reversal'):
+        signals["mean_reversion"] = calc_mean_reversion_signal(close)
+
+    if _use('use_momentum'):
+        signals["momentum"] = calc_momentum_signal(close, volume)
+
+    if _use('use_volatility'):
+        signals["volatility"] = calc_volatility_signal(close)
+
+    if _use('use_stat_arb'):
+        signals["stat_arb"] = calc_stat_arb_signal(close)
 
     # 4. 加权组合
     combined = weighted_signal_combination(signals)
@@ -653,24 +681,27 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0) -> Dict:
     elif macro_gate.state == "ALLOW_REDUCED":
         combined["confidence"] *= macro_gate.position_multiplier
 
-    # 6. 额外因子
+    # 6. 额外因子（受 Config 开关控制）
     factors = {}
-    if len(close) > 14:
+    if _use('use_rsi') and len(close) > 14:
         factors["rsi_14"] = safe_float(calc_rsi(close, 14).iloc[-1], 50)
-    if len(close) > 20:
+    if _use('use_trend') and len(close) > 20:
         ma5 = close.tail(5).mean()
         ma20 = close.tail(20).mean()
         factors["trend_strength"] = (ma5 / ma20 - 1) * 100 if ma20 > 0 else 0
+    if _use('use_volatility') and len(close) > 20:
         factors["volatility_20"] = close.pct_change().tail(20).std() * math.sqrt(252) * 100
-    if volume is not None and len(volume) > 20:
+    if _use('use_volume') and volume is not None and len(volume) > 20:
         vol5 = volume.tail(5).mean()
         vol20 = volume.tail(20).mean()
         factors["volume_ratio"] = vol5 / vol20 if vol20 > 0 else 0
-    if len(close) > 20:
-        factors["momentum_5"] = (close.iloc[-1] / close.iloc[-6] - 1) * 100
-        factors["momentum_20"] = (close.iloc[-1] / close.iloc[-21] - 1) * 100
+    if _use('use_momentum') and len(close) > 20:
+        denom5 = close.iloc[-6]
+        denom20 = close.iloc[-21]
+        factors["momentum_5"] = (close.iloc[-1] / denom5 - 1) * 100 if denom5 != 0 else 0
+        factors["momentum_20"] = (close.iloc[-1] / denom20 - 1) * 100 if denom20 != 0 else 0
 
-    # 新增技术因子（KDJ/ADX/CCI/MFI/TRIX/WilliamsR）
+    # 新增技术因子（KDJ/ADX/CCI/MFI/TRIX/WilliamsR，常开不关）
     has_hlc = all(c in hist_df.columns for c in ["high", "low", "close"])
     if has_hlc:
         high = hist_df["high"]

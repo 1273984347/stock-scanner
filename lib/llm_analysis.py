@@ -106,16 +106,21 @@ def _generate_llm_analysis(code: str, name: str, factors: Dict,
     - DEEPSEEK_API_KEY → 深度求索
     - KIMI_API_KEY → 月之暗面 Kimi
     - MIMO_API_KEY → 小米 MiMo
+
+    也支持 OLLM_API_BASE_URL 环境变量自定义 OpenAI 兼容端点。
     """
+    from config import LLMConfig
+    cfg = LLMConfig()
+
     # 按优先级检测 API key
-    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    api_key = cfg.deepseek_api_key
     provider = "deepseek"
 
     if not api_key:
-        api_key = os.environ.get("KIMI_API_KEY", "")
+        api_key = cfg.kimi_api_key
         provider = "kimi"
     if not api_key:
-        api_key = os.environ.get("MIMO_API_KEY", "")
+        api_key = cfg.mimo_api_key
         provider = "mimo"
 
     if not api_key:
@@ -142,56 +147,76 @@ def _generate_llm_analysis(code: str, name: str, factors: Dict,
 
     try:
         if provider == "deepseek":
-            return _call_deepseek(prompt, api_key)
+            return _call_deepseek(prompt, api_key, cfg)
         elif provider == "kimi":
-            return _call_kimi(prompt, api_key)
+            return _call_kimi(prompt, api_key, cfg)
         elif provider == "mimo":
-            return _call_mimo(prompt, api_key)
+            return _call_mimo(prompt, api_key, cfg)
     except Exception as e:
         logger.error(f"LLM 调用失败 ({provider}): {e}")
-        # 尝试下一个 provider
         return _generate_template_analysis(code, name, factors, signals)
 
 
-def _call_deepseek(prompt: str, api_key: str) -> str:
+def _call_deepseek(prompt: str, api_key: str, cfg=None) -> str:
     """调用 DeepSeek API（兼容 OpenAI 格式）"""
+    if cfg is None:
+        from config import LLMConfig
+        cfg = LLMConfig()
     import requests
+    endpoint = cfg.api_base_url or cfg.deepseek_endpoint
     resp = requests.post(
-        "https://api.deepseek.com/v1/chat/completions",
+        endpoint,
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={"model": "deepseek-v4-flash", "messages": [{"role": "user", "content": prompt}],
-              "temperature": 0.3, "max_tokens": 500},
-        timeout=30,
+        json={"model": cfg.deepseek_model, "messages": [{"role": "user", "content": prompt}],
+              "temperature": cfg.temperature, "max_tokens": cfg.max_tokens},
+        timeout=cfg.timeout,
     )
+    resp.raise_for_status()
     data = resp.json()
+    if "choices" not in data or not data["choices"]:
+        raise ValueError(f"DeepSeek 响应格式异常: {data}")
     return data["choices"][0]["message"]["content"]
 
 
-def _call_kimi(prompt: str, api_key: str) -> str:
+def _call_kimi(prompt: str, api_key: str, cfg=None) -> str:
     """调用 Kimi API（兼容 OpenAI 格式）"""
+    if cfg is None:
+        from config import LLMConfig
+        cfg = LLMConfig()
     import requests
+    endpoint = cfg.api_base_url or cfg.kimi_endpoint
     resp = requests.post(
-        "https://api.moonshot.cn/v1/chat/completions",
+        endpoint,
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={"model": "kimi-k2.6", "messages": [{"role": "user", "content": prompt}],
-              "temperature": 0.3, "max_tokens": 500},
-        timeout=30,
+        json={"model": cfg.kimi_model, "messages": [{"role": "user", "content": prompt}],
+              "temperature": cfg.temperature, "max_tokens": cfg.max_tokens},
+        timeout=cfg.timeout,
     )
+    resp.raise_for_status()
     data = resp.json()
+    if "choices" not in data or not data["choices"]:
+        raise ValueError(f"Kimi 响应格式异常: {data}")
     return data["choices"][0]["message"]["content"]
 
 
-def _call_mimo(prompt: str, api_key: str) -> str:
+def _call_mimo(prompt: str, api_key: str, cfg=None) -> str:
     """调用 MiMo API（兼容 OpenAI 格式）"""
+    if cfg is None:
+        from config import LLMConfig
+        cfg = LLMConfig()
     import requests
+    endpoint = cfg.api_base_url or cfg.mimo_endpoint
     resp = requests.post(
-        "https://api.xiaomimimo.com/v1/chat/completions",
+        endpoint,
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={"model": "mimo-v2.5", "messages": [{"role": "user", "content": prompt}],
-              "temperature": 0.3, "max_tokens": 500},
-        timeout=30,
+        json={"model": cfg.mimo_model, "messages": [{"role": "user", "content": prompt}],
+              "temperature": cfg.temperature, "max_tokens": cfg.max_tokens},
+        timeout=cfg.timeout,
     )
+    resp.raise_for_status()
     data = resp.json()
+    if "choices" not in data or not data["choices"]:
+        raise ValueError(f"MiMo 响应格式异常: {data}")
     return data["choices"][0]["message"]["content"]
 
 

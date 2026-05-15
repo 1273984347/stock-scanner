@@ -13,21 +13,24 @@ def score_fundamental(pe: float = None, roe: float = None,
                       debt_ratio: float = None, ocf_healthy: bool = True) -> float:
     """基本面评分（0-10 分，权重 35%）
 
-    - PE < 行业均 + ROE > 15% → +3
+    - ROE > 15% → +3
+    - PE 合理（0 < PE < 30）→ +1
     - 净利增长 > 20% → +2
     - 毛利率 > 30% → +2
-    - 负债率 < 50% → +2
+    - 负债率 < 50% → +1
     - 经营现金流健康 → +1
     """
     score = 0.0
     if roe is not None and roe > 0.15:
         score += 3.0
+    if pe is not None and 0 < pe < 30:
+        score += 1.0
     if net_growth is not None and net_growth > 0.20:
         score += 2.0
     if gross_margin is not None and gross_margin > 0.30:
         score += 2.0
     if debt_ratio is not None and debt_ratio < 0.50:
-        score += 2.0
+        score += 1.0
     if ocf_healthy:
         score += 1.0
     return min(score, 10.0)
@@ -156,7 +159,7 @@ _BOARD_THRESHOLDS = {
 
 def get_board_type(code: str, name: str = "") -> str:
     """根据股票代码判断板块类型"""
-    if "ST" in name.upper():
+    if isinstance(name, str) and "ST" in name.upper():
         return "st"
     if code.startswith("688"):
         return "star"

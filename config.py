@@ -104,6 +104,29 @@ class MLConfig:
 
 
 @dataclass
+class LLMConfig:
+    """LLM API 配置"""
+    # 自定义 OpenAI 兼容端点（通过环境变量 OLLM_API_BASE_URL 设置）
+    api_base_url: str = os.environ.get("OLLAMA_API_BASE_URL", os.environ.get("OLLAMA_BASE_URL", ""))
+    # 各 provider API Key（优先读环境变量）
+    deepseek_api_key: str = os.environ.get("DEEPSEEK_API_KEY", "")
+    kimi_api_key: str = os.environ.get("KIMI_API_KEY", "")
+    mimo_api_key: str = os.environ.get("MIMO_API_KEY", "")
+    # 默认模型
+    deepseek_model: str = "deepseek-v4-flash"
+    kimi_model: str = "kimi-k2.6"
+    mimo_model: str = "mimo-v2.5"
+    # API 端点（可覆盖）
+    deepseek_endpoint: str = "https://api.deepseek.com/v1/chat/completions"
+    kimi_endpoint: str = "https://api.moonshot.cn/v1/chat/completions"
+    mimo_endpoint: str = "https://api.xiaomimimo.com/v1/chat/completions"
+    # 通用参数
+    temperature: float = 0.3
+    max_tokens: int = 500
+    timeout: int = 30
+
+
+@dataclass
 class PortfolioConfig:
     """投资组合配置"""
     optimize_method: str = "equal_weight"  # equal_weight / risk_parity / mean_variance
@@ -134,6 +157,7 @@ class SystemConfig:
     scan: ScanConfig = field(default_factory=ScanConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
     ml: MLConfig = field(default_factory=MLConfig)
+    llm: LLMConfig = field(default_factory=LLMConfig)
     portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
     monitor: MonitorConfig = field(default_factory=MonitorConfig)
 

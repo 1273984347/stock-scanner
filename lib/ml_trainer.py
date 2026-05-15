@@ -81,6 +81,7 @@ class MLTrainer:
             "colsample_bytree": 0.8,
             "lambda": 1.0,
             "seed": 42,
+            "ndcg_exp_gain": False,
         }
 
         if search_params:
@@ -148,6 +149,7 @@ class MLTrainer:
             "reg_lambda": 1.0,
             "seed": 42,
             "verbose": -1,
+            "label_gain": list(range(200)),
         }
 
         if search_params:
@@ -415,6 +417,7 @@ class MLTrainer:
             "reg_lambda": 1.0,
             "seed": 42,
             "verbose": -1,
+            "label_gain": list(range(200)),
         }
 
         best_score = -np.inf

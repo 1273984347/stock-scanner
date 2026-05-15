@@ -10,10 +10,23 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 from datetime import datetime
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
 
 POSITIONS_FILE = Path(__file__).parent.parent / "cache" / "positions.json"
+
+# 跨平台文件锁
+try:
+    import portalocker
+    _HAS_PORTALOCKER = True
+except ImportError:
+    _HAS_PORTALOCKER = False
+    if sys.platform != "win32":
+        import fcntl
+        _HAS_FCNTL = True
+    else:
+        _HAS_FCNTL = False
 
 
 @dataclass
@@ -29,37 +42,85 @@ class Position:
 
 
 class PositionManager:
-    """仓位管理器"""
+    """仓位管理器（支持并发文件锁）"""
 
     def __init__(self, positions_file: str = None):
         self.file = Path(positions_file) if positions_file else POSITIONS_FILE
         self.positions: Dict[str, Position] = {}
+        self._lock_file: Optional[object] = None
         self._load()
+
+    def _acquire_lock(self, mode="r"):
+        """获取文件锁"""
+        if not self.file.exists():
+            self.file.parent.mkdir(parents=True, exist_ok=True)
+            self.file.touch(exist_ok=True)
+        try:
+            if _HAS_PORTALOCKER:
+                self._lock_file = portalocker.Lock(
+                    self.file, timeout=5,
+                    fail_when_locked=True if mode == "r" else False
+                )
+                self._lock_file.acquire()
+            elif _HAS_FCNTL:
+                self._lock_file = open(self.file, "r+" if mode == "r" else "w")
+                fcntl.flock(self._lock_file.fileno(),
+                           fcntl.LOCK_EX if mode == "w" else fcntl.LOCK_SH)
+            else:
+                logger.warning("无可用文件锁库（portalocker/fcntl），并发写入可能冲突")
+        except Exception as e:
+            logger.debug(f"获取文件锁失败: {e}")
+            self._lock_file = None
+
+    def _release_lock(self):
+        """释放文件锁"""
+        try:
+            if _HAS_PORTALOCKER and self._lock_file:
+                self._lock_file.release()
+                self._lock_file = None
+            elif _HAS_FCNTL and self._lock_file:
+                fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_UN)
+                self._lock_file.close()
+                self._lock_file = None
+        except Exception:
+            pass
 
     def _load(self):
         """从文件加载持仓"""
         if not self.file.exists():
             return
+        self._acquire_lock("r")
         try:
             data = json.loads(self.file.read_text(encoding="utf-8"))
             for code, p in data.items():
                 self.positions[code] = Position(**p)
         except Exception as e:
             logger.warning(f"加载持仓数据失败: {e}")
+        finally:
+            self._release_lock()
 
     def _save(self):
-        """保存持仓到文件"""
+        """保存持仓到文件（原子写入）"""
         self.file.parent.mkdir(parents=True, exist_ok=True)
-        data = {}
-        for code, p in self.positions.items():
-            data[code] = {
-                "code": p.code, "name": p.name,
-                "buy_price": p.buy_price, "shares": p.shares,
-                "buy_date": p.buy_date,
-                "stop_loss": p.stop_loss, "take_profit": p.take_profit,
-                "notes": p.notes,
-            }
-        self.file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        self._acquire_lock("w")
+        try:
+            data = {}
+            for code, p in self.positions.items():
+                data[code] = {
+                    "code": p.code, "name": p.name,
+                    "buy_price": p.buy_price, "shares": p.shares,
+                    "buy_date": p.buy_date,
+                    "stop_loss": p.stop_loss, "take_profit": p.take_profit,
+                    "notes": p.notes,
+                }
+            # 原子写入：先写临时文件再 rename
+            tmp_file = self.file.with_suffix(".tmp")
+            tmp_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            tmp_file.replace(self.file)
+        except Exception as e:
+            logger.error(f"保存持仓数据失败: {e}")
+        finally:
+            self._release_lock()
 
     def track_position(self, code: str, name: str, buy_price: float,
                        shares: int, stop_loss: float = 0.05,
@@ -95,7 +156,7 @@ class PositionManager:
             if price is None:
                 continue
 
-            pnl_pct = (price - pos.buy_price) / pos.buy_price
+            pnl_pct = (price - pos.buy_price) / pos.buy_price if pos.buy_price > 0 else 0
 
             if pnl_pct <= -pos.stop_loss:
                 alerts.append({
@@ -128,7 +189,7 @@ class PositionManager:
             cost = pos.buy_price * pos.shares
             value = price * pos.shares
             pnl = value - cost
-            pnl_pct = (price - pos.buy_price) / pos.buy_price
+            pnl_pct = (price - pos.buy_price) / pos.buy_price if pos.buy_price > 0 else 0
 
             total_cost += cost
             total_value += value
@@ -202,3 +263,117 @@ class PositionManager:
             })
 
         return suggestions
+
+    def monitor_positions(self) -> Dict:
+        """实时监控持仓状态（接入实时行情）
+
+        获取持仓股票的实时价格，检查止损止盈条件，
+        返回监控报告和告警列表。
+
+        Returns:
+            {
+                "timestamp": str,  # 监控时间
+                "prices": Dict[str, float],  # 当前价
+                "alerts": List[Dict],  # 触发告警的持仓
+                "portfolio_summary": Dict,  # 组合概况
+                "all_positions": List[Dict],  # 所有持仓状态
+            }
+        """
+        from lib.data_layer import get_realtime_quotes
+
+        if not self.positions:
+            return {
+                "timestamp": datetime.now().isoformat(),
+                "prices": {},
+                "alerts": [],
+                "portfolio_summary": {"total_positions": 0, "total_value": 0},
+                "all_positions": [],
+            }
+
+        # 获取实时行情
+        quotes = get_realtime_quotes()
+        current_prices = {}
+        if not quotes.empty:
+            code_col = None
+            price_col = None
+            for col in quotes.columns:
+                if "代码" in str(col):
+                    code_col = col
+                if "最新价" in str(col) or "收盘" in str(col):
+                    price_col = col
+            if code_col and price_col:
+                for _, row in quotes.iterrows():
+                    code = str(row.get(code_col, "")).zfill(6)
+                    price = row.get(price_col)
+                    if price is not None and isinstance(price, (int, float)):
+                        current_prices[code] = float(price)
+
+        # 检查告警
+        alerts = self.check_stop_loss(current_prices)
+
+        # 组合概况
+        summary = self.get_portfolio_summary(current_prices)
+
+        # 所有持仓状态
+        all_positions = []
+        for code, pos in self.positions.items():
+            price = current_prices.get(code, pos.buy_price)
+            pnl_pct = (price - pos.buy_price) / pos.buy_price if pos.buy_price > 0 else 0
+            value = price * pos.shares
+            all_positions.append({
+                "code": code,
+                "name": pos.name,
+                "shares": pos.shares,
+                "buy_price": pos.buy_price,
+                "current_price": round(price, 2),
+                "value": round(value, 2),
+                "pnl": round(value - pos.buy_price * pos.shares, 2),
+                "pnl_pct": round(pnl_pct, 4),
+                "stop_loss": pos.stop_loss,
+                "take_profit": pos.take_profit,
+                "buy_date": pos.buy_date,
+                "notes": pos.notes,
+            })
+
+        result = {
+            "timestamp": datetime.now().isoformat(),
+            "prices": current_prices,
+            "alerts": alerts,
+            "portfolio_summary": summary,
+            "all_positions": all_positions,
+        }
+
+        # 记录告警到日志
+        for alert in alerts:
+            logger.warning(f"持仓监控告警: {alert['code']} {alert['name']} {alert['action']} "
+                          f"@{alert['current_price']} ({alert['pnl_pct']:.1%})")
+
+        return result
+
+    def run_live_monitoring(self, interval_seconds: int = 60, max_iterations: int = None):
+        """持续监控持仓（定时检查）
+
+        Args:
+            interval_seconds: 检查间隔（秒）
+            max_iterations: 最大迭代次数（None=无限）
+
+        这是一个阻塞调用，会持续运行直到达到 max_iterations 或被中断。
+        常用于实盘盯盘场景。
+        """
+        import time
+        iterations = 0
+        while max_iterations is None or iterations < max_iterations:
+            try:
+                result = self.monitor_positions()
+                if result["alerts"]:
+                    logger.warning(f"实盘监控 [{iterations}]: 发现 {len(result['alerts'])} 个告警")
+                    for alert in result["alerts"]:
+                        logger.warning(f"  {alert['code']} {alert['name']}: {alert['action']} "
+                                     f"@{alert['current_price']} ({alert['pnl_pct']:.1%})")
+                else:
+                    logger.debug(f"实盘监控 [{iterations}]: 无告警，持仓 {result['portfolio_summary']['total_positions']} 只")
+            except Exception as e:
+                logger.error(f"实盘监控异常: {e}")
+            iterations += 1
+            if max_iterations is None or iterations < max_iterations:
+                time.sleep(interval_seconds)

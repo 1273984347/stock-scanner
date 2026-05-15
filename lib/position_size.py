@@ -305,7 +305,7 @@ def atr_risk_size(cash: float, price: float, atr_value: float,
     risk_per_share = atr_value * multiplier
     max_risk = cash * risk_ratio
     shares = int(max_risk / risk_per_share / lot_size) * lot_size
-    return max(shares, lot_size) if risk_per_share < price else 0
+    return shares if shares >= lot_size else 0
 
 
 # ========== 离散分配（来自 PyPortfolioOpt） ==========

@@ -102,14 +102,14 @@ def compute_fundamentals(income: Dict, balance: Dict, cashflow: Dict = None,
         "days_inventory": _safe_div(365, inv_turnover),
         "receivables_turnover": ar_turnover,
         "days_sales_outstanding": _safe_div(365, ar_turnover),
-        "working_capital_turnover": _safe_div(rev, wc) if wc and wc > 0 else None,
+        "working_capital_turnover": _safe_div(rev, wc) if wc is not None and wc > 0 else None,
     }
 
     # 每股（3）
     results["per_share"] = {
         "EPS": _safe_div(ni, shares),
         "BVPS": _safe_div(eq, shares),
-        "PE": _safe_div(price, _safe_div(ni, shares)) if shares else None,
+        "PE": _safe_div(price, _safe_div(ni, shares)) if shares is not None and shares != 0 else None,
     }
 
     # 现金流（3）
@@ -122,10 +122,10 @@ def compute_fundamentals(income: Dict, balance: Dict, cashflow: Dict = None,
     # 成长（2）
     results["growth"] = {
         "revenue_growth": _safe_div(
-            (rev - prior.get("revenue")) if rev and prior.get("revenue") else None,
+            (rev - prior.get("revenue")) if rev is not None and prior.get("revenue") is not None else None,
             prior.get("revenue")),
         "net_income_growth": _safe_div(
-            (ni - prior.get("net_income")) if ni and prior.get("net_income") else None,
+            (ni - prior.get("net_income")) if ni is not None and prior.get("net_income") is not None else None,
             prior.get("net_income")),
     }
 

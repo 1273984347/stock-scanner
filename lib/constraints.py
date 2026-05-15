@@ -8,6 +8,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 import logging
 
+# 延迟导入避免循环依赖
+def _get_limit_pct(code: str, name: str = "") -> float:
+    """获取涨跌停幅度（委托给 broker.ABroker.get_limit_pct）"""
+    from lib.broker import ABroker
+    return ABroker.get_limit_pct(code, name)
+
 logger = logging.getLogger(__name__)
 
 
@@ -257,14 +263,16 @@ class DeterministicConstraints:
 
     def _check_recent_limit_up(self, ctx: dict) -> Optional[str]:
         df = ctx.get("market_data")
+        ticker = ctx.get("ticker", "")
         if df is not None and not df.empty and "close" in df.columns:
             close = df["close"].values
             if len(close) < 6:
                 return None
             recent = close[-5:]
             prev = close[-6:-1]
-            changes = (recent - prev) / prev
-            limit_up_days = sum(changes > 0.095)
+            limit_pct = _get_limit_pct(ticker, ctx.get("stock_name", ""))
+            changes = np.where(prev != 0, (recent - prev) / prev, 0)
+            limit_up_days = int(np.sum(changes > limit_pct - 0.005))
             if limit_up_days >= 2:
                 return f"近5日涨停 {limit_up_days} 次，追高风险"
         return None

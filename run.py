@@ -596,7 +596,7 @@ def run_factor_evaluation():
     codes = df.sort_values("成交额", ascending=False).head(100)["代码"].tolist()
 
     FWD_DAYS = 20
-    EVAL_DATES = 10  # 取最近 10 个截面日期
+    EVAL_DATES = 30  # 取最近 30 个截面日期（提升统计显著性）
 
     # 收集每只股票的历史数据
     stock_data = {}

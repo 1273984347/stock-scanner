@@ -100,6 +100,36 @@ class FactorMonitor:
             if m.get("mean_ic", 0) < self.ic_threshold and m.get("win_rate", 0) < 0.5
         ]
 
+    def detect_ic_decay_alerts(self, ic_results: Dict[str, Dict],
+                               consecutive_threshold: int = 5) -> List[Dict]:
+        """检测 IC 持续为负的因子，生成告警
+
+        Args:
+            ic_results: compute_ic() 返回的 IC 结果
+            consecutive_threshold: 连续 N 天 IC < 0 才告警
+
+        Returns:
+            [{"factor": str, "negative_days": int, "severity": str, "mean_ic": float}]
+        """
+        alerts = []
+        for factor, data in ic_results.items():
+            recent_ic = data.get("recent_ic", [])
+            if not recent_ic:
+                continue
+            # 统计最近 IC < 0 的天数
+            negative_count = sum(1 for ic in recent_ic if ic < 0)
+            mean_ic = data.get("mean_ic", 0)
+            if negative_count >= consecutive_threshold:
+                severity = "HIGH" if negative_count >= consecutive_threshold * 2 else "MEDIUM"
+                alerts.append({
+                    "factor": factor,
+                    "negative_days": negative_count,
+                    "severity": severity,
+                    "mean_ic": mean_ic,
+                    "message": f"因子 {factor} IC 持续为负 {negative_count} 天（阈值 {consecutive_threshold}），均值 {mean_ic:.4f}",
+                })
+        return alerts
+
     def log_health(
         self,
         ic_results: Dict[str, Dict],

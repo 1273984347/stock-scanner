@@ -137,12 +137,13 @@ class JudgePanel:
         if not self.results:
             return {"consensus": "HOLD", "score": 0, "bullish_pct": 0}
 
-        # 按评委权重加权
+        # 按评委权重加权（跳过 ABSTAIN）
         total_weight = 0
         weighted_score = 0
         group_scores = {}
+        active_votes = [v for v in self.results if v.action != "ABSTAIN"]
 
-        for vote in self.results:
+        for vote in active_votes:
             judge_name = vote.judge
             judge_weight = self._get_judge_weight(judge_name)
 
@@ -176,8 +177,10 @@ class JudgePanel:
         else:
             consensus = "HOLD"
 
-        bullish_count = sum(1 for v in self.results if v.action == "BUY")
-        total_votes = len(self.results)
+        # 按组统计汇总（用于输出）
+        all_votes = self.results
+        bullish_count = sum(1 for v in all_votes if v.action == "BUY")
+        total_votes = len(active_votes)
 
         return {
             "consensus": consensus,
@@ -187,6 +190,7 @@ class JudgePanel:
             "bullish_count": bullish_count,
             "group_scores": {k: round(v["score"] / max(v["count"], 1), 3)
                              for k, v in group_scores.items()},
+            "abstained": sum(1 for v in self.results if v.action == "ABSTAIN"),
             "details": [{
                 "judge": v.judge, "group": v.group,
                 "action": v.action, "confidence": v.confidence,
@@ -200,6 +204,18 @@ class JudgePanel:
                 return cfg["weight"] / len(cfg["judges"])
         return 0.01
 
+    def _fund_data_missing(self) -> bool:
+        """检查基本面数据是否完全不可用（所有值均为 None/0）"""
+        fund = self.fundamentals
+        if not fund:
+            return True
+        profitability = fund.get("profitability", {}) or {}
+        solvency = fund.get("solvency", {}) or {}
+        roe = profitability.get("ROE")
+        margin = profitability.get("gross_margin")
+        debt = solvency.get("debt_to_asset")
+        return roe is None and margin is None and debt is None
+
     def _evaluate_value(self) -> List[VoteResult]:
         """经典价值派"""
         votes = []
@@ -207,54 +223,77 @@ class JudgePanel:
         fund = self.fundamentals
 
         pe = f.get("pe_ttm", 50)
-        pb = fund.get("per_share", {}).get("BVPS", 0)
-        roe = fund.get("profitability", {}).get("ROE", 0)
-        debt = fund.get("solvency", {}).get("debt_to_asset", 0.5)
-        fcf = fund.get("cash_flow", {}).get("free_cash_flow", 0)
+        pb = fund.get("per_share", {}).get("BVPS", 0) if fund else 0
+        roe = fund.get("profitability", {}).get("ROE", 0) if fund else 0
+        debt = fund.get("solvency", {}).get("debt_to_asset", 0.5) if fund else 0.5
+        fcf = fund.get("cash_flow", {}).get("free_cash_flow", 0) if fund else 0
+
+        # 检查基本面数据是否真实可用（非 None 且非 0）
+        _has_roe = roe is not None and roe != 0
+        _has_pb = pb is not None and pb != 0
+        _has_debt = debt is not None
+        _has_margin = (fund.get("profitability", {}) or {}).get("gross_margin") is not None \
+                      if fund else False
 
         # Buffett: 低PE + 高ROE + 低负债
-        if pe < 15 and roe is not None and roe > 0.15 and debt is not None and debt < 0.50:
+        if not _has_roe:
+            votes.append(VoteResult("Warren Buffett", "经典价值", "ABSTAIN", 0,
+                                    "缺少ROE数据，无法判断"))
+        elif pe < 15 and roe > 0.15 and debt < 0.50:
             votes.append(VoteResult("Warren Buffett", "经典价值", "BUY", 0.85,
                                     f"PE={pe}<15, ROE={roe:.1%}>15%, 负债率低"))
-        elif pe > 30 or (roe is not None and roe < 0.08):
+        elif pe > 30 or roe < 0.08:
             votes.append(VoteResult("Warren Buffett", "经典价值", "SELL", 0.7,
                                     f"PE={pe}>30 或 ROE={roe:.1%}<8%"))
+        else:
+            votes.append(VoteResult("Warren Buffett", "经典价值", "HOLD", 0.5))
 
         # Graham: PE < 15, PB < 1.5
-        if pe < 15 and pb is not None and pb < 1.5:
+        if not _has_pb:
+            votes.append(VoteResult("Benjamin Graham", "经典价值", "ABSTAIN", 0,
+                                    "缺少PB数据，无法判断"))
+        elif pe < 15 and pb < 1.5:
             votes.append(VoteResult("Benjamin Graham", "经典价值", "BUY", 0.8,
                                     f"PE={pe}<15, PB={pb:.2f}<1.5"))
         else:
             votes.append(VoteResult("Benjamin Graham", "经典价值", "HOLD", 0.5))
 
         # Klarman: 低PE + 安全边际
-        if pe < 12 and debt is not None and debt < 0.40:
+        if not (_has_roe or _has_debt):
+            votes.append(VoteResult("Seth Klarman", "经典价值", "ABSTAIN", 0,
+                                    "缺少负债率数据，无法判断"))
+        elif pe < 12 and debt < 0.40:
             votes.append(VoteResult("Seth Klarman", "经典价值", "BUY", 0.75,
                                     f"PE={pe}<12, 负债率低"))
         else:
             votes.append(VoteResult("Seth Klarman", "经典价值", "HOLD", 0.5))
 
         # Munger: 优质公司 — 高ROE + 高毛利 + 合理PE
-        if roe is not None and roe > 0.15 and pe < 25:
-            margin = fund.get("profitability", {}).get("gross_margin", 0)
+        if not _has_roe:
+            votes.append(VoteResult("Charlie Munger", "经典价值", "ABSTAIN", 0,
+                                    "缺少ROE数据，无法判断"))
+        elif roe > 0.15 and pe < 25:
+            margin = fund.get("profitability", {}).get("gross_margin", 0) if fund else 0
             if margin and margin > 0.3:
                 votes.append(VoteResult("Charlie Munger", "经典价值", "BUY", 0.8,
                                         f"优质: ROE={roe:.1%} 毛利率={margin:.1%}"))
             else:
                 votes.append(VoteResult("Charlie Munger", "经典价值", "HOLD", 0.55,
                                         f"ROE好但毛利一般"))
-        elif roe is not None and roe < 0.08:
+        elif roe < 0.08:
             votes.append(VoteResult("Charlie Munger", "经典价值", "SELL", 0.6,
                                     f"ROE过低: {roe:.1%}"))
         else:
             votes.append(VoteResult("Charlie Munger", "经典价值", "HOLD", 0.5))
 
         # Greenblatt: 神奇公式 — 高资本回报率 + 低PE
-        roc = roe  # 简化：用ROE近似ROC
-        if pe > 0 and roc is not None and roc > 0.15 and pe < 15:
+        if not _has_roe:
+            votes.append(VoteResult("Joel Greenblatt", "经典价值", "ABSTAIN", 0,
+                                    "缺少ROE数据，无法判断"))
+        elif pe > 0 and roe > 0.15 and pe < 15:
             votes.append(VoteResult("Joel Greenblatt", "经典价值", "BUY", 0.8,
-                                    f"神奇公式: ROC≈{roc:.1%} PE={pe:.0f}"))
-        elif pe > 30 or (roc is not None and roc < 0.08):
+                                    f"神奇公式: ROC≈{roe:.1%} PE={pe:.0f}"))
+        elif pe > 30 or roe < 0.08:
             votes.append(VoteResult("Joel Greenblatt", "经典价值", "SELL", 0.6,
                                     f"资本回报低或PE过高"))
         else:
@@ -446,43 +485,54 @@ class JudgePanel:
         fund = self.fundamentals
 
         pe = f.get("pe_ttm", 50)
-        roe = fund.get("profitability", {}).get("ROE", 0)
-        gross_margin = fund.get("profitability", {}).get("gross_margin", 0)
+        roe = fund.get("profitability", {}).get("ROE", 0) if fund else 0
+        gross_margin = fund.get("profitability", {}).get("gross_margin", 0) if fund else 0
         vol_20 = f.get("volatility_20", 25)
         mom_60 = f.get("momentum_60", 0)
 
+        _has_roe = roe is not None and roe != 0
+        _has_margin = gross_margin is not None and gross_margin != 0
+
         # 但斌: 优质公司 + 长期持有 — 高ROE + 低波动
-        if roe and roe > 0.15 and vol_20 < 25:
+        if not _has_roe:
+            votes.append(VoteResult("但斌", "中国价投", "ABSTAIN", 0, "缺少ROE数据，无法判断"))
+        elif roe > 0.15 and vol_20 < 25:
             votes.append(VoteResult("但斌", "中国价投", "BUY", 0.8,
                                     f"优质白马: ROE={roe:.1%} 波动={vol_20:.1f}"))
-        elif roe and roe < 0.08:
+        elif roe < 0.08:
             votes.append(VoteResult("但斌", "中国价投", "SELL", 0.6,
                                     f"ROE过低: {roe:.1%}"))
         else:
             votes.append(VoteResult("但斌", "中国价投", "HOLD", 0.5))
 
         # 张坤: 高ROE + 护城河（高毛利率）
-        if roe and roe > 0.18 and gross_margin and gross_margin > 0.4:
+        if not _has_roe:
+            votes.append(VoteResult("张坤", "中国价投", "ABSTAIN", 0, "缺少ROE数据，无法判断"))
+        elif roe > 0.18 and _has_margin and gross_margin > 0.4:
             votes.append(VoteResult("张坤", "中国价投", "BUY", 0.8,
                                     f"护城河: ROE={roe:.1%} 毛利率={gross_margin:.1%}"))
-        elif gross_margin and gross_margin < 0.2:
+        elif _has_margin and gross_margin < 0.2:
             votes.append(VoteResult("张坤", "中国价投", "SELL", 0.6,
                                     f"毛利率低: {gross_margin:.1%}，缺乏护城河"))
         else:
             votes.append(VoteResult("张坤", "中国价投", "HOLD", 0.5))
 
         # 刘彦春: 成长价值 — ROE尚可 + 有动量
-        if roe and roe > 0.12 and mom_60 > 5:
+        if not _has_roe:
+            votes.append(VoteResult("刘彦春", "中国价投", "ABSTAIN", 0, "缺少ROE数据，无法判断"))
+        elif roe > 0.12 and mom_60 > 5:
             votes.append(VoteResult("刘彦春", "中国价投", "BUY", 0.65,
                                     f"成长价值: ROE={roe:.1%} + 60日动量={mom_60:.1f}%"))
         else:
             votes.append(VoteResult("刘彦春", "中国价投", "HOLD", 0.5))
 
         # 林园: 垄断+高毛利 — 极高毛利率
-        if gross_margin and gross_margin > 0.5 and pe < 35:
+        if not _has_margin:
+            votes.append(VoteResult("林园", "中国价投", "ABSTAIN", 0, "缺少毛利率数据，无法判断"))
+        elif gross_margin > 0.5 and pe < 35:
             votes.append(VoteResult("林园", "中国价投", "BUY", 0.75,
                                     f"垄断特征: 毛利率={gross_margin:.1%} PE={pe:.0f}"))
-        elif gross_margin and gross_margin < 0.15:
+        elif gross_margin < 0.15:
             votes.append(VoteResult("林园", "中国价投", "SELL", 0.6,
                                     f"毛利过低: {gross_margin:.1%}，无定价权"))
         else:
