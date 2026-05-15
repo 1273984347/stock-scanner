@@ -14,6 +14,7 @@ from lib.data_layer import (get_stock_hist_multi_source, get_realtime_quotes,
 from lib.scorer import (score_fundamental, score_capital_flow,
                          score_news, score_technical, comprehensive_score)
 from lib.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
+from lib.evaluator import build_forward_returns
 from lib.strategies import (get_zt_candidates, get_volume_breakout_candidates,
                              get_hot_board_candidates, get_lhb_candidates,
                              get_multi_factor_candidates, full_score)
@@ -294,7 +295,15 @@ def _run_alpha_analysis(results: dict) -> dict:
     factor_ic = {}
     opt_weights = {}
     try:
-        forward_returns = factor_df["涨跌幅"].fillna(0) / 100 if "涨跌幅" in factor_df.columns else None
+        # 使用 evaluator.py 的 build_forward_returns 获取真正的未来收益
+        # 默认使用 5 日前向收益（5d）进行 IC 分析
+        forward_returns = None
+        if "close" in factor_df.columns:
+            forward_df = build_forward_returns(factor_df["close"], periods=[5])
+            forward_returns = forward_df["5d"].fillna(0) if "5d" in forward_df.columns else None
+        elif "涨跌幅" in factor_df.columns:
+            # 降级方案：使用当日涨跌幅（仅当无 close 列时）
+            forward_returns = factor_df["涨跌幅"].fillna(0) / 100
         if forward_returns is not None and len(forward_returns) >= 5:
             for col in factor_df.columns:
                 if col == "涨跌幅":
