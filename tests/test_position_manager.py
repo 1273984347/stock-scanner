@@ -36,7 +36,7 @@ class TestPositionManager:
         pm = PositionManager(positions_file=str(tmp_path / "positions.json"))
         pm.track_position(code="000001", name="平安银行", buy_price=12.50,
                            shares=1000)
-        summary = pm.get_portfolio_summary(prices={"000001": 13.00})
+        summary = pm.get_portfolio_summary(current_prices={"000001": 13.00})
         assert isinstance(summary, dict)
         # 总市值 = 1000 * 13 = 13000
         assert summary.get("total_value", 0) == 13_000
@@ -46,7 +46,7 @@ class TestPositionManager:
         pm = PositionManager(positions_file=str(tmp_path / "positions.json"))
         pm.track_position(code="000001", name="平安银行", buy_price=12.50,
                            shares=1000, stop_loss=0.05)
-        alerts = pm.check_stop_loss(prices={"000001": 11.50})
+        alerts = pm.check_stop_loss(current_prices={"000001": 11.50})
         assert isinstance(alerts, list)
         assert len(alerts) == 1
         assert alerts[0]["action"] == "止损"
