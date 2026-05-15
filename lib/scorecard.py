@@ -57,6 +57,39 @@ class MarketFilter:
             return 0.5
 
     @staticmethod
+    def _compute_l1(days: int = 60) -> float:
+        """L1 核心计算逻辑（供 score 和 get_market_brief 调用）"""
+        import akshare as ak
+        idx = ak.stock_zh_index_daily(symbol="sh000300")
+        if idx.empty or len(idx) < days:
+            return 0.5
+        close = idx["close"].values
+        volume = idx.get("volume", idx.get("amount"))
+        current = close[-1]
+        ma = np.mean(close[-days:])
+        ratio = current / ma - 1
+        if ratio > 0.02:
+            if volume is not None and len(volume) >= 10:
+                vol_5 = np.mean(volume[-5:])
+                vol_10 = np.mean(volume[-10:])
+                if vol_10 > 0 and vol_5 < vol_10 * 0.9:
+                    return 0.5
+            return 1.0
+        elif ratio < -0.02:
+            return 0.0
+        return 0.5
+
+    @classmethod
+    def get_market_brief(cls) -> dict:
+        """预获取市场大盘信息(L1)，供批量评分使用
+
+        一次获取市场数据和基准收益，避免 N+1 调用问题。
+        """
+        l1 = cls._compute_l1()
+        bench_ret = _get_market_return(5)  # 预获取 5 日市场收益
+        return {"l1": l1, "bench_ret_5d": bench_ret}
+
+    @staticmethod
     def layer2_sector_strength(code: str, days: int = 20) -> float:
         """L2: 行业强度 — 个股所属行业过去 N 日涨幅在全市场中的分位
 
@@ -195,22 +228,39 @@ class ScoreCard:
     WEIGHTS = [0.25, 0.25, 0.20, 0.30]  # L1/L2/L3/L4
 
     @classmethod
-    def score(cls, code: str, row: pd.Series, hist: pd.DataFrame = None) -> dict:
+    def score(cls, code: str, row: pd.Series, hist: pd.DataFrame = None,
+              market_brief: dict = None, industry_ret: float = None) -> dict:
         """对一只股票执行四层打分
 
-        Returns:
-            {"score": float, "layers": dict, "verdict": str}
+        Args:
+            code: 股票代码
+            row: 当日行情 Series
+            hist: 历史行情 DataFrame
+            market_brief: 预获取的市场信息（包含 l1 和 bench_ret_5d）
+            industry_ret: 预获取的行业收益率（5日）
         """
-        l1 = MarketFilter.layer1_market_trend()
+        # L1 使用传入的预计算值或重新计算
+        if market_brief:
+            l1 = market_brief.get("l1", MarketFilter._compute_l1())
+            bench_ret_5d = market_brief.get("bench_ret_5d")
+        else:
+            l1 = MarketFilter.layer1_market_trend()
+            bench_ret_5d = _get_market_return(5)
+
+        # L2 使用传入的预计算值
         l2 = MarketFilter.layer2_sector_strength(code)
+
+        # L3 使用预获取的 bench_ret_5d
         l3 = MarketFilter.layer3_money_flow(row)
+
+        # L4 不变
         l4 = MarketFilter.layer4_pattern_score(hist, row)
 
         # L2 负面滤网：行业内部质量——个股 vs 行业平均
         # 个股涨幅低于行业均值说明是跟风补涨而非领涨，L2 降分
         if hist is not None and len(hist) >= 6:
             stock_ret_5d = (hist["close"].iloc[-1] / hist["close"].iloc[-6] - 1)
-            _ind_ret = _get_industry_return(code, 5)
+            _ind_ret = industry_ret if industry_ret is not None else _get_industry_return(code, 5)
             if _ind_ret is not None and _ind_ret != 0 and l2 > 0:
                 # 个股跑输行业均值 → 补涨跟风，降级
                 if stock_ret_5d < _ind_ret * 0.5:
@@ -220,7 +270,6 @@ class ScoreCard:
         # 个股跑输大盘说明是跟风而非领涨，降低资金认可分
         if hist is not None and len(hist) >= 6:
             stock_ret_5d = (hist["close"].iloc[-1] / hist["close"].iloc[-6] - 1)
-            bench_ret_5d = _get_market_return(5)
             if bench_ret_5d is not None:
                 rs_5d = stock_ret_5d - bench_ret_5d
                 if rs_5d < 0:
