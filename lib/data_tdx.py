@@ -130,6 +130,9 @@ def _fetch_from_local_file(code: str, days: int, period: str) -> pd.DataFrame:
         if df.empty:
             return pd.DataFrame()
 
+        # TdxDailyBarReader returns date as index, reset to column
+        df = df.reset_index()
+
         # 统一列名
         col_map = {
             "open": "open", "high": "high", "low": "low",
