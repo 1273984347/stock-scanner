@@ -217,13 +217,16 @@ def get_stock_hist(code: str, days: int = 180) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-DATA_SOURCE_PRIORITY = ["baostock", "adata", "westock", "tushare", "akshare"]
+DATA_SOURCE_PRIORITY = ["baostock", "tdx", "adata", "westock", "tushare", "akshare"]
 
 
 def _fetch_from_source(code: str, days: int, source: str) -> pd.DataFrame:
     if source == "baostock":
         from lib.data_baostock import get_kline as baostock_kline
         return baostock_kline(code, days=days)
+    if source == "tdx":
+        from lib.data_tdx import get_kline as tdx_kline
+        return tdx_kline(code, days=days)
     if source == "adata":
         from lib.data_adata import get_kline as adata_kline
         return adata_kline(code, days=days)
@@ -484,3 +487,71 @@ def get_news_signals(code: str) -> dict:
         "institutional_buy": code in _lhb_buy_codes,
         "no_negative": True,
     }
+
+
+# ========== 专项数据获取（期权/债券/宏观） ==========
+
+def get_options_hist(code: str, days: int = 180) -> pd.DataFrame:
+    """获取期权日线历史（通过 pytdx）"""
+    try:
+        from lib.data_options import get_options_daily
+        return get_options_daily(code, days=days)
+    except Exception as e:
+        logger.debug(f"获取期权 {code} 失败: {e}")
+        return pd.DataFrame()
+
+
+def get_cb_hist(code: str, days: int = 180) -> pd.DataFrame:
+    """获取可转债历史行情"""
+    try:
+        from lib.data_bond import get_cb_history
+        return get_cb_history(code)
+    except Exception as e:
+        logger.debug(f"获取可转债 {code} 失败: {e}")
+        return pd.DataFrame()
+
+
+def get_repo_hist(code: str = "204001", days: int = 30) -> pd.DataFrame:
+    """获取交易所回购历史"""
+    try:
+        from lib.data_bond import get_repo_history
+        return get_repo_history(code=code, days=days)
+    except Exception as e:
+        logger.debug(f"获取回购 {code} 失败: {e}")
+        return pd.DataFrame()
+
+
+def get_macro_hist(indicator: str = "shibor", days: int = 30) -> pd.DataFrame:
+    """获取宏观指标历史
+
+    Args:
+        indicator: shibor | lpr | yield | gold | oil | panel
+        days: 天数
+    """
+    try:
+        from lib.data_macro import (
+            get_shibor, get_lpr, get_china_yield,
+            get_gold, get_crude_oil, get_macro_panel,
+        )
+    except ImportError:
+        return pd.DataFrame()
+
+    try:
+        if indicator == "shibor":
+            return get_shibor(days=days)
+        elif indicator == "lpr":
+            return get_lpr(days=days)
+        elif indicator == "yield":
+            return get_china_yield(days=days)
+        elif indicator == "gold":
+            return get_gold(days=days)
+        elif indicator == "oil":
+            return get_crude_oil(days=days)
+        elif indicator == "panel" or indicator == "all":
+            return get_macro_panel(days=days)
+        else:
+            logger.warning(f"未知宏观指标: {indicator}")
+            return pd.DataFrame()
+    except Exception as e:
+        logger.debug(f"获取宏观指标 {indicator} 失败: {e}")
+        return pd.DataFrame()

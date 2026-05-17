@@ -21,6 +21,11 @@ FEISHU_APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "")
 FEISHU_RECEIVE_ID = os.environ.get("FEISHU_RECEIVE_ID", "")
 FEISHU_RECEIVE_ID_TYPE = os.environ.get("FEISHU_RECEIVE_ID_TYPE", "open_id")
 
+# TDX（通达信）数据源配置
+TDX_DATA_PATH = os.environ.get("TDX_DATA_PATH", "D:/TDX/vipdoc")
+TDX_HOST = os.environ.get("TDX_HOST", "180.153.39.210")
+TDX_PORT = int(os.environ.get("TDX_PORT", "7709"))
+
 
 @dataclass
 class FactorConfig:
