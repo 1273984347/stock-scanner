@@ -62,8 +62,8 @@ def _check_portfolio_risk(results: dict) -> dict:
         if not idx_cache.empty and len(idx_cache) >= 60 and "close" in idx_cache.columns:
             exposure = calc_market_exposure(idx_cache["close"])
             vol_regime = exposure.get("state", "neutral")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"市场暴露度计算失败，使用默认 vol_regime=normal: {e}")
     risk_budget = _risk_manager.get_risk_budget(
         vol_regime if vol_regime in ("high", "normal", "low") else "normal", 0.5)
     critical_count = sum(1 for a in alerts if a["level"] == "CRITICAL")
@@ -94,8 +94,8 @@ def _check_factor_health(results: dict) -> dict:
                 last_dt = datetime.strptime(last_eval, "%Y-%m-%d")
                 if (datetime.now() - last_dt).days < 7:
                     need_full_eval = False
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"评估缓存读取失败，将执行完整评估: {e}")
     coverage = {}
     degenerate = []
     for name, df in results.items():
@@ -317,10 +317,10 @@ def _run_alpha_analysis(results: dict) -> dict:
                 opt_weights = synth.optimize_weights_ic_ir(
                     factor_df.drop(columns=["涨跌幅"], errors="ignore"), forward_returns)
                 opt_weights = {k: round(v, 4) for k, v in opt_weights.items()}
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as e:
+                logger.warning(f"组合权重优化失败: {e}")
+    except Exception as e:
+        logger.debug(f"因子 IC 分析异常: {e}")
     return {"factor_ic": factor_ic, "cross_section_zscore": zscore_summary,
             "optimized_weights": opt_weights}
 

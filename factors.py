@@ -9,6 +9,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# ========== 风控常量 ==========
+VOL_BASE_LIMIT = 0.20
+VOL_THRESHOLDS = (0.15, 0.30, 0.50)
+VOL_MULTIPLIERS = (1.25, 1.0, 0.75, 0.50)
+VOL_MULTIPLIER_MIN = 0.25
+VOL_MULTIPLIER_MAX = 1.25
+
 
 # ========== 安全转换 ==========
 
@@ -737,17 +744,16 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
 # ========== 风险管理 ==========
 
 def calc_volatility_adjusted_limit(annualized_volatility: float) -> float:
-    base_limit = 0.20
-    if annualized_volatility < 0.15:
-        vol_multiplier = 1.25
-    elif annualized_volatility < 0.30:
-        vol_multiplier = 1.0 - (annualized_volatility - 0.15) * 0.5
-    elif annualized_volatility < 0.50:
-        vol_multiplier = 0.75 - (annualized_volatility - 0.30) * 0.5
+    if annualized_volatility < VOL_THRESHOLDS[0]:
+        vol_multiplier = VOL_MULTIPLIERS[0]
+    elif annualized_volatility < VOL_THRESHOLDS[1]:
+        vol_multiplier = VOL_MULTIPLIERS[1] - (annualized_volatility - VOL_THRESHOLDS[0]) * 0.5
+    elif annualized_volatility < VOL_THRESHOLDS[2]:
+        vol_multiplier = VOL_MULTIPLIERS[2] - (annualized_volatility - VOL_THRESHOLDS[1]) * 0.5
     else:
-        vol_multiplier = 0.50
-    vol_multiplier = max(0.25, min(1.25, vol_multiplier))
-    return base_limit * vol_multiplier
+        vol_multiplier = VOL_MULTIPLIERS[3]
+    vol_multiplier = max(VOL_MULTIPLIER_MIN, min(VOL_MULTIPLIER_MAX, vol_multiplier))
+    return VOL_BASE_LIMIT * vol_multiplier
 
 
 # ========== 综合评分（来自外部 skill） ==========
