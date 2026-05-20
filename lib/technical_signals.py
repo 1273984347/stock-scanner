@@ -9,6 +9,9 @@ import numpy as np
 import math
 from typing import Dict, List
 
+# 复用 factors.py 中的实现，避免重复定义
+from factors import calc_rsi as compute_rsi
+
 
 def _safe(val):
     if val is None:
@@ -36,16 +39,6 @@ def compute_macd(close, fast=12, slow=26, signal_period=9):
     signal_line = ema(macd_line, signal_period)
     histogram = macd_line - signal_line
     return macd_line, signal_line, histogram
-
-
-def compute_rsi(close, period=14):
-    delta = close.diff()
-    gain = delta.where(delta > 0, 0.0)
-    loss = (-delta).where(delta < 0, 0.0)
-    avg_gain = gain.rolling(window=period, min_periods=period).mean()
-    avg_loss = loss.rolling(window=period, min_periods=period).mean()
-    rs = avg_gain / avg_loss.replace(0, np.nan)
-    return 100.0 - (100.0 / (1.0 + rs))
 
 
 def compute_bollinger(close, period=20, num_std=2):

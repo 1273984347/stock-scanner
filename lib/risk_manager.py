@@ -7,6 +7,9 @@ from typing import Dict, List, Optional, Callable, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
 import logging
+import threading
+
+from lib import config
 
 logger = logging.getLogger(__name__)
 
@@ -263,9 +266,9 @@ class VolCorrRiskConfig(RiskConfig):
     vol_regime_long: int = 60
     vol_expansion_threshold: float = 1.5
     vol_contraction_threshold: float = 0.5
-    high_vol_position_scalar: float = 0.5
-    medium_vol_position_scalar: float = 0.75
-    low_vol_position_scalar: float = 1.2
+    high_vol_position_scalar: float = config.HIGH_VOL_POSITION_SCALAR
+    medium_vol_position_scalar: float = config.MEDIUM_VOL_POSITION_SCALAR
+    low_vol_position_scalar: float = config.LOW_VOL_POSITION_SCALAR
     min_diversification_score: float = 0.3
 
 
@@ -278,6 +281,7 @@ class VolCorrRiskManager(RiskManager):
         self._returns_cache: Dict[str, np.ndarray] = {}
         self._vol_regime: str = "normal"
         self._diversification_score: float = 1.0
+        self._risk_state_lock = threading.Lock()
 
     def compute_volatility_regime(
         self, market_data: Dict[str, pd.DataFrame], tickers: List[str]

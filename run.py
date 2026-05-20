@@ -123,7 +123,11 @@ def run_score_mode(code, data_source="akshare"):
                             get_board_type)
 
     logger.info(f"综合评分: {code} (数据源: {data_source})")
-    hist = get_stock_hist_multi_source(code, days=180, source=data_source)
+    try:
+        hist = get_stock_hist_multi_source(code, days=180, source=data_source)
+    except Exception:
+        logger.error(f"获取 {code} 数据失败")
+        return
     if hist.empty:
         logger.error(f"获取 {code} 数据失败")
         return

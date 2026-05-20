@@ -325,7 +325,11 @@ class MLDataPipeline:
             该股票在面板中所有日期的行，列包含: date, code, close, volume,
             FACTOR_COLS 各列, fwd_5d, fwd_10d, fwd_20d
         """
-        hist = get_stock_hist_multi_source(code, days=LOOKBACK_DAYS, source="auto")
+        try:
+            hist = get_stock_hist_multi_source(code, days=LOOKBACK_DAYS, source="auto")
+        except Exception:
+            logger.debug(f"{code}: 数据获取失败")
+            return pd.DataFrame()
         if hist.empty or len(hist) < MIN_HISTORY:
             logger.debug(f"{code}: 数据不足 ({len(hist) if not hist.empty else 0})")
             return pd.DataFrame()

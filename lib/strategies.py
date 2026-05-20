@@ -3,7 +3,8 @@ import akshare as ak
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 
 from config import SystemConfig, get_config
@@ -28,62 +29,60 @@ _position_sizer = RiskSizedPosition(PositionSizeConfig())
 _risk_manager = VolCorrRiskManager(VolCorrRiskConfig())
 
 
+def _batch_get_stock_hist(codes: List[str], days: int = 180) -> Dict[str, pd.DataFrame]:
+    """批量并行获取股票历史数据（解决 N+1 查询问题）
+
+    Args:
+        codes: 股票代码列表
+        days: 历史数据天数
+
+    Returns:
+        Dict[code -> DataFrame]，只包含成功获取且非空的股票
+    """
+    results = {}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {
+            executor.submit(get_stock_hist_multi_source, code, days, "auto"): code
+            for code in codes
+        }
+        for future in as_completed(futures):
+            code = futures[future]
+            try:
+                df = future.result()
+                if df is not None and not df.empty and len(df) >= 60:
+                    results[code] = df
+            except Exception:
+                pass
+    return results
+
+
 # ========== 四维评分 ==========
 
-def quick_score(row: pd.Series) -> dict:
-    """快速四维评分 —— 仅用实时行情数据（无需拉 K 线）"""
-    pe = _safe_float(row.get("市盈率-动态"))
-    pb = _safe_float(row.get("市净率"))
-    fund = score_fundamental(pe=pe if pe > 0 else None, roe=None,
-                             net_growth=None, gross_margin=None,
-                             debt_ratio=None,
-                             ocf_healthy=(10 < pe < 40) if pe > 0 else False)
-    vol_ratio = _safe_float(row.get("量比"))
-    turnover = _safe_float(row.get("换手率")) / 100.0
-    amount = _safe_float(row.get("成交额"))
-    code = str(row.get("代码", ""))
-    fund_flow = get_stock_fund_flow(code)
-    cap = score_capital_flow(
-        main_net_ratio=fund_flow["main_net_ratio"],
-        net_inflow_5d=fund_flow["net_inflow_5d"],
-        northbound_increase=(vol_ratio > 1.5),
-        super_large_net_inflow=(amount > 5e8),
-        turnover_rate=turnover,
-    )
-    news_sig = get_news_signals(code)
-    news = score_news(
-        major_positive=news_sig["major_positive"],
-        institutional_buy=news_sig["institutional_buy"],
-        no_negative=news_sig["no_negative"],
-        earnings_positive=news_sig["earnings_positive"],
-    )
-    pct_chg = _safe_float(row.get("涨跌幅"))
-    ret_60d = _safe_float(row.get("60日涨跌幅"))
-    tech = score_technical(
-        return_10d=pct_chg / 100 if abs(pct_chg) < 50 else 0,
-        return_20d=ret_60d / 100 if abs(ret_60d) < 200 else 0,
-    )
-    return comprehensive_score(fund, cap, news, tech)
+def _compute_base_scores(row: pd.Series, code: str, tech_return_10d: float,
+                         tech_return_20d: float) -> dict:
+    """提取 fund/cap/news 公共评分逻辑
 
-
-def full_score(code: str, hist: pd.DataFrame, factors: dict,
-               row: pd.Series) -> dict:
-    """完整四维评分 —— 用 K 线 + 因子 + 实时数据"""
+    Args:
+        row: 股票实时行情数据
+        code: 股票代码
+        tech_return_10d: 10日收益率（用于技术评分）
+        tech_return_20d: 20日收益率（用于技术评分）
+    """
     pe = _safe_float(row.get("市盈率-动态"))
     fund = score_fundamental(
-        pe=pe if pe > 0 else None, roe=None, net_growth=None,
-        gross_margin=None, debt_ratio=None,
+        pe=pe if pe > 0 else None, roe=None,
+        net_growth=None, gross_margin=None,
+        debt_ratio=None,
         ocf_healthy=(10 < pe < 40) if pe > 0 else False,
     )
     vol_ratio = _safe_float(row.get("量比"))
     turnover = _safe_float(row.get("换手率")) / 100.0
     amount = _safe_float(row.get("成交额"))
-    factor_vol_ratio = factors.get("volume_ratio", 1.0)
     fund_flow = get_stock_fund_flow(code)
     cap = score_capital_flow(
         main_net_ratio=fund_flow["main_net_ratio"],
         net_inflow_5d=fund_flow["net_inflow_5d"],
-        northbound_increase=(factor_vol_ratio > 1.3),
+        northbound_increase=(vol_ratio > 1.3),
         super_large_net_inflow=(amount > 5e8),
         turnover_rate=turnover,
     )
@@ -94,10 +93,32 @@ def full_score(code: str, hist: pd.DataFrame, factors: dict,
         no_negative=news_sig["no_negative"],
         earnings_positive=news_sig["earnings_positive"],
     )
+    tech = score_technical(
+        return_10d=tech_return_10d,
+        return_20d=tech_return_20d,
+    )
+    return comprehensive_score(fund, cap, news, tech)
+
+
+def quick_score(row: pd.Series) -> dict:
+    """快速四维评分 —— 仅用实时行情数据（无需拉 K 线）"""
+    code = str(row.get("代码", ""))
+    pct_chg = _safe_float(row.get("涨跌幅"))
+    ret_60d = _safe_float(row.get("60日涨跌幅"))
+    tech_return_10d = pct_chg / 100 if abs(pct_chg) < 50 else 0
+    tech_return_20d = ret_60d / 100 if abs(ret_60d) < 200 else 0
+    return _compute_base_scores(row, code, tech_return_10d, tech_return_20d)
+
+
+def full_score(code: str, hist: pd.DataFrame, factors: dict,
+               row: pd.Series) -> dict:
+    """完整四维评分 —— 用 K 线 + 因子 + 实时数据"""
     mom_5 = factors.get("momentum_5", 0) / 100
     mom_20 = factors.get("momentum_20", 0) / 100
-    tech = score_technical(return_10d=mom_5, return_20d=mom_20)
-    score_result = comprehensive_score(fund, cap, news, tech)
+    score_result = _compute_base_scores(row, code, mom_5, mom_20)
+
+    # Judge Panel 调整逻辑（仅 full_score 有）
+    pe = _safe_float(row.get("市盈率-动态"))
     judge_result = {}
     try:
         from lib.judge_panel import JudgePanel
@@ -189,11 +210,14 @@ def get_volume_breakout_candidates(config: SystemConfig) -> pd.DataFrame:
         row_map = {}
         for _, r in df.iterrows():
             row_map[str(r["代码"])] = r
+        # 批量并行获取历史数据（解决 N+1 查询问题）
+        all_codes = [str(row["代码"]) for _, row in df.iterrows()]
+        stock_hist_data = _batch_get_stock_hist(all_codes, days=180)
         candidates = []
         for _, row in df.iterrows():
             code = row["代码"]
-            hist = get_stock_hist_multi_source(code, days=180, source="auto")
-            if hist.empty or len(hist) < 60:
+            hist = stock_hist_data.get(code)
+            if hist is None or len(hist) < 60:
                 continue
             fin_data = _get_financial_data(code)
             cr = _constraints.check_ticker(code, market_data=hist, financial_data=fin_data, stock_name=row["名称"])
@@ -341,11 +365,14 @@ def get_multi_factor_candidates(config: SystemConfig) -> pd.DataFrame:
         row_map = {}
         for _, r in df.iterrows():
             row_map[str(r["代码"])] = r
+        # 批量并行获取历史数据（解决 N+1 查询问题）
+        all_codes = [str(row["代码"]) for _, row in df.iterrows()]
+        stock_hist_data = _batch_get_stock_hist(all_codes, days=180)
         candidates = []
         for _, row in df.iterrows():
             code = row["代码"]
-            hist = get_stock_hist_multi_source(code, days=180, source="auto")
-            if hist.empty or len(hist) < 60:
+            hist = stock_hist_data.get(code)
+            if hist is None or len(hist) < 60:
                 continue
             fin_data = _get_financial_data(code)
             cr = _constraints.check_ticker(code, market_data=hist, financial_data=fin_data, stock_name=row["名称"])

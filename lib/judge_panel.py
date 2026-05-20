@@ -235,10 +235,15 @@ class JudgePanel:
         _has_margin = (fund.get("profitability", {}) or {}).get("gross_margin") is not None \
                       if fund else False
 
-        # Buffett: 低PE + 高ROE + 低负债
+        # Buffett: 低PE + 高ROE + 低负债（无ROE时用RSI+PE代理）
         if not _has_roe:
-            votes.append(VoteResult("Warren Buffett", "经典价值", "ABSTAIN", 0,
-                                    "缺少ROE数据，无法判断"))
+            _proxy_rsi = f.get("rsi_14", 50)
+            if pe < 20 and 40 <= _proxy_rsi <= 75:
+                votes.append(VoteResult("Warren Buffett", "经典价值", "BUY", 0.55,
+                                        f"因子代理: PE={pe:.0f} RSI={_proxy_rsi:.1f} 合理"))
+            else:
+                votes.append(VoteResult("Warren Buffett", "经典价值", "HOLD", 0.45,
+                                        f"因子代理(无ROE): PE={pe:.0f} RSI={_proxy_rsi:.1f}"))
         elif pe < 15 and roe > 0.15 and debt < 0.50:
             votes.append(VoteResult("Warren Buffett", "经典价值", "BUY", 0.85,
                                     f"PE={pe}<15, ROE={roe:.1%}>15%, 负债率低"))
@@ -248,30 +253,46 @@ class JudgePanel:
         else:
             votes.append(VoteResult("Warren Buffett", "经典价值", "HOLD", 0.5))
 
-        # Graham: PE < 15, PB < 1.5
+        # Graham: PE < 15, PB < 1.5（无PB时用波动率代理）
         if not _has_pb:
-            votes.append(VoteResult("Benjamin Graham", "经典价值", "ABSTAIN", 0,
-                                    "缺少PB数据，无法判断"))
+            _proxy_vol = f.get("volatility_20", 25)
+            if pe < 15 and _proxy_vol < 35:
+                votes.append(VoteResult("Benjamin Graham", "经典价值", "BUY", 0.50,
+                                        f"因子代理: PE={pe:.0f}<15 波动率={_proxy_vol:.1f}"))
+            else:
+                votes.append(VoteResult("Benjamin Graham", "经典价值", "HOLD", 0.45,
+                                        f"因子代理(无PB): PE={pe:.0f} 波动率={_proxy_vol:.1f}"))
         elif pe < 15 and pb < 1.5:
             votes.append(VoteResult("Benjamin Graham", "经典价值", "BUY", 0.8,
                                     f"PE={pe}<15, PB={pb:.2f}<1.5"))
         else:
             votes.append(VoteResult("Benjamin Graham", "经典价值", "HOLD", 0.5))
 
-        # Klarman: 低PE + 安全边际
+        # Klarman: 低PE + 安全边际（无负债率时用波动率代理）
         if not (_has_roe or _has_debt):
-            votes.append(VoteResult("Seth Klarman", "经典价值", "ABSTAIN", 0,
-                                    "缺少负债率数据，无法判断"))
+            _proxy_vol = f.get("volatility_20", 25)
+            if pe < 15 and _proxy_vol < 30:
+                votes.append(VoteResult("Seth Klarman", "经典价值", "BUY", 0.50,
+                                        f"因子代理: PE={pe:.0f} 低波动率={_proxy_vol:.1f}"))
+            else:
+                votes.append(VoteResult("Seth Klarman", "经典价值", "HOLD", 0.45,
+                                        f"因子代理(无负债率): PE={pe:.0f} 波动率={_proxy_vol:.1f}"))
         elif pe < 12 and debt < 0.40:
             votes.append(VoteResult("Seth Klarman", "经典价值", "BUY", 0.75,
                                     f"PE={pe}<12, 负债率低"))
         else:
             votes.append(VoteResult("Seth Klarman", "经典价值", "HOLD", 0.5))
 
-        # Munger: 优质公司 — 高ROE + 高毛利 + 合理PE
+        # Munger: 优质公司 — 高ROE + 高毛利 + 合理PE（无ROE时用RSI+动量代理）
         if not _has_roe:
-            votes.append(VoteResult("Charlie Munger", "经典价值", "ABSTAIN", 0,
-                                    "缺少ROE数据，无法判断"))
+            _proxy_rsi = f.get("rsi_14", 50)
+            _proxy_mom = f.get("momentum_5", 0)
+            if 30 < _proxy_rsi < 70 and _proxy_mom > 2 and pe < 25:
+                votes.append(VoteResult("Charlie Munger", "经典价值", "BUY", 0.50,
+                                        f"因子代理: RSI={_proxy_rsi:.0f} 动量={_proxy_mom:.1f}%"))
+            else:
+                votes.append(VoteResult("Charlie Munger", "经典价值", "HOLD", 0.45,
+                                        f"因子代理(无ROE): RSI={_proxy_rsi:.0f} 动量={_proxy_mom:.1f}%"))
         elif roe > 0.15 and pe < 25:
             margin = fund.get("profitability", {}).get("gross_margin", 0) if fund else 0
             if margin and margin > 0.3:
@@ -286,10 +307,15 @@ class JudgePanel:
         else:
             votes.append(VoteResult("Charlie Munger", "经典价值", "HOLD", 0.5))
 
-        # Greenblatt: 神奇公式 — 高资本回报率 + 低PE
+        # Greenblatt: 神奇公式 — 高资本回报率 + 低PE（无ROE时用动量代理）
         if not _has_roe:
-            votes.append(VoteResult("Joel Greenblatt", "经典价值", "ABSTAIN", 0,
-                                    "缺少ROE数据，无法判断"))
+            _proxy_mom = f.get("momentum_20", 0)
+            if 0 < pe < 15 and _proxy_mom > 5:
+                votes.append(VoteResult("Joel Greenblatt", "经典价值", "BUY", 0.50,
+                                        f"因子代理: PE={pe:.0f} 动量20={_proxy_mom:.1f}%"))
+            else:
+                votes.append(VoteResult("Joel Greenblatt", "经典价值", "HOLD", 0.45,
+                                        f"因子代理(无ROE): PE={pe:.0f} 动量20={_proxy_mom:.1f}%"))
         elif pe > 0 and roe > 0.15 and pe < 15:
             votes.append(VoteResult("Joel Greenblatt", "经典价值", "BUY", 0.8,
                                     f"神奇公式: ROC≈{roe:.1%} PE={pe:.0f}"))
@@ -493,9 +519,15 @@ class JudgePanel:
         _has_roe = roe is not None and roe != 0
         _has_margin = gross_margin is not None and gross_margin != 0
 
-        # 但斌: 优质公司 + 长期持有 — 高ROE + 低波动
+        # 但斌: 优质公司 + 长期持有 — 高ROE + 低波动（无ROE时用动量+低波动代理）
         if not _has_roe:
-            votes.append(VoteResult("但斌", "中国价投", "ABSTAIN", 0, "缺少ROE数据，无法判断"))
+            _proxy_mom = f.get("momentum_20", 0)
+            if vol_20 < 25 and _proxy_mom > 5:
+                votes.append(VoteResult("但斌", "中国价投", "BUY", 0.50,
+                                        f"因子代理: 波动率={vol_20:.1f} 动量20={_proxy_mom:.1f}%"))
+            else:
+                votes.append(VoteResult("但斌", "中国价投", "HOLD", 0.45,
+                                        f"因子代理(无ROE): 波动率={vol_20:.1f} 动量20={_proxy_mom:.1f}%"))
         elif roe > 0.15 and vol_20 < 25:
             votes.append(VoteResult("但斌", "中国价投", "BUY", 0.8,
                                     f"优质白马: ROE={roe:.1%} 波动={vol_20:.1f}"))
@@ -505,9 +537,16 @@ class JudgePanel:
         else:
             votes.append(VoteResult("但斌", "中国价投", "HOLD", 0.5))
 
-        # 张坤: 高ROE + 护城河（高毛利率）
+        # 张坤: 高ROE + 护城河（高毛利率，无ROE时用量比+RSI代理）
         if not _has_roe:
-            votes.append(VoteResult("张坤", "中国价投", "ABSTAIN", 0, "缺少ROE数据，无法判断"))
+            _proxy_volr = f.get("volume_ratio", 1.0)
+            _proxy_rsi = f.get("rsi_14", 50)
+            if 40 < _proxy_rsi < 65 and _proxy_volr > 0.8:
+                votes.append(VoteResult("张坤", "中国价投", "BUY", 0.50,
+                                        f"因子代理: RSI={_proxy_rsi:.0f} 量比={_proxy_volr:.2f}"))
+            else:
+                votes.append(VoteResult("张坤", "中国价投", "HOLD", 0.45,
+                                        f"因子代理(无ROE): RSI={_proxy_rsi:.0f} 量比={_proxy_volr:.2f}"))
         elif roe > 0.18 and _has_margin and gross_margin > 0.4:
             votes.append(VoteResult("张坤", "中国价投", "BUY", 0.8,
                                     f"护城河: ROE={roe:.1%} 毛利率={gross_margin:.1%}"))
@@ -517,18 +556,29 @@ class JudgePanel:
         else:
             votes.append(VoteResult("张坤", "中国价投", "HOLD", 0.5))
 
-        # 刘彦春: 成长价值 — ROE尚可 + 有动量
+        # 刘彦春: 成长价值 — ROE尚可 + 有动量（无ROE时直接用动量代理）
         if not _has_roe:
-            votes.append(VoteResult("刘彦春", "中国价投", "ABSTAIN", 0, "缺少ROE数据，无法判断"))
+            if mom_60 > 10:
+                votes.append(VoteResult("刘彦春", "中国价投", "BUY", 0.45,
+                                        f"因子代理: 动量60={mom_60:.1f}%"))
+            else:
+                votes.append(VoteResult("刘彦春", "中国价投", "HOLD", 0.40,
+                                        f"因子代理(无ROE): 动量60={mom_60:.1f}%"))
         elif roe > 0.12 and mom_60 > 5:
             votes.append(VoteResult("刘彦春", "中国价投", "BUY", 0.65,
                                     f"成长价值: ROE={roe:.1%} + 60日动量={mom_60:.1f}%"))
         else:
             votes.append(VoteResult("刘彦春", "中国价投", "HOLD", 0.5))
 
-        # 林园: 垄断+高毛利 — 极高毛利率
+        # 林园: 垄断+高毛利 — 极高毛利率（无毛利率时用PE+换手率代理）
         if not _has_margin:
-            votes.append(VoteResult("林园", "中国价投", "ABSTAIN", 0, "缺少毛利率数据，无法判断"))
+            _proxy_turnover = f.get("volume_ratio", 1.0)
+            if pe < 20 and _proxy_turnover < 2.0:
+                votes.append(VoteResult("林园", "中国价投", "BUY", 0.45,
+                                        f"因子代理: PE={pe:.0f} 量比={_proxy_turnover:.2f}(缩量)"))
+            else:
+                votes.append(VoteResult("林园", "中国价投", "HOLD", 0.40,
+                                        f"因子代理(无毛利率): PE={pe:.0f} 量比={_proxy_turnover:.2f}"))
         elif gross_margin > 0.5 and pe < 35:
             votes.append(VoteResult("林园", "中国价投", "BUY", 0.75,
                                     f"垄断特征: 毛利率={gross_margin:.1%} PE={pe:.0f}"))

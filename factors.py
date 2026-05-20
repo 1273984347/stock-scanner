@@ -7,6 +7,8 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 import logging
 
+from lib.utils import _safe_float
+
 logger = logging.getLogger(__name__)
 
 # ========== 风控常量 ==========
@@ -19,13 +21,8 @@ VOL_MULTIPLIER_MAX = 1.25
 
 # ========== 安全转换 ==========
 
-def safe_float(value, default=0.0):
-    try:
-        if pd.isna(value) or np.isnan(value):
-            return default
-        return float(value)
-    except (ValueError, TypeError, OverflowError):
-        return default
+# 使用 lib.utils 中的统一实现
+safe_float = _safe_float
 
 
 # ========== 技术指标 ==========

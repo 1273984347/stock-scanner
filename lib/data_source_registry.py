@@ -1,0 +1,179 @@
+"""数据源注册与熔断管理模块
+
+从 data_layer.py 提取的熔断逻辑，负责：
+- 多数据源优先级管理
+- 每个数据源的独立熔断器
+- 数据源自动切换
+"""
+import pandas as pd
+import logging
+from typing import Dict, Optional
+from datetime import datetime, timedelta
+
+from lib.cache import CircuitBreaker, CircuitOpenError
+
+logger = logging.getLogger(__name__)
+
+# ========== 数据源配置 ==========
+
+DATA_SOURCE_PRIORITY = ["baostock", "tdx", "adata", "westock", "tushare", "akshare"]
+
+# 每个数据源独立的熔断器
+_CIRCUIT_BREAKERS: Dict[str, CircuitBreaker] = {
+    src: CircuitBreaker(failure_threshold=5, recovery_timeout=60)
+    for src in DATA_SOURCE_PRIORITY
+}
+
+
+def _fetch_from_source(code: str, days: int, source: str) -> pd.DataFrame:
+    """从指定数据源获取数据
+
+    Args:
+        code: 股票代码
+        days: 历史天数
+        source: 数据源名称
+
+    Returns:
+        DataFrame with columns: date/open/high/low/close/volume
+    """
+    breaker = _CIRCUIT_BREAKERS.get(source)
+    if breaker is None:
+        logger.warning(f"未知数据源: {source}")
+        return pd.DataFrame()
+
+    try:
+        if source == "baostock":
+            from lib.data_baostock import get_kline as baostock_kline
+            return breaker.call(baostock_kline, code, days=days)
+        if source == "tdx":
+            from lib.data_tdx import get_kline as tdx_kline
+            return breaker.call(tdx_kline, code, days=days)
+        if source == "adata":
+            from lib.data_adata import get_kline as adata_kline
+            return breaker.call(adata_kline, code, days=days)
+        if source == "westock":
+            from lib.data_westock import get_kline as westock_kline
+            df = breaker.call(westock_kline, code, period="day", limit=min(days, 2000))
+            if df.empty:
+                return pd.DataFrame()
+            col_map = {"日期": "date", "开盘": "open", "收盘": "close",
+                       "最高": "high", "最低": "low", "成交量": "volume"}
+            df = df.rename(columns=col_map)
+            for c in ["open", "close", "high", "low", "volume"]:
+                if c in df.columns:
+                    df[c] = pd.to_numeric(df[c], errors="coerce")
+            return df
+        if source == "tushare":
+            from lib.data_tushare import get_daily, _to_ts_code
+            ts_code = _to_ts_code(code)
+            end = datetime.now().strftime("%Y%m%d")
+            start = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+            df = breaker.call(get_daily, ts_code, start, end)
+            if df.empty:
+                return pd.DataFrame()
+            df = df.rename(columns={
+                "trade_date": "date", "open": "open", "close": "close",
+                "high": "high", "low": "low", "vol": "volume"
+            })
+            return df
+        if source == "akshare":
+            from lib.data_layer import get_stock_hist
+            return breaker.call(get_stock_hist, code, days)
+    except CircuitOpenError:
+        logger.warning(f"[{source}] 熔断器开启，跳过该数据源")
+        return pd.DataFrame()
+    except Exception as e:
+        logger.debug(f"[{source}] 数据源调用失败: {e}")
+        return pd.DataFrame()
+
+    logger.warning(f"未知数据源: {source}")
+    return pd.DataFrame()
+
+
+def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """统一列名为 date/open/high/low/close/volume"""
+    if df.empty:
+        return df
+    # vol -> volume 统一
+    if "vol" in df.columns and "volume" not in df.columns:
+        df = df.rename(columns={"vol": "volume"})
+    # 确保标准列存在
+    rename_map = {}
+    for ch, en in [("日期", "date"), ("开盘", "open"), ("收盘", "close"),
+                    ("最高", "high"), ("最低", "low"), ("成交量", "volume")]:
+        if ch in df.columns and en not in df.columns:
+            rename_map[ch] = en
+    if rename_map:
+        df = df.rename(columns=rename_map)
+    return df
+
+
+def _validate_dataframe(df: pd.DataFrame, min_rows: int = 10, required_cols: list = None) -> bool:
+    """数据完整性校验"""
+    if df.empty or len(df) < min_rows:
+        return False
+    required_cols = required_cols or ["date", "open", "high", "low", "close", "volume"]
+    return all(c in df.columns for c in required_cols)
+
+
+class AllDataSourcesFailedError(Exception):
+    """所有数据源均无法获取数据时抛出"""
+    def __init__(self, code: str, errors: list):
+        self.code = code
+        self.errors = errors
+        super().__init__(f"所有数据源均无法获取 {code}: {errors}")
+
+
+def get_stock_hist_multi_source(
+    code: str,
+    days: int = 180,
+    source: str = "auto"
+) -> pd.DataFrame:
+    """多数据源自动切换获取个股日线
+
+    统一返回列名: date/open/high/low/close/vol
+    所有数据源均失败时抛出 AllDataSourcesFailedError
+
+    Args:
+        code: 股票代码
+        days: 历史天数
+        source: 数据源，"auto" 表示自动切换
+
+    Returns:
+        DataFrame with columns: date/open/high/low/close/volume
+    """
+    if source != "auto":
+        df = _fetch_from_source(code, days, source)
+        df = _normalize_columns(df)
+        if not _validate_dataframe(df):
+            return pd.DataFrame()
+        return df
+    errors = []
+    for src in DATA_SOURCE_PRIORITY:
+        df = _fetch_from_source(code, days, src)
+        if not df.empty:
+            df = _normalize_columns(df)
+            if _validate_dataframe(df):
+                if src != "akshare":
+                    logger.debug(f"使用数据源 [{src}] 获取 {code}")
+                return df
+        errors.append(f"{src}: empty/invalid")
+    raise AllDataSourcesFailedError(code, errors)
+
+
+def get_circuit_breaker_status() -> Dict[str, dict]:
+    """获取所有数据源熔断器状态"""
+    return {
+        src: {
+            "failure_count": cb.failure_count,
+            "last_failure_time": cb.last_failure_time,
+            "state": "open" if cb._is_open() else "closed",
+        }
+        for src, cb in _CIRCUIT_BREAKERS.items()
+    }
+
+
+def reset_circuit_breakers():
+    """重置所有熔断器（用于测试）"""
+    for cb in _CIRCUIT_BREAKERS.values():
+        cb._reset()

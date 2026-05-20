@@ -11,6 +11,9 @@ from dataclasses import dataclass
 from datetime import datetime
 import logging
 import sys
+import threading
+
+from lib import config
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +39,8 @@ class Position:
     buy_price: float
     shares: int
     buy_date: str
-    stop_loss: float = 0.05
-    take_profit: float = 0.10
+    stop_loss: float = config.DEFAULT_STOP_LOSS
+    take_profit: float = config.DEFAULT_TAKE_PROFIT
     notes: str = ""
 
 
@@ -48,10 +51,11 @@ class PositionManager:
         self.file = Path(positions_file) if positions_file else POSITIONS_FILE
         self.positions: Dict[str, Position] = {}
         self._lock_file: Optional[object] = None
+        self._stop_event = threading.Event()
         self._load()
 
     def _acquire_lock(self, mode="r"):
-        """获取文件锁"""
+        """获取文件锁（fail-fast：失败时抛出异常）"""
         if not self.file.exists():
             self.file.parent.mkdir(parents=True, exist_ok=True)
             self.file.touch(exist_ok=True)
@@ -69,8 +73,14 @@ class PositionManager:
             else:
                 logger.warning("无可用文件锁库（portalocker/fcntl），并发写入可能冲突")
         except Exception as e:
-            logger.debug(f"获取文件锁失败: {e}")
-            self._lock_file = None
+            logger.error(f"获取文件锁失败: {e}")
+            if self._lock_file:
+                try:
+                    self._lock_file.close()
+                except Exception:
+                    pass
+                self._lock_file = None
+            raise IOError(f"无法获取文件锁: {self._lock_path}") from e
 
     def _release_lock(self):
         """释放文件锁"""
@@ -94,6 +104,9 @@ class PositionManager:
             data = json.loads(self.file.read_text(encoding="utf-8"))
             for code, p in data.items():
                 self.positions[code] = Position(**p)
+        except IOError:
+            # 锁获取失败已在 _acquire_lock 中记录，不重复处理
+            raise
         except Exception as e:
             logger.warning(f"加载持仓数据失败: {e}")
         finally:
@@ -117,14 +130,17 @@ class PositionManager:
             tmp_file = self.file.with_suffix(".tmp")
             tmp_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
             tmp_file.replace(self.file)
+        except IOError:
+            # 锁获取失败已在 _acquire_lock 中记录，不重复处理
+            raise
         except Exception as e:
             logger.error(f"保存持仓数据失败: {e}")
         finally:
             self._release_lock()
 
     def track_position(self, code: str, name: str, buy_price: float,
-                       shares: int, stop_loss: float = 0.05,
-                       take_profit: float = 0.10, notes: str = ""):
+                       shares: int, stop_loss: float = config.DEFAULT_STOP_LOSS,
+                       take_profit: float = config.DEFAULT_TAKE_PROFIT, notes: str = ""):
         """记录持仓"""
         self.positions[code] = Position(
             code=code, name=name, buy_price=buy_price,
@@ -350,6 +366,10 @@ class PositionManager:
 
         return result
 
+    def stop(self):
+        """优雅停止实盘监控"""
+        self._stop_event.set()
+
     def run_live_monitoring(self, interval_seconds: int = 60, max_iterations: int = None):
         """持续监控持仓（定时检查）
 
@@ -357,12 +377,13 @@ class PositionManager:
             interval_seconds: 检查间隔（秒）
             max_iterations: 最大迭代次数（None=无限）
 
-        这是一个阻塞调用，会持续运行直到达到 max_iterations 或被中断。
+        这是一个阻塞调用，会持续运行直到达到 max_iterations、被 stop() 中断或异常退出。
         常用于实盘盯盘场景。
         """
         import time
+        self._stop_event.clear()
         iterations = 0
-        while max_iterations is None or iterations < max_iterations:
+        while not self._stop_event.is_set() and (max_iterations is None or iterations < max_iterations):
             try:
                 result = self.monitor_positions()
                 if result["alerts"]:
@@ -375,5 +396,5 @@ class PositionManager:
             except Exception as e:
                 logger.error(f"实盘监控异常: {e}")
             iterations += 1
-            if max_iterations is None or iterations < max_iterations:
-                time.sleep(interval_seconds)
+            if not self._stop_event.is_set() and (max_iterations is None or iterations < max_iterations):
+                self._stop_event.wait(timeout=interval_seconds)

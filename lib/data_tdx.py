@@ -174,7 +174,7 @@ def get_kline(code: str, days: int = 180, period: str = "daily") -> pd.DataFrame
 
     # 网络失败，尝试本地文件
     df = _fetch_from_local_file(code, days, period)
-    if not df.empty and len(df) >= 10:
+    if not df.empty:
         logger.debug(f"TDX 使用本地文件获取 {code}")
         return df
 

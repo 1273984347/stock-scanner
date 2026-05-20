@@ -1,5 +1,5 @@
 import { stateManager } from '../state.js';
-import { fmtMoney } from '../utils.js';
+import { fmtMoney } from './utils.js';
 
 class PositionsRenderer {
   constructor() { this._unsubscribers = []; }

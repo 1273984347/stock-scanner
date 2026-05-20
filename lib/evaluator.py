@@ -11,6 +11,9 @@ from scipy import stats
 from scipy.cluster import hierarchy
 import logging
 import warnings
+from joblib import Parallel, delayed
+
+from lib import config
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -53,7 +56,7 @@ class EvalConfig:
     n_quantiles: int = 5
     min_samples_per_group: int = 10
     correlation_method: str = "spearman"
-    redundancy_threshold: float = 0.70
+    redundancy_threshold: float = config.IC_REDUNDANCY_THRESHOLD
     rolling_window: int = 252
 
 
@@ -142,30 +145,39 @@ class FactorEvaluator:
         factor_df = factor_df.loc[common_idx]
         forward_returns = forward_returns.loc[common_idx]
 
-        records = []
-        for i in range(window - 1, len(common_idx)):
-            date = common_idx[i]
-            start_idx = i - window + 1
-            window_factors = factor_df.iloc[start_idx:i + 1]
-            window_returns = forward_returns.iloc[start_idx:i + 1]
-
-            for col in factor_df.columns:
-                valid = window_factors[col].notna() & window_returns.notna()
+        # 使用 joblib 并行化因子计算
+        def compute_single_factor_rolling(window_idx_list, factor_col):
+            """计算单个因子在多个窗口的 IC"""
+            local_records = []
+            for i in window_idx_list:
+                date = common_idx[i]
+                start_idx = i - window + 1
+                window_factors = factor_df[factor_col].iloc[start_idx:i + 1]
+                window_returns = forward_returns.iloc[start_idx:i + 1]
+                valid = window_factors.notna() & window_returns.notna()
                 if valid.sum() < self.config.min_samples_per_group:
                     continue
                 try:
                     rank_ic, _ = stats.spearmanr(
-                        window_factors[col][valid], window_returns[valid]
+                        window_factors[valid], window_returns[valid]
                     )
-                    records.append({
+                    local_records.append({
                         "date": date,
-                        "factor": col,
+                        "factor": factor_col,
                         "rank_ic": rank_ic,
                     })
-                except Exception as e:
-                    logger.debug(f"IC 计算失败 factor={col} date={date}: {e}")
+                except Exception:
                     continue
+            return local_records
 
+        # 并行计算所有因子
+        window_indices = list(range(window - 1, len(common_idx)))
+        all_records = Parallel(n_jobs=-1, prefer="threads")(
+            delayed(compute_single_factor_rolling)(window_indices, col)
+            for col in factor_df.columns
+        )
+
+        records = [r for sublist in all_records for r in sublist]
         if not records:
             return pd.DataFrame()
         return pd.DataFrame(records)

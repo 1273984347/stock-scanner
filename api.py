@@ -15,19 +15,62 @@
 - POST /api/backtest 回测
 """
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Security, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.security import APIKeyHeader
 from pathlib import Path
 from datetime import datetime
 import json
 import logging
 import threading
+import os
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="A股量化交易系统", version="3.0.0")
+
+# ========== 安全常量 ==========
+
+ALLOWED_PRESETS = {"balanced", "aggressive", "conservative"}
+
+# ========== 安全中间件 ==========
+
+API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def verify_api_key(api_key: str = Security(API_KEY_HEADER)) -> str:
+    """验证 API Key（生产环境必须设置 API_SECRET_KEY 环境变量）"""
+    if api_key is None:
+        raise HTTPException(status_code=401, detail="缺少API密钥")
+    expected = os.getenv("API_SECRET_KEY", "")
+    if not expected:
+        # 未配置密钥时允许访问（开发模式），生产环境应设置环境变量
+        logger.warning("API_SECRET_KEY not set, allowing request (dev mode)")
+        return api_key
+    if api_key != expected:
+        raise HTTPException(status_code=401, detail="无效的API密钥")
+    return api_key
+
+
+def verify_ws_token(token: str) -> bool:
+    """验证 WebSocket token（与 API Key 相同）"""
+    expected = os.getenv("API_SECRET_KEY", "")
+    if not expected:
+        return True  # 未配置时允许
+    return token == expected
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """添加安全响应头"""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 # 缓存操作全局锁（保护 JSON 缓存文件的并发读写）
 _cache_lock = threading.Lock()
@@ -70,8 +113,7 @@ if STATIC_DIR.exists():
 def _cache_get(key: str, max_age: int = 3600):
     """读 JSON 缓存（线程安全，带权限保护）"""
     path = CACHE_DIR / f"api_{key}.json"
-    _cache_lock.acquire()
-    try:
+    with _cache_lock:
         if not path.exists():
             return None
         age = (datetime.now().timestamp() - path.stat().st_mtime)
@@ -80,11 +122,10 @@ def _cache_get(key: str, max_age: int = 3600):
             return None
         try:
             return json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
+        except (json.JSONDecodeError, IOError, OSError) as e:
+            logger.debug(f"缓存读取失败[{path.name}]: {e}")
             path.unlink(missing_ok=True)
             return None
-    finally:
-        _cache_lock.release()
 
 
 def _cache_set(key: str, data):
@@ -104,6 +145,21 @@ def _cache_set(key: str, data):
         _cache_lock.release()
 
 
+# ========== 统一入口 ==========
+
+from scanner import ScanOrchestrator
+
+# 编排器缓存（按 preset 缓存，避免重复创建）
+_orchestrator_cache: dict = {}
+
+
+def _get_orchestrator(preset: str = "balanced") -> ScanOrchestrator:
+    """获取指定 preset 的编排器（带缓存）"""
+    if preset not in _orchestrator_cache:
+        _orchestrator_cache[preset] = ScanOrchestrator(preset=preset)
+    return _orchestrator_cache[preset]
+
+
 # ========== 核心端点 ==========
 
 @app.get("/")
@@ -116,16 +172,18 @@ async def index():
 
 
 @app.get("/api/scan")
-async def scan(preset: str = "balanced"):
+async def scan(preset: str = "balanced", _=Security(verify_api_key)):
     """选股结果 + 风控 + 组合优化"""
+    if preset not in ALLOWED_PRESETS:
+        raise HTTPException(status_code=400, detail=f"无效的preset: {preset}")
     cache_key = f"scan_{preset}"
     cached = _cache_get(cache_key, max_age=3600)
     if cached is not None:
         return cached
 
-    from scanner import run_all_strategies
     try:
-        scan_result = run_all_strategies(preset)
+        orchestrator = _get_orchestrator(preset)
+        scan_result = orchestrator.run_all_strategies()
         results = scan_result.get("results", {})
         risk_check = scan_result.get("risk_check", {})
         portfolio = scan_result.get("portfolio", {})
@@ -149,34 +207,34 @@ async def scan(preset: str = "balanced"):
         _cache_set(cache_key, data)
         return data
     except Exception as e:
-        logger.error(f"选股失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"选股失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="内部服务器错误")
 
 
 @app.get("/api/score/{code}")
-async def stock_score(code: str):
+async def stock_score(code: str, _=Security(verify_api_key)):
     """单股四维评分"""
-    from scanner import get_stock_score
     try:
-        result = get_stock_score(code)
+        orchestrator = _get_orchestrator()
+        result = orchestrator.get_stock_score(code)
         if "error" in result:
             raise HTTPException(status_code=404, detail=result["error"])
         return result
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"评分失败 {code}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"评分失败 {code}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="内部服务器错误")
 
 
 @app.get("/api/stock/{code}")
-async def stock_detail(code: str):
+async def stock_detail(code: str, _=Security(verify_api_key)):
     """单股因子详情"""
-    from scanner import get_stock_hist
     from factors import compute_all_signals
     from lib.technical_signals import calc_composite_verdict
 
-    hist = get_stock_hist(code, days=180)
+    orchestrator = _get_orchestrator()
+    hist = orchestrator.get_stock_hist(code, days=180)
     if hist.empty:
         raise HTTPException(status_code=404, detail=f"未找到 {code} 数据")
 
@@ -207,11 +265,11 @@ async def market_overview():
     if cached is not None:
         return cached
 
-    from scanner import get_market_sentiment, get_realtime_quotes
     from factors import evaluate_macro_gate, calc_market_exposure
     from lib.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
 
-    sentiment = get_market_sentiment()
+    orchestrator = _get_orchestrator()
+    sentiment = orchestrator.get_market_sentiment()
     macro = evaluate_macro_gate(sentiment)
 
     exposure = {"state": "neutral", "exposure": 0.70}
@@ -249,13 +307,13 @@ async def market_overview():
 
 
 @app.get("/api/positions")
-async def positions():
+async def positions(_=Security(verify_api_key)):
     """持仓概况"""
     from lib.position_manager import PositionManager
     try:
         pm = PositionManager()
-        from scanner import get_realtime_quotes
-        quotes = get_realtime_quotes()
+        orchestrator = _get_orchestrator()
+        quotes = orchestrator.get_realtime_quotes()
         prices = {}
         if not quotes.empty:
             for _, row in quotes.iterrows():
@@ -274,18 +332,18 @@ async def positions():
 # ========== 新增端点 ==========
 
 @app.get("/api/risk")
-async def risk_assessment():
+async def risk_assessment(_=Security(verify_api_key)):
     """完整风控评估（接入 VolCorrRiskManager 的 full_risk_assessment）"""
     cached = _cache_get("risk", max_age=1800)
     if cached is not None:
         return cached
 
-    from scanner import get_realtime_quotes, get_market_sentiment, get_stock_hist_multi_source
     from lib.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
     from factors import evaluate_macro_gate
 
     try:
-        sentiment = get_market_sentiment()
+        orchestrator = _get_orchestrator()
+        sentiment = orchestrator.get_market_sentiment()
         macro = evaluate_macro_gate(sentiment)
 
         # 获取组合持仓（从最近 scan 缓存）
@@ -303,7 +361,7 @@ async def risk_assessment():
         if tickers:
             for code in tickers[:15]:  # 限制数量避免超时
                 try:
-                    hist = get_stock_hist_multi_source(code, days=120, source="auto")
+                    hist = orchestrator.get_stock_hist_multi_source(code, days=120, source="auto")
                     if hist is not None and not hist.empty:
                         market_data[code] = hist
                 except Exception:
@@ -359,19 +417,21 @@ async def risk_assessment():
         _cache_set("risk", result)
         return result
     except Exception as e:
-        logger.error(f"风控评估失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"风控评估失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="内部服务器错误")
 
 
 @app.get("/api/exposures")
 async def factor_exposures(preset: str = Query("balanced", description="策略预设")):
+    if preset not in ALLOWED_PRESETS:
+        raise HTTPException(status_code=400, detail=f"无效的preset: {preset}")
     """因子暴露追踪"""
     cached = _cache_get("exposures", max_age=3600)
     if cached is not None:
         return cached
 
     try:
-        from scanner import run_all_strategies
+        orchestrator = _get_orchestrator(preset)
         # 用最近一次扫描结果计算暴露
         scan_cache = _cache_get(f"scan_{preset}", max_age=7200)
         if scan_cache and scan_cache.get("portfolio", {}).get("details"):
@@ -384,8 +444,7 @@ async def factor_exposures(preset: str = Query("balanced", description="策略�
                     # 从 /api/score/{code} 取因子数据
                     code = d["code"]
                     try:
-                        from scanner import get_stock_score
-                        score_data = get_stock_score(code)
+                        score_data = orchestrator.get_stock_score(code)
                         factors = score_data.get("factors", {})
                         for fname, fval in factors.items():
                             if isinstance(fval, (int, float)):
@@ -412,12 +471,15 @@ async def factor_exposures(preset: str = Query("balanced", description="策略�
 
 @app.get("/api/dashboard")
 async def dashboard(preset: str = Query("balanced", description="策略预设")):
+    if preset not in ALLOWED_PRESETS:
+        raise HTTPException(status_code=400, detail=f"无效的preset: {preset}")
     """仪表盘汇总数据（一次请求返回所有仪表盘需要的指标）"""
     cached = _cache_get("dashboard", max_age=600)  # 10分钟缓存
     if cached is not None:
         return cached
 
     try:
+        orchestrator = _get_orchestrator(preset)
         # 汇总市场+风控+组合+持仓
         market_data = _cache_get("market", max_age=1800) or {}
         scan_data = _cache_get(f"scan_{preset}", max_age=3600) or {}
@@ -425,20 +487,18 @@ async def dashboard(preset: str = Query("balanced", description="策略预设"))
         # 缓存为空时主动触发一次 scan（确保首页有数据）
         if not scan_data:
             try:
-                from scanner import run_all_strategies
                 from config import SystemConfig
                 cfg = SystemConfig()
-                scan_data = run_all_strategies(preset=preset)
+                scan_data = orchestrator.run_all_strategies()
                 _cache_set(f"scan_{preset}", scan_data)
             except Exception as scan_err:
                 logger.warning(f"Dashboard 自动触发 scan 失败: {scan_err}")
 
         if not market_data:
             try:
-                from scanner import get_market_sentiment, get_realtime_quotes
                 from factors import evaluate_macro_gate, calc_market_exposure
-                sentiment = get_market_sentiment()
-                quotes = get_realtime_quotes()
+                sentiment = orchestrator.get_market_sentiment()
+                quotes = orchestrator.get_realtime_quotes()
                 macro_gate = evaluate_macro_gate(sentiment)
                 market_data = {
                     "sentiment": sentiment,
@@ -509,6 +569,7 @@ async def run_backtest(
     confidence_threshold: float = Query(default=0.3, ge=0.0, le=1.0),
     risk_per_trade_pct: float = Query(default=0.5, ge=0.1, le=5.0),
     preset: str = Query(default="balanced"),
+    _=Security(verify_api_key),
 ):
     """运行回测"""
     try:
@@ -544,20 +605,21 @@ async def run_walkforward(
     train_days: int = Query(default=120, ge=60, le=500),
     validation_days: int = Query(default=30, ge=10, le=120),
     step_days: int = Query(default=30, ge=10, le=120),
+    _=Security(verify_api_key),
 ):
     """运行 Walk-Forward 滚动前推验证"""
     try:
         from lib.walkforward import WalkForwardBacktest, WalkForwardConfig, summarize_rounds
-        from scanner import get_stock_hist_multi_source
         from backtest import run_factor_backtest
 
+        orchestrator = _get_orchestrator()
         sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
 
         # 获取市场数据
         market_data = {}
         all_dates = set()
         for code in sym_list:
-            hist = get_stock_hist_multi_source(code, days=train_days + validation_days + 60, source="auto")
+            hist = orchestrator.get_stock_hist_multi_source(code, days=train_days + validation_days + 60, source="auto")
             if hist is not None and not hist.empty:
                 market_data[code] = hist
                 if "date" in hist.columns:
@@ -676,11 +738,11 @@ async def factor_evaluation(
         import pandas as pd
         from lib.evaluator import FactorEvaluator, EvalConfig
         from lib.alpha import AlphaSynthesizer
-        from scanner import get_realtime_quotes, get_stock_hist_multi_source
         from factors import compute_all_signals
 
+        orchestrator = _get_orchestrator()
         # 取沪深300成分股或活跃股
-        quotes = get_realtime_quotes()
+        quotes = orchestrator.get_realtime_quotes()
         if quotes.empty:
             return {"error": "无法获取实时行情"}
 
@@ -697,7 +759,7 @@ async def factor_evaluation(
             if not code:
                 continue
             try:
-                hist = get_stock_hist_multi_source(code, days=120, source="auto")
+                hist = orchestrator.get_stock_hist_multi_source(code, days=120, source="auto")
                 if hist is None or hist.empty or len(hist) < 60:
                     continue
                 result = compute_all_signals(hist)
@@ -792,40 +854,53 @@ manager = ConnectionManager()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    # S3: WebSocket 认证
+    token = websocket.headers.get("authorization", "").replace("Bearer ", "")
+    if not verify_ws_token(token):
+        await websocket.close(code=4001)
+        return
     await manager.connect(websocket)
     try:
         # 连接建立时立即推送一次全量数据
         await websocket.send_json({
             "type": "data_update",
             "timestamp": datetime.now().isoformat(),
-            "data": {
-                "dashboard": {},
-                "scan": {},
-                "risk": {},
-                "exposures": {},
-            }
+            "data": await _get_ws_data()
         })
 
         # 定时检测数据变化（每 10s）
         while True:
             await asyncio.sleep(10)
-            # 检测数据是否变化（简化：直接推送全量）
-            current_data = {
-                "dashboard": {},
-                "scan": {},
-                "risk": {},
-                "exposures": {},
-            }
             await websocket.send_json({
                 "type": "data_update",
                 "timestamp": datetime.now().isoformat(),
-                "data": current_data
+                "data": await _get_ws_data()
             })
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         manager.disconnect(websocket)
+
+
+async def _get_ws_data():
+    """获取 WebSocket 推送数据（只读缓存，不触发计算）"""
+    try:
+        # 只从缓存读取，不触发任何计算
+        dashboard = _cache_get("dashboard", max_age=600) or {}
+        scan = _cache_get("scan_balanced", max_age=3600) or {}
+        risk = _cache_get("risk", max_age=600) or {}
+        exposures = _cache_get("exposures", max_age=3600) or {}
+
+        return {
+            "dashboard": dashboard,
+            "scan": scan,
+            "risk": risk,
+            "exposures": exposures,
+        }
+    except Exception as e:
+        logger.error(f"WebSocket data fetch error: {e}")
+        return {"dashboard": {}, "scan": {}, "risk": {}, "exposures": {}}
 
 
 if __name__ == "__main__":

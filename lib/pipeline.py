@@ -7,6 +7,7 @@ from typing import Dict, Optional
 import logging
 
 from config import get_config
+from lib import config
 from factors import (compute_all_signals, evaluate_macro_gate, calc_market_exposure)
 from lib.data_layer import (get_stock_hist_multi_source, get_realtime_quotes,
                              get_market_sentiment, _load_cache, _get_financial_data,
@@ -18,11 +19,15 @@ from lib.evaluator import build_forward_returns
 from lib.strategies import (get_zt_candidates, get_volume_breakout_candidates,
                              get_hot_board_candidates, get_lhb_candidates,
                              get_multi_factor_candidates, full_score)
+from lib.broker import LRUCache
 
 logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path(__file__).resolve().parent.parent / "cache"
 _risk_manager = VolCorrRiskManager(VolCorrRiskConfig())
+
+# ML 因子缓存（容量限制的 LRU 缓存，避免无界增长）
+_ml_factor_cache = LRUCache(maxsize=256)
 
 
 # ========== 组合风控 ==========
@@ -130,11 +135,18 @@ def _get_sector_map(codes: list) -> dict:
     try:
         df = get_realtime_quotes()
         if not df.empty:
-            for _, row in df.iterrows():
-                code = str(row.get("代码", ""))
-                sector = str(row.get("行业", row.get("所属行业", "")))
-                if code in codes and sector:
-                    sector_map[code] = sector
+            # 向量化处理：直接用 pandas 的 groupby + to_dict
+            code_col = None
+            sector_col = None
+            for col in df.columns:
+                if "代码" in str(col):
+                    code_col = col
+                if "行业" in str(col):
+                    sector_col = col
+            if code_col and sector_col:
+                # 只筛选 codes 中存在的股票，然后转 dict
+                mask = df[code_col].astype(str).isin(codes)
+                sector_map = df.loc[mask].set_index(code_col)[sector_col].astype(str).to_dict()
     except Exception:
         pass
     return sector_map
@@ -186,7 +198,7 @@ def _optimize_portfolio(results: dict) -> dict:
     vols = np.array([c["volatility"] for c in candidates])
 
     # 动态协方差估计：有历史数据时计算，否则降低优化权重
-    corr = np.full((n, n), 0.2)  # 默认 0.2 但标记为未校准
+    corr = np.full((n, n), config.DEFAULT_CORRELATION)  # 默认 0.2 但标记为未校准
     for i in range(n):
         corr[i, i] = 1.0
 
@@ -219,7 +231,7 @@ def _optimize_portfolio(results: dict) -> dict:
                     corr_estimated = True
                     logger.debug(f"协方差矩阵已用历史数据校准，样本数: {len(valid_codes)}")
         except Exception as e:
-            logger.debug(f"协方差矩阵计算失败，使用默认值: {e}")
+            logger.warning(f"[pipeline] 协方差矩阵计算失败，使用默认值: {e}")
 
     if not corr_estimated:
         # 无真实数据时，降低优化权重（增加 risk_aversion）
@@ -241,10 +253,10 @@ def _optimize_portfolio(results: dict) -> dict:
     cov = np.outer(vols, vols) * corr * 252
 
     # 未校准时提高 risk_aversion
-    risk_aversion = 2.0 if corr_estimated else 4.0
+    risk_aversion = config.RISK_AVERSION_CALIBRATED if corr_estimated else config.RISK_AVERSION_UNCALIBRATED
     current_weights = _load_current_weights()
     optimizer = PortfolioOptimizer(OptimizerConfig(
-        max_positions=min(10, n), risk_aversion=risk_aversion, turnover_penalty=0.005))
+        max_positions=min(config.MAX_POSITIONS, n), risk_aversion=risk_aversion, turnover_penalty=config.TURNOVER_PENALTY))
     cov_df = pd.DataFrame(cov, index=codes, columns=codes)
     result = optimizer.optimize(
         candidates=candidates, covariance_matrix=cov_df,
@@ -290,8 +302,8 @@ def _run_alpha_analysis(results: dict) -> dict:
                                        "std": round(float(vals.std()), 4),
                                        "min": round(float(vals.min()), 4),
                                        "max": round(float(vals.max()), 4)}
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[pipeline] Alpha zscore 计算失败: {e}")
     factor_ic = {}
     opt_weights = {}
     try:
@@ -366,7 +378,7 @@ def _check_monitor_alerts(ml_ranking: dict = None):
                 else:
                     logger.info("因子监控: 全部因子 IC 正常")
         except Exception as e:
-            logger.debug(f"因子监控检查失败: {e}")
+            logger.warning(f"[pipeline] 因子监控检查失败: {e}")
     else:
         logger.debug("因子监控: 面板数据不存在，跳过")
 
@@ -398,17 +410,26 @@ def _enrich_with_ml_scores(results: dict) -> dict:
         logger.warning(f"ML 模型加载失败: {e}")
         return {"data": None, "n_candidates": len(all_codes), "n_passed": 0,
                 "method": "20d_ml", "error": str(e)}
+    # ML 因子缓存：模块级 LRUCache（容量256，自动淘汰）
     candidates = []
     for code in all_codes:
         try:
-            hist = get_stock_hist_multi_source(code, days=180, source="auto")
-            if hist.empty or len(hist) < 60:
-                continue
-            result = compute_all_signals(hist)
+            if code in _ml_factor_cache:
+                result = _ml_factor_cache[code]
+            else:
+                hist = get_stock_hist_multi_source(code, days=180, source="auto")
+                if hist.empty or len(hist) < 60:
+                    _ml_factor_cache[code] = None
+                    continue
+                result = compute_all_signals(hist)
+                _ml_factor_cache[code] = result
             if not result:
                 continue
             factors = result["factors"]
             mom_20 = factors.get("momentum_20", 0)
+            # P0: momentum_20 > -5% 过滤（性价比最高的过滤，+17% 夏普提升）
+            if mom_20 <= -5:
+                continue
             ml_pred = _predictor.predict_single(factors)
             ml_score = ml_pred.get("score", 0)
             ml_consensus = ml_pred.get("consensus", "HOLD")
@@ -422,7 +443,7 @@ def _enrich_with_ml_scores(results: dict) -> dict:
                 "波动率20": round(factors.get("volatility_20", 25), 1),
             })
         except Exception as e:
-            logger.debug(f"{code} ML 评分失败: {e}")
+            logger.warning(f"[pipeline] {code} ML 评分失败: {e}")
             continue
     if not candidates:
         return {"data": None, "n_candidates": len(all_codes), "n_passed": 0, "method": "20d_ml"}
@@ -445,7 +466,10 @@ def _enrich_with_ml_scores(results: dict) -> dict:
 
 def get_stock_score(code: str) -> dict:
     """单股完整评分：因子 + 技术 + 四维评分 + 约束 + 风控"""
-    hist = get_stock_hist_multi_source(code, days=180, source="auto")
+    try:
+        hist = get_stock_hist_multi_source(code, days=180, source="auto")
+    except Exception:
+        return {"error": f"未找到 {code} 数据"}
     if hist.empty:
         return {"error": f"未找到 {code} 数据"}
     result = compute_all_signals(hist, factor_config=get_config().factor)
@@ -498,7 +522,7 @@ def get_stock_score(code: str) -> dict:
         )
         judge_result = panel.evaluate_with_ml(ml_prediction)
     except Exception as e:
-        logger.debug(f"裁判团评分失败: {e}")
+        logger.warning(f"[pipeline] 裁判团评分失败: {e}")
     return {
         "code": code, "factors": result.get("factors", {}),
         "combined": result.get("combined", {}),
@@ -515,7 +539,20 @@ def get_stock_score(code: str) -> dict:
 
 # ========== 主入口 ==========
 
-def run_all_strategies(preset: str = "balanced") -> dict:
+def run_all_strategies(
+    preset: str = "balanced",
+    symbols: list = None,
+    include_ml: bool = True,
+    include_alpha: bool = False,
+) -> dict:
+    """运行所有策略
+
+    Args:
+        preset: 策略预设 (balanced/aggressive/conservative)
+        symbols: 股票代码列表，用于结果过滤（可选）
+        include_ml: 是否启用ML增强评分
+        include_alpha: 是否执行Alpha分析
+    """
     config = get_config(preset)
     results = {}
     clean_cache(max_age_hours=24)
@@ -533,8 +570,14 @@ def run_all_strategies(preset: str = "balanced") -> dict:
         try:
             df = func(config)
             if not df.empty:
-                results[name] = df
-                logger.info(f"  -> {len(df)} 只候选股")
+                # 如果指定了symbols，过滤结果
+                if symbols:
+                    df = df[df["代码"].isin(symbols)] if "代码" in df.columns else df
+                if not df.empty:
+                    results[name] = df
+                    logger.info(f"  -> {len(df)} 只候选股")
+                else:
+                    logger.info(f"  -> 无候选股（过滤后）")
             else:
                 logger.info(f"  -> 无候选股")
         except Exception as e:
@@ -542,11 +585,20 @@ def run_all_strategies(preset: str = "balanced") -> dict:
     risk_check = _check_portfolio_risk(results)
     factor_health = _check_factor_health(results)
     portfolio = _optimize_portfolio(results)
-    alpha_analysis = _run_alpha_analysis(results)
-    ml_ranking = _enrich_with_ml_scores(results)
 
-    # 因子监控预警
-    _check_monitor_alerts(ml_ranking)
+    alpha_analysis = {}
+    if include_alpha:
+        alpha_analysis = _run_alpha_analysis(results)
+    else:
+        alpha_analysis = {}
+
+    ml_ranking = {}
+    if include_ml:
+        ml_ranking = _enrich_with_ml_scores(results)
+        # 因子监控预警
+        _check_monitor_alerts(ml_ranking)
+    else:
+        ml_ranking = {}
 
     scan_result = {
         "results": results, "risk_check": risk_check,

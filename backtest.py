@@ -75,8 +75,11 @@ def _validate_ohlcv(df: pd.DataFrame, symbol: str = "") -> pd.DataFrame:
 
 def get_stock_data(symbol: str, days: int = 250) -> pd.DataFrame:
     """获取股票历史数据（统一数据层，多数据源自动切换）"""
-    from scanner import get_stock_hist_multi_source
-    df = get_stock_hist_multi_source(symbol, days=days, source="auto")
+    from lib.data_layer import get_stock_hist_multi_source, AllDataSourcesFailedError
+    try:
+        df = get_stock_hist_multi_source(symbol, days=days, source="auto")
+    except AllDataSourcesFailedError:
+        return pd.DataFrame()
     if df.empty:
         return pd.DataFrame()
     # 确保有 trade_date 列（ABroker 需要）
@@ -87,26 +90,10 @@ def get_stock_data(symbol: str, days: int = 250) -> pd.DataFrame:
     # 数据质量校验
     df = _validate_ohlcv(df, symbol)
 
-    # 添加 pre_close：优先用数据源提供的，否则用前复权收盘价 shift
-    if "pre_close" not in df.columns:
-        # 尝试从 akshare 补充 pre_close
-        try:
-            import akshare as ak
-            market = "sh" if symbol.startswith(("6", "5")) else "sz"
-            hist_raw = ak.stock_zh_a_hist(symbol=symbol, period="daily",
-                                          start_date=df["trade_date"].iloc[0].strftime("%Y%m%d"),
-                                          end_date=df["trade_date"].iloc[-1].strftime("%Y%m%d"),
-                                          adjust="")
-            if not hist_raw.empty and "昨收" in hist_raw.columns:
-                df["pre_close"] = hist_raw["昨收"].values[:len(df)]
-        except Exception:
-            pass
-
-    # 最终兜底：如果还是没有 pre_close，用 shift(1) 但加警告
+    # 添加 pre_close：直接用 shift(1) 近似，避免额外阻塞API调用
     if "pre_close" not in df.columns:
         df["pre_close"] = df["close"].shift(1)
         df["pre_close"] = df["pre_close"].fillna(df["close"])
-        logger.debug(f"{symbol} pre_close 用 shift(1) 近似，除权日可能不准")
 
     # 计算涨跌停/停牌标记
     limit_pct = ABroker.get_limit_pct(symbol)
@@ -358,7 +345,7 @@ def run_factor_backtest(
     # 基准对比：沪深300
     benchmark_metrics = None
     try:
-        from scanner import _load_cache
+        from lib.data_layer import _load_cache
         idx_df = _load_cache("hs300_cache", max_age_hours=24)
         if idx_df.empty or len(idx_df) < 60:
             import akshare as ak

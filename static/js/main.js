@@ -103,48 +103,119 @@ window.openStockDetail = async function(code, name) {
   if (stockRes) renderStockFactors(stockRes);
 };
 
+// 安全文本插入（防止 XSS）
+function safeText(parent, tag, css, text) {
+  const el = document.createElement(tag);
+  if (css) el.style.cssText = css;
+  el.textContent = text;
+  parent.appendChild(el);
+  return el;
+}
+
 function renderStockScore(r) {
   const s = r.score || {};
   const jp = r.judge_panel || {};
   const ratingClass = (s.rating==='强烈买入'||s.rating==='买入')?'tag-up':s.rating==='持有'?'tag-up':'tag-warn';
-  document.getElementById('stockScorePanel').innerHTML =
-    '<div style="font-size:13px;line-height:2;color:var(--text-sub)">' +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">' +
-    '<div style="background:var(--card-hover);padding:12px;border-radius:8px">' +
-    '<b>综合评分</b><br><span style="font-size:28px;font-weight:700">' + (s.score || '--') + '</span>/10<br>' +
-    '<span class="tag ' + ratingClass + '">' + (s.rating || '--') + '</span>' +
-    '</div>' +
-    '<div style="background:var(--card-hover);padding:12px;border-radius:8px">' +
-    '<b>裁判团</b><br><span style="font-size:28px;font-weight:700">' + (jp.consensus || 'HOLD') + '</span><br>评分: ' + (jp.score || '--') + ' | 看多: ' + (jp.bullish_pct || 0) + '%' +
-    '</div>' +
-    '</div>' +
-    '</div>';
+  const panel = document.getElementById('stockScorePanel');
+  panel.innerHTML = '';
+  const container = document.createElement('div');
+  container.style.cssText = 'font-size:13px;line-height:2;color:var(--text-sub)';
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px';
+  // 左格：综合评分
+  const left = document.createElement('div');
+  left.style.cssText = 'background:var(--card-hover);padding:12px;border-radius:8px';
+  safeText(left, 'b', '', '综合评分');
+  left.appendChild(document.createElement('br'));
+  const scoreEl = document.createElement('span');
+  scoreEl.style.cssText = 'font-size:28px;font-weight:700';
+  scoreEl.textContent = s.score || '--';
+  left.appendChild(scoreEl);
+  left.appendChild(document.createElement('br'));
+  const ratingEl = document.createElement('span');
+  ratingEl.className = 'tag ' + ratingClass;
+  ratingEl.textContent = s.rating || '--';
+  left.appendChild(ratingEl);
+  grid.appendChild(left);
+  // 右格：裁判团
+  const right = document.createElement('div');
+  right.style.cssText = 'background:var(--card-hover);padding:12px;border-radius:8px';
+  safeText(right, 'b', '', '裁判团');
+  right.appendChild(document.createElement('br'));
+  const consensusEl = document.createElement('span');
+  consensusEl.style.cssText = 'font-size:28px;font-weight:700';
+  consensusEl.textContent = jp.consensus || 'HOLD';
+  right.appendChild(consensusEl);
+  right.appendChild(document.createElement('br'));
+  safeText(right, 'span', '', '评分: ' + (jp.score || '--') + ' | 看多: ' + (jp.bullish_pct || 0) + '%');
+  grid.appendChild(right);
+  container.appendChild(grid);
+  panel.appendChild(container);
 }
 
 function renderStockFactors(r) {
   const factors = r.factors || {};
-  const factorHtml = Object.entries(factors).map(([k, v]) => '<span class="tag" style="background:rgba(88,166,255,0.12);color:var(--accent)">' + k + '</span> ' + (typeof v === 'number' ? v.toFixed(2) : v) + ' ').join('');
-  document.getElementById('stockFactorsPanel').innerHTML =
-    '<div style="font-size:13px;line-height:1.8;color:var(--text-sub)">' +
-    '<b>因子表</b><br>' + factorHtml +
-    '</div>';
+  const panel = document.getElementById('stockFactorsPanel');
+  panel.innerHTML = '';
+  const container = document.createElement('div');
+  container.style.cssText = 'font-size:13px;line-height:1.8;color:var(--text-sub)';
+  safeText(container, 'b', '', '因子表');
+  container.appendChild(document.createElement('br'));
+  Object.entries(factors).forEach(([k, v]) => {
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.style.cssText = 'background:rgba(88,166,255,0.12);color:var(--accent)';
+    tag.textContent = k;
+    container.appendChild(tag);
+    const val = typeof v === 'number' ? v.toFixed(2) : v;
+    safeText(container, 'span', '', ' ' + val + ' ');
+  });
+  panel.appendChild(container);
 }
 
 window.openAuditDetail = async function(id) {
   document.getElementById('auditModal').classList.add('active');
   document.getElementById('auditModalTitle').textContent = '扫描审计 #' + id;
-  document.getElementById('auditDetailPanel').innerHTML = '<div class="loading"><span class="spinner"></span>加载中...</div>';
+  const detailPanel = document.getElementById('auditDetailPanel');
+  detailPanel.innerHTML = '';
+  const loading = document.createElement('div');
+  loading.className = 'loading';
+  loading.innerHTML = '<span class="spinner"></span>加载中...';
+  detailPanel.appendChild(loading);
   const r = await apiClient.get('/api/audit/' + id);
-  if (!r || r.error) { document.getElementById('auditDetailPanel').innerHTML = '<div style="padding:20px;color:var(--text-dim)">' + (r?.error || '请求失败') + '</div>'; return; }
-  document.getElementById('auditDetailPanel').innerHTML =
-    '<div style="font-size:13px;line-height:1.8;color:var(--text-sub)">' +
-    '<div class="detail-row"><span class="label">扫描时间</span><span class="value">' + (r.scan_time || '--') + '</span></div>' +
-    '<div class="detail-row"><span class="label">策略预设</span><span class="value">' + (r.preset || '--') + '</span></div>' +
-    '<div class="detail-row"><span class="label">候选股数</span><span class="value">' + (r.total_candidates || 0) + '</span></div>' +
-    '<div class="detail-row"><span class="label">风控建议</span><span class="value">' + (r.risk_recommendation || '--') + '</span></div>' +
-    '<div class="detail-row"><span class="label">组合夏普</span><span class="value">' + (r.portfolio_sharpe != null ? r.portfolio_sharpe.toFixed(2) : '--') + '</span></div>' +
-    '<div class="detail-row"><span class="label">持仓数</span><span class="value">' + (r.portfolio_n_positions || 0) + '</span></div>' +
-    '</div>';
+  if (!r || r.error) {
+    detailPanel.innerHTML = '';
+    const errDiv = document.createElement('div');
+    errDiv.style.cssText = 'padding:20px;color:var(--text-dim)';
+    errDiv.textContent = r?.error || '请求失败';
+    detailPanel.appendChild(errDiv);
+    return;
+  }
+  detailPanel.innerHTML = '';
+  const container = document.createElement('div');
+  container.style.cssText = 'font-size:13px;line-height:1.8;color:var(--text-sub)';
+  const rows = [
+    ['扫描时间', r.scan_time || '--'],
+    ['策略预设', r.preset || '--'],
+    ['候选股数', r.total_candidates || 0],
+    ['风控建议', r.risk_recommendation || '--'],
+    ['组合夏普', r.portfolio_sharpe != null ? r.portfolio_sharpe.toFixed(2) : '--'],
+    ['持仓数', r.portfolio_n_positions || 0],
+  ];
+  rows.forEach(([label, value]) => {
+    const row = document.createElement('div');
+    row.className = 'detail-row';
+    const lbl = document.createElement('span');
+    lbl.className = 'label';
+    lbl.textContent = label;
+    const val = document.createElement('span');
+    val.className = 'value';
+    val.textContent = value;
+    row.appendChild(lbl);
+    row.appendChild(val);
+    container.appendChild(row);
+  });
+  detailPanel.appendChild(container);
 };
 
 document.addEventListener('DOMContentLoaded', () => {

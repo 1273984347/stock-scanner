@@ -28,12 +28,20 @@ class StateManager {
 
   // 批量更新（用于 WebSocket 全量数据）
   updateAll(data) {
+    const changedPaths = [];
     for (const [key, value] of Object.entries(data)) {
-      this._updateSingle(key, value);
+      const oldValue = this.get(key);
+      if (!this._deepEqual(oldValue, value)) {
+        this._updateSingle(key, value);
+        changedPaths.push(key);
+      }
     }
-    // 通知所有监听者
-    this._listeners.forEach((callbacks, path) => {
-      callbacks.forEach(cb => cb(this.get(path)));
+    // 只通知有变化的path对应的监听器
+    changedPaths.forEach(path => {
+      const callbacks = this._listeners.get(path);
+      if (callbacks) {
+        callbacks.forEach(cb => cb(this.get(path)));
+      }
     });
   }
 

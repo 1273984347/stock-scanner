@@ -2,9 +2,15 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+import logging.config
 import numpy as np
 import pandas as pd
 import pytest
+from unittest.mock import Mock, patch, MagicMock
+
+
+# 加载日志配置
+logging.config.fileConfig(os.path.join(os.path.dirname(__file__), "logging.conf"), disable_existing_loggers=False)
 
 
 @pytest.fixture
@@ -69,3 +75,76 @@ def sample_realtime_row():
         "成交额": 5e8,
         "涨跌幅": 1.5,
     })
+
+
+# ============================================================================
+# Mock Fixtures - 离线测试支持
+# ============================================================================
+
+@pytest.fixture
+def mock_akshare_stock_info(monkeypatch):
+    """Mock akshare stock_individual_info_em"""
+    mock_df = pd.DataFrame({
+        'item': ['市盈率-动态', '市净率', '总市值'],
+        'value': ['15.5', '1.8', '500亿']
+    })
+    def fake_stock_info(symbol):
+        return mock_df
+    monkeypatch.setattr("akshare.stock_individual_info_em", fake_stock_info)
+
+
+@pytest.fixture
+def mock_akshare_hist(monkeypatch):
+    """Mock akshare stock_zh_a_hist"""
+    def fake_hist(symbol, period="daily", start="2026-01-01", end="2026-01-10", adjust="qfq"):
+        dates = pd.date_range(start, end, freq='D')[:10]
+        return pd.DataFrame({
+            '日期': dates,
+            '开盘': np.random.uniform(10, 20, 10),
+            '收盘': np.random.uniform(10, 20, 10),
+            '最高': np.random.uniform(15, 25, 10),
+            '最低': np.random.uniform(5, 15, 10),
+            '成交量': np.random.uniform(1e6, 1e7, 10),
+            '涨跌幅': np.random.uniform(-5, 5, 10),
+        })
+    monkeypatch.setattr("akshare.stock_zh_a_hist", fake_hist)
+
+
+@pytest.fixture
+def mock_baostock(monkeypatch):
+    """Mock baostock 所有接口"""
+    class MockBs:
+        error_code = "0"
+        def login(self): return self
+        def logout(self): pass
+        def query_growth_data(self, *args, **kwargs):
+            class MockRs:
+                error_code = "0"
+                def next(self): return False
+                def get_row_data(self): return ["2024", "1", "1", "1", "0.15", "0.10"]
+            return MockRs()
+        def query_balance_data(self, *args, **kwargs):
+            class MockRs:
+                error_code = "0"
+                def next(self): return False
+                def get_row_data(self): return ["2024", "1", "1", "1", "1", "100000"]
+            return MockRs()
+        def query_profit_data(self, *args, **kwargs):
+            class MockRs:
+                error_code = "0"
+                def next(self): return False
+                def get_row_data(self): return ["2024", "1", "1", "1", "1", "0.15"]
+            return MockRs()
+        def query_operation_data(self, *args, **kwargs):
+            class MockRs:
+                error_code = "0"
+                def next(self): return False
+                def get_row_data(self): return ["2024", "1", "1", "1", "1", "0.10"]
+            return MockRs()
+        def query_cash_flow_data(self, *args, **kwargs):
+            class MockRs:
+                error_code = "0"
+                def next(self): return False
+                def get_row_data(self): return ["2024", "1", "1", "1", "1", "50000"]
+            return MockRs()
+    monkeypatch.setattr("baostock", MockBs())

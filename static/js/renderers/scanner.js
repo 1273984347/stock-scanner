@@ -17,13 +17,16 @@ class ScannerRenderer {
   mount() {
     this._unsubscribers.push(
       stateManager.subscribe('scan.results', (results) => {
-        if (!results) return;
+        if (!results || typeof results !== 'object') return;
         this._renderStrategyTabs(results);
         const first = Object.keys(results)[0];
         if (first && first !== this._currentStrategy) {
           this._currentStrategy = first;
-          this._renderTable(results[first], first);
-          this._renderCharts(results[first], first);
+          const items = results[first];
+          if (Array.isArray(items) && items.length > 0) {
+            this._renderTable(items, first);
+            this._renderCharts(items, first);
+          }
         }
       })
     );
@@ -33,6 +36,7 @@ class ScannerRenderer {
     const container = document.getElementById('strategyTabs');
     container.innerHTML = '';
     Object.entries(results).forEach(([name, items]) => {
+      if (!Array.isArray(items)) return;
       const tab = document.createElement('div');
       tab.className = 'strategy-tab' + (name === this._currentStrategy ? ' active' : '');
       tab.textContent = `${name} (${items.length}${name === '热门板块' ? '板块' : '只'})`;
@@ -54,10 +58,11 @@ class ScannerRenderer {
     const body = document.getElementById('resultBody');
     head.innerHTML = '';
     body.innerHTML = '';
-    if (!data?.length) {
+    if (!Array.isArray(data) || !data.length) {
       body.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text-dim)">无候选股</td></tr>';
       return;
     }
+    if (!data[0]) return;
     const cols = Object.keys(data[0]);
     const headRow = document.createElement('tr');
     cols.forEach(c => {

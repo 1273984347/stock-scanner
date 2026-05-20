@@ -16,10 +16,28 @@ TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/intern
 MESSAGE_URL = "https://open.feishu.cn/open-apis/im/v1/messages"
 
 
+def _check_required_env(key: str, name: str):
+    """检查必需的环境变量是否配置"""
+    val = key
+    if not val:
+        logger.warning(f"{name}未配置，部分功能不可用")
+        return None
+    return val
+
+
+# 飞书配置检查
+_feishu_app_id = _check_required_env(FEISHU_APP_ID, "FEISHU_APP_ID")
+_feishu_app_secret = _check_required_env(FEISHU_APP_SECRET, "FEISHU_APP_SECRET")
+_feishu_configured = _feishu_app_id and _feishu_app_secret
+
+
 def get_tenant_token() -> str:
+    if not _feishu_configured:
+        logger.error("飞书配置不完整，跳过获取token")
+        return ""
     resp = requests.post(TOKEN_URL, json={
-        "app_id": FEISHU_APP_ID,
-        "app_secret": FEISHU_APP_SECRET
+        "app_id": _feishu_app_id,
+        "app_secret": _feishu_app_secret
     }, timeout=10)
     data = resp.json()
     if data.get("code") == 0:
@@ -54,6 +72,14 @@ def build_message_content(results: dict, preset: str = "balanced") -> str:
     sentiment = get_market_sentiment()
     macro_gate = evaluate_macro_gate(sentiment)
 
+    # 统计各策略候选股数量（不暴露具体持仓明细）
+    strategy_counts = {}
+    total = 0
+    for name, df in results.items():
+        if not df.empty:
+            strategy_counts[name] = len(df)
+            total += len(df)
+
     parts = [
         f"盘后选股信号 ({now})",
         f"策略: {preset}",
@@ -66,20 +92,18 @@ def build_message_content(results: dict, preset: str = "balanced") -> str:
         f"  说明: {macro_gate.reasoning}",
         "",
         "=" * 30,
+        "",
+        "【候选股统计】",
     ]
 
-    total = 0
-    for name, df in results.items():
-        table = format_stock_table(df, name)
-        if table:
-            parts.append(table)
-            parts.append("")
-            total += len(df)
+    # 只显示策略和数量，不暴露具体股票明细
+    for name, count in strategy_counts.items():
+        parts.append(f"  {name}: {count} 只")
 
     if total == 0:
-        parts.append("今日无符合条件的候选股")
+        parts.append("  今日无符合条件的候选股")
     else:
-        parts.append(f"共 {total} 只候选股")
+        parts.append(f"  共 {total} 只候选股")
 
     parts.append("")
     parts.append("=" * 30)

@@ -10,10 +10,52 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 import logging
+import threading
 
 import akshare as ak
 
+from lib import config
+from collections import OrderedDict
+
 logger = logging.getLogger(__name__)
+
+
+class LRUCache:
+    """线程安全的 LRU 缓存，支持标准字典访问语法"""
+
+    def __init__(self, maxsize: int = 128):
+        self.maxsize = maxsize
+        self.cache = OrderedDict()
+        self._lock = threading.Lock()
+
+    def __contains__(self, key) -> bool:
+        with self._lock:
+            return key in self.cache
+
+    def __getitem__(self, key):
+        with self._lock:
+            if key not in self.cache:
+                raise KeyError(key)
+            self.cache.move_to_end(key)
+            return self.cache[key]
+
+    def __setitem__(self, key, value):
+        with self._lock:
+            if key in self.cache:
+                self.cache.move_to_end(key)
+            self.cache[key] = value
+            if len(self.cache) > self.maxsize:
+                self.cache.popitem(last=False)
+
+    def get(self, key, default=None):
+        with self._lock:
+            if key in self.cache:
+                self.cache.move_to_end(key)
+                return self.cache[key]
+            return default
+
+    def set(self, key, value):
+        self[key] = value
 
 
 @dataclass
@@ -61,10 +103,10 @@ def get_impact_config_by_market_cap(market_cap: float) -> ImpactConfig:
         # 未知市值使用中档参数
         return ImpactConfig(model="square_root", eta=0.15, lambda_=7.0,
                           volume_window=20, max_impact_bps=50.0)
-    elif market_cap > 5e10:  # 大盘股 > 500亿
+    elif market_cap > config.MARKET_CAP_LARGE:  # 大盘股 > 500亿
         return ImpactConfig(model="square_root", eta=0.07, lambda_=4.0,
                           volume_window=20, max_impact_bps=30.0)
-    elif market_cap > 1e10:  # 中盘股 100-500亿
+    elif market_cap > config.MARKET_CAP_MEDIUM:  # 中盘股 100-500亿
         return ImpactConfig(model="square_root", eta=0.12, lambda_=6.0,
                           volume_window=20, max_impact_bps=40.0)
     else:  # 小盘股 < 100亿
@@ -187,10 +229,10 @@ class ABroker:
     """A 股模拟券商"""
 
     def __init__(self, initial_cash: float = 1_000_000,
-                 commission_rate: float = 0.00025,
-                 stamp_tax_rate: float = 0.0005,  # 0.05%（2023-08-28 调整后）
-                 min_commission: float = 5.0,
-                 slippage: float = 0.001,
+                 commission_rate: float = config.COMMISSION_RATE,
+                 stamp_tax_rate: float = config.STAMP_DUTY_RATE,
+                 min_commission: float = config.MIN_COMMISSION,
+                 slippage: float = config.SLIPPAGE_RATE,
                  lot_size: int = 100,
                  impact_config: ImpactConfig = None):
         self.initial_cash = initial_cash
@@ -211,9 +253,10 @@ class ABroker:
         self._delisted_codes: set = set()
         self._trade_dates: list = []
         self._trade_date_index: Dict[str, int] = {}
-        self._volume_cache: Dict[str, float] = {}
+        self._volume_cache = LRUCache(maxsize=1000)
         self._stock_names: Dict[str, str] = {}  # 回测场景下的股票名称映射
-        self._market_cap_cache: Dict[str, float] = {}  # 市值缓存
+        self._market_cap_cache = LRUCache(maxsize=1000)  # 市值缓存
+        self._broker_cache_lock = threading.Lock()  # 保护 _compute_daily_volume 等方法的缓存访问
 
     @property
     def total_market_value(self) -> float:
@@ -248,13 +291,15 @@ class ABroker:
                     continue
             self._missing_days[code] = self._missing_days.get(code, 0) + 1
             if self._missing_days[code] >= 60:
-                if code not in self._delisted_codes:
-                    self._delisted_codes.add(code)
-                    logger.warning(f"{date} {code} 连续 {self._missing_days[code]} 天无行情，疑似退市")
+                with self._broker_cache_lock:
+                    if code not in self._delisted_codes:
+                        self._delisted_codes.add(code)
+                        logger.warning(f"{date} {code} 连续 {self._missing_days[code]} 天无行情，疑似退市")
 
     def get_delisted_codes(self) -> set:
         """获取疑似退市的股票代码"""
-        return self._delisted_codes
+        with self._broker_cache_lock:
+            return self._delisted_codes.copy()
 
     def can_trade(self, code: str, market_data: Dict[str, pd.DataFrame],
                   date: str) -> Tuple[bool, str]:
@@ -311,19 +356,26 @@ class ABroker:
         Returns:
             流通市值（元），未知返回 -1
         """
-        if code in self._market_cap_cache:
-            return self._market_cap_cache[code]
+        with self._broker_cache_lock:
+            if code in self._market_cap_cache:
+                return self._market_cap_cache[code]
         df = market_data.get(code)
         if df is None or df.empty:
+            # 缓存失败结果，避免重复查询
+            with self._broker_cache_lock:
+                self._market_cap_cache[code] = -1
             return -1
         target = pd.Timestamp(date)
         hist = df[df["trade_date"] <= target]
         if hist.empty:
+            with self._broker_cache_lock:
+                self._market_cap_cache[code] = -1
             return -1
         latest = hist.iloc[-1]
         close = latest.get("close", 0)
         volume = latest.get("volume", 0)
         # 流通市值 = 收盘价 × 流通股本
+        market_cap_result = -1
         if close > 0:
             # 优先使用 akshare 获取实际流通股本
             try:
@@ -335,22 +387,21 @@ class ABroker:
                         cap_str = cap_row.iloc[0]["value"]
                         # 处理格式：e.g., "4.56亿股" 或 "456000000"
                         if "亿" in cap_str:
-                            market_cap = float(cap_str.replace("亿股", "")) * 1e8 * close
+                            market_cap_result = float(cap_str.replace("亿股", "")) * 1e8 * close
                         elif "万" in cap_str:
-                            market_cap = float(cap_str.replace("万股", "")) * 1e4 * close
+                            market_cap_result = float(cap_str.replace("万股", "")) * 1e4 * close
                         else:
-                            market_cap = float(cap_str) * close
-                        self._market_cap_cache[code] = market_cap
-                        return market_cap
-            except Exception:
-                pass
+                            market_cap_result = float(cap_str) * close
+            except Exception as e:
+                logger.warning(f"[broker] 流通市值获取失败: {e}")
 
             # 降级方案：使用成交量估算（误差大，但不至于完全失效）
-            if volume > 0:
-                market_cap = close * volume * 100  # 假设 1 手=100股
-                self._market_cap_cache[code] = market_cap
-                return market_cap
-        return -1
+            if market_cap_result < 0 and volume > 0:
+                market_cap_result = close * volume * 100  # 假设 1 手=100股
+        # 缓存所有结果（包括失败结果-1），避免重复查询
+        with self._broker_cache_lock:
+            self._market_cap_cache[code] = market_cap_result
+        return market_cap_result
 
     def _get_dynamic_impact_model(self, code: str, market_data: Dict[str, pd.DataFrame],
                                   date: str) -> MarketImpactModel:
@@ -500,8 +551,9 @@ class ABroker:
             日均成交量（股）
         """
         cache_key = f"{code}_{date}"
-        if cache_key in self._volume_cache:
-            return self._volume_cache[cache_key]
+        with self._broker_cache_lock:
+            if cache_key in self._volume_cache:
+                return self._volume_cache[cache_key]
 
         df = market_data.get(code)
         if df is None or df.empty:
@@ -519,7 +571,8 @@ class ABroker:
         else:
             adv = 0.0
 
-        self._volume_cache[cache_key] = adv
+        with self._broker_cache_lock:
+            self._volume_cache[cache_key] = adv
         return adv
 
     def _compute_volatility(self, code: str, market_data: Dict[str, pd.DataFrame],
@@ -890,7 +943,10 @@ class PaperBroker(LiveBrokerABC):
         if not self._market_data:
             logger.warning("无市场数据，使用实时行情")
             from lib.data_layer import get_stock_hist_multi_source
-            df = get_stock_hist_multi_source(order.code, days=5, source="auto")
+            try:
+                df = get_stock_hist_multi_source(order.code, days=5, source="auto")
+            except Exception:
+                df = pd.DataFrame()
             if not df.empty:
                 df = df.rename(columns={"date": "trade_date"})
                 self._market_data[order.code] = df

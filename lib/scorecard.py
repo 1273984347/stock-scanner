@@ -12,6 +12,9 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 import logging
+import threading
+
+from lib import config
 logger = logging.getLogger(__name__)
 
 
@@ -225,7 +228,8 @@ class MarketFilter:
 class ScoreCard:
     """四层打分卡"""
 
-    WEIGHTS = [0.25, 0.25, 0.20, 0.30]  # L1/L2/L3/L4
+    WEIGHTS = [config.LAYER_WEIGHTS["L1"], config.LAYER_WEIGHTS["L2"],
+               config.LAYER_WEIGHTS["L3"], config.LAYER_WEIGHTS["L4"]]  # L1/L2/L3/L4
 
     @classmethod
     def score(cls, code: str, row: pd.Series, hist: pd.DataFrame = None,
@@ -293,6 +297,7 @@ class ScoreCard:
 
 _industry_cache = None
 _industry_cache_time = None
+_industry_cache_lock = threading.Lock()
 INDUSTRY_CACHE_TTL = 3600 * 24  # 24小时 TTL
 
 def _get_industry(code: str) -> str:
@@ -300,17 +305,18 @@ def _get_industry(code: str) -> str:
     global _industry_cache, _industry_cache_time
     import time
     now = time.time()
-    if _industry_cache is None or (_industry_cache_time is not None and now - _industry_cache_time > INDUSTRY_CACHE_TTL):
-        import baostock as bs
-        lg = bs.login()
-        rs = bs.query_stock_industry()
-        data = []
-        while (rs.error_code == "0") and rs.next():
-            data.append(rs.get_row_data())
-        bs.logout()
-        _industry_cache = {row[1]: row[3] for row in data}  # code -> industry
-        _industry_cache_time = now
-        logger.debug(f"行业缓存已刷新，条目数: {len(_industry_cache)}")
+    with _industry_cache_lock:
+        if _industry_cache is None or (_industry_cache_time is not None and now - _industry_cache_time > INDUSTRY_CACHE_TTL):
+            import baostock as bs
+            lg = bs.login()
+            rs = bs.query_stock_industry()
+            data = []
+            while (rs.error_code == "0") and rs.next():
+                data.append(rs.get_row_data())
+            bs.logout()
+            _industry_cache = {row[1]: row[3] for row in data}  # code -> industry
+            _industry_cache_time = now
+            logger.debug(f"行业缓存已刷新，条目数: {len(_industry_cache)}")
     # 转换代码格式
     if code.startswith("sh") or code.startswith("sz"):
         pass
@@ -320,7 +326,8 @@ def _get_industry(code: str) -> str:
         code = f"sz.{code}"
     else:
         code = f"sz.{code}"
-    return _industry_cache.get(code, "")
+    with _industry_cache_lock:
+        return _industry_cache.get(code, "")
 
 
 def _get_industry_stocks(industry: str) -> list:

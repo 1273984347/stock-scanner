@@ -102,6 +102,7 @@ class WebSocketManager {
 
   // 心跳
   _startHeartbeat() {
+    this._stopHeartbeat(); // 先停止旧的
     this._heartbeatInterval = setInterval(() => {
       if (this.status === 'connected') {
         this.send({ type: 'pong' });
