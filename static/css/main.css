@@ -1,0 +1,286 @@
+/* ============================================
+   CSS 变量系统 — 简洁现代风格
+   ============================================ */
+:root {
+  /* 背景与卡片 */
+  --bg: #0D1117;
+  --card: #161B22;
+  --card-hover: #1C2128;
+
+  /* 边框 */
+  --border: #21262D;
+
+  /* 文字 */
+  --text: #E6EDF3;
+  --text-sub: #7D8590;
+  --text-dim: #484F58;
+
+  /* 强调色 */
+  --accent: #58A6FF;
+  --accent-hover: #79B8FF;
+
+  /* 语义色 */
+  --up: #3FB950;
+  --down: #F85149;
+  --warn: #D29922;
+
+  /* 布局 */
+  --radius: 8px;
+  --gap: 12px;
+  --card-pad: 14px;
+}
+
+/* Reset */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+  line-height: 1.5;
+}
+
+.container { max-width: 1600px; margin: 0 auto; padding: 12px 16px; }
+
+/* 顶栏 */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.topbar h1 { font-size: 18px; font-weight: 700; flex: 1; color: var(--text); }
+.topbar .version { font-size: 11px; color: var(--text-dim); }
+
+.topbar select, .topbar button {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.topbar select:hover, .topbar button:hover { border-color: var(--text-dim); }
+.topbar button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.topbar button.primary:hover { background: var(--accent-hover); }
+.topbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 指标卡片行 */
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+.metric-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--card-pad);
+}
+.metric-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.metric-value { font-size: 22px; font-weight: 700; color: var(--text); }
+.metric-sub { font-size: 11px; color: var(--text-sub); margin-top: 3px; }
+
+/* Tab 导航 */
+.nav-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: var(--gap);
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 3px;
+  border: 1px solid var(--border);
+}
+.nav-tab {
+  flex: 1;
+  text-align: center;
+  padding: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  color: var(--text-sub);
+  transition: all 0.15s;
+}
+.nav-tab.active { background: var(--accent); color: #fff; }
+.nav-tab:hover:not(.active) { color: var(--text); background: var(--card-hover); }
+
+/* 内容面板 */
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* 组合网格 */
+.portfolio-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+.portfolio-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--card-pad);
+}
+.portfolio-card canvas { max-height: 280px; }
+
+/* 策略 Tab */
+.strategy-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.strategy-tab {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-sub);
+  transition: all 0.15s;
+}
+.strategy-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.strategy-tab:hover:not(.active) { border-color: var(--text-sub); color: var(--text); }
+
+/* 表格 */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th {
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  font-size: 11px;
+}
+th:hover { color: var(--text-sub); }
+td { padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+tr:hover { background: rgba(88, 166, 255, 0.04); }
+
+/* 语义标签 */
+.tag { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+.tag-up { background: rgba(63, 185, 80, 0.12); color: var(--up); }
+.tag-down { background: rgba(248, 81, 73, 0.12); color: var(--down); }
+.tag-warn { background: rgba(210, 153, 34, 0.12); color: var(--warn); }
+
+/* 风控网格 */
+.risk-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap); margin-bottom: var(--gap); }
+.risk-alert { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--card-pad); }
+.risk-alert-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+.risk-alert-body { font-size: 12px; color: var(--text-sub); line-height: 1.6; }
+
+/* 压力测试 */
+.stress-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.stress-card { background: var(--card-hover); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+.stress-card h4 { font-size: 13px; color: var(--warn); margin-bottom: 6px; }
+.stress-card p { font-size: 12px; color: var(--text-sub); line-height: 1.5; margin-bottom: 4px; }
+.stress-card .action { font-size: 11px; color: var(--accent); }
+
+/* 审计日志 */
+.audit-item {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.audit-item:hover { border-color: var(--accent); }
+.audit-item .time { color: var(--text-dim); min-width: 140px; }
+.audit-item .count { color: var(--accent); }
+
+/* Loading */
+.loading { text-align: center; padding: 40px; color: var(--text-sub); }
+.spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 弹窗 */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 100;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.modal h3 { font-size: 15px; margin-bottom: 12px; color: var(--text); }
+.modal-close { float: right; background: none; border: none; color: var(--text-sub); cursor: pointer; font-size: 18px; }
+.modal .detail-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.modal .detail-row .label { color: var(--text-dim); }
+.modal .detail-row .value { color: var(--text); font-weight: 500; }
+
+/* 输入框 */
+input[type="text"], input[type="number"] {
+  background: var(--card-hover);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: var(--text);
+  font-size: 13px;
+  width: 100%;
+}
+input:focus { outline: none; border-color: var(--accent); }
+
+/* 响应式 */
+@media (max-width: 1200px) {
+  .metrics { grid-template-columns: repeat(3, 1fr); }
+  .portfolio-grid { grid-template-columns: 1fr; }
+  .risk-grid { grid-template-columns: 1fr 1fr; }
+  .stress-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+  .metrics { grid-template-columns: repeat(2, 1fr); }
+  .risk-grid { grid-template-columns: 1fr; }
+}
+
+/* 工具类 */
+.text-up { color: var(--up); }
+.text-down { color: var(--down); }
+.text-warn { color: var(--warn); }
+.text-accent { color: var(--accent); }
+.text-sub { color: var(--text-sub); }
+
+/* WebSocket 状态指示器 */
+.ws-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+.ws-indicator.connected { background: var(--up); }
+.ws-indicator.connecting { background: var(--warn); animation: pulse 1s infinite; }
+.ws-indicator.error { background: var(--down); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
