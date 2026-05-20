@@ -15,7 +15,7 @@ class BacktestRenderer {
     const sl = document.getElementById('btSL').value;
     const tp = document.getElementById('btTP').value;
     try {
-      const res = await fetch(`/api/backtest?symbols=${encodeURIComponent(symbols)}&days=${days}&stop_loss_atr=${sl}&take_profit_atr=${tp}`, { signal: AbortSignal.timeout(120000) }).then(r => r.json());
+      const res = await fetch(`/api/backtest?symbols=${encodeURIComponent(symbols)}&days=${days}&stop_loss_atr=${sl}&take_profit_atr=${tp}`, { method: 'POST', signal: AbortSignal.timeout(120000) }).then(r => r.json());
       if (res.error) { document.getElementById('btResult').innerHTML = `<span style="color:var(--down)">${res.error}</span>`; return; }
       const m = res.metrics || {};
       document.getElementById('btResult').innerHTML = `

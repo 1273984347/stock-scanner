@@ -158,11 +158,11 @@ def run_factor_backtest(
     """
     from config import get_config
 
-    # 获取数据
+    # 获取数据（len > 30 保证 ATR 等指标可计算）
     market_data: Dict[str, pd.DataFrame] = {}
     for sym in symbols:
         df = get_stock_data(sym, days=days)
-        if not df.empty and len(df) > 60:
+        if not df.empty and len(df) > 30:
             market_data[sym] = df
 
     if not market_data:
