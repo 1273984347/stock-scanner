@@ -265,6 +265,14 @@ input:focus { outline: none; border-color: var(--accent); }
   .metrics { grid-template-columns: repeat(2, 1fr); }
   .risk-grid { grid-template-columns: 1fr; }
 }
+@media (max-width: 480px) {
+  .metrics { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-value { font-size: 18px; }
+  .nav-tabs { flex-wrap: wrap; }
+  .nav-tab { font-size: 12px; padding: 6px; }
+  .topbar h1 { font-size: 14px; }
+  .topbar select, .topbar button { padding: 5px 10px; font-size: 12px; }
+}
 
 /* 工具类 */
 .text-up { color: var(--up); }
@@ -272,6 +280,23 @@ input:focus { outline: none; border-color: var(--accent); }
 .text-warn { color: var(--warn); }
 .text-accent { color: var(--accent); }
 .text-sub { color: var(--text-sub); }
+
+/* 全局加载状态 */
+body.loading-active { cursor: wait; }
+body.loading-active::after {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-hover) 50%, var(--accent) 100%);
+  background-size: 200% 100%;
+  animation: loading-bar 1.5s linear infinite;
+  z-index: 9999;
+}
+@keyframes loading-bar {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
 /* WebSocket 状态指示器 */
 .ws-indicator {
@@ -284,3 +309,14 @@ input:focus { outline: none; border-color: var(--accent); }
 .ws-indicator.connecting { background: var(--warn); animation: pulse 1s infinite; }
 .ws-indicator.error { background: var(--down); }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* 打印样式 */
+@media print {
+  body { background: #fff; color: #000; }
+  .topbar { border-bottom: 1px solid #ccc; }
+  .nav-tabs, .ws-indicator, .loading-active::after { display: none; }
+  .panel { display: block; }
+  .metric-card, .portfolio-card, .risk-alert { border: 1px solid #ccc; break-inside: avoid; }
+  table { font-size: 11px; }
+  th, td { border: 1px solid #ccc; }
+}

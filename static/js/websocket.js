@@ -106,8 +106,8 @@ class WebSocketManager {
     this._heartbeatInterval = setInterval(() => {
       if (this.status === 'connected') {
         this.send({ type: 'pong' });
-        // 超过 60s 无消息认为断连
-        if (Date.now() - this._lastMessageTime > 60000) {
+        // 超过 45s 无消息认为断连（心跳间隔1.5倍）
+        if (Date.now() - this._lastMessageTime > 45000) {
           console.warn('[WS] 心跳超时，强制重连');
           this._ws?.close();
         }

@@ -47,6 +47,8 @@ async function init() {
   document.getElementById('refreshBtn').addEventListener('click', async () => {
     const btn = document.getElementById('refreshBtn');
     btn.disabled = true; btn.textContent = '加载中...';
+    // 显示全局加载指示器
+    document.body.classList.add('loading-active');
     const preset = document.getElementById('presetSelect')?.value || 'balanced';
     try {
       const [dashRes, scanRes, riskRes, auditRes] = await apiClient.all([
@@ -61,6 +63,7 @@ async function init() {
       if (auditRes) stateManager.updateAll({ audit: auditRes });
     } finally {
       btn.disabled = false; btn.textContent = '刷新数据';
+      document.body.classList.remove('loading-active');
     }
   });
 
@@ -228,6 +231,14 @@ document.addEventListener('DOMContentLoaded', () => {
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) overlay.classList.remove('active');
     });
+  });
+  // ESC 键关闭弹窗
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay.active').forEach(modal => {
+        modal.classList.remove('active');
+      });
+    }
   });
   init();
 });

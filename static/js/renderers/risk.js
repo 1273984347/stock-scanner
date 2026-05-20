@@ -68,7 +68,14 @@ class RiskRenderer {
   _alertCard(title, body) {
     const div = document.createElement('div');
     div.className = 'risk-alert';
-    div.innerHTML = `<div class="risk-alert-title">${title}</div><div class="risk-alert-body">${body}</div>`;
+    const titleEl = document.createElement('div');
+    titleEl.className = 'risk-alert-title';
+    titleEl.textContent = title;
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'risk-alert-body';
+    bodyEl.innerHTML = body; // body 已经是纯文本或简单HTML，无用户输入
+    div.appendChild(titleEl);
+    div.appendChild(bodyEl);
     return div;
   }
 
@@ -78,7 +85,16 @@ class RiskRenderer {
     Object.entries(stress).forEach(([k, v]) => {
       const card = document.createElement('div');
       card.className = 'stress-card';
-      card.innerHTML = `<h4>${v.description}</h4><p>${v.impact}</p><p class="action">${v.action}</p>`;
+      const h4 = document.createElement('h4');
+      h4.textContent = v.description || k;
+      const p1 = document.createElement('p');
+      p1.textContent = v.impact || '';
+      const p2 = document.createElement('p');
+      p2.className = 'action';
+      p2.textContent = v.action || '';
+      card.appendChild(h4);
+      card.appendChild(p1);
+      card.appendChild(p2);
       stressEl.appendChild(card);
     });
   }

@@ -43,6 +43,7 @@ API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 async def verify_api_key(api_key: str = Security(API_KEY_HEADER)) -> str:
     """验证 API Key（生产环境必须设置 API_SECRET_KEY 环境变量）"""
     if api_key is None:
+        logger.warning("API Key 缺失，拒绝访问")
         raise HTTPException(status_code=401, detail="缺少API密钥")
     expected = os.getenv("API_SECRET_KEY", "")
     if not expected:
@@ -50,6 +51,7 @@ async def verify_api_key(api_key: str = Security(API_KEY_HEADER)) -> str:
         logger.warning("API_SECRET_KEY not set, allowing request (dev mode)")
         return api_key
     if api_key != expected:
+        logger.warning(f"无效的API密钥尝试: {api_key[:8]}...")
         raise HTTPException(status_code=401, detail="无效的API密钥")
     return api_key
 
@@ -74,6 +76,70 @@ async def add_security_headers(request: Request, call_next):
 
 # 缓存操作全局锁（保护 JSON 缓存文件的并发读写）
 _cache_lock = threading.Lock()
+
+# ========== 断路器（防止外部 API 故障导致雪崩）==========
+from dataclasses import dataclass, field
+from typing import Dict
+import time
+
+@dataclass
+class CircuitBreakerState:
+    failure_count: int = 0
+    last_failure_time: float = 0.0
+    is_open: bool = False
+
+class CircuitBreaker:
+    """简单断路器：连续失败 N 次后暂停调用外部 API"""
+
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: float = 60.0):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self._states: Dict[str, CircuitBreakerState] = {}
+
+    def _get_state(self, name: str) -> CircuitBreakerState:
+        if name not in self._states:
+            self._states[name] = CircuitBreakerState()
+        return self._states[name]
+
+    def record_success(self, name: str):
+        state = self._get_state(name)
+        state.failure_count = 0
+        state.is_open = False
+
+    def record_failure(self, name: str):
+        state = self._get_state(name)
+        state.failure_count += 1
+        state.last_failure_time = time.time()
+        if state.failure_count >= self.failure_threshold:
+            state.is_open = True
+            logger.warning(f"[断路器] {name} 已熔断（连续失败 {state.failure_count} 次）")
+
+    def can_call(self, name: str) -> bool:
+        state = self._get_state(name)
+        if not state.is_open:
+            return True
+        # 超时后进入半开状态，尝试一次
+        if time.time() - state.last_failure_time > self.recovery_timeout:
+            state.is_open = False
+            state.failure_count = 0
+            logger.info(f"[断路器] {name} 进入半开状态")
+            return True
+        return False
+
+    def call(self, name: str, func, *args, **kwargs):
+        """带断路器保护的调用"""
+        if not self.can_call(name):
+            raise Exception(f"[断路器] {name} 已熔断，拒绝调用")
+        try:
+            result = func(*args, **kwargs)
+            self.record_success(name)
+            return result
+        except Exception as e:
+            self.record_failure(name)
+            raise e
+
+# 全局断路器实例
+circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=60.0)
 
 
 def _prefetch_hs300():
@@ -111,17 +177,27 @@ if STATIC_DIR.exists():
 
 
 def _cache_get(key: str, max_age: int = 3600):
-    """读 JSON 缓存（线程安全，带权限保护）"""
+    """读 JSON 缓存（线程安全，带随机 TTL 防止缓存雪崩，支持 gzip 压缩）"""
+    import random, zlib
     path = CACHE_DIR / f"api_{key}.json"
+    # 添加 ±10% 随机偏移防止缓存雪崩
+    jitter = int(max_age * 0.1 * (random.random() * 2 - 1))
+    effective_max_age = max(max_age + jitter, 1)
     with _cache_lock:
         if not path.exists():
             return None
         age = (datetime.now().timestamp() - path.stat().st_mtime)
-        if age > max_age:
+        if age > effective_max_age:
             path.unlink(missing_ok=True)
             return None
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
+            data = path.read_bytes()
+            # 尝试 gzip 解压（向后兼容未压缩文件）
+            try:
+                data = zlib.decompress(data)
+            except Exception:
+                pass  # 未压缩的旧缓存文件
+            return json.loads(data.decode("utf-8"))
         except (json.JSONDecodeError, IOError, OSError) as e:
             logger.debug(f"缓存读取失败[{path.name}]: {e}")
             path.unlink(missing_ok=True)
@@ -129,20 +205,28 @@ def _cache_get(key: str, max_age: int = 3600):
 
 
 def _cache_set(key: str, data):
-    """写 JSON 缓存（线程安全，限制文件权限为当前用户独占）"""
+    """写 JSON 缓存（线程安全，gzip 压缩）"""
+    import zlib
     path = CACHE_DIR / f"api_{key}.json"
-    _cache_lock.acquire()
-    try:
-        path.write_text(json.dumps(data, ensure_ascii=False, default=str), encoding="utf-8")
+    with _cache_lock:
         try:
-            # Windows 限制文件访问：仅当前用户可读写
-            import os
-            os.chmod(path, 0o600)
-        except Exception:
-            # 非 Windows 或权限不足时跳过
-            pass
-    finally:
-        _cache_lock.release()
+            json_data = json.dumps(data, ensure_ascii=False, default=str)
+            # 压缩后存储（节省磁盘空间）
+            compressed = zlib.compress(json_data.encode("utf-8"), level=6)
+            # 只有压缩后更小才使用压缩
+            if len(compressed) < len(json_data.encode("utf-8")):
+                path.write_bytes(compressed)
+            else:
+                path.write_text(json_data, encoding="utf-8")
+            try:
+                # Windows 限制文件访问：仅当前用户可读写
+                import os
+                os.chmod(path, 0o600)
+            except Exception:
+                # 非 Windows 或权限不足时跳过
+                pass
+        except Exception as e:
+            logger.warning(f"缓存写入失败[{key}]: {e}")
 
 
 # ========== 统一入口 ==========
@@ -151,13 +235,15 @@ from scanner import ScanOrchestrator
 
 # 编排器缓存（按 preset 缓存，避免重复创建）
 _orchestrator_cache: dict = {}
+_orchestrator_lock = threading.Lock()
 
 
 def _get_orchestrator(preset: str = "balanced") -> ScanOrchestrator:
-    """获取指定 preset 的编排器（带缓存）"""
-    if preset not in _orchestrator_cache:
-        _orchestrator_cache[preset] = ScanOrchestrator(preset=preset)
-    return _orchestrator_cache[preset]
+    """获取指定 preset 的编排器（带缓存，线程安全）"""
+    with _orchestrator_lock:
+        if preset not in _orchestrator_cache:
+            _orchestrator_cache[preset] = ScanOrchestrator(preset=preset)
+        return _orchestrator_cache[preset]
 
 
 # ========== 核心端点 ==========
@@ -183,7 +269,7 @@ async def scan(preset: str = "balanced", _=Security(verify_api_key)):
 
     try:
         orchestrator = _get_orchestrator(preset)
-        scan_result = orchestrator.run_all_strategies()
+        scan_result = circuit_breaker.call("scan", orchestrator.run_all_strategies)
         results = scan_result.get("results", {})
         risk_check = scan_result.get("risk_check", {})
         portfolio = scan_result.get("portfolio", {})
@@ -259,7 +345,7 @@ async def stock_detail(code: str, _=Security(verify_api_key)):
 
 
 @app.get("/api/market")
-async def market_overview():
+async def market_overview(_=Security(verify_api_key)):
     """市场概况 + 风控评估"""
     cached = _cache_get("market", max_age=1800)
     if cached is not None:
@@ -354,7 +440,15 @@ async def risk_assessment(_=Security(verify_api_key)):
         # 构建风控需要的数据
         tickers = [d["code"] for d in details] if details else []
         positions = {d["code"]: {"weight": d.get("weight", 0)} for d in details} if details else {}
+        # 尝试从持仓管理器获取实际资金
         total_value = 1_000_000  # 默认100万
+        try:
+            from lib.position_manager import PositionManager
+            pm = PositionManager()
+            summary = pm.get_portfolio_summary({})
+            total_value = summary.get("total_value", 1_000_000)
+        except Exception:
+            pass
 
         # 获取市场数据（用于波动率/相关性/VaR计算）
         market_data = {}
@@ -436,12 +530,12 @@ async def factor_exposures(preset: str = Query("balanced", description="策略�
         scan_cache = _cache_get(f"scan_{preset}", max_age=7200)
         if scan_cache and scan_cache.get("portfolio", {}).get("details"):
             details = scan_cache["portfolio"]["details"]
-            # 计算加权平均因子暴露
+            # 计算加权平均因子暴露（限制数量避免超时）
             factor_exp = {}
-            for d in details:
+            details_to_process = details[:20]  # 最多处理20只
+            for d in details_to_process:
                 weight = d.get("weight", 0)
                 if weight > 0:
-                    # 从 /api/score/{code} 取因子数据
                     code = d["code"]
                     try:
                         score_data = orchestrator.get_stock_score(code)
@@ -531,7 +625,7 @@ async def dashboard(preset: str = Query("balanced", description="策略预设"))
         return result
     except Exception as e:
         logger.error(f"仪表盘数据失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="内部服务器错误")
 
 
 @app.get("/api/audit")
@@ -556,7 +650,7 @@ async def audit_detail(scan_id: int):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="内部服务器错误")
 
 
 @app.post("/api/backtest")
@@ -596,7 +690,7 @@ async def run_backtest(
         }
     except Exception as e:
         logger.error(f"回测失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="内部服务器错误")
 
 
 @app.post("/api/walkforward")
@@ -694,7 +788,7 @@ async def run_walkforward(
         }
     except Exception as e:
         logger.error(f"Walk-Forward 验证失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="内部服务器错误")
 
 def _run_stress_tests() -> dict:
     """压力测试：相关系数冲击 + 波动率冲击 + 行业暴跌"""
@@ -830,7 +924,7 @@ async def factor_evaluation(
         return result
     except Exception as e:
         logger.error(f"因子评估失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="内部服务器错误")
 
 
 
@@ -838,13 +932,20 @@ from fastapi import WebSocket, WebSocketDisconnect
 import asyncio
 
 # WebSocket 连接管理器
+MAX_WS_CONNECTIONS = 100  # 最大 WebSocket 连接数
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
 
     async def connect(self, websocket: WebSocket):
+        if len(self.active_connections) >= MAX_WS_CONNECTIONS:
+            await websocket.close(code=1013, reason="Too many connections")
+            logger.warning(f"WebSocket 连接数超限 ({MAX_WS_CONNECTIONS})，拒绝连接")
+            return False
         await websocket.accept()
         self.active_connections.append(websocket)
+        return True
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
@@ -859,7 +960,8 @@ async def websocket_endpoint(websocket: WebSocket):
     if not verify_ws_token(token):
         await websocket.close(code=4001)
         return
-    await manager.connect(websocket)
+    if not await manager.connect(websocket):
+        return  # 连接被拒绝
     try:
         # 连接建立时立即推送一次全量数据
         await websocket.send_json({

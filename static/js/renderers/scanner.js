@@ -34,54 +34,65 @@ class ScannerRenderer {
 
   _renderStrategyTabs(results) {
     const container = document.getElementById('strategyTabs');
-    container.innerHTML = '';
-    Object.entries(results).forEach(([name, items]) => {
-      if (!Array.isArray(items)) return;
-      const tab = document.createElement('div');
-      tab.className = 'strategy-tab' + (name === this._currentStrategy ? ' active' : '');
-      tab.textContent = `${name} (${items.length}${name === '热门板块' ? '板块' : '只'})`;
-      tab.addEventListener('click', () => {
-        this._currentStrategy = name;
-        document.querySelectorAll('.strategy-tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        this._sortCol = '';
-        this._sortDir = 1;
-        this._renderTable(items, name);
-        this._renderCharts(items, name);
+    if (!container) return;
+    try {
+      container.innerHTML = '';
+      Object.entries(results).forEach(([name, items]) => {
+        if (!Array.isArray(items)) return;
+        const tab = document.createElement('div');
+        tab.className = 'strategy-tab' + (name === this._currentStrategy ? ' active' : '');
+        tab.textContent = `${name} (${items.length}${name === '热门板块' ? '板块' : '只'})`;
+        tab.addEventListener('click', () => {
+          this._currentStrategy = name;
+          document.querySelectorAll('.strategy-tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          this._sortCol = '';
+          this._sortDir = 1;
+          this._renderTable(items, name);
+          this._renderCharts(items, name);
+        });
+        container.appendChild(tab);
       });
-      container.appendChild(tab);
-    });
+    } catch (e) {
+      console.error('[Scanner] 渲染策略标签失败:', e);
+    }
   }
 
   _renderTable(data, strategyName) {
     const head = document.getElementById('resultHead');
     const body = document.getElementById('resultBody');
-    head.innerHTML = '';
-    body.innerHTML = '';
-    if (!Array.isArray(data) || !data.length) {
-      body.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text-dim)">无候选股</td></tr>';
-      return;
-    }
-    if (!data[0]) return;
-    const cols = Object.keys(data[0]);
-    const headRow = document.createElement('tr');
-    cols.forEach(c => {
-      const th = document.createElement('th');
-      th.textContent = c;
-      th.addEventListener('click', () => this._sortTable(c, data, strategyName));
-      headRow.appendChild(th);
-    });
-    head.appendChild(headRow);
-    data.forEach(row => {
-      const tr = document.createElement('tr');
+    if (!head || !body) return;
+    try {
+      head.innerHTML = '';
+      body.innerHTML = '';
+      if (!Array.isArray(data) || !data.length) {
+        body.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text-dim)">无候选股</td></tr>';
+        return;
+      }
+      if (!data[0]) return;
+      const cols = Object.keys(data[0]);
+      const headRow = document.createElement('tr');
       cols.forEach(c => {
-        const td = document.createElement('td');
-        const val = row[c];
-        td.textContent = val == null ? '--' : typeof val === 'number' ? (Number.isInteger(val) ? String(val) : val.toFixed(2)) : String(val);
-        tr.appendChild(td);
+        const th = document.createElement('th');
+        th.textContent = c;
+        th.addEventListener('click', () => this._sortTable(c, data, strategyName));
+        headRow.appendChild(th);
       });
-      body.appendChild(tr);
-    });
+      head.appendChild(headRow);
+      data.forEach(row => {
+        const tr = document.createElement('tr');
+        cols.forEach(c => {
+          const td = document.createElement('td');
+          const val = row[c];
+          td.textContent = val == null ? '--' : typeof val === 'number' ? (Number.isInteger(val) ? String(val) : val.toFixed(2)) : String(val);
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      });
+    } catch (e) {
+      console.error('[Scanner] 渲染表格失败:', e);
+      body.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--down)">渲染失败</td></tr>';
+    }
   }
 
   _sortTable(col, data, strategyName) {

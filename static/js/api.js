@@ -47,9 +47,14 @@ class APIClient {
     });
   }
 
-  // 并行请求
+  // 并行请求（支持 POST，需要传入 {method, body} 格式）
   async all(requests) {
-    return Promise.all(requests.map(([endpoint, params]) => this.get(endpoint, params)));
+    return Promise.all(requests.map(([endpoint, opts]) => {
+      if (opts && (opts.method === 'POST' || opts.body)) {
+        return this.post(endpoint, opts.body || {});
+      }
+      return this.get(endpoint, opts || {});
+    }));
   }
 
   // 取消所有请求
