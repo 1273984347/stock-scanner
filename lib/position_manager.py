@@ -318,11 +318,13 @@ class PositionManager:
                 if "最新价" in str(col) or "收盘" in str(col):
                     price_col = col
             if code_col and price_col:
-                for _, row in quotes.iterrows():
-                    code = str(row.get(code_col, "")).zfill(6)
-                    price = row.get(price_col)
-                    if price is not None and isinstance(price, (int, float)):
-                        current_prices[code] = float(price)
+                # 向量化处理，避免 iterrows
+                if not quotes.empty:
+                    codes = quotes[code_col].astype(str).str.zfill(6).tolist()
+                    prices = quotes[price_col].tolist()
+                    for code, price in zip(codes, prices):
+                        if price is not None and isinstance(price, (int, float)):
+                            current_prices[code] = float(price)
 
         # 检查告警
         alerts = self.check_stop_loss(current_prices)
