@@ -151,8 +151,9 @@ def _get_financial_data(code: str) -> Optional[pd.Series]:
             _financial_cache[code] = (None, now)
             return None
         info = {}
-        for _, row in info_df.iterrows():
-            info[row["item"]] = row["value"]
+        if not info_df.empty and "item" in info_df.columns and "value" in info_df.columns:
+            # 向量化处理，避免 iterrows
+            info = dict(zip(info_df["item"].astype(str), info_df["value"]))
         data = pd.Series({
             "pe": _to_float(info.get("市盈率-动态")),
             "pb": _to_float(info.get("市净率")),
@@ -312,15 +313,17 @@ def _batch_fund_flow(codes: list) -> dict:
                 net_col: "sum",
                 amount_col: "sum"
             })
+            # 向量化处理，避免 iterrows
             flow_map = {}
-        for _, row in grouped.iterrows():
-                c = str(row[code_col])
-                net_val = row[net_col]
-                total_amount = row[amount_col]
-                flow_map[c] = {
-                    "main_net_ratio": net_val / total_amount if total_amount > 0 else 0,
-                    "net_inflow_5d": net_val,
-                }
+            if not grouped.empty and code_col in grouped.columns:
+                codes = grouped[code_col].astype(str).tolist()
+                net_vals = grouped[net_col].tolist()
+                amounts = grouped[amount_col].tolist()
+                for c, net_val, total_amount in zip(codes, net_vals, amounts):
+                    flow_map[c] = {
+                        "main_net_ratio": net_val / total_amount if total_amount > 0 else 0,
+                        "net_inflow_5d": net_val,
+                    }
         for code in codes:
             if code in flow_map:
                 result[code] = flow_map[code]
