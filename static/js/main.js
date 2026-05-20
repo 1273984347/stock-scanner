@@ -61,6 +61,9 @@ async function init() {
       if (scanRes) stateManager.updateAll({ scan: scanRes });
       if (riskRes) stateManager.updateAll({ risk: riskRes });
       if (auditRes) stateManager.updateAll({ audit: auditRes });
+    } catch (e) {
+      console.error('[刷新] 加载失败:', e);
+      alert('数据加载失败，请稍后重试');
     } finally {
       btn.disabled = false; btn.textContent = '刷新数据';
       document.body.classList.remove('loading-active');
@@ -98,12 +101,22 @@ window.openStockDetail = async function(code, name) {
   ['stockScorePanel','stockFactorsPanel','stockJudgesPanel'].forEach(id => {
     document.getElementById(id).innerHTML = '<div class="loading"><span class="spinner"></span>加载中...</div>';
   });
-  const [scoreRes, stockRes] = await Promise.all([
-    apiClient.get('/api/score/' + code),
-    apiClient.get('/api/stock/' + code),
-  ]);
-  if (scoreRes) renderStockScore(scoreRes);
-  if (stockRes) renderStockFactors(stockRes);
+  try {
+    const [scoreRes, stockRes] = await Promise.all([
+      apiClient.get('/api/score/' + code),
+      apiClient.get('/api/stock/' + code),
+    ]);
+    if (scoreRes) renderStockScore(scoreRes);
+    else renderStockScore({});
+    if (stockRes) renderStockFactors(stockRes);
+    else renderStockFactors({});
+  } catch (e) {
+    console.error('[StockDetail] 加载失败:', e);
+    ['stockScorePanel','stockFactorsPanel'].forEach(id => {
+      const p = document.getElementById(id);
+      p.innerHTML = '<div style="padding:20px;color:var(--text-dim)">加载失败，请稍后重试</div>';
+    });
+  }
 };
 
 // 安全文本插入（防止 XSS）
@@ -183,42 +196,50 @@ window.openAuditDetail = async function(id) {
   detailPanel.innerHTML = '';
   const loading = document.createElement('div');
   loading.className = 'loading';
-  loading.innerHTML = '<span class="spinner"></span>加载中...';
+  loading.textContent = '加载中...';
   detailPanel.appendChild(loading);
-  const r = await apiClient.get('/api/audit/' + id);
-  if (!r || r.error) {
+  try {
+    const r = await apiClient.get('/api/audit/' + id);
+    detailPanel.innerHTML = '';
+    if (!r || r.error) {
+      const errDiv = document.createElement('div');
+      errDiv.style.cssText = 'padding:20px;color:var(--text-dim)';
+      errDiv.textContent = r?.error || '请求失败';
+      detailPanel.appendChild(errDiv);
+      return;
+    }
+    const container = document.createElement('div');
+    container.style.cssText = 'font-size:13px;line-height:1.8;color:var(--text-sub)';
+    const rows = [
+      ['扫描时间', r.scan_time || '--'],
+      ['策略预设', r.preset || '--'],
+      ['候选股数', r.total_candidates || 0],
+      ['风控建议', r.risk_recommendation || '--'],
+      ['组合夏普', r.portfolio_sharpe != null ? r.portfolio_sharpe.toFixed(2) : '--'],
+      ['持仓数', r.portfolio_n_positions || 0],
+    ];
+    rows.forEach(([label, value]) => {
+      const row = document.createElement('div');
+      row.className = 'detail-row';
+      const lbl = document.createElement('span');
+      lbl.className = 'label';
+      lbl.textContent = label;
+      const val = document.createElement('span');
+      val.className = 'value';
+      val.textContent = value;
+      row.appendChild(lbl);
+      row.appendChild(val);
+      container.appendChild(row);
+    });
+    detailPanel.appendChild(container);
+  } catch (e) {
+    console.error('[AuditDetail] 加载失败:', e);
     detailPanel.innerHTML = '';
     const errDiv = document.createElement('div');
     errDiv.style.cssText = 'padding:20px;color:var(--text-dim)';
-    errDiv.textContent = r?.error || '请求失败';
+    errDiv.textContent = '加载失败，请稍后重试';
     detailPanel.appendChild(errDiv);
-    return;
   }
-  detailPanel.innerHTML = '';
-  const container = document.createElement('div');
-  container.style.cssText = 'font-size:13px;line-height:1.8;color:var(--text-sub)';
-  const rows = [
-    ['扫描时间', r.scan_time || '--'],
-    ['策略预设', r.preset || '--'],
-    ['候选股数', r.total_candidates || 0],
-    ['风控建议', r.risk_recommendation || '--'],
-    ['组合夏普', r.portfolio_sharpe != null ? r.portfolio_sharpe.toFixed(2) : '--'],
-    ['持仓数', r.portfolio_n_positions || 0],
-  ];
-  rows.forEach(([label, value]) => {
-    const row = document.createElement('div');
-    row.className = 'detail-row';
-    const lbl = document.createElement('span');
-    lbl.className = 'label';
-    lbl.textContent = label;
-    const val = document.createElement('span');
-    val.className = 'value';
-    val.textContent = value;
-    row.appendChild(lbl);
-    row.appendChild(val);
-    container.appendChild(row);
-  });
-  detailPanel.appendChild(container);
 };
 
 document.addEventListener('DOMContentLoaded', () => {

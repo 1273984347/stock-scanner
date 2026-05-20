@@ -48,13 +48,16 @@ class APIClient {
   }
 
   // 并行请求（支持 POST，需要传入 {method, body} 格式）
+  // 使用 Promise.allSettled 以支持部分成功/部分失败
   async all(requests) {
-    return Promise.all(requests.map(([endpoint, opts]) => {
+    const results = await Promise.allSettled(requests.map(([endpoint, opts]) => {
       if (opts && (opts.method === 'POST' || opts.body)) {
         return this.post(endpoint, opts.body || {});
       }
       return this.get(endpoint, opts || {});
     }));
+    // 将结果标准化为 [value, error] 元组，调用方自行处理
+    return results.map(r => r.status === 'fulfilled' ? r.value : null);
   }
 
   // 取消所有请求

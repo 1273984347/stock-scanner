@@ -80,7 +80,7 @@ class PositionManager:
                 except Exception:
                     pass
                 self._lock_file = None
-            raise IOError(f"无法获取文件锁: {self._lock_path}") from e
+            raise IOError(f"无法获取文件锁: {self.file}") from e
 
     def _release_lock(self):
         """释放文件锁"""

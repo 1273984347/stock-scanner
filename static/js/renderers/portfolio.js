@@ -15,6 +15,15 @@ class PortfolioRenderer {
     this._unsubscribers.push(
       stateManager.subscribe('scan.portfolio', (data) => this.render(data))
     );
+    // 事件委托：使用 data 属性而非 inline onclick
+    document.getElementById('portfolioBody')?.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr[data-code]');
+      if (tr) {
+        const code = tr.dataset.code;
+        const name = tr.dataset.name || '';
+        window.openStockDetail(code, name);
+      }
+    });
   }
 
   render(p) {
@@ -30,13 +39,33 @@ class PortfolioRenderer {
     body.innerHTML = '';
     details.forEach(d => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><a onclick="openStockDetail('${d.code}','${d.name||''}')" style="color:var(--accent);cursor:pointer">${d.code}</a></td>
-        <td>${d.name || '--'}</td>
-        <td>${d.sector || '--'}</td>
-        <td class="text-accent">${((d.weight || 0) * 100).toFixed(1)}%</td>
-        <td>${(d.score || 0).toFixed(1)}</td>
-      `;
+      tr.dataset.code = d.code || '';
+      tr.dataset.name = d.name || '';
+      // 安全插入：使用 textContent 避免 XSS
+      const codeTd = document.createElement('td');
+      const codeLink = document.createElement('a');
+      codeLink.style.cssText = 'color:var(--accent);cursor:pointer';
+      codeLink.textContent = d.code || '--';
+      codeTd.appendChild(codeLink);
+
+      const nameTd = document.createElement('td');
+      nameTd.textContent = d.name || '--';
+
+      const sectorTd = document.createElement('td');
+      sectorTd.textContent = d.sector || '--';
+
+      const weightTd = document.createElement('td');
+      weightTd.className = 'text-accent';
+      weightTd.textContent = ((d.weight || 0) * 100).toFixed(1) + '%';
+
+      const scoreTd = document.createElement('td');
+      scoreTd.textContent = (d.score || 0).toFixed(1);
+
+      tr.appendChild(codeTd);
+      tr.appendChild(nameTd);
+      tr.appendChild(sectorTd);
+      tr.appendChild(weightTd);
+      tr.appendChild(scoreTd);
       body.appendChild(tr);
     });
   }
@@ -78,14 +107,16 @@ class PortfolioRenderer {
 
   _renderStats(p) {
     const stats = document.getElementById('portfolioStats');
-    stats.innerHTML = `
-      预期年化收益: <b>${((p.expected_return || 0) * 100).toFixed(1)}%</b><br>
-      预期年化波动: <b>${((p.expected_vol || 0) * 100).toFixed(1)}%</b><br>
-      预期夏普比: <b>${(p.sharpe_ratio || 0).toFixed(2)}</b><br>
-      持仓数量: <b>${p.n_positions || 0}</b><br>
-      换手率: <b>${((p.turnover || 0) * 100).toFixed(1)}%</b><br>
-      行业数: <b>${Object.keys(p.sector_exposure || {}).length}</b>
-    `;
+    stats.textContent = '';
+    const lines = [
+      `预期年化收益: ${((p.expected_return || 0) * 100).toFixed(1)}%`,
+      `预期年化波动: ${((p.expected_vol || 0) * 100).toFixed(1)}%`,
+      `预期夏普比: ${(p.sharpe_ratio || 0).toFixed(2)}`,
+      `持仓数量: ${p.n_positions || 0}`,
+      `换手率: ${((p.turnover || 0) * 100).toFixed(1)}%`,
+      `行业数: ${Object.keys(p.sector_exposure || {}).length}`,
+    ];
+    stats.textContent = lines.join('\n');
   }
 
   unmount() {

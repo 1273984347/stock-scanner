@@ -133,8 +133,8 @@ def full_score(code: str, hist: pd.DataFrame, factors: dict,
             market_data=hist,
         )
         judge_result = panel.evaluate_all()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"JudgePanel 评估失败 [{code}]: {e}")
     if judge_result and judge_result.get("consensus") in ("BUY", "SELL"):
         judge_bias = 1.0 if judge_result["consensus"] == "BUY" else -1.0
         judge_strength = abs(judge_result.get("score", 0))

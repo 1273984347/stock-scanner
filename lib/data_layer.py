@@ -148,7 +148,6 @@ def _get_financial_data(code: str) -> Optional[pd.Series]:
     try:
         info_df = _retry_api_call(ak.stock_individual_info_em, symbol=code)
         if info_df is None or info_df.empty:
-            _financial_cache[code] = (None, now)
             return None
         info = {}
         if not info_df.empty and "item" in info_df.columns and "value" in info_df.columns:
@@ -185,7 +184,6 @@ def _get_financial_data(code: str) -> Optional[pd.Series]:
         return data
     except Exception as e:
         logger.debug(f"获取 {code} 基本面数据失败: {e}")
-        _financial_cache[code] = (None, now)
         return None
 
 

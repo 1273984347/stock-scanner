@@ -36,11 +36,13 @@ class StateManager {
         changedPaths.push(key);
       }
     }
-    // 只通知有变化的path对应的监听器
+    // 只通知有变化的path对应的监听器（隔离单个回调错误）
     changedPaths.forEach(path => {
       const callbacks = this._listeners.get(path);
       if (callbacks) {
-        callbacks.forEach(cb => cb(this.get(path)));
+        callbacks.forEach(cb => {
+          try { cb(this.get(path)); } catch (e) { console.error('[State] 订阅者错误:', e); }
+        });
       }
     });
   }

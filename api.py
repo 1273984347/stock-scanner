@@ -515,7 +515,7 @@ async def risk_assessment(_=Security(verify_api_key)):
         raise HTTPException(status_code=500, detail="内部服务器错误")
 
 
-@app.get("/api/exposures")
+@app.get("/api/exposures", dependencies=[Security(verify_api_key)])
 async def factor_exposures(preset: str = Query("balanced", description="策略预设")):
     if preset not in ALLOWED_PRESETS:
         raise HTTPException(status_code=400, detail=f"无效的preset: {preset}")
@@ -560,10 +560,10 @@ async def factor_exposures(preset: str = Query("balanced", description="策略�
         return result
     except Exception as e:
         logger.error(f"因子暴露计算失败: {e}")
-        return {"exposures": {}, "positions": [], "error": str(e)}
+        return {"exposures": {}, "positions": [], "error": "因子暴露计算失败"}
 
 
-@app.get("/api/dashboard")
+@app.get("/api/dashboard", dependencies=[Security(verify_api_key)])
 async def dashboard(preset: str = Query("balanced", description="策略预设")):
     if preset not in ALLOWED_PRESETS:
         raise HTTPException(status_code=400, detail=f"无效的preset: {preset}")
@@ -818,7 +818,7 @@ def _run_stress_tests() -> dict:
     return scenarios
 
 
-@app.get("/api/factor-eval")
+@app.get("/api/factor-eval", dependencies=[Security(verify_api_key)])
 async def factor_evaluation(
     n_stocks: int = Query(default=30, ge=5, le=100),
 ):
