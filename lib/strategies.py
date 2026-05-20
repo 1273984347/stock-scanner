@@ -176,9 +176,7 @@ def get_zt_candidates(config: SystemConfig) -> pd.DataFrame:
         result["策略"] = "涨停板复盘"
         realtime = get_realtime_quotes()
         if not realtime.empty:
-            row_map = {}
-            for _, r in realtime.iterrows():
-                row_map[str(r.get("代码", ""))] = r
+            row_map = realtime.set_index(realtime["代码"].astype(str)).to_dict("index")
             scores = []
             for _, cand in result.iterrows():
                 rt_row = row_map.get(str(cand["代码"]))
@@ -207,11 +205,9 @@ def get_volume_breakout_candidates(config: SystemConfig) -> pd.DataFrame:
                 (df["涨跌幅"] <= config.scan.price_change_max)]
         df = df.sort_values("成交额", ascending=False).head(30)
         sentiment = get_market_sentiment()
-        row_map = {}
-        for _, r in df.iterrows():
-            row_map[str(r["代码"])] = r
+        row_map = df.set_index(df["代码"].astype(str)).to_dict("index")
         # 批量并行获取历史数据（解决 N+1 查询问题）
-        all_codes = [str(row["代码"]) for _, row in df.iterrows()]
+        all_codes = df["代码"].astype(str).tolist()
         stock_hist_data = _batch_get_stock_hist(all_codes, days=180)
         candidates = []
         for _, row in df.iterrows():
@@ -331,9 +327,7 @@ def get_lhb_candidates(config: SystemConfig) -> pd.DataFrame:
         result["信号"] = "bullish"
         realtime = get_realtime_quotes()
         if not realtime.empty:
-            row_map = {}
-            for _, r in realtime.iterrows():
-                row_map[str(r.get("代码", ""))] = r
+            row_map = realtime.set_index(realtime["代码"].astype(str)).to_dict("index")
             scores = []
             for _, cand in result.iterrows():
                 rt_row = row_map.get(str(cand.get("代码", "")))
@@ -362,11 +356,9 @@ def get_multi_factor_candidates(config: SystemConfig) -> pd.DataFrame:
         df = df[df["涨跌幅"] > 0]
         df = df.sort_values("成交额", ascending=False).head(50)
         sentiment = get_market_sentiment()
-        row_map = {}
-        for _, r in df.iterrows():
-            row_map[str(r["代码"])] = r
+        row_map = df.set_index(df["代码"].astype(str)).to_dict("index")
         # 批量并行获取历史数据（解决 N+1 查询问题）
-        all_codes = [str(row["代码"]) for _, row in df.iterrows()]
+        all_codes = df["代码"].astype(str).tolist()
         stock_hist_data = _batch_get_stock_hist(all_codes, days=180)
         candidates = []
         for _, row in df.iterrows():

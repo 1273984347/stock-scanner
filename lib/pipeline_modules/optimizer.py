@@ -18,11 +18,12 @@ def _get_sector_map(codes: list) -> dict:
     try:
         df = get_realtime_quotes()
         if not df.empty:
-            for _, row in df.iterrows():
-                code = str(row.get("代码", ""))
-                sector = str(row.get("行业", row.get("所属行业", "")))
-                if code in codes and sector:
-                    sector_map[code] = sector
+            codes_set = set(codes)
+            df_filtered = df[df["代码"].astype(str).isin(codes_set)]
+            df_filtered = df_filtered.copy()
+            df_filtered["代码"] = df_filtered["代码"].astype(str)
+            df_filtered["行业"] = df_filtered["行业"].fillna(df_filtered["所属行业"]).fillna("")
+            sector_map = df_filtered.set_index("代码")["行业"].to_dict()
     except Exception:
         pass
     return sector_map

@@ -312,7 +312,8 @@ def _batch_fund_flow(codes: list) -> dict:
                 net_col: "sum",
                 amount_col: "sum"
             })
-            for _, row in grouped.iterrows():
+            flow_map = {}
+        for _, row in grouped.iterrows():
                 c = str(row[code_col])
                 net_val = row[net_col]
                 total_amount = row[amount_col]

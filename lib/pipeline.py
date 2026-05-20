@@ -174,20 +174,33 @@ def _optimize_portfolio(results: dict) -> dict:
     for name, df in results.items():
         if df.empty:
             continue
-        for _, row in df.iterrows():
-            code = str(row.get("代码", ""))
-            if not code:
-                continue
-            score = row.get("综合评分")
-            if score is None:
-                conf = row.get("置信度")
-                score = conf * 10 if conf is not None else None
-            if score is None:
-                continue
+        if "代码" not in df.columns:
+            continue
+        # 向量化处理：先计算 score 列，再迭代
+        df_work = df.copy()
+        df_work["代码"] = df_work["代码"].astype(str)
+        if "名称" in df_work.columns:
+            df_work["名称"] = df_work["名称"].fillna("").astype(str)
+        # 计算 score：综合评分优先，否则用置信度*10
+        if "综合评分" in df_work.columns:
+            df_work["_score"] = pd.to_numeric(df_work["综合评分"], errors="coerce")
+        else:
+            df_work["_score"] = pd.to_numeric(df_work.get("置信度", 0), errors="coerce") * 10
+        # 计算 volatility
+        vol_col = "波动率20" if "波动率20" in df_work.columns else "volatility_20"
+        df_work["_volatility"] = pd.to_numeric(df_work.get(vol_col, 25), errors="coerce").fillna(25) / 100
+        # 只保留有效的行
+        df_valid = df_work[df_work["_score"].notna()].copy()
+        for _, row in df_valid.iterrows():
+            code = row["代码"]
+            score = row["_score"]
             if code not in candidate_map or score > candidate_map[code].get("score", 0):
-                candidate_map[code] = {"code": code, "name": str(row.get("名称", "")),
-                                       "score": float(score),
-                                       "volatility": float(row.get("波动率20", row.get("volatility_20", 25))) / 100}
+                candidate_map[code] = {
+                    "code": code,
+                    "name": row.get("名称", ""),
+                    "score": float(score),
+                    "volatility": float(row["_volatility"])
+                }
     if not candidate_map:
         return {"weights": {}, "expected_return": 0, "expected_vol": 0,
                 "sharpe_ratio": 0, "sector_exposure": {}, "n_positions": 0}
@@ -276,18 +289,16 @@ def _run_alpha_analysis(results: dict) -> dict:
     for name, df in results.items():
         if df.empty:
             continue
-        for _, row in df.iterrows():
-            code = str(row.get("代码", ""))
-            if not code:
-                continue
-            factor_rows.append({
-                "code": code, "RSI": row.get("RSI"), "动量5": row.get("动量5"),
-                "置信度": row.get("置信度"), "综合评分": row.get("综合评分"),
-                "涨跌幅": row.get("涨跌幅"),
-            })
-    if len(factor_rows) < 5:
+        if "代码" not in df.columns:
+            continue
+        # 向量化处理，避免 iterrows
+        df_work = df[[c for c in ["代码", "RSI", "动量5", "置信度", "综合评分", "涨跌幅"] if c in df.columns]].copy()
+        df_work["代码"] = df_work["代码"].astype(str)
+        df_work = df_work.rename(columns={"代码": "code"})
+        factor_rows.append(df_work)
+    if not factor_rows:
         return {}
-    factor_df = pd.DataFrame(factor_rows).set_index("code")
+    factor_df = pd.concat(factor_rows, ignore_index=False).set_index("code")
     factor_df = factor_df.apply(pd.to_numeric, errors="coerce").dropna(how="all")
     if factor_df.empty or len(factor_df) < 3:
         return {}
@@ -395,12 +406,13 @@ def _enrich_with_ml_scores(results: dict) -> dict:
             continue
         if "代码" not in df.columns:
             continue
-        for _, row in df.iterrows():
-            code = str(row.get("代码", ""))
-            if not code:
-                continue
-            all_codes.add(code)
-            code_names[code] = str(row.get("名称", ""))
+        # 向量化处理，避免 iterrows
+        codes = df["代码"].astype(str).tolist()
+        names = df["名称"].astype(str).tolist() if "名称" in df.columns else ["" for _ in codes]
+        for code, name in zip(codes, names):
+            if code:
+                all_codes.add(code)
+                code_names[code] = name
     if not all_codes:
         return {"data": None, "n_candidates": 0, "n_passed": 0, "method": "20d_ml"}
     try:
@@ -480,10 +492,10 @@ def get_stock_score(code: str) -> dict:
     realtime = get_realtime_quotes()
     rt_row = None
     if not realtime.empty:
-        for _, r in realtime.iterrows():
-            if str(r.get("代码", "")) == code:
-                rt_row = r
-                break
+        # 向量化查找，避免 iterrows
+        mask = realtime["代码"].astype(str) == code
+        if mask.any():
+            rt_row = realtime[mask].iloc[0]
     if rt_row is not None:
         score_result = full_score(code, hist, result["factors"], rt_row)
     else:
