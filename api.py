@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="A股量化交易系统", version="3.0.0")
 
+# 缓存操作全局锁（保护 JSON 缓存文件的并发读写）
+_cache_lock = threading.Lock()
+
 
 def _prefetch_hs300():
     """后台预获取沪深300数据（首次启动时缓存）"""
@@ -65,32 +68,40 @@ if STATIC_DIR.exists():
 
 
 def _cache_get(key: str, max_age: int = 3600):
-    """读 JSON 缓存（带权限保护）"""
+    """读 JSON 缓存（线程安全，带权限保护）"""
     path = CACHE_DIR / f"api_{key}.json"
-    if not path.exists():
-        return None
-    age = (datetime.now().timestamp() - path.stat().st_mtime)
-    if age > max_age:
-        path.unlink(missing_ok=True)
-        return None
+    _cache_lock.acquire()
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        path.unlink(missing_ok=True)
-        return None
+        if not path.exists():
+            return None
+        age = (datetime.now().timestamp() - path.stat().st_mtime)
+        if age > max_age:
+            path.unlink(missing_ok=True)
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            path.unlink(missing_ok=True)
+            return None
+    finally:
+        _cache_lock.release()
 
 
 def _cache_set(key: str, data):
-    """写 JSON 缓存（限制文件权限为当前用户独占）"""
+    """写 JSON 缓存（线程安全，限制文件权限为当前用户独占）"""
     path = CACHE_DIR / f"api_{key}.json"
-    path.write_text(json.dumps(data, ensure_ascii=False, default=str), encoding="utf-8")
+    _cache_lock.acquire()
     try:
-        # Windows 限制文件访问：仅当前用户可读写
-        import os
-        os.chmod(path, 0o600)
-    except Exception:
-        # 非 Windows 或权限不足时跳过
-        pass
+        path.write_text(json.dumps(data, ensure_ascii=False, default=str), encoding="utf-8")
+        try:
+            # Windows 限制文件访问：仅当前用户可读写
+            import os
+            os.chmod(path, 0o600)
+        except Exception:
+            # 非 Windows 或权限不足时跳过
+            pass
+    finally:
+        _cache_lock.release()
 
 
 # ========== 核心端点 ==========
@@ -492,8 +503,12 @@ async def audit_detail(scan_id: int):
 async def run_backtest(
     symbols: str = Query(default="000001,600519,000858"),
     days: int = Query(default=250, ge=60, le=1000),
-    stop_loss_atr: float = Query(default=2.0),
-    take_profit_atr: float = Query(default=4.0),
+    stop_loss_atr_mult: float = Query(default=2.0, alias="stop_loss_atr"),
+    take_profit_atr_mult: float = Query(default=4.0, alias="take_profit_atr"),
+    max_hold_days: int = Query(default=10, ge=1, le=60),
+    confidence_threshold: float = Query(default=0.3, ge=0.0, le=1.0),
+    risk_per_trade_pct: float = Query(default=0.5, ge=0.1, le=5.0),
+    preset: str = Query(default="balanced"),
 ):
     """运行回测"""
     try:
@@ -501,8 +516,12 @@ async def run_backtest(
         sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
         result = run_factor_backtest(
             sym_list, days=days,
-            stop_loss_atr_mult=stop_loss_atr,
-            take_profit_atr_mult=take_profit_atr,
+            stop_loss_atr_mult=stop_loss_atr_mult,
+            take_profit_atr_mult=take_profit_atr_mult,
+            max_hold_days=max_hold_days,
+            confidence_threshold=confidence_threshold,
+            risk_per_trade_pct=risk_per_trade_pct,
+            preset=preset,
         )
         if not result:
             return {"error": "回测无结果"}
@@ -750,6 +769,63 @@ async def factor_evaluation(
     except Exception as e:
         logger.error(f"因子评估失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+from fastapi import WebSocket, WebSocketDisconnect
+import asyncio
+
+# WebSocket 连接管理器
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+manager = ConnectionManager()
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        # 连接建立时立即推送一次全量数据
+        await websocket.send_json({
+            "type": "data_update",
+            "timestamp": datetime.now().isoformat(),
+            "data": {
+                "dashboard": {},
+                "scan": {},
+                "risk": {},
+                "exposures": {},
+            }
+        })
+
+        # 定时检测数据变化（每 10s）
+        while True:
+            await asyncio.sleep(10)
+            # 检测数据是否变化（简化：直接推送全量）
+            current_data = {
+                "dashboard": {},
+                "scan": {},
+                "risk": {},
+                "exposures": {},
+            }
+            await websocket.send_json({
+                "type": "data_update",
+                "timestamp": datetime.now().isoformat(),
+                "data": current_data
+            })
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        manager.disconnect(websocket)
 
 
 if __name__ == "__main__":
