@@ -43,12 +43,14 @@ def _load_disk_cache():
         try:
             df = pd.read_parquet(CACHE_FILE)
             cache_data = {}
-            for _, row in df.iterrows():
-                code = str(row.get("code", ""))
-                if code:
-                    rec = row.drop("code").to_dict()
-                    rec = {k: (float(v) if not pd.isna(v) else None) for k, v in rec.items()}
-                    cache_data[code] = rec
+            if not df.empty and "code" in df.columns:
+                # 向量化处理，避免 iterrows
+                codes = df["code"].astype(str).tolist()
+                for i, code in enumerate(codes):
+                    if code:
+                        row_data = df.iloc[i].drop("code")
+                        rec = {k: (float(v) if not pd.isna(v) else None) for k, v in row_data.items()}
+                        cache_data[code] = rec
             with _disk_cache_lock:
                 _disk_cache.update(cache_data)
                 _disk_loaded = True
@@ -133,8 +135,9 @@ def get_financial_data(code: str) -> Optional[pd.Series]:
             return None
 
         info = {}
-        for _, row in info_df.iterrows():
-            info[row["item"]] = row["value"]
+        if not info_df.empty and "item" in info_df.columns and "value" in info_df.columns:
+            # 向量化处理，避免 iterrows
+            info = dict(zip(info_df["item"].astype(str), info_df["value"]))
 
         data_dict = {
             "pe": to_float(info.get("市盈率-动态")),

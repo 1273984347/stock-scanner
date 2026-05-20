@@ -121,9 +121,8 @@ class AlphaSynthesizer:
         if total == 0:
             return {}
 
-        weights = {}
-        for _, row in ic_df.iterrows():
-            weights[row["factor"]] = row["abs_rank_ic"] / total
+        # 向量化处理，避免 iterrows
+        weights = (ic_df.set_index("factor")["abs_rank_ic"] / total).to_dict()
 
         # 权重校验
         total_weight = sum(weights.values())
