@@ -222,7 +222,112 @@ class JesseLivermoreJudge(JudgeStrategy):
         return JudgeResult(self.name, self.group, "HOLD", 0.5)
 
 
-# ========== 评委注册表 ==========
+# ========== 通道评委（参考 因子.txt + v4.txt） ==========
+
+class KCSignalJudge(JudgeStrategy):
+    """凯尔特纳通道评委
+
+    通道触轨信号作为入场置信度评判
+    """
+
+    @property
+    def name(self) -> str:
+        return "Keltner Channel"
+
+    @property
+    def group(self) -> str:
+        return "通道技术"
+
+    def evaluate(self, factors: dict, fundamentals: dict = None,
+                 market_data: pd.DataFrame = None) -> JudgeResult:
+        kc_pos = factors.get("kc_pos", 0.5)
+        kc_signal = factors.get("kc_signal", 0)
+
+        # 接近下轨（< 0.1）= 强买入信号
+        if kc_pos < 0.15 and kc_signal == 1:
+            conf = 0.75 + (0.15 - kc_pos) * 2
+            return JudgeResult(self.name, self.group, "BUY", min(0.95, conf),
+                            f"KC触及下轨+买入信号, 位置={kc_pos:.2f}")
+        # 接近上轨（> 0.85）= 强卖出信号
+        elif kc_pos > 0.85 and kc_signal == -1:
+            conf = 0.75 + (kc_pos - 0.85) * 2
+            return JudgeResult(self.name, self.group, "SELL", min(0.95, conf),
+                            f"KC触及上轨+卖出信号, 位置={kc_pos:.2f}")
+        # 在中间 = HOLD
+        return JudgeResult(self.name, self.group, "HOLD", 0.5,
+                        f"KC中性位置={kc_pos:.2f}")
+
+
+class XosiSignalJudge(JudgeStrategy):
+    """薛斯通道评委
+
+    薛斯长期通道方向作为背景过滤器
+    """
+
+    @property
+    def name(self) -> str:
+        return "Xosi Channel"
+
+    @property
+    def group(self) -> str:
+        return "通道技术"
+
+    def evaluate(self, factors: dict, fundamentals: dict = None,
+                 market_data: pd.DataFrame = None) -> JudgeResult:
+        xosi_long_pos = factors.get("xosi_long_pos", 0.5)
+        xosi_short_pos = factors.get("xosi_short_pos", 0.5)
+        slope_long = factors.get("slope_long", 0.0)  # 长期通道斜率
+
+        # 长期通道向上 + 价格在中间位置 = 允许多头
+        if slope_long > 0 and 0.2 < xosi_long_pos < 0.8:
+            conf = 0.6 + min(0.2, slope_long * 10)
+            return JudgeResult(self.name, self.group, "BUY", min(0.85, conf),
+                            f"薛斯长期向上({slope_long:.3f}), 位置={xosi_long_pos:.2f}")
+        # 长期通道向下 = 过滤多头
+        elif slope_long < -0.05:
+            return JudgeResult(self.name, self.group, "SELL", 0.7,
+                            f"薛斯长期向下({slope_long:.3f}), 过滤多头")
+        return JudgeResult(self.name, self.group, "HOLD", 0.5,
+                        f"薛斯通道中性")
+
+
+class RegimeConditionJudge(JudgeStrategy):
+    """市场状态条件评委
+
+    参考 因子.txt：市场4态决定是否允许做多
+    """
+
+    @property
+    def name(self) -> str:
+        return "Market Regime"
+
+    @property
+    def group(self) -> str:
+        return "市场状态"
+
+    def evaluate(self, factors: dict, fundamentals: dict = None,
+                 market_data: pd.DataFrame = None) -> JudgeResult:
+        regime = factors.get("regime", "MEAN_REVERSION")
+        confidence = factors.get("regime_confidence", 0.5)
+
+        if regime == "TREND_UP":
+            conf = 0.7 + confidence * 0.2
+            return JudgeResult(self.name, self.group, "BUY", min(0.9, conf),
+                            f"上升趋势市场, 置信度={confidence:.2f}")
+        elif regime == "MEAN_REVERSION":
+            return JudgeResult(self.name, self.group, "HOLD", 0.6,
+                            f"均值回归市场, 置信度={confidence:.2f}")
+        elif regime == "COMPRESSION":
+            return JudgeResult(self.name, self.group, "HOLD", 0.4,
+                            f"压缩区间市场, 置信度={confidence:.2f}")
+        elif regime == "TREND_DOWN":
+            return JudgeResult(self.name, self.group, "SELL", 0.8,
+                            f"下跌趋势市场, 置信度={confidence:.2f}")
+        return JudgeResult(self.name, self.group, "HOLD", 0.5,
+                        f"未知市场状态")
+
+
+# ========== 评委注册表（扩展） ==========
 
 # 阶段2: 评委注册表配置化
 JUDGE_REGISTRY = {
@@ -238,6 +343,11 @@ JUDGE_REGISTRY = {
     ],
     "technical": [
         {"name": "Jesse Livermore", "class": JesseLivermoreJudge, "weight": 0.03},
+    ],
+    "channel": [
+        {"name": "Keltner Channel", "class": KCSignalJudge, "weight": 0.05},
+        {"name": "Xosi Channel", "class": XosiSignalJudge, "weight": 0.05},
+        {"name": "Market Regime", "class": RegimeConditionJudge, "weight": 0.06},
     ],
 }
 

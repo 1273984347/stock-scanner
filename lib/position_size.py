@@ -360,3 +360,97 @@ def discrete_allocation(weights: Dict[str, float],
         leftover_value += weight * total_value - cost
 
     return allocation
+
+
+# ========== 市场状态联动仓位（参考 因子.txt） ==========
+
+def apply_regime_position_scalar(
+    base_weight: float,
+    regime: str,
+    confidence: float = 0.5,
+) -> float:
+    """根据市场状态调整仓位
+
+    参考：因子.txt 第八节 - 仓位规则
+    - TREND_UP:     75%-100%
+    - MEAN_REVERSION: 25%-50%
+    - COMPRESSION:   0%-25%
+    - TREND_DOWN:   0%
+
+    Args:
+        base_weight: 基础仓位（如单票上限20%）
+        regime: 市场状态
+        confidence: 状态置信度 0~1
+
+    Returns:
+        调整后的仓位（绝对比例，如 0.15 表示15%）
+    """
+    from lib.market_regime import REGIME_POSITION_SCALAR, TREND_UP
+
+    min_scalar, max_scalar = REGIME_POSITION_SCALAR.get(regime, (0.25, 0.50))
+
+    # 用置信度在 min~max 之间插值
+    regime_position = min_scalar + confidence * (max_scalar - min_scalar)
+
+    adjusted = base_weight * regime_position
+    return float(max(0.0, min(1.0, adjusted)))
+
+
+class RegimeAwarePositionSizer:
+    """市场状态感知仓位管理器
+
+    在 RiskSizedPosition 基础上，增加市场状态联动
+    """
+
+    def __init__(self, base_sizer: RiskSizedPosition = None):
+        self.base_sizer = base_sizer or RiskSizedPosition()
+
+    def calculate_with_regime(
+        self,
+        equity: float,
+        entry_price: float,
+        stop_price: float = None,
+        atr: float = None,
+        cash_available: float = None,
+        current_exposure: float = 0,
+        regime: str = None,
+        regime_confidence: float = 0.5,
+    ) -> Tuple[PositionSizeResult, float]:
+        """计算考虑市场状态的仓位
+
+        Returns:
+            (PositionSizeResult, adjusted_weight)
+        """
+        base_result = self.base_sizer.calculate(
+            equity=equity,
+            entry_price=entry_price,
+            stop_price=stop_price,
+            atr=atr,
+            cash_available=cash_available,
+            current_exposure=current_exposure,
+        )
+
+        if regime is not None:
+            adjusted_weight = apply_regime_position_scalar(
+                base_result.weight_pct / 100,
+                regime,
+                regime_confidence,
+            ) * 100  # 转回百分比
+        else:
+            adjusted_weight = base_result.weight_pct
+
+        # 返回调整后的结果（weight_pct 替换）
+        adjusted_result = PositionSizeResult(
+            qty=base_result.qty,
+            notional=base_result.notional,
+            weight_pct=adjusted_weight,
+            risk_budget=base_result.risk_budget,
+            stop_distance=base_result.stop_distance,
+            stop_price=base_result.stop_price,
+            capped_by_cash=base_result.capped_by_cash,
+            capped_by_max_position=base_result.capped_by_max_position,
+            capped_by_round_lot=base_result.capped_by_round_lot,
+            reason=base_result.reason + (f" [regime={regime}]" if regime else ""),
+        )
+
+        return adjusted_result, adjusted_weight

@@ -421,3 +421,147 @@ def get_multi_factor_candidates(config: SystemConfig) -> pd.DataFrame:
     except Exception as e:
         logger.error(f"多因子选股策略出错: {e}")
         return pd.DataFrame()
+
+
+# ========== 第6策略：超短线通道策略（凯尔特纳+薛斯） ==========
+
+def get_keltner_xosi_mt_candidates(config: SystemConfig) -> pd.DataFrame:
+    """超短线通道策略 —— 基于凯尔特纳+薛斯通道
+
+    参考：因子.txt + v4.txt
+
+    入场规则（回踩型优先）：
+    - 条件：已发生突破 → 回踩21EMA → 缩量 → 不破结构 → 再次转强
+    - 突破型：Donchian突破 + 放量 + 市场TREND_UP + 主线板块
+
+    止盈：
+    - 第一目标：KC中轨（EMA21）
+    - 第二目标：薛斯短期通道另一侧边界
+
+    止损：
+    - KC下轨下方 1×ATR
+
+    证伪：
+    - T+0 收盘：跌破入场关键价位 → 次日评估
+    - T+1 动量：未量价齐升 → 减半
+    - T+3 逻辑：未触及第一止盈 → 强制离场
+    """
+    try:
+        from lib.indicators import compute_all_channels, get_regime_from_kc
+        from lib.market_regime import detect_market_regime
+
+        df = get_realtime_quotes()
+        if df.empty:
+            return pd.DataFrame()
+        if config.scan.exclude_st:
+            df = df[~df["名称"].str.contains("ST", na=False)]
+        df = df[df["成交量"] > 0]
+        df = df[df["涨跌幅"] > 0]
+        df = df.sort_values("成交额", ascending=False).head(50)
+
+        # 获取大盘指数数据（用于市场状态判断）
+        index_df = None
+        try:
+            import akshare as ak
+            idx_df = ak.stock_zh_index_spot_em()
+            if not idx_df.empty:
+                sh_df = idx_df[idx_df["名称"] == "上证指数"]
+                if not sh_df.empty:
+                    code = str(sh_df.iloc[0]["代码"])
+                    index_hist = get_stock_hist_multi_source(code, 60)
+                    if index_hist is not None and not index_hist.empty:
+                        index_df = index_hist
+        except Exception:
+            pass
+
+        # 大盘状态
+        market_regime_info = {"regime": "MEAN_REVERSION", "confidence": 0.3}
+        if index_df is not None and len(index_df) > 30:
+            market_regime_info = detect_market_regime(index_df)
+
+        regime = market_regime_info.get("regime", "MEAN_REVERSION")
+        regime_confidence = market_regime_info.get("confidence", 0.3)
+
+        # 只在 TREND_UP 或 MEAN_REVERSION 下做多
+        if regime not in ("TREND_UP", "MEAN_REVERSION"):
+            return pd.DataFrame()
+
+        candidates = []
+        row_map = df.set_index(df["代码"].astype(str)).to_dict("index")
+        all_codes = df["代码"].astype(str).tolist()
+        stock_hist_data = _batch_get_stock_hist(all_codes, days=60)
+
+        for _, row in df.iterrows():
+            code = row["代码"]
+            hist = stock_hist_data.get(code)
+            if hist is None or len(hist) < 30:
+                continue
+            if {"high", "low", "close", "open"}.difference(hist.columns):
+                continue
+
+            try:
+                channels = compute_all_channels(hist)
+            except Exception:
+                continue
+
+            signals = channels.get("signals")
+            if signals is None or signals.empty:
+                continue
+
+            latest_signal = signals.iloc[-1]
+            signal_val = latest_signal.get("signal", 0)
+            if signal_val != 1:  # 只做多
+                continue
+
+            confidence = latest_signal.get("confidence", 0)
+            reason = latest_signal.get("reason", "")
+
+            if confidence < 0.6:
+                continue
+
+            # 计算入场价位和止损
+            kc = channels.get("kc")
+            if kc is None or kc.empty:
+                continue
+
+            entry_price = float(hist["close"].iloc[-1])
+            stop_price = float(kc["kc_lower"].iloc[-1]) - float(kc["atr"].iloc[-1])
+            first_target = float(kc["kc_mid"].iloc[-1])  # 第一止盈：KC中轨
+
+            # 检查是否满足回踩型条件（相比前一交易日缩量）
+            vol_today = float(hist["volume"].iloc[-1])
+            vol_5d_avg = float(hist["volume"].iloc[-5:].mean())
+            volume_cond = vol_today < vol_5d_avg  # 回踩型要求缩量
+
+            # 计算回踩深度（价格从近期高点回落了多少）
+            high_5d = float(hist["high"].iloc[-5:].max())
+            pullback_pct = (high_5d - entry_price) / (high_5d + 1e-9)
+
+            candidates.append({
+                "代码": code,
+                "名称": row["名称"],
+                "最新价": entry_price,
+                "涨跌幅": row["涨跌幅"],
+                "信号": "bullish",
+                "置信度": round(confidence, 3),
+                "市场状态": regime,
+                "入场价": round(entry_price, 2),
+                "止损价": round(stop_price, 2),
+                "第一止盈": round(first_target, 2),
+                "回踩深度": f"{pullback_pct:.1%}",
+                "缩量确认": "是" if volume_cond else "否",
+                "通道信号": reason,
+                "策略": "超短线通道",
+            })
+
+        if not candidates:
+            return pd.DataFrame()
+
+        result = pd.DataFrame(candidates)
+        result = result.sort_values("置信度", ascending=False)
+        result = result.head(config.scan.max_candidates)
+        return result
+
+    except Exception as e:
+        logger.error(f"超短线通道策略出错: {e}")
+        return pd.DataFrame()

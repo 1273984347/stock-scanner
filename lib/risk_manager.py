@@ -594,3 +594,162 @@ def covariance_shrinkage(returns_df: pd.DataFrame) -> Optional[pd.DataFrame]:
         return shrunk
     except Exception:
         return returns_df.cov()
+
+
+# ========== T+0/T+1/T+3 证伪机制（参考 因子.txt） ==========
+
+@dataclass
+class EntryRecord:
+    """入场记录"""
+    code: str
+    entry_date: str
+    entry_price: float
+    stop_price: float
+    first_target: float  # 第一止盈（如 KC 中轨）
+    holding_days: int = 0
+
+
+class ProofInvalidationManager:
+    """证伪管理器 —— 时间维度风控
+
+    T+0 收盘证伪：跌破入场关键价位 → 次日评估
+    T+1 动量证伪：未量价齐升 → 减半
+    T+3 逻辑证伪：未触及第一止盈 → 强制离场
+    """
+
+    def __init__(self):
+        self.positions: Dict[str, EntryRecord] = {}
+        self.trade_results: List[Dict] = []  # 历史交易结果（用于连亏计数）
+        self.consecutive_losses: int = 0
+
+    def record_entry(self, code: str, entry_date: str, entry_price: float,
+                     stop_price: float, first_target: float):
+        """记录入场"""
+        self.positions[code] = EntryRecord(
+            code=code,
+            entry_date=entry_date,
+            entry_price=entry_price,
+            stop_price=stop_price,
+            first_target=first_target,
+            holding_days=0,
+        )
+
+    def update_holding_days(self):
+        """每日更新持仓天数"""
+        for record in self.positions.values():
+            record.holding_days += 1
+
+    def check_invalidation(
+        self,
+        code: str,
+        current_price: float,
+        current_date: str,
+        high_today: float,
+        volume_today: float,
+        volume_5d_avg: float,
+    ) -> Dict:
+        """检查证伪条件
+
+        Returns:
+            Dict:
+              - action: str, 动作（HOLD / REDUCE / EXIT）
+              - reason: str, 原因
+              - pnl_pct: float, 当日盈亏
+        """
+        record = self.positions.get(code)
+        if record is None:
+            return {"action": "HOLD", "reason": "无入场记录", "pnl_pct": 0.0}
+
+        pnl_pct = (current_price - record.entry_price) / record.entry_price
+
+        # ========== T+0 收盘证伪 ==========
+        if current_date != record.entry_date:
+            # 跌破止损位
+            if current_price < record.stop_price:
+                self._record_result(code, pnl_pct, "stop_loss")
+                return {"action": "EXIT", "reason": f"T+0止损触发: {pnl_pct:.2%}", "pnl_pct": pnl_pct}
+
+            # ========== T+1 动量证伪 ==========
+            if record.holding_days == 1:
+                price创新的 = high_today > record.entry_price * 1.01
+                volume_ok = volume_today > volume_5d_avg * 1.0
+                if not (price创新的 and volume_ok):
+                    return {"action": "REDUCE", "reason": "T+1动量不足，减半仓", "pnl_pct": pnl_pct}
+
+            # ========== T+3 逻辑证伪 ==========
+            if record.holding_days >= 3:
+                if pnl_pct < 0.03:  # 未触及第一止盈（+3%）
+                    return {"action": "EXIT", "reason": "T+3逻辑证伪，未触及止盈", "pnl_pct": pnl_pct}
+
+        return {"action": "HOLD", "reason": "正常持仓", "pnl_pct": pnl_pct}
+
+    def close_position(self, code: str, exit_price: float):
+        """平仓"""
+        record = self.positions.pop(code, None)
+        if record is not None:
+            pnl_pct = (exit_price - record.entry_price) / record.entry_price
+            self._record_result(code, pnl_pct, "manual_exit")
+
+    def _record_result(self, code: str, pnl_pct: float, exit_reason: str):
+        """记录交易结果"""
+        self.trade_results.append({
+            "code": code,
+            "pnl_pct": pnl_pct,
+            "exit_reason": exit_reason,
+        })
+        if pnl_pct < 0:
+            self.consecutive_losses += 1
+        else:
+            self.consecutive_losses = 0
+
+    def get_consecutive_losses(self) -> int:
+        return self.consecutive_losses
+
+    def check_meltdown(self) -> Dict:
+        """熔断检查
+
+        - 连亏 2 笔 → 减仓
+        - 连亏 4 笔 → 停止交易
+        """
+        losses = self.consecutive_losses
+        if losses >= 4:
+            return {"action": "STOP", "reason": "连亏4笔，停止交易", "level": "CRITICAL"}
+        elif losses >= 2:
+            return {"action": "REDUCE", "reason": f"连亏{losses}笔，减仓", "level": "WARNING"}
+        return {"action": "OK", "reason": "无熔断触发", "level": "INFO"}
+
+
+# ========== 熔断装饰器 ==========
+
+class MeltdownCircuitBreaker:
+    """熔断断路器 —— 连亏时自动降频"""
+
+    def __init__(self, reduce_threshold: int = 2, stop_threshold: int = 4):
+        self.reduce_threshold = reduce_threshold
+        self.stop_threshold = stop_threshold
+        self.trade_results: List[bool] = []  # True=盈利, False=亏损
+
+    def record_trade(self, profit: bool):
+        """记录交易结果"""
+        self.trade_results.append(profit)
+        # 只保留最近 N 笔
+        if len(self.trade_results) > 10:
+            self.trade_results = self.trade_results[-10:]
+
+    def should_reduce(self) -> bool:
+        """是否应减仓"""
+        recent = self.trade_results[-self.reduce_threshold:]
+        return len(recent) >= self.reduce_threshold and not any(recent)
+
+    def should_stop(self) -> bool:
+        """是否应停止交易"""
+        recent = self.trade_results[-self.stop_threshold:]
+        return len(recent) >= self.stop_threshold and not any(recent)
+
+    def get_status(self) -> Dict:
+        """获取当前状态"""
+        return {
+            "reduce": self.should_reduce(),
+            "stop": self.should_stop(),
+            "recent_results": self.trade_results[-5:],
+        }
