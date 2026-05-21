@@ -204,9 +204,13 @@ def get_channel_signals(
 ) -> pd.DataFrame:
     """生成通道信号
 
-    信号逻辑（基于 v4.txt）：
-    - 做多：触下轨 + 薛斯长期不强烈下行 + K线形态确认
-    - 做空：触上轨 + 薛斯长期不强烈上行 + K线形态确认
+    信号逻辑（基于 Walk-forward IC/IR 验证）：
+    - 做多：kc_pos < 0.20（价格接近下轨，均值回归预期上涨）
+    - 做空：kc_pos > 0.80（价格接近上轨，均值回归预期下跌）
+    - Xosi 长期通道方向作为背景过滤
+
+    注意：Walk-forward 结果显示所有通道因子 IC 均为负，
+    表明通道位置越低/高，未来收益越高/低——这是均值回归特征。
 
     Args:
         df: 必须包含 high, low, close, open 列
@@ -220,90 +224,50 @@ def get_channel_signals(
         return pd.DataFrame()
 
     close = df["close"]
-    high = df["high"]
-    low = df["low"]
-    open_ = df["open"]
 
     result = pd.DataFrame(index=df.index)
     result["signal"] = 0  # 0=无信号, 1=做多, -1=做空
     result["confidence"] = 0.0
     result["reason"] = ""
 
-    # 前一根K线（用于形态确认）
-    prev_close = close.shift(1)
-    prev_high = high.shift(1)
-    prev_low = low.shift(1)
+    # 计算通道位置
+    kc_range = kc["kc_upper"] - kc["kc_lower"]
+    kc_pos = np.where(kc_range > 0, (close - kc["kc_lower"]) / kc_range, 0.5)
+    kc_pos = pd.Series(kc_pos, index=df.index)
 
-    # ========== 做多信号 ==========
-    # 条件A：价格触及或接近凯尔特纳下轨（允许1%容差）
-    touch_lower = (close <= kc["kc_lower"] * 1.01) & (close >= kc["kc_lower"] * 0.99)
-
-    # 条件B：价格同时处于薛斯短期通道下轨之上（不是真破位）
-    above_short = close > xosi["xd_short"] * 0.99
-
-    # 条件C：薛斯长期通道不强烈下行（斜率判断：3周期变化）
+    # Xosi 长期通道斜率（3周期变化）
     long_mid = (xosi["xu_long"] + xosi["xd_long"]) / 2
-    slope_long = long_mid.pct_change(3) * 100  # 3周期斜率百分比
-    long_not_down = slope_long > -0.1  # 不是大角度下行
+    slope_long = long_mid.pct_change(3) * 100
 
-    # 条件D：收盘阳线（形态确认）
-    close_above_open = close > open_
-    # 额外：收盘价回到下轨之上
-    price_recovered = close > kc["kc_lower"]
+    # ========== 做多信号：kc_pos < 0.20 ==========
+    # 价格处于通道下轨附近（20%位置以内），均值回归预期上涨
+    long_cond = kc_pos < 0.20
 
-    long_cond = (
-        touch_lower &
-        above_short &
-        long_not_down &
-        close_above_open &
-        price_recovered
-    )
+    # 过滤：Xosi 长期通道强烈下行时不抄底（只在震荡或上行市场做多）
+    long_cond = long_cond & (slope_long > -0.1)
 
-    # ========== 做空信号（镜像） ==========
-    # 条件A：价格触及或接近凯尔特纳上轨
-    touch_upper = (close >= kc["kc_upper"] * 0.99) & (close <= kc["kc_upper"] * 1.01)
+    # ========== 做空信号：kc_pos > 0.80 ==========
+    # 价格处于通道上轨附近（80%位置以上），均值回归预期下跌
+    short_cond = kc_pos > 0.80
 
-    # 条件B：价格同时处于薛斯短期通道上轨之下
-    below_short = close < xosi["xu_short"] * 1.01
-
-    # 条件C：薛斯长期通道不强烈上行
-    long_not_up = slope_long < 0.1
-
-    # 条件D：收盘阴线
-    close_below_open = close < open_
-
-    # 额外：收盘价回到上轨之下
-    price_recovered_down = close < kc["kc_upper"]
-
-    short_cond = (
-        touch_upper &
-        below_short &
-        long_not_up &
-        close_below_open &
-        price_recovered_down
-    )
+    # 过滤：Xosi 长期通道强烈上行时不摸顶
+    short_cond = short_cond & (slope_long < 0.1)
 
     # ========== 赋值信号 ==========
     result.loc[long_cond, "signal"] = 1
     result.loc[short_cond, "signal"] = -1
 
     # ========== 置信度计算 ==========
-    # 凯尔特纳通道位置越接近下轨/上轨，置信度越高
-    kc_pos = get_channel_position(df, kc, xosi)
+    # 位置越接近极端（0 或 1），置信度越高
+    # 多头：kc_pos 越接近 0，置信度越高（超卖程度）
+    result.loc[long_cond, "confidence"] = (0.6 + 0.4 * (0.20 - kc_pos.loc[long_cond]) / 0.20).clip(0, 1)
 
-    # 多头：位置越接近0（接近下轨）置信度越高
-    result.loc[long_cond, "confidence"] = (
-        0.6 + 0.3 * (1 - kc_pos.loc[long_cond, "kc_pos"])
-    ).clip(0, 1)
-
-    # 空头：位置越接近1（接近上轨）置信度越高
-    result.loc[short_cond, "confidence"] = (
-        0.6 + 0.3 * kc_pos.loc[short_cond, "kc_pos"]
-    ).clip(0, 1)
+    # 空头：kc_pos 越接近 1，置信度越高（超买程度）
+    result.loc[short_cond, "confidence"] = (0.6 + 0.4 * (kc_pos.loc[short_cond] - 0.80) / 0.20).clip(0, 1)
 
     # ========== 原因描述 ==========
-    result.loc[long_cond, "reason"] = "凯尔特纳下轨触轨+薛斯长期不空+阳线确认"
-    result.loc[short_cond, "reason"] = "凯尔特纳上轨触轨+薛斯长期不多+阴线确认"
+    result.loc[long_cond, "reason"] = "KC低位(" + (kc_pos.loc[long_cond] * 100).round(1).astype(str) + "%)均值回归做多"
+    result.loc[short_cond, "reason"] = "KC高位(" + ((kc_pos.loc[short_cond] * 100).round(1)).astype(str) + "%)均值回归做空"
 
     return result
 
