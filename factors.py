@@ -9,6 +9,12 @@ import logging
 
 from lib.utils import _safe_float
 
+# KC通道常量（用于辅助过滤）
+try:
+    from lib.indicators import KC_LENGTH, KC_ATR, KC_SCALAR
+except ImportError:
+    KC_LENGTH, KC_ATR, KC_SCALAR = 21, 14, 2.0
+
 logger = logging.getLogger(__name__)
 
 # ========== 风控常量 ==========
@@ -630,6 +636,74 @@ def weighted_signal_combination(signals: Dict[str, Dict], weights: Dict[str, flo
     return {"signal": signal, "confidence": round(abs(final_score), 3), "score": round(final_score, 3)}
 
 
+def calc_channel_filter(hist_df: pd.DataFrame) -> Dict:
+    """计算通道过滤信号（均值回归辅助）
+
+    基于 Walk-forward IC/IR 验证结果：
+    - kc_pos < 0.20（超卖）→ 支持做多
+    - kc_pos > 0.80（超买）→ 支持做空
+
+    Returns:
+        Dict with keys: kc_pos, adjustment, reason
+        - kc_pos: 凯尔特纳通道位置 (0-1)
+        - adjustment: 置信度调整乘数 (0.5-1.3)
+        - reason: 调整原因
+    """
+    try:
+        from lib.indicators import calculate_keltner_channels
+    except ImportError:
+        return {"kc_pos": 0.5, "adjustment": 1.0, "reason": ""}
+
+    if hist_df is None or len(hist_df) < KC_LENGTH + 5:
+        return {"kc_pos": 0.5, "adjustment": 1.0, "reason": ""}
+
+    try:
+        close = hist_df["close"]
+        high = hist_df.get("high", close)
+        low = hist_df.get("low", close)
+
+        # 计算 KC 通道
+        kc_df = calculate_keltner_channels(hist_df)
+        if kc_df is None or kc_df.empty:
+            return {"kc_pos": 0.5, "adjustment": 1.0, "reason": ""}
+
+        kc_upper = kc_df["kc_upper"]
+        kc_lower = kc_df["kc_lower"]
+        kc_range = kc_upper - kc_lower
+
+        if kc_range.iloc[-1] <= 0:
+            return {"kc_pos": 0.5, "adjustment": 1.0, "reason": ""}
+
+        kc_pos = (close.iloc[-1] - kc_lower.iloc[-1]) / kc_range.iloc[-1]
+        kc_pos = max(0, min(1, kc_pos))
+
+        # 根据通道位置调整置信度
+        if kc_pos < 0.15:
+            # 强烈超卖：支持做多
+            adjustment = 1.3
+            reason = f"KC超卖({kc_pos:.0%})"
+        elif kc_pos < 0.20:
+            # 超卖：适度支持做多
+            adjustment = 1.15
+            reason = f"KC偏低({kc_pos:.0%})"
+        elif kc_pos > 0.85:
+            # 强烈超买：支持做空
+            adjustment = 1.3
+            reason = f"KC超买({kc_pos:.0%})"
+        elif kc_pos > 0.80:
+            # 超买：适度支持做空
+            adjustment = 1.15
+            reason = f"KC偏高({kc_pos:.0%})"
+        else:
+            # 中性区间
+            adjustment = 1.0
+            reason = f"KC中性({kc_pos:.0%})"
+
+        return {"kc_pos": kc_pos, "adjustment": adjustment, "reason": reason}
+    except Exception:
+        return {"kc_pos": 0.5, "adjustment": 1.0, "reason": ""}
+
+
 # ========== 综合计算 ==========
 
 def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
@@ -685,7 +759,20 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
     elif macro_gate.state == "ALLOW_REDUCED":
         combined["confidence"] *= macro_gate.position_multiplier
 
-    # 6. 额外因子（受 Config 开关控制）
+    # 6. 通道过滤（均值回归辅助）
+    # 当通道位置极端时，调整置信度：
+    # - 超卖(kc_pos<0.20) + 做多信号 → boost
+    # - 超买(kc_pos>0.80) + 做多信号 → reduce
+    # - 超买(kc_pos>0.80) + 做空信号 → boost
+    # - 超卖(kc_pos<0.20) + 做空信号 → reduce
+    if combined["signal"] in ("bullish", "bearish"):
+        ch_filter = calc_channel_filter(hist_df)
+        adj = ch_filter.get("adjustment", 1.0)
+        if adj != 1.0:
+            combined["confidence"] = round(combined["confidence"] * adj, 3)
+            combined["channel_reason"] = ch_filter.get("reason", "")
+
+    # 7. 额外因子（受 Config 开关控制）
     factors = {}
     if _use('use_rsi') and len(close) > 14:
         factors["rsi_14"] = safe_float(calc_rsi(close, 14).iloc[-1], 50)
@@ -719,6 +806,9 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
             factors["mfi"] = calc_mfi(high, low, close, volume)
     factors["trix"] = calc_trix(close)
 
+    # 通道过滤结果
+    ch_filter = calc_channel_filter(hist_df)
+
     return {
         "signals": signals,
         "combined": combined,
@@ -733,6 +823,11 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
             "regime": macro_gate.regime,
             "multiplier": macro_gate.position_multiplier,
             "reasoning": macro_gate.reasoning,
+        },
+        "channel_filter": {
+            "kc_pos": ch_filter.get("kc_pos", 0.5),
+            "adjustment": ch_filter.get("adjustment", 1.0),
+            "reason": ch_filter.get("reason", ""),
         },
         "factors": factors,
     }
