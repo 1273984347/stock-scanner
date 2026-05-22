@@ -1013,6 +1013,201 @@ class PaperBroker(LiveBrokerABC):
     def total_value(self) -> float:
         return self._broker.total_value
 
+
+# ========== 通达信实盘券商 ==========
+
+class TDXBroker(LiveBrokerABC):
+    """通达信实盘券商
+
+    通过 pytdx.trade 连接本机运行的通达信/同花顺客户端交易接口。
+
+    前置条件：
+    - 通达信客户端运行并开启交易 API（设置 → 个人中心 → 网络安全 → 允许网络写入）
+    - 默认监听 http://127.0.0.1:10092/api
+
+    交易接口参数：
+    - category: 0=买入, 1=卖出
+    - price_type: 0=限价, 1=市价（最新价）, 2=涨停价, 3=跌停价
+    """
+
+    def __init__(
+        self,
+        account: str,
+        ip: str = "127.0.0.1",
+        port: int = 10092,
+        version: int = 8,
+        yyb_id: str = "",
+        trade_account: str = "",
+        jy_password: str = "",
+        tx_password: str = "",
+    ):
+        """
+        Args:
+            account:     资金账号
+            ip:         通达信服务器 IP（默认本机）
+            port:       通达信服务器端口（默认 10092）
+            version:    通达信版本号（默认 8）
+            yyb_id:     营业部 ID
+            trade_account: 交易账号（一般同 account）
+            jy_password: 交易密码
+            tx_password: 通信密码
+        """
+        super().__init__(account=account, env="live")
+        self._ip = ip
+        self._port = port
+        self._version = version
+        self._yyb_id = yyb_id
+        self._trade_account = trade_account or account
+        self._jy_password = jy_password
+        self._tx_password = tx_password
+        self._api = None
+        self._client_id: int = -1
+
+    def _connect(self):
+        from pytdx.trade import TdxTradeApi
+        self._api = TdxTradeApi()
+        self._api.heartbeat = True
+        # 连接通达信交易服务器
+        result = self._api.logon(
+            ip=self._ip,
+            port=self._port,
+            version=self._version,
+            yyb_id=self._yyb_id,
+            account_id=self._account,
+            trade_account=self._trade_account,
+            jy_passwrod=self._jy_password,
+            tx_password=self._tx_password,
+        )
+        if result.get("success") == 1 or result.get("success") == True:
+            self._client_id = result.get("client_id", 0)
+        elif result.get("error") == -1:
+            raise ConnectionError("通达信交易服务器连接失败，请确认客户端已开启交易API")
+        else:
+            raise ConnectionError(f"通达信登录失败: {result}")
+
+    def _disconnect(self):
+        if self._api and self._client_id >= 0:
+            try:
+                self._api.logoff(self._client_id)
+            except Exception:
+                pass
+        self._api = None
+        self._client_id = -1
+
+    def _place_order(self, order: Order) -> Optional[Trade]:
+        # category: 0=买入, 1=卖出
+        category = 0 if order.direction == "BUY" else 1
+        # price_type: 0=限价
+        price_type = 0
+        # 交易所代码
+        market = self._get_market(order.code)
+        gddm = self._get_gddm(market)
+        if gddm is None:
+            logger.error(f"无法获取 {order.code} 的股东代码")
+            return None
+
+        result = self._api.send_order(
+            client_id=self._client_id,
+            category=category,
+            price_type=price_type,
+            gddm=gddm,
+            zqdm=order.code,
+            price=order.price,
+            quantity=order.shares,
+        )
+        if result.get("success") == 1 or result.get("success") == True:
+            # 解析成交回报
+            return Trade(
+                code=order.code,
+                direction=order.direction,
+                price=order.price,
+                shares=order.shares,
+                amount=order.price * order.shares,
+                commission=0.0,  # 实盘由券商端计算
+                stamp_tax=0.0,
+                date=order.date,
+                reason=order.reason,
+            )
+        else:
+            logger.error(f"TDX 下单失败: {result}")
+            return None
+
+    def _cancel_order(self, order_id: str) -> bool:
+        # order_id 格式: "hth"（合同号），在撤单时需要 exchange_id
+        parts = order_id.split("_")
+        if len(parts) < 2:
+            return False
+        exchange_id = int(parts[0])
+        hth = parts[1] if len(parts) > 1 else order_id
+        result = self._api.cancel_order(self._client_id, exchange_id, hth)
+        return result.get("success") == 1 or result.get("success") == True
+
+    def _query_positions(self) -> Dict[str, dict]:
+        if not self._api or self._client_id < 0:
+            return {}
+        result = self._api.query_data(self._client_id, category=1)  # category 1=持仓
+        if result.get("success") == 1:
+            return self._parse_positions(result.get("data", []))
+        return {}
+
+    def _query_balance(self) -> dict:
+        if not self._api or self._client_id < 0:
+            return {}
+        result = self._api.query_data(self._client_id, category=0)  # category 0=资金
+        if result.get("success") == 1:
+            data = result.get("data", {})
+            return {
+                "cash": data.get("可用金额", data.get("可用", 0)),
+                "total_value": data.get("总资产", data.get("市值", 0)) + data.get("可用金额", data.get("可用", 0)),
+                "market_value": data.get("市值", 0),
+            }
+        return {}
+
+    def _get_market(self, code: str) -> int:
+        """判断市场：0=深圳, 1=上海"""
+        code = code.strip().zfill(6)
+        if code.startswith(("6", "5", "9")):
+            return 1  # 上海
+        return 0  # 深圳
+
+    def _get_gddm(self, market: int) -> Optional[str]:
+        """获取股东代码"""
+        result = self._api.query_data(self._client_id, category=5)  # category 5=股东代码
+        if result.get("success") != 1:
+            return None
+        data_list = result.get("data", [])
+        if not isinstance(data_list, list):
+            return None
+        for item in data_list:
+            if isinstance(item, dict) and item.get("market") == market:
+                return item.get("gddm")
+        # 兜底：取第一个
+        if data_list and isinstance(data_list[0], dict):
+            return data_list[0].get("gddm")
+        return None
+
+    def _parse_positions(self, data: list) -> Dict[str, dict]:
+        positions = {}
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            code = item.get("证券代码", "")
+            if not code:
+                continue
+            positions[code] = {
+                "code": code,
+                "name": item.get("证券名称", code),
+                "shares": item.get("股票数量", 0),
+                "cost_price": item.get("成本价", 0),
+                "buy_date": item.get("买入日期", ""),
+                "market_value": item.get("市值", 0),
+            }
+        return positions
+
+    @property
+    def client_id(self) -> int:
+        return self._client_id
+
     @property
     def holdings(self):
         return self._broker.holdings
