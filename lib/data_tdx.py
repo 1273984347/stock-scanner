@@ -228,3 +228,235 @@ def get_index_daily(index_code: str, days: int = 180) -> pd.DataFrame:
             api.disconnect()
         except Exception:
             pass
+
+
+# ========== 本地文件：指数（sh/zs, sz/zs, tdx/zs）==========
+
+def _fetch_index_local(index_code: str, days: int) -> pd.DataFrame:
+    """读取本地 TDX 指数 .day 文件（标准格式：整数分）
+
+    支持：上证指数(sh000001)、深证成指(sz399001)、通达信板块(sh880001)
+    """
+    code = index_code.strip().zfill(6)
+    file_path = None
+
+    # 规则：
+    #   - 有 sh/sz 前缀：直接用
+    #   - 无前缀：6开头→sh，0开头→sz（但 000001 特殊处理→sh）
+    #   - 399开头→sz，8开头→tdx/zs（板块）
+    def try_zs_path(market, c):
+        p = Path(TDX_DATA_PATH) / market / "zs" / f"{market}{c}.day"
+        if p.exists():
+            return p
+        return None
+
+    def try_tdx_zs_path(market, c):
+        p = Path(TDX_DATA_PATH) / "tdx" / "zs" / f"{market}{c}.day"
+        if p.exists():
+            return p
+        return None
+
+    if index_code.startswith("sh"):
+        file_path = try_zs_path("sh", code)
+        if file_path is None:
+            file_path = try_tdx_zs_path("sh", code)
+    elif index_code.startswith("sz") or code.startswith("399"):
+        file_path = try_zs_path("sz", code)
+    elif code.startswith("8"):
+        # 板块在 tdx/zs，代码如 880001
+        file_path = try_tdx_zs_path("sh", code)
+    elif code.startswith(("6", "5", "9")):
+        file_path = try_zs_path("sh", code)
+    elif code.startswith(("0", "3", "2", "4")):
+        # 000001 是上证指数，不是深证
+        if code == "000001":
+            file_path = try_zs_path("sh", code)
+        else:
+            file_path = try_zs_path("sz", code)
+    else:
+        file_path = None
+
+    if file_path is None:
+        return pd.DataFrame()
+
+    # 直接用 struct 读取（比 TdxDailyBarReader 更可靠，兼容指数格式）
+    return _read_standard_file(file_path, days, price_unit=0.01)
+
+
+# ========== 本地文件：CSI 中证指数 ==========
+
+def _fetch_csi_local(csi_code: str, days: int) -> pd.DataFrame:
+    """读取中证指数本地 .day 文件（格式：8s + 4*f32）
+
+    文件：csi/zs/62#000001CNY01.day
+    """
+    csi_code = csi_code.strip()
+    file_path = Path(TDX_DATA_PATH) / "csi" / "zs"
+    # 精确匹配
+    for fpath in file_path.glob(f"62#{csi_code}.day"):
+        return _parse_csi_file(fpath, days)
+    # 带 CNY 后缀
+    for fpath in file_path.glob(f"62#{csi_code}*.day"):
+        return _parse_csi_file(fpath, days)
+    return pd.DataFrame()
+
+
+def _parse_csi_file(file_path: Path, days: int) -> pd.DataFrame:
+    """解析 CSI 指数文件（每记录32字节：4字节日期 + 4*4字节OHLC + 12字节填充）
+
+    格式：<date_i, open_f, high_f, low_f, close_f, padding_12bytes>
+    """
+    try:
+        records = []
+        with open(file_path, "rb") as f:
+            while True:
+                data = f.read(32)
+                if len(data) < 32:
+                    break
+                date_val = struct.unpack('<i', data[0:4])[0]
+                if not (19500101 <= date_val <= 20351231):
+                    break
+                o, h, l, c = struct.unpack('<ffff', data[4:20])
+                records.append({
+                    "date": str(date_val),
+                    "open": float(o), "high": float(h),
+                    "low": float(l), "close": float(c),
+                })
+        if not records:
+            return pd.DataFrame()
+        df = pd.DataFrame(records)
+        df["date"] = pd.to_datetime(df["date"], format="%Y%m%d", errors="coerce")
+        df = df.dropna(subset=["date"])
+        # CSI 数据 oldest-first
+        if len(df) > days:
+            df = df.tail(days)
+        return df[["date", "open", "high", "low", "close"]].copy()
+    except Exception:
+        return pd.DataFrame()
+
+
+# ========== 本地文件：港股通 ==========
+
+def _fetch_ggt_local(code: str, days: int) -> pd.DataFrame:
+    """读取港股通本地 .day 文件（标准整数分格式，单位 0.00001 HKD）
+
+    文件：ggt/lday/31#00001.day
+    """
+    code = code.strip().zfill(5)
+    file_path = Path(TDX_DATA_PATH) / "ggt" / "lday" / f"31#{code}.day"
+    if not file_path.exists():
+        return pd.DataFrame()
+    return _read_standard_file(file_path, days, price_unit=0.00001)
+
+
+# ========== 本地文件：北交所 ==========
+
+def _fetch_bj_local(code: str, days: int) -> pd.DataFrame:
+    """读取北交所本地 .day 文件（标准整数分格式，单位 0.0001 yuan）
+
+    文件：bj/lday/bj810011.day
+    """
+    code = code.strip().zfill(6)
+    file_path = Path(TDX_DATA_PATH) / "bj" / "lday" / f"bj{code}.day"
+    if not file_path.exists():
+        return pd.DataFrame()
+    return _read_standard_file(file_path, days, price_unit=0.0001)
+
+
+# ========== 本地文件：新三板 ==========
+
+def _fetch_xsb_local(code: str, days: int) -> pd.DataFrame:
+    """读取新三板本地 .day 文件（标准整数分格式，单位 0.01 yuan）
+
+    文件：xsb/lday/44#400001.day
+    """
+    code = code.strip().zfill(6)
+    file_path = Path(TDX_DATA_PATH) / "xsb" / "lday" / f"44#{code}.day"
+    if not file_path.exists():
+        return pd.DataFrame()
+    return _read_standard_file(file_path, days, price_unit=0.01)
+
+
+# ========== 通用二进制文件读取 ==========
+
+def _read_standard_file(file_path: Path, days: int, price_unit: float = 0.01) -> pd.DataFrame:
+    """通用 TDX .day 文件读取（标准 <IiiiiiII 格式，分→元按 price_unit 转换）"""
+    try:
+        records = []
+        with open(file_path, "rb") as f:
+            while True:
+                data = f.read(32)
+                if len(data) < 32:
+                    break
+                date_idx, o, h, l, c, amt, vol, _ = struct.unpack('<IiiiiiII', data)
+                if not (19500101 <= date_idx <= 20351231):
+                    break
+                records.append({
+                    "date": str(date_idx),
+                    "open": o * price_unit,
+                    "high": h * price_unit,
+                    "low": l * price_unit,
+                    "close": c * price_unit,
+                    "volume": vol,
+                    "amount": amt,
+                })
+        if not records:
+            return pd.DataFrame()
+        df = pd.DataFrame(records)
+        df["date"] = pd.to_datetime(df["date"], format="%Y%m%d", errors="coerce")
+        df = df.dropna(subset=["date"])
+        if len(df) > days:
+            df = df.tail(days)
+        return df[["date", "open", "high", "low", "close", "volume", "amount"]].copy()
+    except Exception:
+        return pd.DataFrame()
+
+
+# ========== 主接口：多品种日线 ==========
+
+def get_index_local(index_code: str, days: int = 180) -> pd.DataFrame:
+    """获取指数日线（本地文件优先）
+
+    Args:
+        index_code: 指数代码，如 "000001"（上证）、"399001"（深证）、"000300"（沪深300）、"880001"（板块）
+        days: 获取天数
+    """
+    # CSI 和 sh/zs/sz/zs 都尝试，返回数据最新者
+    csi_df = _fetch_csi_local(index_code, days)
+    zs_df = _fetch_index_local(index_code, days)
+
+    # 选择数据更完整/最新的
+    def latest_date(df):
+        if df.empty or "date" not in df.columns:
+            return None
+        dates = pd.to_datetime(df["date"], errors="coerce").dropna()
+        return dates.max() if len(dates) > 0 else None
+
+    csi_latest = latest_date(csi_df)
+    zs_latest = latest_date(zs_df)
+
+    if csi_latest is not None and zs_latest is not None:
+        # 选最新
+        if csi_latest >= zs_latest:
+            return csi_df
+        return zs_df
+    if csi_df is not None and not csi_df.empty:
+        return csi_df
+    if zs_df is not None and not zs_df.empty:
+        return zs_df
+    return pd.DataFrame()
+
+
+def get_ggt_local(code: str, days: int = 180) -> pd.DataFrame:
+    """获取港股通日线（本地文件）"""
+    return _fetch_ggt_local(code, days)
+
+
+def get_bj_local(code: str, days: int = 180) -> pd.DataFrame:
+    """获取北交所日线（本地文件）"""
+    return _fetch_bj_local(code, days)
+
+
+def get_xsb_local(code: str, days: int = 180) -> pd.DataFrame:
+    """获取新三板日线（本地文件）"""
+    return _fetch_xsb_local(code, days)

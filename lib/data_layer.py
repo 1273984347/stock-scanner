@@ -269,6 +269,62 @@ from lib.data_source_registry import (
 )
 
 
+# ========== 指数/板块日线（本地 TDX 优先）==========
+
+def get_index_hist(code: str, days: int = 180) -> pd.DataFrame:
+    """获取指数/板块日线（本地 TDX 优先，网络兜底）
+
+    Args:
+        code: 指数代码，如 "000001"（上证）、"399001"（深证）、"880001"（板块）
+        days: 获取天数
+    """
+    from lib.data_tdx import get_index_local
+    cache_key = f"index_{code}_{days}"
+    cached = _load_cache(cache_key, max_age_hours=4)
+    if not cached.empty:
+        return cached
+    # 本地优先
+    df = get_index_local(code, days)
+    if not df.empty:
+        _save_cache(cache_key, df)
+        return df
+    # 网络兜底
+    try:
+        from lib.data_tdx import get_index_daily as _get_index_daily_net
+        df = _get_index_daily_net(code, days)
+        if not df.empty:
+            _save_cache(cache_key, df)
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+def get_ggt_hist(code: str, days: int = 180) -> pd.DataFrame:
+    """获取港股通日线（本地文件）"""
+    from lib.data_tdx import get_ggt_local
+    cache_key = f"ggt_{code}_{days}"
+    cached = _load_cache(cache_key, max_age_hours=4)
+    if not cached.empty:
+        return cached
+    df = get_ggt_local(code, days)
+    if not df.empty:
+        _save_cache(cache_key, df)
+    return df
+
+
+def get_bj_hist(code: str, days: int = 180) -> pd.DataFrame:
+    """获取北交所日线（本地文件）"""
+    from lib.data_tdx import get_bj_local
+    cache_key = f"bj_{code}_{days}"
+    cached = _load_cache(cache_key, max_age_hours=4)
+    if not cached.empty:
+        return cached
+    df = get_bj_local(code, days)
+    if not df.empty:
+        _save_cache(cache_key, df)
+    return df
+
+
 # ========== 实时行情 ==========
 
 def get_realtime_quotes() -> pd.DataFrame:
