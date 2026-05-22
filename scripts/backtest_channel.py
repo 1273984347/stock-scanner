@@ -175,7 +175,7 @@ def run_backtest(codes: list, years: int = 3) -> pd.DataFrame:
     daily_values = []
 
     stop_loss_atr = 1.5   # 1.5x ATR 止损
-    max_hold_days = 40    # 40天持仓
+    max_hold_days = 80    # 80天持仓
     partial_take_pct = 0.5  # 分批止盈：先卖一半
 
     print("[2/3] 运行回测...")
@@ -307,7 +307,7 @@ def run_backtest(codes: list, years: int = 3) -> pd.DataFrame:
                 signal = latest.get("signal", 0)
                 confidence = latest.get("confidence", 0)
 
-                if signal != 1 or confidence < 0.7:
+                if signal != 1 or confidence < 0.92:
                     continue
 
                 # 计算ATR和止盈（KC中轨）
