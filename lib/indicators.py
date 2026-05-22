@@ -239,16 +239,16 @@ def get_channel_signals(
     long_mid = (xosi["xu_long"] + xosi["xd_long"]) / 2
     slope_long = long_mid.pct_change(3) * 100
 
-    # ========== 做多信号：kc_pos < 0.20 ==========
-    # 价格处于通道下轨附近（20%位置以内），均值回归预期上涨
-    long_cond = kc_pos < 0.20
+    # ========== 做多信号：kc_pos < 0.08 ==========
+    # 价格处于通道下轨附近（8%位置以内），均值回归预期上涨
+    long_cond = kc_pos < 0.08
 
     # 过滤：Xosi 长期通道强烈下行时不抄底（只在震荡或上行市场做多）
     long_cond = long_cond & (slope_long > -0.1)
 
-    # ========== 做空信号：kc_pos > 0.80 ==========
-    # 价格处于通道上轨附近（80%位置以上），均值回归预期下跌
-    short_cond = kc_pos > 0.80
+    # ========== 做空信号：kc_pos > 0.92 ==========
+    # 价格处于通道上轨附近（92%位置以上），均值回归预期下跌
+    short_cond = kc_pos > 0.92
 
     # 过滤：Xosi 长期通道强烈上行时不摸顶
     short_cond = short_cond & (slope_long < 0.1)
@@ -260,10 +260,10 @@ def get_channel_signals(
     # ========== 置信度计算 ==========
     # 位置越接近极端（0 或 1），置信度越高
     # 多头：kc_pos 越接近 0，置信度越高（超卖程度）
-    result.loc[long_cond, "confidence"] = (0.6 + 0.4 * (0.20 - kc_pos.loc[long_cond]) / 0.20).clip(0, 1)
+    result.loc[long_cond, "confidence"] = (0.6 + 0.4 * (0.08 - kc_pos.loc[long_cond]) / 0.08).clip(0, 1)
 
     # 空头：kc_pos 越接近 1，置信度越高（超买程度）
-    result.loc[short_cond, "confidence"] = (0.6 + 0.4 * (kc_pos.loc[short_cond] - 0.80) / 0.20).clip(0, 1)
+    result.loc[short_cond, "confidence"] = (0.6 + 0.4 * (kc_pos.loc[short_cond] - 0.92) / 0.08).clip(0, 1)
 
     # ========== 原因描述 ==========
     result.loc[long_cond, "reason"] = "KC低位(" + (kc_pos.loc[long_cond] * 100).round(1).astype(str) + "%)均值回归做多"

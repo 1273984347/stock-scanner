@@ -1,4 +1,4 @@
-"""通道策略回测 - 均值回归版本（kc_pos < 0.20 买入，> 0.80 卖出）
+"""通道策略回测 - 均值回归版本（kc_pos < 0.08 买入，> 0.92 卖出）
 
 用法:
     python scripts/backtest_channel.py                    # 默认：20只股票，3年数据
@@ -131,11 +131,12 @@ def run_backtest(codes: list, years: int = 3) -> pd.DataFrame:
     """运行通道策略回测
 
     均值回归策略：
-    - 买入信号：kc_pos < 0.20（价格在下轨20%以内）
-    - 卖出信号：kc_pos > 0.80（价格在上轨80%以上）
-    - 持仓：最多10个交易日
-    - 止损：ATR * 2
-    - 止盈：ATR * 4 或 中轨
+    - 买入信号：kc_pos < 0.08（价格在下轨8%以内）
+    - 卖出信号：kc_pos > 0.92（价格在上轨92%以上）
+    - 持仓：最多40天
+    - 止损：ATR * 3 / 硬止损 -5%
+    - 止盈：KC中轨（分批止盈50% + 移动止损5%）
+
     """
     print(f"\n{'='*60}")
     print(f"通道策略回测（均值回归版）")
@@ -168,13 +169,14 @@ def run_backtest(codes: list, years: int = 3) -> pd.DataFrame:
     # ATR参数（优化后：均值回归策略，止盈看中轨，止损放宽）
     initial_cash = 1_000_000.0
     cash = initial_cash
-    holdings = {}  # code -> {shares, buy_price, buy_date, stop_price}
+    # holdings: {code: {shares, buy_price, buy_date, stop_price, take_profit_price, shares_remaining}}
+    holdings = {}
     trade_history = []
     daily_values = []
 
-    stop_loss_atr = 3.0   # 3x ATR 止损（原2.0太紧，均值回归不适用）
-    max_hold_days = 20    # 20天持仓（均值回归需要时间）
-    take_profit_mode = "mid"  # 止盈：KC中轨（原4x ATR太高，接近上轨才触发）
+    stop_loss_atr = 1.5   # 1.5x ATR 止损
+    max_hold_days = 40    # 40天持仓
+    partial_take_pct = 0.5  # 分批止盈：先卖一半
 
     print("[2/3] 运行回测...")
 
@@ -189,7 +191,7 @@ def run_backtest(codes: list, years: int = 3) -> pd.DataFrame:
                 current_prices[code] = float(row["close"].iloc[-1])
 
         total_value = cash + sum(
-            h["shares"] * current_prices.get(code, h["buy_price"])
+            h["shares_remaining"] * current_prices.get(code, h["buy_price"])
             for code, h in holdings.items()
         )
         daily_values.append({"date": date_str, "total_value": total_value})
@@ -205,48 +207,72 @@ def run_backtest(codes: list, years: int = 3) -> pd.DataFrame:
 
             # ATR止损
             if h.get("stop_price") and current_price <= h["stop_price"]:
-                proceeds = h["shares"] * current_price
+                proceeds = h["shares_remaining"] * current_price
                 cash += proceeds
                 trade_history.append({
                     "code": code, "date": date_str, "direction": "SELL",
-                    "price": current_price, "shares": h["shares"],
+                    "price": current_price, "shares": h["shares_remaining"],
                     "reason": "ATR止损", "pnl_pct": pnl_pct,
                 })
                 del holdings[code]
                 continue
 
-            # 硬止损（均值回归给予更大空间，8%）
-            if pnl_pct <= -0.08:
-                proceeds = h["shares"] * current_price
+            # 硬止损（5%）
+            if pnl_pct <= -0.05:
+                proceeds = h["shares_remaining"] * current_price
                 cash += proceeds
                 trade_history.append({
                     "code": code, "date": date_str, "direction": "SELL",
-                    "price": current_price, "shares": h["shares"],
-                    "reason": "硬止损", "pnl_pct": pnl_pct,
+                    "price": current_price, "shares": h["shares_remaining"],
+                    "reason": "硬止损5%", "pnl_pct": pnl_pct,
                 })
                 del holdings[code]
                 continue
 
-            # 止盈
-            if h.get("take_profit_price") and current_price >= h["take_profit_price"]:
-                proceeds = h["shares"] * current_price
-                cash += proceeds
-                trade_history.append({
-                    "code": code, "date": date_str, "direction": "SELL",
-                    "price": current_price, "shares": h["shares"],
-                    "reason": "止盈", "pnl_pct": pnl_pct,
-                })
-                del holdings[code]
-                continue
+            # 分批止盈：第一次触及 KC 中轨 → 卖出50%，止损移至盈亏平衡
+            tp_price = h.get("take_profit_price")
+            if tp_price and current_price >= tp_price:
+                partial_exited = h.get("partial_exited", False)
+                if not partial_exited:
+                    # 第一次到中轨：卖出一半
+                    sell_shares = int(h["shares_remaining"] * partial_take_pct)
+                    if sell_shares > 0:
+                        proceeds = sell_shares * current_price
+                        cash += proceeds
+                        trade_history.append({
+                            "code": code, "date": date_str, "direction": "SELL",
+                            "price": current_price, "shares": sell_shares,
+                            "reason": "分批止盈(半)", "pnl_pct": (current_price - h["buy_price"]) / h["buy_price"],
+                        })
+                        h["shares_remaining"] = h["shares_remaining"] - sell_shares
+                        h["partial_exited"] = True
+                        h["stop_price"] = h["buy_price"]  # 盈亏平衡止损
+                        h["rolling_high"] = current_price  # 追踪最高价
+                else:
+                    # 分批止盈后：移动止损，追踪rolling_high
+                    rh = h.get("rolling_high", current_price)
+                    h["rolling_high"] = max(rh, current_price)
+                    # 移动止损：最高价回落3%则出局
+                    trailing_stop = h["rolling_high"] * 0.95
+                    if current_price <= trailing_stop:
+                        proceeds = h["shares_remaining"] * current_price
+                        cash += proceeds
+                        trade_history.append({
+                            "code": code, "date": date_str, "direction": "SELL",
+                            "price": current_price, "shares": h["shares_remaining"],
+                            "reason": "移动止损", "pnl_pct": pnl_pct,
+                        })
+                        del holdings[code]
+                        continue
 
             # 超时
             hold_days = (date - h["buy_date"]).days if isinstance(h["buy_date"], pd.Timestamp) else 0
             if hold_days >= max_hold_days:
-                proceeds = h["shares"] * current_price
+                proceeds = h["shares_remaining"] * current_price
                 cash += proceeds
                 trade_history.append({
                     "code": code, "date": date_str, "direction": "SELL",
-                    "price": current_price, "shares": h["shares"],
+                    "price": current_price, "shares": h["shares_remaining"],
                     "reason": "超时", "pnl_pct": pnl_pct,
                 })
                 del holdings[code]
@@ -285,8 +311,7 @@ def run_backtest(codes: list, years: int = 3) -> pd.DataFrame:
                     continue
 
                 # 计算ATR和止盈（KC中轨）
-                atr_series = (kc["kc_upper"] - kc["kc_lower"]) if not kc.empty else pd.Series()
-                atr_val = float(atr_series.iloc[-1]) if not atr_series.empty else 0
+                atr_val = float(kc["atr"].iloc[-1]) if not kc.empty and "atr" in kc.columns and not pd.isna(kc["atr"].iloc[-1]) else 0
                 kc_mid = float(kc["kc_mid"].iloc[-1]) if not kc.empty and not pd.isna(kc["kc_mid"].iloc[-1]) else current_price * 1.03
 
                 candidates.append({
@@ -312,6 +337,7 @@ def run_backtest(codes: list, years: int = 3) -> pd.DataFrame:
                 cash -= cost
                 holdings[cand["code"]] = {
                     "shares": shares,
+                    "shares_remaining": shares,
                     "buy_price": cand["price"],
                     "buy_date": date,
                     "stop_price": cand["stop_price"],
