@@ -1,4 +1,5 @@
 """数据层：多源数据获取、缓存、限流"""
+import os
 import akshare as ak
 import pandas as pd
 import numpy as np
@@ -189,12 +190,58 @@ def _get_financial_data(code: str) -> Optional[pd.Series]:
 
 # ========== 日线数据获取 ==========
 
+def _fetch_from_tdx_local(code: str, days: int) -> pd.DataFrame:
+    """从本地 TDX .day 文件读取日线（优先）"""
+    try:
+        from pytdx.reader import TdxDailyBarReader
+    except ImportError:
+        return pd.DataFrame()
+
+    code = code.strip().zfill(6)
+    if code.startswith(("6", "5", "9")):
+        market_str = "sh"
+    elif code.startswith(("0", "3", "2", "4", "8")):
+        market_str = "sz"
+    else:
+        return pd.DataFrame()
+
+    tdx_path = os.environ.get("TDX_DATA_PATH", "D:/TDX/vipdoc")
+    file_path = Path(tdx_path) / market_str / "lday" / f"{market_str}{code}.day"
+    if not file_path.exists():
+        return pd.DataFrame()
+
+    try:
+        reader = TdxDailyBarReader()
+        df = reader.get_df(str(file_path))
+        if df.empty:
+            return pd.DataFrame()
+        df = df.reset_index()
+        col_map = {"open": "open", "high": "high", "low": "low", "close": "close", "volume": "volume"}
+        df = df.rename(columns=col_map)
+        for c in ["open", "high", "low", "close", "volume"]:
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors="coerce")
+        if len(df) > days:
+            df = df.tail(days)
+        return df[["date", "open", "high", "low", "close", "volume"]].copy()
+    except Exception:
+        return pd.DataFrame()
+
+
 def get_stock_hist(code: str, days: int = 180) -> pd.DataFrame:
-    """用 akshare 获取个股日线（带缓存）"""
+    """获取个股日线：本地TDX优先，网络akshare兜底（带缓存）"""
     cache_key = f"hist_{code}_{days}"
     cached = _load_cache(cache_key, max_age_hours=4)
     if not cached.empty:
         return cached
+
+    # 1. 优先本地 TDX 文件
+    df = _fetch_from_tdx_local(code, days)
+    if not df.empty and len(df) >= min(days, 5):
+        _save_cache(cache_key, df)
+        return df
+
+    # 2. 网络兜底
     try:
         end = datetime.now().strftime("%Y%m%d")
         start = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
