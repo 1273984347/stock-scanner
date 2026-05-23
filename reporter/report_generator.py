@@ -249,10 +249,10 @@ def build_morning_report() -> Tuple[str, List[str]]:
     - 读取最近一次策略结果
     - 市场展望 + 昨日信号回顾
     - IC 监控状态（简化版）
-    - 无持仓数据时只发信号/市场展望（简化版）
+    - 尝试生成持仓收益对比图
 
     Returns:
-        (文字报告, 空列表)
+        (文字报告, 图表路径列表)
     """
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     latest = _load_latest_results()
@@ -311,4 +311,16 @@ def build_morning_report() -> Tuple[str, List[str]]:
     lines.append("")
     lines.append("仅供参考，不构成投资建议。")
 
-    return "\n".join(lines), []
+    # 生成持仓收益对比图
+    chart_paths: List[str] = []
+    try:
+        from .chart_builder import build_position_returns_chart
+        reports_dir = Path("cache/reports")
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        chart_path = build_position_returns_chart(reports_dir / "position_returns.png")
+        if chart_path:
+            chart_paths.append(chart_path)
+    except Exception as e:
+        logger.debug("持仓收益图生成失败: %s", e)
+
+    return "\n".join(lines), chart_paths
