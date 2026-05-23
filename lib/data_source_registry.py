@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # ========== 数据源配置 ==========
 
-DATA_SOURCE_PRIORITY = ["baostock", "tdx", "adata", "westock", "tushare", "akshare"]
+DATA_SOURCE_PRIORITY = ["tdx_local", "baostock", "tdx", "adata", "westock", "tushare", "akshare"]
 
 # 每个数据源独立的熔断器
 _CIRCUIT_BREAKERS: Dict[str, CircuitBreaker] = {
@@ -42,6 +42,9 @@ def _fetch_from_source(code: str, days: int, source: str) -> pd.DataFrame:
         return pd.DataFrame()
 
     try:
+        if source == "tdx_local":
+            from lib.data_tdx import _fetch_from_local_file
+            return _fetch_from_local_file(code, days, "daily")
         if source == "baostock":
             from lib.data_baostock import get_kline as baostock_kline
             return breaker.call(baostock_kline, code, days=days)
