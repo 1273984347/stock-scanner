@@ -315,7 +315,7 @@ def _parse_csi_file(file_path: Path, days: int) -> pd.DataFrame:
                     break
                 date_val = struct.unpack('<i', data[0:4])[0]
                 if not (19500101 <= date_val <= 20351231):
-                    break
+                    continue
                 o, h, l, c = struct.unpack('<ffff', data[4:20])
                 records.append({
                     "date": str(date_val),
@@ -366,21 +366,150 @@ def _fetch_bj_local(code: str, days: int) -> pd.DataFrame:
 # ========== 本地文件：新三板 ==========
 
 def _fetch_xsb_local(code: str, days: int) -> pd.DataFrame:
-    """读取新三板本地 .day 文件（标准整数分格式，单位 0.01 yuan）
+    """读取新三板本地 .day 文件（标准<IiiiiiII格式，价格单位 1e-8 yuan）
 
     文件：xsb/lday/44#400001.day
+    amount 字段为原始整数（元），不经 price_unit 转换。
     """
     code = code.strip().zfill(6)
     file_path = Path(TDX_DATA_PATH) / "xsb" / "lday" / f"44#{code}.day"
     if not file_path.exists():
         return pd.DataFrame()
-    return _read_standard_file(file_path, days, price_unit=0.01)
+    try:
+        records = []
+        with open(file_path, "rb") as f:
+            while True:
+                data = f.read(32)
+                if len(data) < 32:
+                    break
+                date_idx, o, h, l, c, amt, vol, _ = struct.unpack('<IiiiiiII', data)
+                if not (19500101 <= date_idx <= 20351231):
+                    break
+                records.append({
+                    "date": str(date_idx),
+                    "open": o * 1e-8,
+                    "high": h * 1e-8,
+                    "low": l * 1e-8,
+                    "close": c * 1e-8,
+                    "volume": vol,
+                    "amount": amt,  # amount 原始值（元），与 price_unit 无关
+                })
+        if not records:
+            return pd.DataFrame()
+        df = pd.DataFrame(records)
+        df["date"] = pd.to_datetime(df["date"], format="%Y%m%d", errors="coerce")
+        df = df.dropna(subset=["date"])
+        if len(df) > days:
+            df = df.tail(days)
+        return df[["date", "open", "high", "low", "close", "volume", "amount"]].copy()
+    except Exception:
+        return pd.DataFrame()
+
+
+# ========== 本地文件：期权 ==========
+
+def _fetch_option_local(code: str, market: str = "sh", days: int = 180) -> pd.DataFrame:
+    """读取期权本地 .day 文件（标准整数分格式，价格单位 1e-8）
+
+    文件：sh/option/8#10000001.day, sz/option/9#90000001.day
+    amount 原始值（元），不经 price_unit 转换。
+    """
+    if market == "sh":
+        file_path = Path(TDX_DATA_PATH) / "sh" / "option" / f"8#{code}.day"
+    else:
+        file_path = Path(TDX_DATA_PATH) / "sz" / "option" / f"9#{code}.day"
+    if not file_path.exists():
+        return pd.DataFrame()
+    return _read_standard_file(file_path, days, price_unit=1e-8,
+                               amount_is_raw=True)
+
+
+# ========== 本地文件：基金 ==========
+
+def _fetch_fund_local(code: str, market: str = "open", days: int = 180) -> pd.DataFrame:
+    """读取基金本地 .day 文件（标准整数分格式，价格单位 1e-8 NAV）
+
+    文件：fund/open/33#000001.day, fund/money/34#000009.day
+    amount 原始值（元），不经 price_unit 转换。
+    """
+    if market == "money":
+        file_path = Path(TDX_DATA_PATH) / "fund" / "money" / f"34#{code}.day"
+    else:
+        file_path = Path(TDX_DATA_PATH) / "fund" / "open" / f"33#{code}.day"
+    if not file_path.exists():
+        return pd.DataFrame()
+    return _read_standard_file(file_path, days, price_unit=1e-8,
+                               amount_is_raw=True)
+
+
+# ========== 本地文件：宏观指标 ==========
+
+def _fetch_macro_local(indicator: str, days: int = 30) -> pd.DataFrame:
+    """读取宏观指标本地 .day 文件（<Iffffff 格式，28字节/记录）
+
+    格式：<date_i, open_f, high_f, low_f, close_f, amount_f, volume_f>
+    - GDP: 单位亿元（1e8 yuan）
+    - CPI/PPI: 物价指数（基期=100）
+    - SHIBOR/SLF/MLF: 利率（%）
+    """
+    # indicator 可能是完整文件名如 "38#1_GDP" 或简称 "GDP"
+    macro_dir = Path(TDX_DATA_PATH) / "macro" / "lday"
+    # 精确匹配
+    for fpath in macro_dir.glob(f"*{indicator}*.day"):
+        return _parse_macro_file(fpath, days)
+    # 模糊匹配
+    for fpath in macro_dir.glob(f"38#*.day"):
+        if indicator.upper() in fpath.stem.upper():
+            return _parse_macro_file(fpath, days)
+    return pd.DataFrame()
+
+
+def _parse_macro_file(file_path: Path, days: int) -> pd.DataFrame:
+    """解析宏观指标文件（<Iffffff，28字节/记录）"""
+    try:
+        records = []
+        with open(file_path, "rb") as f:
+            while True:
+                data = f.read(28)
+                if len(data) < 28:
+                    break
+                date_val = struct.unpack('<i', data[0:4])[0]
+                if not (19500101 <= date_val <= 20351231):
+                    continue
+                vals = struct.unpack('<ffffff', data[4:28])
+                records.append({
+                    "date": str(date_val),
+                    "open": float(vals[0]),
+                    "high": float(vals[1]),
+                    "low": float(vals[2]),
+                    "close": float(vals[3]),
+                    "amount": float(vals[4]),
+                    "volume": float(vals[5]),
+                })
+        if not records:
+            return pd.DataFrame()
+        df = pd.DataFrame(records)
+        df["date"] = pd.to_datetime(df["date"], format="%Y%m%d", errors="coerce")
+        df = df.dropna(subset=["date"])
+        if len(df) > days:
+            df = df.tail(days)
+        return df[["date", "open", "high", "low", "close", "amount", "volume"]].copy()
+    except Exception:
+        return pd.DataFrame()
 
 
 # ========== 通用二进制文件读取 ==========
 
-def _read_standard_file(file_path: Path, days: int, price_unit: float = 0.01) -> pd.DataFrame:
-    """通用 TDX .day 文件读取（标准 <IiiiiiII 格式，分→元按 price_unit 转换）"""
+def _read_standard_file(file_path: Path, days: int, price_unit: float = 0.01,
+                       amount_is_raw: bool = False) -> pd.DataFrame:
+    """通用 TDX .day 文件读取（标准 <IiiiiiII 格式）
+
+    Args:
+        file_path: 文件路径
+        days: 获取天数
+        price_unit: 价格单位（0.01=元 for stocks, 1e-8=元 for XSB/option/fund）
+        amount_is_raw: 若为 True，amount 不乘 price_unit，直接存原始值（元）
+    """
     try:
         records = []
         with open(file_path, "rb") as f:
@@ -398,7 +527,7 @@ def _read_standard_file(file_path: Path, days: int, price_unit: float = 0.01) ->
                     "low": l * price_unit,
                     "close": c * price_unit,
                     "volume": vol,
-                    "amount": amt,
+                    "amount": float(amt) if amount_is_raw else amt * price_unit,
                 })
         if not records:
             return pd.DataFrame()

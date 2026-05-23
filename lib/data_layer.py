@@ -312,6 +312,50 @@ def get_ggt_hist(code: str, days: int = 180) -> pd.DataFrame:
     return df
 
 
+def get_option_hist(code: str, market: str = "sh", days: int = 180) -> pd.DataFrame:
+    """获取期权日线（本地文件）"""
+    from lib.data_tdx import _fetch_option_local
+    cache_key = f"option_{market}_{code}_{days}"
+    cached = _load_cache(cache_key, max_age_hours=4)
+    if not cached.empty:
+        return cached
+    df = _fetch_option_local(code, market, days)
+    if not df.empty:
+        _save_cache(cache_key, df)
+    return df
+
+
+def get_fund_hist(code: str, market: str = "open", days: int = 180) -> pd.DataFrame:
+    """获取基金净值日线（本地文件）"""
+    from lib.data_tdx import _fetch_fund_local
+    cache_key = f"fund_{market}_{code}_{days}"
+    cached = _load_cache(cache_key, max_age_hours=4)
+    if not cached.empty:
+        return cached
+    df = _fetch_fund_local(code, market, days)
+    if not df.empty:
+        _save_cache(cache_key, df)
+    return df
+
+
+def get_macro_hist_local(indicator: str = "CPI", days: int = 30) -> pd.DataFrame:
+    """获取宏观指标历史（本地 TDX 文件）
+
+    Args:
+        indicator: 指标名，如 "CPI", "GDP", "SHIBOR_1W", "SLF7D"
+        days: 最大记录数（宏观数据通常为月度/季度，优先返回最新数据）
+    """
+    from lib.data_tdx import _fetch_macro_local
+    cache_key = f"macro_{indicator}_{days}"
+    cached = _load_cache(cache_key, max_age_hours=24)  # 宏观数据更新慢，缓存24h
+    if not cached.empty:
+        return cached
+    df = _fetch_macro_local(indicator, days)
+    if not df.empty:
+        _save_cache(cache_key, df)
+    return df
+
+
 def get_bj_hist(code: str, days: int = 180) -> pd.DataFrame:
     """获取北交所日线（本地文件）"""
     from lib.data_tdx import get_bj_local

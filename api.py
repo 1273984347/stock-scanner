@@ -289,6 +289,8 @@ async def scan(preset: str = "balanced", _=Security(verify_api_key)):
             "risk_check": risk_check,
             "portfolio": portfolio,
             "factor_health": factor_health,
+            "macro_filter": scan_result.get("macro_filter", {}),
+            "index_signal": scan_result.get("index_signal", {}),
         }
         _cache_set(cache_key, data)
         return data
@@ -619,6 +621,8 @@ async def dashboard(preset: str = Query("balanced", description="策略预设"))
                 name: len(stocks)
                 for name, stocks in scan_data.get("results", {}).items()
             },
+            "macro_filter": scan_data.get("macro_filter", {}),
+            "index_signal": scan_data.get("index_signal", {}),
             "timestamp": datetime.now().isoformat(),
         }
         _cache_set("dashboard", result)

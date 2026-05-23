@@ -11,7 +11,8 @@ from lib import config
 from factors import (compute_all_signals, evaluate_macro_gate, calc_market_exposure)
 from lib.data_layer import (get_stock_hist_multi_source, get_realtime_quotes,
                              get_market_sentiment, _load_cache, _get_financial_data,
-                             clean_cache, get_news_signals, _safe_float)
+                             clean_cache, get_news_signals, _safe_float,
+                             get_macro_hist_local, get_index_hist)
 from lib.scorer import (score_fundamental, score_capital_flow,
                          score_news, score_technical, comprehensive_score)
 from lib.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
@@ -32,7 +33,7 @@ _ml_factor_cache = LRUCache(maxsize=256)
 
 # ========== 组合风控 ==========
 
-def _check_portfolio_risk(results: dict) -> dict:
+def _check_portfolio_risk(results: dict, shibor_mult: float = 1.0) -> dict:
     all_codes = set()
     total_candidates = 0
     strategy_exposure = {}
@@ -69,8 +70,10 @@ def _check_portfolio_risk(results: dict) -> dict:
             vol_regime = exposure.get("state", "neutral")
     except Exception as e:
         logger.debug(f"市场暴露度计算失败，使用默认 vol_regime=normal: {e}")
-    risk_budget = _risk_manager.get_risk_budget(
+    combined_mult = shibor_mult * macro.position_multiplier
+    base_budget = _risk_manager.get_risk_budget(
         vol_regime if vol_regime in ("high", "normal", "low") else "normal", 0.5)
+    risk_budget = {k: v * combined_mult for k, v in base_budget.items()}
     critical_count = sum(1 for a in alerts if a["level"] == "CRITICAL")
     if critical_count > 0:
         recommendation = "存在严重风险预警，建议暂停新开仓"
@@ -82,7 +85,9 @@ def _check_portfolio_risk(results: dict) -> dict:
         recommendation = "风控通过，可正常交易"
     return {"alerts": alerts, "risk_budget": risk_budget, "recommendation": recommendation,
             "macro_gate": {"state": macro.state, "regime": macro.regime,
-                           "multiplier": macro.position_multiplier},
+                           "multiplier": combined_mult,
+                           "sentiment_mult": macro.position_multiplier,
+                           "shibor_mult": shibor_mult},
             "strategy_exposure": strategy_exposure, "total_candidates": total_candidates}
 
 
@@ -570,6 +575,51 @@ def run_all_strategies(
     clean_cache(max_age_hours=24)
     sentiment = get_market_sentiment()
     logger.info(f"市场情绪分数: {sentiment:.2f}")
+
+    # ========== 宏观 + 指数过滤 ==========
+    macro_filter = {"shibor": None, "shibor_regime": "UNKNOWN", "index_ma20": None, "index_trend": "UNKNOWN", "position_mult": 1.0}
+    index_signal = {"bull_market": True}
+    try:
+        shibor_df = get_macro_hist_local("SHIBOR", days=10)
+        if not shibor_df.empty:
+            shibor_val = float(shibor_df["close"].iloc[-1])
+            macro_filter["shibor"] = shibor_val
+            if shibor_val > 3.5:
+                macro_filter["shibor_regime"] = "TIGHT"
+                macro_filter["position_mult"] = 0.0
+            elif shibor_val > 2.5:
+                macro_filter["shibor_regime"] = "CAUTION"
+                macro_filter["position_mult"] = 0.5
+            else:
+                macro_filter["shibor_regime"] = "NORMAL"
+            logger.info(f"SHIBOR: {shibor_val:.3f}% ({macro_filter['shibor_regime']})")
+    except Exception as e:
+        logger.debug(f"SHIBOR 获取失败: {e}")
+
+    try:
+        idx_df = get_index_hist("000001", days=30)
+        if not idx_df.empty and "close" in idx_df.columns:
+            close_arr = idx_df["close"].values
+            if len(close_arr) >= 20:
+                ma20 = float(np.mean(close_arr[-20:]))
+                latest_close = float(close_arr[-1])
+                macro_filter["index_ma20"] = ma20
+                if latest_close > ma20:
+                    macro_filter["index_trend"] = "BULL"
+                    index_signal["bull_market"] = True
+                else:
+                    macro_filter["index_trend"] = "BEAR"
+                    index_signal["bull_market"] = False
+                logger.info(f"上证指数: {latest_close:.2f} / MA20 {ma20:.2f} ({macro_filter['index_trend']})")
+    except Exception as e:
+        logger.debug(f"指数数据获取失败: {e}")
+
+    # 指数熊市时强制降低仓位
+    if not index_signal["bull_market"] and macro_filter["position_mult"] > 0:
+        macro_filter["position_mult"] *= 0.5
+        logger.info("指数熊市，仓位乘数减半")
+    logger.info(f"宏观仓位乘数: {macro_filter['position_mult']}")
+
     strategies = {
         "涨停板复盘": get_zt_candidates,
         "量价突破": get_volume_breakout_candidates,
@@ -594,7 +644,7 @@ def run_all_strategies(
                 logger.info(f"  -> 无候选股")
         except Exception as e:
             logger.error(f"  -> 策略执行失败: {e}")
-    risk_check = _check_portfolio_risk(results)
+    risk_check = _check_portfolio_risk(results, shibor_mult=macro_filter["position_mult"])
     factor_health = _check_factor_health(results)
     portfolio = _optimize_portfolio(results)
 
@@ -617,6 +667,8 @@ def run_all_strategies(
         "factor_health": factor_health, "portfolio": portfolio,
         "alpha_analysis": alpha_analysis, "ml_ranking": ml_ranking,
         "preset": preset,
+        "macro_filter": macro_filter,
+        "index_signal": index_signal,
     }
     try:
         from lib.audit_logger import log_scan
