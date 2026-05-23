@@ -18,12 +18,15 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
+# NOTE: _cached_token and _token_expire_at are module-level globals.
+# Thread-unsafe: assumes single-threaded execution (e.g., a cron/scheduler process).
+# If used in a multi-threaded context, wrap access in a threading.Lock.
+_cached_token: str = ""
+_token_expire_at: datetime = datetime.min
+
 FEISHU_TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
 FEISHU_IM_API = "https://open.feishu.cn/open-apis/im/v1/messages"
 FEISHU_IMAGE_API = "https://open.feishu.cn/open-apis/im/v1/images"
-
-_cached_token: str = ""
-_token_expire_at: datetime = datetime.min
 
 
 def _get_tenant_token(force_refresh: bool = False) -> str:
