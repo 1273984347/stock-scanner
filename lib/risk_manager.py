@@ -9,7 +9,7 @@ from datetime import datetime
 import logging
 import threading
 
-from lib import config
+from config import HIGH_VOL_POSITION_SCALAR, MEDIUM_VOL_POSITION_SCALAR, LOW_VOL_POSITION_SCALAR
 
 logger = logging.getLogger(__name__)
 
@@ -266,9 +266,9 @@ class VolCorrRiskConfig(RiskConfig):
     vol_regime_long: int = 60
     vol_expansion_threshold: float = 1.5
     vol_contraction_threshold: float = 0.5
-    high_vol_position_scalar: float = config.HIGH_VOL_POSITION_SCALAR
-    medium_vol_position_scalar: float = config.MEDIUM_VOL_POSITION_SCALAR
-    low_vol_position_scalar: float = config.LOW_VOL_POSITION_SCALAR
+    high_vol_position_scalar: float = HIGH_VOL_POSITION_SCALAR
+    medium_vol_position_scalar: float = MEDIUM_VOL_POSITION_SCALAR
+    low_vol_position_scalar: float = LOW_VOL_POSITION_SCALAR
     min_diversification_score: float = 0.3
 
 

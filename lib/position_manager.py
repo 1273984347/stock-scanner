@@ -13,7 +13,7 @@ import logging
 import sys
 import threading
 
-from lib import config
+from config import DEFAULT_STOP_LOSS, DEFAULT_TAKE_PROFIT
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +39,8 @@ class Position:
     buy_price: float
     shares: int
     buy_date: str
-    stop_loss: float = config.DEFAULT_STOP_LOSS
-    take_profit: float = config.DEFAULT_TAKE_PROFIT
+    stop_loss: float = DEFAULT_STOP_LOSS
+    take_profit: float = DEFAULT_TAKE_PROFIT
     notes: str = ""
 
 
@@ -139,8 +139,8 @@ class PositionManager:
             self._release_lock()
 
     def track_position(self, code: str, name: str, buy_price: float,
-                       shares: int, stop_loss: float = config.DEFAULT_STOP_LOSS,
-                       take_profit: float = config.DEFAULT_TAKE_PROFIT, notes: str = ""):
+                       shares: int, stop_loss: float = DEFAULT_STOP_LOSS,
+                       take_profit: float = DEFAULT_TAKE_PROFIT, notes: str = ""):
         """记录持仓"""
         self.positions[code] = Position(
             code=code, name=name, buy_price=buy_price,

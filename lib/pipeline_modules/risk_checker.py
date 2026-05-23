@@ -13,11 +13,12 @@ logger = logging.getLogger(__name__)
 CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "cache"
 
 
-def check_portfolio_risk(results: dict) -> dict:
+def check_portfolio_risk(results: dict, shibor_mult: float = 1.0) -> dict:
     """检查组合风险
 
     Args:
         results: 策略结果字典 {策略名: DataFrame}
+        shibor_mult: 货币市场宽松程度乘数（由 pipeline.py 宏观过滤器传入）
 
     Returns:
         包含风控告警、风险预算、建议的字典
@@ -66,8 +67,10 @@ def check_portfolio_risk(results: dict) -> dict:
             vol_regime = exposure.get("state", "neutral")
     except Exception as e:
         logger.debug(f"市场暴露度计算失败，使用默认 vol_regime=normal: {e}")
-    risk_budget = _risk_manager.get_risk_budget(
+    combined_mult = shibor_mult * macro.position_multiplier
+    base_budget = _risk_manager.get_risk_budget(
         vol_regime if vol_regime in ("high", "normal", "low") else "normal", 0.5)
+    risk_budget = {k: v * combined_mult for k, v in base_budget.items()}
 
     critical_count = sum(1 for a in alerts if a["level"] == "CRITICAL")
     if critical_count > 0:
@@ -86,7 +89,9 @@ def check_portfolio_risk(results: dict) -> dict:
         "macro_gate": {
             "state": macro.state,
             "regime": macro.regime,
-            "multiplier": macro.position_multiplier
+            "multiplier": combined_mult,
+            "sentiment_mult": macro.position_multiplier,
+            "shibor_mult": shibor_mult,
         },
         "strategy_exposure": strategy_exposure,
         "total_candidates": total_candidates

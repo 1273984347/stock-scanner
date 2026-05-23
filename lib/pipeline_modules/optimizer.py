@@ -57,7 +57,7 @@ def optimize_portfolio(results: dict) -> dict:
     """
     from lib.portfolio_optimizer import PortfolioOptimizer, OptimizerConfig
     from lib.data_layer import get_stock_hist_multi_source
-    from lib import config
+    from config import DEFAULT_CORRELATION, RISK_AVERSION_CALIBRATED, RISK_AVERSION_UNCALIBRATED, MAX_POSITIONS, TURNOVER_PENALTY
 
     candidate_map = {}
     for name, df in results.items():
@@ -94,7 +94,7 @@ def optimize_portfolio(results: dict) -> dict:
     vols = np.array([c["volatility"] for c in candidates])
 
     # 动态协方差估计
-    corr = np.full((n, n), config.DEFAULT_CORRELATION)
+    corr = np.full((n, n), DEFAULT_CORRELATION)
     for i in range(n):
         corr[i, i] = 1.0
 
@@ -143,12 +143,12 @@ def optimize_portfolio(results: dict) -> dict:
                         corr[j, i] = 0.5
 
     cov = np.outer(vols, vols) * corr * 252
-    risk_aversion = config.RISK_AVERSION_CALIBRATED if corr_estimated else config.RISK_AVERSION_UNCALIBRATED
+    risk_aversion = RISK_AVERSION_CALIBRATED if corr_estimated else RISK_AVERSION_UNCALIBRATED
     current_weights = _load_current_weights()
     optimizer = PortfolioOptimizer(OptimizerConfig(
-        max_positions=min(config.MAX_POSITIONS, n),
+        max_positions=min(MAX_POSITIONS, n),
         risk_aversion=risk_aversion,
-        turnover_penalty=config.TURNOVER_PENALTY
+        turnover_penalty=TURNOVER_PENALTY
     ))
     cov_df = pd.DataFrame(cov, index=codes, columns=codes)
     result = optimizer.optimize(

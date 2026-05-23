@@ -13,7 +13,7 @@ import logging
 import warnings
 from joblib import Parallel, delayed
 
-from lib import config
+from config import IC_REDUNDANCY_THRESHOLD
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -56,7 +56,7 @@ class EvalConfig:
     n_quantiles: int = 5
     min_samples_per_group: int = 10
     correlation_method: str = "spearman"
-    redundancy_threshold: float = config.IC_REDUNDANCY_THRESHOLD
+    redundancy_threshold: float = IC_REDUNDANCY_THRESHOLD
     rolling_window: int = 252
 
 

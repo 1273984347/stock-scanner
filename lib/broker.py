@@ -14,7 +14,10 @@ import threading
 
 import akshare as ak
 
-from lib import config
+from config import (
+    MARKET_CAP_LARGE, MARKET_CAP_MEDIUM,
+    COMMISSION_RATE, STAMP_DUTY_RATE, MIN_COMMISSION, SLIPPAGE_RATE,
+)
 from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
@@ -103,10 +106,10 @@ def get_impact_config_by_market_cap(market_cap: float) -> ImpactConfig:
         # 未知市值使用中档参数
         return ImpactConfig(model="square_root", eta=0.15, lambda_=7.0,
                           volume_window=20, max_impact_bps=50.0)
-    elif market_cap > config.MARKET_CAP_LARGE:  # 大盘股 > 500亿
+    elif market_cap > MARKET_CAP_LARGE:  # 大盘股 > 500亿
         return ImpactConfig(model="square_root", eta=0.07, lambda_=4.0,
                           volume_window=20, max_impact_bps=30.0)
-    elif market_cap > config.MARKET_CAP_MEDIUM:  # 中盘股 100-500亿
+    elif market_cap > MARKET_CAP_MEDIUM:  # 中盘股 100-500亿
         return ImpactConfig(model="square_root", eta=0.12, lambda_=6.0,
                           volume_window=20, max_impact_bps=40.0)
     else:  # 小盘股 < 100亿
@@ -229,10 +232,10 @@ class ABroker:
     """A 股模拟券商"""
 
     def __init__(self, initial_cash: float = 1_000_000,
-                 commission_rate: float = config.COMMISSION_RATE,
-                 stamp_tax_rate: float = config.STAMP_DUTY_RATE,
-                 min_commission: float = config.MIN_COMMISSION,
-                 slippage: float = config.SLIPPAGE_RATE,
+                 commission_rate: float = COMMISSION_RATE,
+                 stamp_tax_rate: float = STAMP_DUTY_RATE,
+                 min_commission: float = MIN_COMMISSION,
+                 slippage: float = SLIPPAGE_RATE,
                  lot_size: int = 100,
                  impact_config: ImpactConfig = None):
         self.initial_cash = initial_cash

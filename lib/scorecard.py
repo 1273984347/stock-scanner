@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 import logging
 import threading
 
-from lib import config
+from config import LAYER_WEIGHTS
 logger = logging.getLogger(__name__)
 
 
@@ -228,8 +228,8 @@ class MarketFilter:
 class ScoreCard:
     """四层打分卡"""
 
-    WEIGHTS = [config.LAYER_WEIGHTS["L1"], config.LAYER_WEIGHTS["L2"],
-               config.LAYER_WEIGHTS["L3"], config.LAYER_WEIGHTS["L4"]]  # L1/L2/L3/L4
+    WEIGHTS = [LAYER_WEIGHTS["L1"], LAYER_WEIGHTS["L2"],
+               LAYER_WEIGHTS["L3"], LAYER_WEIGHTS["L4"]]  # L1/L2/L3/L4
 
     @classmethod
     def score(cls, code: str, row: pd.Series, hist: pd.DataFrame = None,

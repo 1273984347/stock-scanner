@@ -7,7 +7,7 @@ import logging
 import threading
 import time
 
-from lib import config
+from config import CACHE_RATE_LIMIT
 from lib.utils import _safe_float
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ CACHE_DIR.mkdir(exist_ok=True)
 
 class RateLimiter:
     """线程安全的 API 调用频率限制器"""
-    def __init__(self, max_calls_per_second: float = config.CACHE_RATE_LIMIT):
+    def __init__(self, max_calls_per_second: float = CACHE_RATE_LIMIT):
         self._min_interval = 1.0 / max_calls_per_second
         self._last_call_time = 0.0
         self._lock = threading.Lock()
@@ -33,7 +33,7 @@ class RateLimiter:
         if wait > 0:
             time.sleep(wait)
 
-_rate_limiter = RateLimiter(max_calls_per_second=config.CACHE_RATE_LIMIT)
+_rate_limiter = RateLimiter(max_calls_per_second=CACHE_RATE_LIMIT)
 
 
 def retry_api_call(func, *args, max_retries: int = 3, **kwargs):
