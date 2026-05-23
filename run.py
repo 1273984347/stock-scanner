@@ -106,6 +106,8 @@ def main():
             logger.warning("FEISHU_RECEIVE_ID 未配置，跳过推送")
         else:
             send_feishu_message(results, args.preset)
+            from reporter import send_strategy_report
+            send_strategy_report(results, preset=args.preset)
     else:
         logger.info("已跳过飞书推送")
 
