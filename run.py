@@ -3,6 +3,8 @@
 import sys
 import argparse
 from datetime import datetime, timedelta
+from typing import Dict
+import pandas as pd
 from scanner import run_all_strategies
 from notifier import send_feishu_message, print_results
 from config import FEISHU_RECEIVE_ID
@@ -106,6 +108,49 @@ def main():
             logger.warning("FEISHU_RECEIVE_ID 未配置，跳过推送")
         else:
             send_feishu_message(results, args.preset)
+
+            # === IC 面板构建 ===
+            try:
+                from lib.ic.panel_builder import build_ic_panel, save_ic_panel
+                from lib.ic.ic_calculator import update_ic_history
+                from lib.ic.weight_adjuster import (
+                    compute_dynamic_weights, load_weights, maybe_restore_dynamic_weights
+                )
+                from lib.ic.ic_reporter import build_ic_report
+                from config import get_config
+
+                # 构建 IC 面板（候选股列表从 results 获取）
+                candidates = []
+                for name, df in results.items():
+                    if hasattr(df, "empty") and not df.empty:
+                        for _, row in df.iterrows():
+                            if "代码" in row:
+                                candidates.append({"code": str(row["代码"]), "name": row.get("名称", "")})
+
+                if len(candidates) >= 10:
+                    today = datetime.now().strftime("%Y-%m-%d")
+                    # 获取历史数据（简化：从 cache 读取）
+                    hist_data = _load_candidate_hist_data(candidates)
+                    panel = build_ic_panel(today, candidates, hist_data)
+                    save_ic_panel(panel, today)
+                    update_ic_history(panel)
+
+                    # 更新动态权重
+                    cfg = get_config(args.preset)
+                    preset_weights = cfg.factor.factor_weights
+                    ic_stats = _load_ic_stats()
+
+                    # 恢复检查：固定权重 → 动态权重
+                    maybe_restore_dynamic_weights(ic_stats)
+
+                    current_weights = load_weights()
+                    compute_dynamic_weights(preset_weights, ic_stats, current_weights.get("weights"))
+
+                    # 生成 IC 报告（不推送，仅保存）
+                    build_ic_report(today)
+            except Exception as e:
+                logger.debug(f"IC 面板构建失败（不影响主流程）: {e}")
+
             from reporter import send_strategy_report
             send_strategy_report(results, preset=args.preset)
     else:
@@ -738,6 +783,30 @@ def run_factor_evaluation():
                 ic_wr = (col_ic > 0).mean()
                 print(f"  {col:<25s} {ic_mean:>+10.4f} {ic_std:>10.4f} {ic_ir:>8.3f} {ic_wr:>8.1%}")
         print(f"{'='*70}")
+
+
+def _load_candidate_hist_data(candidates, days: int = 60) -> Dict[str, pd.DataFrame]:
+    """加载候选股历史数据（简化版）"""
+    from lib.data_layer import get_stock_hist_multi_source
+    hist_data = {}
+    for c in candidates[:50]:  # 限制数量避免慢
+        try:
+            df = get_stock_hist_multi_source(c["code"], days=days, source="auto")
+            if not df.empty and len(df) >= 30:
+                hist_data[c["code"]] = df
+        except Exception:
+            continue
+    return hist_data
+
+
+def _load_ic_stats() -> Dict:
+    """读取 IC 统计（从 ic_history）"""
+    from lib.ic.ic_calculator import load_ic_history
+    history = load_ic_history()
+    return {
+        factor: data["stats"]
+        for factor, data in history.get("factors", {}).items()
+    }
 
 
 if __name__ == "__main__":
