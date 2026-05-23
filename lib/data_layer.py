@@ -385,21 +385,24 @@ def get_realtime_quotes() -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def get_market_sentiment() -> float:
+def get_market_sentiment() -> Optional[float]:
+    """获取市场情绪（涨跌比），失败时返回 None"""
     try:
         df = get_realtime_quotes()
         if df.empty:
-            return 0
+            logger.warning("[data_layer] 实时行情为空，市场情绪未知")
+            return None
         up_count = (df["涨跌幅"] > 0).sum()
         down_count = (df["涨跌幅"] < 0).sum()
         total = up_count + down_count
         if total == 0:
-            return 0
+            logger.warning("[data_layer] 涨跌计数为0，市场情绪未知")
+            return None
         ratio = (up_count - down_count) / total
         return max(-1, min(1, ratio))
     except Exception as e:
         logger.warning(f"[data_layer] 市场情绪获取失败: {e}")
-        return 0
+        return None
 
 
 # ========== 资金流向 ==========

@@ -342,19 +342,45 @@ def run_factor_backtest(
     metrics = analyzer.analyze()
     cost_summary = broker.get_cost_summary()
 
-    # 基准对比：沪深300
+    # 基准对比：沪深300（对齐回测窗口，本地TDX优先）
     benchmark_metrics = None
     try:
-        from lib.data_layer import _load_cache
-        idx_df = _load_cache("hs300_cache", max_age_hours=24)
-        if idx_df.empty or len(idx_df) < 60:
+        bt_start = trade_dates[0]
+        bt_end = trade_dates[-1]
+        bt_start_str = str(bt_start.date()) if hasattr(bt_start, 'date') else str(bt_start)
+        bt_end_str = str(bt_end.date()) if hasattr(bt_end, 'date') else str(bt_end)
+
+        # 优先用本地TDX数据（快速，无网络依赖）
+        from lib.data_tdx import get_index_local
+        idx_df = get_index_local("000300", days=500)
+        if not idx_df.empty and "close" in idx_df.columns:
+            date_col = "date"
+            idx_df[date_col] = pd.to_datetime(idx_df[date_col], errors="coerce")
+            idx_df = idx_df.dropna(subset=[date_col])
+            idx_df = idx_df[(idx_df[date_col] >= bt_start_str) & (idx_df[date_col] <= bt_end_str)]
+            idx_df = idx_df.sort_values(date_col)
+
+        if idx_df.empty or "close" not in idx_df.columns:
+            # Fallback：akshare 实时数据
             import akshare as ak
             idx_raw = ak.stock_zh_index_daily(symbol="sh000300")
             if not idx_raw.empty:
-                idx_df = idx_raw.tail(len(trade_dates) + 10).copy()
+                date_col = "date"
+                idx_raw[date_col] = pd.to_datetime(idx_raw[date_col])
+                idx_df = idx_raw[(idx_raw[date_col] >= bt_start_str) & (idx_raw[date_col] <= bt_end_str)].copy()
+                idx_df = idx_df.sort_values(date_col)
+
+        if idx_df.empty or "close" not in idx_df.columns:
+            # 最终Fallback：缓存数据
+            from lib.data_layer import _load_cache
+            idx_df = _load_cache("hs300_cache", max_age_hours=24)
+            if not idx_df.empty:
+                date_col = "trade_date" if "trade_date" in idx_df.columns else "date"
+                idx_df[date_col] = pd.to_datetime(idx_df[date_col])
+                idx_df = idx_df.sort_values(date_col)
+                idx_df = idx_df[(idx_df[date_col] >= bt_start_str) & (idx_df[date_col] <= bt_end_str)]
+
         if not idx_df.empty and "close" in idx_df.columns:
-            idx_df = idx_df.sort_values("trade_date" if "trade_date" in idx_df.columns else "date")
-            # 构建基准净值曲线
             bm_closes = idx_df["close"].values
             if len(bm_closes) >= 2:
                 bm_start = bm_closes[0] if bm_closes[0] > 0 else 1
@@ -364,7 +390,6 @@ def run_factor_backtest(
                     "total_return": round(float(bm_return), 4),
                     "name": "沪深300",
                 }
-                # 超额收益
                 if metrics and "total_return" in metrics:
                     excess = metrics["total_return"] - bm_return
                     benchmark_metrics["excess_return"] = round(float(excess), 4)

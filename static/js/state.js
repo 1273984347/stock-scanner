@@ -24,42 +24,49 @@ class StateManager {
       return obj[key];
     }, this._state);
     target[last] = value;
+    // 通知该路径的订阅者
+    this._notify(path);
+    // 通知所有嵌套路径的订阅者（如 set('dashboard') 也要通知 'dashboard.market.sentiment'）
+    for (const subPath of this._listeners.keys()) {
+      if (subPath.startsWith(path + '.')) {
+        this._notify(subPath);
+      }
+    }
+  }
+
+  _notify(path) {
+    const callbacks = this._listeners.get(path);
+    if (callbacks) {
+      callbacks.forEach(cb => {
+        try { cb(this.get(path)); } catch (e) { console.error('[State] 订阅者错误:', e); }
+      });
+    }
   }
 
   // 批量更新（用于 WebSocket 全量数据）
   updateAll(data) {
-    const changedPaths = [];
     for (const [key, value] of Object.entries(data)) {
       const oldValue = this.get(key);
       if (!this._deepEqual(oldValue, value)) {
-        this._updateSingle(key, value);
-        changedPaths.push(key);
+        this._state[key] = value;
+        this._dirty.add(key);
+        this._notify(key);
       }
     }
-    // 只通知有变化的path对应的监听器（隔离单个回调错误）
-    changedPaths.forEach(path => {
-      const callbacks = this._listeners.get(path);
-      if (callbacks) {
-        callbacks.forEach(cb => {
-          try { cb(this.get(path)); } catch (e) { console.error('[State] 订阅者错误:', e); }
-        });
-      }
-    });
   }
 
-  _updateSingle(path, value) {
-    const old = this.get(path);
-    if (this._deepEqual(old, value)) return;
-    this._dirty.add(path);
-    this.set(path, value);
-  }
-
-  // 订阅路径变化
+  // 订阅路径变化（立即调用一次回调，返回当前值）
   subscribe(path, callback) {
+    console.log('[State.subscribe]', path);
     if (!this._listeners.has(path)) {
       this._listeners.set(path, new Set());
     }
     this._listeners.get(path).add(callback);
+    // 立即调用一次回调，传入当前值（Redux 风格）
+    const currentValue = this.get(path);
+    if (currentValue !== undefined) {
+      try { callback(currentValue); } catch (e) { console.error('[State] 订阅者错误:', e); }
+    }
     // 返回取消订阅函数
     return () => this._listeners.get(path)?.delete(callback);
   }

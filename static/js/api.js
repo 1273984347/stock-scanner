@@ -10,6 +10,15 @@ class APIClient {
     this._abortControllers = new Map();
   }
 
+  // 获取当前 API Key（优先 localStorage，其次默认 dev key）
+  _getApiKey() {
+    try {
+      return localStorage.getItem('api_key') || 'dev';
+    } catch {
+      return 'dev';
+    }
+  }
+
   // 通用请求方法
   async request(endpoint, options = {}) {
     const { timeout = 60000, signal } = options;
@@ -20,6 +29,10 @@ class APIClient {
       const res = await fetch(this.base + endpoint, {
         ...options,
         signal: signal || controller?.signal,
+        headers: {
+          ...options.headers,
+          'X-API-Key': this._getApiKey(),
+        },
       });
       clearTimeout(timeoutId);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

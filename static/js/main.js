@@ -76,7 +76,33 @@ async function init() {
     document.getElementById('refreshBtn')?.click();
   });
 
+  console.log('[App] IIFE 开始...');
   wsManager.connect();
+
+  // 立即主动拉取初始数据（不依赖 WS，WS 只负责后续增量更新）
+  (async () => {
+    console.log('[App] IIFE 执行...');
+    try {
+      const [dashRes, riskRes, auditRes] = await Promise.allSettled([
+        apiClient.get('/api/dashboard'),
+        apiClient.get('/api/risk'),
+        apiClient.get('/api/audit', { limit: 15 }),
+      ]);
+      console.log('[App] IIFE 结果:', dashRes?.status, riskRes?.status, auditRes?.status);
+      if (dashRes.status === 'fulfilled' && dashRes.value) {
+        stateManager.set('dashboard', dashRes.value);
+        console.log('[App] dashboard 已设置');
+      }
+      if (riskRes.status === 'fulfilled' && riskRes.value) {
+        stateManager.set('risk', riskRes.value);
+      }
+      if (auditRes.status === 'fulfilled' && auditRes.value) {
+        stateManager.set('audit', auditRes.value);
+      }
+    } catch (e) {
+      console.error('[App] 初始数据拉取失败:', e);
+    }
+  })();
 
   console.log('[App] 初始化完成');
 }

@@ -267,36 +267,55 @@ async def scan(preset: str = "balanced", _=Security(verify_api_key)):
     if cached is not None:
         return cached
 
+    scan_result = None
     try:
         orchestrator = _get_orchestrator(preset)
-        scan_result = circuit_breaker.call("scan", orchestrator.run_all_strategies)
-        results = scan_result.get("results", {})
-        risk_check = scan_result.get("risk_check", {})
-        portfolio = scan_result.get("portfolio", {})
-        factor_health = scan_result.get("factor_health", {})
-
-        output = {}
-        for name, df in results.items():
-            if hasattr(df, 'to_dict'):
-                output[name] = df.to_dict(orient="records")
-            else:
-                output[name] = []
-
-        data = {
-            "preset": preset,
-            "results": output,
-            "total": sum(len(v) for v in output.values()),
-            "risk_check": risk_check,
-            "portfolio": portfolio,
-            "factor_health": factor_health,
-            "macro_filter": scan_result.get("macro_filter", {}),
-            "index_signal": scan_result.get("index_signal", {}),
+        import asyncio
+        scan_result = await asyncio.wait_for(
+            asyncio.to_thread(circuit_breaker.call, "scan", orchestrator.run_all_strategies),
+            timeout=5.0
+        )
+    except asyncio.TimeoutError:
+        logger.warning("scan 超时 5s，返回缓存或空结果")
+        cached = _cache_get(cache_key, max_age=86400)
+        if cached is not None:
+            return cached
+        return {
+            "preset": preset, "results": {}, "total": 0,
+            "risk_check": {}, "portfolio": {}, "factor_health": {},
+            "macro_filter": {}, "index_signal": {},
+            "error": "timeout"
         }
-        _cache_set(cache_key, data)
-        return data
-    except Exception as e:
-        logger.error(f"选股失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="内部服务器错误")
+    except Exception as te:
+        logger.warning(f"scan 执行异常（非超时）: {te}")
+        scan_result = None
+
+    if not scan_result:
+        scan_result = {}
+    results = scan_result.get("results", {})
+    risk_check = scan_result.get("risk_check", {})
+    portfolio = scan_result.get("portfolio", {})
+    factor_health = scan_result.get("factor_health", {})
+
+    output = {}
+    for name, df in results.items():
+        if hasattr(df, 'to_dict'):
+            output[name] = df.to_dict(orient="records")
+        else:
+            output[name] = []
+
+    data = {
+        "preset": preset,
+        "results": output,
+        "total": sum(len(v) for v in output.values()),
+        "risk_check": risk_check,
+        "portfolio": portfolio,
+        "factor_health": factor_health,
+        "macro_filter": scan_result.get("macro_filter", {}),
+        "index_signal": scan_result.get("index_signal", {}),
+    }
+    _cache_set(cache_key, data)
+    return data
 
 
 @app.get("/api/score/{code}")
@@ -583,28 +602,53 @@ async def dashboard(preset: str = Query("balanced", description="策略预设"))
         # 缓存为空时主动触发一次 scan（确保首页有数据）
         if not scan_data:
             try:
-                from config import SystemConfig
-                cfg = SystemConfig()
-                scan_data = orchestrator.run_all_strategies()
+                import asyncio
+                scan_data = await asyncio.wait_for(
+                    asyncio.to_thread(orchestrator.run_all_strategies),
+                    timeout=5.0
+                )
                 _cache_set(f"scan_{preset}", scan_data)
+            except asyncio.TimeoutError:
+                logger.warning("Dashboard scan 超时 5s")
             except Exception as scan_err:
                 logger.warning(f"Dashboard 自动触发 scan 失败: {scan_err}")
 
         if not market_data:
+            # market cache 为空时，直接计算（不依赖 scan 结果）
             try:
-                from factors import evaluate_macro_gate, calc_market_exposure
+                from factors import evaluate_macro_gate
                 sentiment = orchestrator.get_market_sentiment()
-                quotes = orchestrator.get_realtime_quotes()
-                macro_gate = evaluate_macro_gate(sentiment)
+                logger.warning(f"[Dashboard] sentiment={sentiment}")
+                # sentiment 为 None 表示数据不可用（如 API 被限流）
+                if sentiment is None:
+                    logger.warning("[Dashboard] 市场情绪数据不可用（API 限流中），使用默认值")
+                    sentiment = 0.0  # API 不可用时默认中性
+                macro = evaluate_macro_gate(sentiment)
+                logger.warning(f"[Dashboard] macro state={macro.state}")
+                idx_cache = _cache_get("hs300", max_age=7200)
+                exposure = {"state": "neutral", "exposure": 0.70}
+                if idx_cache:
+                    close_list = idx_cache.get("close", [])
+                    if len(close_list) >= 60:
+                        import numpy as np
+                        close_arr = np.array(close_list)
+                        ma20 = close_arr[-20:].mean()
+                        cur = close_arr[-1]
+                        if cur > ma20 * 1.02:
+                            exposure = {"state": "bull", "exposure": 0.85}
+                        elif cur < ma20 * 0.98:
+                            exposure = {"state": "bear", "exposure": 0.40}
                 market_data = {
                     "sentiment": sentiment,
-                    "macro_gate": macro_gate,
-                    "exposure": {},
-                    "risk_budget": {},
+                    "macro_gate": {"state": macro.state, "regime": macro.regime, "multiplier": macro.position_multiplier, "reasoning": macro.reasoning},
+                    "exposure": exposure,
+                    "risk_budget": {"equity": 0.65, "cash": 0.35, "max_positions": 8},
                 }
                 _cache_set("market", market_data)
-            except Exception as mkt_err:
-                logger.warning(f"Dashboard 自动获取市场数据失败: {mkt_err}")
+                logger.warning(f"[Dashboard] market_data computed: sentiment={sentiment}")
+            except Exception as me:
+                logger.warning(f"dashboard market 计算失败: {me}")
+                market_data = {}
 
         result = {
             "market": {
