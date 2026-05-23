@@ -108,20 +108,39 @@ def _setup_font() -> bool:
     Returns:
         True if a CJK-capable font was configured, False otherwise.
     """
-    fonts = [
-        'Noto Sans CJK SC',
+    from matplotlib.font_manager import FontProperties
+
+    # Known CJK font names matplotlib can find
+    font_names = [
+        'Microsoft YaHei',
         'Microsoft YaHei UI',
         'SimHei',
+        'Noto Sans CJK SC',
         'WenQuanYi Micro Hei',
         'Arial Unicode MS',
     ]
-    for font in fonts:
-        if font in matplotlib.font_manager.findSystemFonts():
-            plt.rcParams['font.sans-serif'] = [font]
-            plt.rcParams['axes.unicode_minus'] = False
-            return True
 
-    # Fallback: still try to set something; ASCII will work
+    for name in font_names:
+        try:
+            # FontProperties with a known font name — if matplotlib finds it, no exception
+            fp = FontProperties(family=name)
+            # Verify by trying to get a sample string's width (crude but works)
+            fig_test = plt.figure()
+            ax_test = fig_test.add_subplot(111)
+            try:
+                ax_test.text(0.5, 0.5, '测试', fontproperties=fp)
+                fig_test.canvas.draw()
+                plt.close(fig_test)
+                plt.rcParams['font.sans-serif'] = [name]
+                plt.rcParams['axes.unicode_minus'] = False
+                return True
+            except Exception:
+                plt.close(fig_test)
+                continue
+        except Exception:
+            pass
+
+    # Last resort: ASCII fallback
     plt.rcParams['axes.unicode_minus'] = False
     logger.warning("No CJK font found, falling back to ASCII labels")
     return False
