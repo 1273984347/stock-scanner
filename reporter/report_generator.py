@@ -28,7 +28,29 @@ except ImportError:
     evaluate_macro_gate = None  # type: ignore
 
 # ---------------------------------------------------------------------------
-# 1. is_trading_day
+# 1. _get_market_overview
+# ---------------------------------------------------------------------------
+
+
+def _get_market_overview() -> Tuple[float, str, float]:
+    """获取市场情绪和宏观门控，返回 (sentiment, macro_state, position_multiplier)。"""
+    sentiment = 0.5
+    macro_state = "unknown"
+    position_multiplier = 1.0
+    try:
+        if get_market_sentiment is not None:
+            sentiment = get_market_sentiment()
+        if evaluate_macro_gate is not None and get_market_sentiment is not None:
+            macro_gate = evaluate_macro_gate(sentiment)
+            macro_state = getattr(macro_gate, "state", "unknown")
+            position_multiplier = getattr(macro_gate, "position_multiplier", 1.0)
+    except Exception as e:
+        logger.warning(f"[report_generator] 市场概览获取失败: {e}")
+    return sentiment, macro_state, position_multiplier
+
+
+# ---------------------------------------------------------------------------
+# 2. is_trading_day
 # ---------------------------------------------------------------------------
 
 
@@ -62,7 +84,7 @@ def _load_latest_results() -> dict | None:
             data = json.load(f)
         logger.info(f"[report_generator] 加载最新报告: {latest}")
         return data
-    except Exception as e:
+    except (json.JSONDecodeError, IOError, OSError) as e:
         logger.error(f"[report_generator] 读取报告失败 {latest}: {e}")
         return None
 
@@ -91,7 +113,7 @@ def _save_strategy_results(
         if name not in strategy_counts:
             try:
                 signals[name] = len(df)
-            except Exception:
+            except (AttributeError, TypeError):
                 pass
 
     payload = {
@@ -105,7 +127,7 @@ def _save_strategy_results(
         with open(save_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
         logger.info(f"[report_generator] 报告已保存: {save_path}")
-    except Exception as e:
+    except (IOError, OSError) as e:
         logger.error(f"[report_generator] 保存报告失败: {e}")
 
     return str(save_path)
@@ -133,22 +155,12 @@ def build_strategy_report(results: dict, preset: str = "balanced") -> str:
     ]
 
     # ---- 市场情绪 ----
-    sentiment_val: float = 0.5
-    if get_market_sentiment is not None:
-        try:
-            sentiment_val = get_market_sentiment()
-        except Exception as e:
-            logger.warning(f"[report_generator] get_market_sentiment 失败: {e}")
-
-    macro_gate_state = "unknown"
-    position_multiplier = 1.0
+    sentiment_val, macro_gate_state, position_multiplier = _get_market_overview()
     macro_reasoning = ""
 
     if evaluate_macro_gate is not None and get_market_sentiment is not None:
         try:
             macro_gate = evaluate_macro_gate(sentiment_val)
-            macro_gate_state = getattr(macro_gate, "state", str(macro_gate))
-            position_multiplier = getattr(macro_gate, "position_multiplier", 1.0)
             macro_reasoning = getattr(macro_gate, "reasoning", "")
         except Exception as e:
             logger.warning(f"[report_generator] evaluate_macro_gate 失败: {e}")
@@ -170,12 +182,12 @@ def build_strategy_report(results: dict, preset: str = "balanced") -> str:
     for name, df in results.items():
         try:
             is_empty = hasattr(df, "empty") and df.empty
-        except Exception:
+        except (AttributeError, TypeError):
             is_empty = False
         if not is_empty:
             try:
                 cnt = len(df)
-            except Exception:
+            except (AttributeError, TypeError):
                 cnt = 0
             strategy_counts[name] = cnt
             total += cnt
@@ -209,7 +221,7 @@ def build_strategy_report(results: dict, preset: str = "balanced") -> str:
             trailing_pct = risk.trailing_pct
             max_hold_days = risk.max_hold_days
         except Exception as e:
-            logger.warning(f"[report_generator] get_config 失败: {e}")
+            logger.warning(f"[report_generator] get_config 失败: {e}，使用默认风控参数")
 
     lines.append(f"  止损: -{stop_loss_pct}%")
     lines.append(f"  止盈: +{take_profit_pct}%")
@@ -252,22 +264,12 @@ def build_morning_report() -> Tuple[str, List[str]]:
     ]
 
     # ---- 市场情绪 ----
-    sentiment_val: float = 0.5
-    macro_gate_state = "unknown"
-    position_multiplier = 1.0
+    sentiment_val, macro_gate_state, position_multiplier = _get_market_overview()
     macro_reasoning = ""
-
-    if get_market_sentiment is not None:
-        try:
-            sentiment_val = get_market_sentiment()
-        except Exception as e:
-            logger.warning(f"[report_generator] get_market_sentiment 失败: {e}")
 
     if evaluate_macro_gate is not None and get_market_sentiment is not None:
         try:
             macro_gate = evaluate_macro_gate(sentiment_val)
-            macro_gate_state = getattr(macro_gate, "state", str(macro_gate))
-            position_multiplier = getattr(macro_gate, "position_multiplier", 1.0)
             macro_reasoning = getattr(macro_gate, "reasoning", "")
         except Exception as e:
             logger.warning(f"[report_generator] evaluate_macro_gate 失败: {e}")
