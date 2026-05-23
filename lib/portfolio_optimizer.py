@@ -322,3 +322,66 @@ class PortfolioOptimizer:
         inv_vol = 1.0 / np.maximum(volatilities, 1e-6)
         w = inv_vol / inv_vol.sum()
         return w
+
+
+@dataclass
+class PositionSizerConfig:
+    """PositionSizer配置"""
+    mapping_alpha: float = 1.5          # 非线性映射指数
+    min_weight: float = 0.02           # 最小仓位
+    max_weight: float = 0.20            # 最大仓位
+
+
+class PositionSizer:
+    """评分→非线性仓位映射器"""
+
+    def __init__(self, config: PositionSizerConfig = None):
+        self.config = config or PositionSizerConfig()
+
+    def compute_weights(self, candidates: List[Dict]) -> np.ndarray:
+        """将候选股评分映射为归一化仓位权重
+
+        两步：
+        1. min-max 归一化：normalized_i = (score_i - min) / (max - min)
+        2. 非线性映射：weight_i = normalized_i^α / Σ(normalized_j^α)
+
+        Args:
+            candidates: [{"code": "000001", "score": 85.5, "name": "..."}, ...]
+
+        Returns:
+            np.ndarray 归一化权重，与输入顺序对应
+        """
+        if not candidates:
+            return np.array([])
+
+        cfg = self.config
+        scores = np.array([c.get("score", 0) for c in candidates], dtype=float)
+
+        # 检查是否所有的得分相同
+        score_min = np.min(scores)
+        score_max = np.max(scores)
+        if score_max == score_min:
+            # fallback 等权
+            n = len(candidates)
+            return np.ones(n) / n
+
+        # Step 1: min-max 归一化
+        normalized = (scores - score_min) / (score_max - score_min)
+
+        # Step 2: 非线性映射
+        alpha = cfg.mapping_alpha
+        weighted = normalized ** alpha
+        weight_sum = np.sum(weighted)
+        if weight_sum == 0:
+            n = len(candidates)
+            return np.ones(n) / n
+
+        weights = weighted / weight_sum
+
+        # 应用最大/最小仓位限制
+        weights = np.clip(weights, cfg.min_weight, cfg.max_weight)
+
+        # 重新归一化
+        weights = weights / np.sum(weights)
+
+        return weights
