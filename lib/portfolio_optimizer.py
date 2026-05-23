@@ -487,3 +487,91 @@ class RiskBudgetController:
         z = np.random.standard_normal((n_simulations, n))
         portfolio_returns = expected_returns @ z.T + np.diag(L @ z.T)
         return np.percentile(portfolio_returns, (1 - confidence) * 100)
+
+
+@dataclass
+class TurnoverConfig:
+    """TurnoverController配置"""
+    turnover_max: float = 0.50           # 最大换手率（单边）
+    sentiment_threshold_high: float = 0.70  # 趋势市场情绪阈值
+    volatility_threshold_high: float = 0.25 # 高波动阈值
+
+
+class TurnoverController:
+    """动态换手控制器 — 检测市场状态，自适应换手上限"""
+
+    def __init__(self, config: TurnoverConfig = None):
+        self.config = config or TurnoverConfig()
+
+    def detect_market_regime(
+        self,
+        sentiment: float,
+        volatility: float,
+    ) -> str:
+        """检测市场状态
+
+        Returns:
+            'trending' | 'volatile' | 'stable'
+        """
+        cfg = self.config
+        if sentiment > cfg.sentiment_threshold_high and volatility < 0.15:
+            return "trending"
+        elif volatility > cfg.volatility_threshold_high:
+            return "volatile"
+        return "stable"
+
+    def get_adjusted_turnover_max(
+        self,
+        base_max: float,
+        regime: str,
+    ) -> float:
+        """根据市场状态调整换手上限"""
+        if regime == "volatile":
+            return base_max * 0.5
+        elif regime == "trending":
+            return base_max * 1.2
+        return base_max
+
+    def apply_turnover_penalty(
+        self,
+        new_weights: np.ndarray,
+        old_weights: np.ndarray,
+        turnover_max: float = None,
+    ) -> np.ndarray:
+        """超过换手上限时等比例压缩
+
+        公式：actual_turnover = Σ|new_i - old_i| / 2
+        """
+        if turnover_max is None:
+            turnover_max = self.config.turnover_max
+
+        new_weights = np.array(new_weights, dtype=float)
+        old_weights = np.array(old_weights, dtype=float)
+
+        turnover = np.abs(new_weights - old_weights).sum() / 2
+        if turnover > turnover_max:
+            scale = turnover_max / turnover
+            new_weights = old_weights + (new_weights - old_weights) * scale
+
+        return new_weights
+
+    def apply_with_regime(
+        self,
+        new_weights: np.ndarray,
+        old_weights: np.ndarray,
+        regime: str = None,
+        sentiment: float = None,
+        volatility: float = None,
+        turnover_max: float = None,
+    ) -> np.ndarray:
+        """综合应用：检测市场状态 + 调整换手上限 + 压缩"""
+        if regime is None and sentiment is not None and volatility is not None:
+            regime = self.detect_market_regime(sentiment, volatility)
+
+        if turnover_max is None:
+            turnover_max = self.config.turnover_max
+
+        if regime is not None:
+            turnover_max = self.get_adjusted_turnover_max(turnover_max, regime)
+
+        return self.apply_turnover_penalty(new_weights, old_weights, turnover_max)
