@@ -7,6 +7,8 @@
 4. 换手率惩罚（减少交易成本）
 5. 风险平价备选方案
 """
+import json
+from pathlib import Path
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Tuple
@@ -67,6 +69,19 @@ class PortfolioOptimizer:
             OptimizedPortfolio
         """
         cfg = self.config
+
+        # === 读取动态因子权重 ===
+        dynamic_weights = None
+        try:
+            weights_path = Path("cache/ic/factor_weights.json")
+            if weights_path.exists():
+                with open(weights_path, encoding="utf-8") as f:
+                    wd = json.load(f)
+                    if wd.get("mode") == "dynamic":
+                        dynamic_weights = wd.get("weights", {})
+                        logger.info(f"[portfolio_optimizer] 使用动态权重: {dynamic_weights}")
+        except Exception as e:
+            logger.debug(f"读取动态权重失败，使用固定权重: {e}")
 
         # 1. 筛选有效候选
         valid = [c for c in candidates
