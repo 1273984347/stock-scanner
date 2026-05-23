@@ -174,115 +174,105 @@ def _load_current_weights() -> dict:
 
 
 def _optimize_portfolio(results: dict) -> dict:
-    from lib.portfolio_optimizer import PortfolioOptimizer, OptimizerConfig
-    candidate_map = {}
+    """组合优化 — 使用 PortfolioManager（分层架构）
+
+    多策略结构：每策略独立 PositionSizer → RiskBudget → Turnover，
+    再由 PortfolioManager 汇总权重 + 总风控检查。
+    """
+    from lib.portfolio_manager import PortfolioManager, StrategyConfig
+
+    # 构建每策略候选股 dict {策略名: [候选股列表]}
+    strategy_candidates = {}
+    candidate_info = {}  # code → {name, score, volatility}
+
     for name, df in results.items():
-        if df.empty:
+        if df.empty or "代码" not in df.columns:
             continue
-        if "代码" not in df.columns:
-            continue
-        # 向量化处理：先计算 score 列，再迭代
         df_work = df.copy()
         df_work["代码"] = df_work["代码"].astype(str)
         if "名称" in df_work.columns:
             df_work["名称"] = df_work["名称"].fillna("").astype(str)
-        # 计算 score：综合评分优先，否则用置信度*10
+
         if "综合评分" in df_work.columns:
             df_work["_score"] = pd.to_numeric(df_work["综合评分"], errors="coerce")
         else:
             df_work["_score"] = pd.to_numeric(df_work.get("置信度", 0), errors="coerce") * 10
-        # 计算 volatility
+
         vol_col = "波动率20" if "波动率20" in df_work.columns else "volatility_20"
         df_work["_volatility"] = pd.to_numeric(df_work.get(vol_col, 25), errors="coerce").fillna(25) / 100
-        # 只保留有效的行
+
         df_valid = df_work[df_work["_score"].notna()].copy()
+        strat_candidates = []
         for _, row in df_valid.iterrows():
             code = row["代码"]
-            score = row["_score"]
-            if code not in candidate_map or score > candidate_map[code].get("score", 0):
-                candidate_map[code] = {
-                    "code": code,
+            score = float(row["_score"])
+            vol = float(row["_volatility"])
+            strat_candidates.append({
+                "code": code,
+                "name": row.get("名称", ""),
+                "score": score,
+                "volatility": vol,
+            })
+            # candidate_info: 以最高评分为准
+            if code not in candidate_info or score > candidate_info[code].get("score", 0):
+                candidate_info[code] = {
                     "name": row.get("名称", ""),
-                    "score": float(score),
-                    "volatility": float(row["_volatility"])
+                    "score": score,
+                    "volatility": vol,
                 }
-    if not candidate_map:
+
+        if strat_candidates:
+            strategy_candidates[name] = strat_candidates
+
+    if not strategy_candidates:
         return {"weights": {}, "expected_return": 0, "expected_vol": 0,
-                "sharpe_ratio": 0, "sector_exposure": {}, "n_positions": 0}
-    candidates = list(candidate_map.values())
-    sector_map = _get_sector_map([c["code"] for c in candidates])
-    n = len(candidates)
-    codes = [c["code"] for c in candidates]
-    vols = np.array([c["volatility"] for c in candidates])
+                "sharpe_ratio": 0, "sector_exposure": {}, "n_positions": 0,
+                "turnover": 0, "details": []}
 
-    # 动态协方差估计：有历史数据时计算，否则降低优化权重
-    corr = np.full((n, n), config.DEFAULT_CORRELATION)  # 默认 0.2 但标记为未校准
-    for i in range(n):
-        corr[i, i] = 1.0
-
-    # 尝试用历史收益率计算真实相关矩阵
-    corr_estimated = False
-    if n >= 2:
-        try:
-            from lib.data_layer import get_stock_hist_multi_source
-            returns_data = []
-            valid_codes = []
-            for c in candidates:
-                hist = get_stock_hist_multi_source(c["code"], days=60, source="auto")
-                if not hist.empty and "close" in hist.columns and len(hist) >= 20:
-                    ret = hist["close"].pct_change().dropna()
-                    if len(ret) >= 20:
-                        returns_data.append(ret.values[-20:])
-                        valid_codes.append(c["code"])
-            if len(returns_data) >= 2:
-                ret_matrix = np.array(returns_data).T
-                if ret_matrix.shape[0] >= 10 and ret_matrix.shape[1] >= 2:
-                    real_corr = np.corrcoef(ret_matrix)
-                    # 映射回原始 codes 顺序
-                    code_to_idx = {code: i for i, code in enumerate(codes)}
-                    valid_idx = [code_to_idx[code] for code in valid_codes]
-                    for ii, i in enumerate(valid_idx):
-                        for jj, j in enumerate(valid_idx):
-                            if ii < len(real_corr) and jj < len(real_corr):
-                                if not np.isnan(real_corr[ii, jj]):
-                                    corr[i, j] = real_corr[ii, jj]
-                    corr_estimated = True
-                    logger.debug(f"协方差矩阵已用历史数据校准，样本数: {len(valid_codes)}")
-        except Exception as e:
-            logger.warning(f"[pipeline] 协方差矩阵计算失败，使用默认值: {e}")
-
-    if not corr_estimated:
-        # 无真实数据时，降低优化权重（增加 risk_aversion）
-        logger.debug("协方差矩阵未校准，风险厌恶系数提高")
-
-    if sector_map:
-        for i in range(n):
-            for j in range(i + 1, n):
-                si = sector_map.get(codes[i], "")
-                sj = sector_map.get(codes[j], "")
-                if si and sj and si == sj:
-                    # 同行业提高相关估计
-                    if corr_estimated:
-                        corr[i, j] = max(corr[i, j], 0.5)
-                        corr[j, i] = max(corr[j, i], 0.5)
-                    else:
-                        corr[i, j] = 0.5
-                        corr[j, i] = 0.5
-    cov = np.outer(vols, vols) * corr * 252
-
-    # 未校准时提高 risk_aversion
-    risk_aversion = config.RISK_AVERSION_CALIBRATED if corr_estimated else config.RISK_AVERSION_UNCALIBRATED
+    # 多策略等权配置
+    strategies = [
+        StrategyConfig(name=name, weight=1.0 / len(strategy_candidates))
+        for name in strategy_candidates
+    ]
     current_weights = _load_current_weights()
-    optimizer = PortfolioOptimizer(OptimizerConfig(
-        max_positions=min(config.MAX_POSITIONS, n), risk_aversion=risk_aversion, turnover_penalty=config.TURNOVER_PENALTY))
-    cov_df = pd.DataFrame(cov, index=codes, columns=codes)
-    result = optimizer.optimize(
-        candidates=candidates, covariance_matrix=cov_df,
-        current_weights=current_weights, sector_map=sector_map)
-    return {"weights": result.weights, "expected_return": result.expected_return,
-            "expected_vol": result.expected_vol, "sharpe_ratio": result.sharpe_ratio,
-            "sector_exposure": result.sector_exposure, "n_positions": result.n_positions,
-            "turnover": result.turnover, "details": result.details}
+    pm = PortfolioManager(strategies=strategies)
+    portfolio = pm.optimize(strategy_candidates, current_weights)
+
+    # 构建 sector_map（用于 details 和 sector_exposure）
+    codes_with_weights = list(portfolio.weights.keys())
+    sector_map = _get_sector_map(codes_with_weights) if codes_with_weights else {}
+
+    # 构建 details（与旧 optimizer 格式兼容）
+    details = []
+    sector_exposure = {}
+    for code, weight in portfolio.weights.items():
+        info = candidate_info.get(code, {})
+        sector = sector_map.get(code, "")
+        details.append({
+            "code": code,
+            "name": info.get("name", ""),
+            "weight": round(float(weight), 4),
+            "score": round(float(info.get("score", 0)), 2),
+            "sector": sector,
+        })
+        if sector:
+            sector_exposure[sector] = sector_exposure.get(sector, 0) + weight
+
+    # sector_exposure 归一化为权重
+    total_sec = sum(sector_exposure.values())
+    if total_sec > 0:
+        sector_exposure = {k: round(v / total_sec, 4) for k, v in sector_exposure.items()}
+
+    return {
+        "weights": portfolio.weights,
+        "expected_return": portfolio.expected_return,
+        "expected_vol": portfolio.expected_vol,
+        "sharpe_ratio": portfolio.sharpe_ratio,
+        "sector_exposure": sector_exposure,
+        "n_positions": portfolio.n_positions,
+        "turnover": portfolio.turnover,
+        "details": details,
+    }
 
 
 def _run_alpha_analysis(results: dict) -> dict:
