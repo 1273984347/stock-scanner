@@ -385,3 +385,105 @@ class PositionSizer:
         weights = weights / np.sum(weights)
 
         return weights
+
+
+@dataclass
+class RiskBudgetConfig:
+    """RiskBudgetController配置"""
+    volatility_target: float = 0.15     # 目标年化波动率
+    var_limit: float = 0.05            # VaR 限制（95%）
+    max_drawdown: float = 0.15         # 最大回撤限制
+    use_historical_var: bool = False    # 未来扩展：历史模拟法
+
+
+class RiskBudgetController:
+    """多层递进风控：波动率 → VaR → 最大回撤"""
+
+    def __init__(self, config: RiskBudgetConfig = None):
+        self.config = config or RiskBudgetConfig()
+
+    def apply_risk_controls(
+        self,
+        weights: np.ndarray,
+        expected_returns: np.ndarray,
+        cov_matrix: np.ndarray,
+    ) -> np.ndarray:
+        """应用三层风控，返回风控后的权重
+
+        Args:
+            weights: 初始权重
+            expected_returns: 预期收益（年化）
+            cov_matrix: 协方差矩阵（年化）
+
+        Returns:
+            np.ndarray 风控后的权重
+        """
+        weights = np.array(weights, dtype=float)
+        cfg = self.config
+
+        compressed = False
+
+        # Layer 1: 波动率控制
+        portfolio_vol = np.sqrt(weights @ cov_matrix @ weights)
+        if portfolio_vol > cfg.volatility_target:
+            scale = cfg.volatility_target / portfolio_vol
+            weights = weights * scale
+            compressed = True
+
+        # Layer 2: VaR 控制（默认正态分布近似）
+        var_est = self._estimate_var_normal(portfolio_vol)
+        if var_est > cfg.var_limit:
+            scale = cfg.var_limit / var_est
+            weights = weights * scale
+            compressed = True
+
+        # Layer 3: 最大回撤控制（默认简化近似）
+        dd_est = self._estimate_drawdown_normal(portfolio_vol)
+        if dd_est > cfg.max_drawdown:
+            scale = cfg.max_drawdown / dd_est
+            weights = weights * scale
+            compressed = True
+
+        # 归一化（仅在未压缩时）
+        if not compressed:
+            total = np.sum(weights)
+            if total > 0:
+                weights = weights / total
+
+        return weights
+
+    def _estimate_var_normal(self, vol: float) -> float:
+        """VaR 估算 — 正态分布近似（默认）"""
+        return vol * 1.65  # 95% confidence
+
+    def _estimate_drawdown_normal(self, vol: float) -> float:
+        """回撤估算 — 简化近似（默认）"""
+        return vol * 2.5
+
+    # ---- 可扩展接口（未来接入历史模拟法或蒙特卡洛）----
+    def compute_var_historical(
+        self,
+        returns: np.ndarray,
+        confidence: float = 0.95,
+    ) -> float:
+        """历史模拟法 VaR（未来扩展）"""
+        sorted_returns = np.sort(returns)
+        idx = int((1 - confidence) * len(sorted_returns))
+        return abs(sorted_returns[idx])
+
+    def compute_var_monte_carlo(
+        self,
+        expected_returns: np.ndarray,
+        cov_matrix: np.ndarray,
+        n_simulations: int = 10000,
+        confidence: float = 0.95,
+    ) -> float:
+        """蒙特卡洛 VaR（未来扩展）"""
+        n = len(expected_returns)
+        try:
+            L = np.linalg.cholesky(cov_matrix)
+        except np.linalg.LinAlgError:
+            return self._estimate_var_normal(np.sqrt(expected_returns @ cov_matrix @ expected_returns))
+        z = np.random.standard_normal((n_simulations, n))
+        portfolio_returns = expected_returns @ z.T + np.diag(L @ z.T)
+        return np.percentile(portfolio_returns, (1 - confidence) * 100)
