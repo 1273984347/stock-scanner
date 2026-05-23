@@ -575,3 +575,124 @@ class TurnoverController:
             turnover_max = self.get_adjusted_turnover_max(turnover_max, regime)
 
         return self.apply_turnover_penalty(new_weights, old_weights, turnover_max)
+
+
+@dataclass
+class StrategyConfig:
+    """策略配置"""
+    name: str = "default"
+    weight: float = 1.0              # 策略权重（相对总组合）
+    enabled: bool = True
+    max_position_pct: float = 0.15  # 单股最大仓位
+    risk_budget_pct: float = 0.30   # 风险预算占比
+    score_to_return: float = 0.001   # 评分→收益映射
+    volatility_target: float = 0.15  # 策略波动率目标
+    turnover_max: float = 0.50       # 最大换手率
+
+
+@dataclass
+class StrategyAllocation:
+    """单策略分配结果"""
+    strategy_name: str
+    weights: Dict[str, float]            # {code: weight}
+    expected_return: float               # 预期年化收益
+    expected_vol: float                # 预期年化波动
+    sharpe_ratio: float               # 夏普比率
+
+
+class StrategyAllocator:
+    """单策略完整链路：PositionSizer → RiskBudget → TurnoverControl"""
+
+    def __init__(
+        self,
+        strategy_config: StrategyConfig = None,
+        position_sizer_config: PositionSizerConfig = None,
+        risk_budget_config: RiskBudgetConfig = None,
+        turnover_config: TurnoverConfig = None,
+    ):
+        self.strategy_config = strategy_config or StrategyConfig()
+        self.position_sizer = PositionSizer(position_sizer_config)
+        self.risk_controller = RiskBudgetController(risk_budget_config)
+        self.turnover_controller = TurnoverController(turnover_config)
+
+    def allocate(
+        self,
+        candidates: List[Dict],
+        current_weights: Dict[str, float] = None,
+    ) -> StrategyAllocation:
+        """执行单策略仓位分配
+
+        流程：
+        1. PositionSizer: 评分→初步仓位
+        2. RiskBudgetController: 风控调整
+        3. TurnoverController: 换手控制
+        """
+        cfg = self.strategy_config
+
+        if not cfg.enabled:
+            return StrategyAllocation(
+                strategy_name=cfg.name,
+                weights={},
+                expected_return=0,
+                expected_vol=0,
+                sharpe_ratio=0,
+            )
+
+        if not candidates:
+            return StrategyAllocation(
+                strategy_name=cfg.name,
+                weights={},
+                expected_return=0,
+                expected_vol=0,
+                sharpe_ratio=0,
+            )
+
+        # Step 1: PositionSizer — 评分→初步仓位
+        raw_weights = self.position_sizer.compute_weights(candidates)
+        codes = [c["code"] for c in candidates]
+
+        # Step 2: RiskBudgetController — 风控调整
+        expected_returns = np.array([
+            c.get("score", 0) * cfg.score_to_return * 252
+            for c in candidates
+        ])
+        vols = np.array([c.get("volatility", cfg.volatility_target) for c in candidates])
+        cov_matrix = np.diag(vols ** 2) * 252
+
+        adjusted_weights = self.risk_controller.apply_risk_controls(
+            raw_weights, expected_returns, cov_matrix
+        )
+
+        # Step 3: TurnoverController — 换手控制
+        if current_weights:
+            old_weights_arr = np.array([
+                current_weights.get(c, 0) for c in codes
+            ])
+            adjusted_weights = self.turnover_controller.apply_turnover_penalty(
+                adjusted_weights, old_weights_arr, cfg.turnover_max
+            )
+
+        # 归一化
+        total = np.sum(adjusted_weights)
+        if total > 0:
+            adjusted_weights = adjusted_weights / total
+
+        # 构建结果
+        weight_dict = {
+            code: round(float(w), 4)
+            for code, w in zip(codes, adjusted_weights)
+            if w > 1e-6
+        }
+
+        # 计算组合指标
+        port_return = adjusted_weights @ expected_returns
+        port_vol = np.sqrt(adjusted_weights @ cov_matrix @ adjusted_weights)
+        sharpe = port_return / port_vol if port_vol > 0 else 0
+
+        return StrategyAllocation(
+            strategy_name=cfg.name,
+            weights=weight_dict,
+            expected_return=round(float(port_return), 4),
+            expected_vol=round(float(port_vol), 4),
+            sharpe_ratio=round(float(sharpe), 2),
+        )
