@@ -4,6 +4,7 @@ import sys
 import argparse
 from datetime import datetime, timedelta
 from typing import Dict
+from pathlib import Path
 import pandas as pd
 from scanner import run_all_strategies
 from notifier import send_feishu_message, print_results
@@ -150,6 +151,59 @@ def main():
                     build_ic_report(today)
             except Exception as e:
                 logger.debug(f"IC 面板构建失败（不影响主流程）: {e}")
+
+            # === 组合优化 ===
+            try:
+                from lib.portfolio_manager import PortfolioManager, StrategyConfig
+                from lib.portfolio_optimizer import PositionSizerConfig, RiskBudgetConfig
+
+                # 构建每策略候选股 dict
+                strategy_candidates = {}
+                for name, df in results.items():
+                    if hasattr(df, "empty") and not df.empty:
+                        strat_candidates = []
+                        for _, row in df.iterrows():
+                            if "代码" in row:
+                                score = row.get("综合评分", row.get("评分", 50))
+                                strat_candidates.append({
+                                    "code": str(row["代码"]),
+                                    "name": row.get("名称", ""),
+                                    "score": float(score) if score is not None else 50.0,
+                                })
+                        if strat_candidates:
+                            strategy_candidates[name] = strat_candidates
+
+                if strategy_candidates:
+                    # 构建策略配置（各策略权重相同）
+                    strategies = [
+                        StrategyConfig(name=name, weight=1.0 / len(strategy_candidates))
+                        for name in strategy_candidates
+                    ]
+                    pm = PortfolioManager(strategies=strategies)
+                    portfolio = pm.optimize(strategy_candidates)
+
+                    if portfolio.weights:
+                        logger.info(f"[PortfolioManager] 优化持仓 {portfolio.n_positions} 只，"
+                                     f"预期收益 {portfolio.expected_return:.1%}，"
+                                     f"预期波动 {portfolio.expected_vol:.1%}，"
+                                     f"夏普 {portfolio.sharpe_ratio:.2f}")
+
+                        # 保存优化结果
+                        import json
+                        cache_path = Path("cache/portfolio")
+                        cache_path.mkdir(parents=True, exist_ok=True)
+                        with open(cache_path / f"optimized_{datetime.now().strftime('%Y%m%d')}.json", "w", encoding="utf-8") as f:
+                            json.dump({
+                                "date": datetime.now().strftime("%Y-%m-%d"),
+                                "weights": portfolio.weights,
+                                "expected_return": portfolio.expected_return,
+                                "expected_vol": portfolio.expected_vol,
+                                "sharpe_ratio": portfolio.sharpe_ratio,
+                                "turnover": portfolio.turnover,
+                                "n_positions": portfolio.n_positions,
+                            }, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logger.debug(f"组合优化失败（不影响主流程）: {e}")
 
             from reporter import send_strategy_report
             send_strategy_report(results, preset=args.preset)
