@@ -73,15 +73,26 @@ def _validate_ohlcv(df: pd.DataFrame, symbol: str = "") -> pd.DataFrame:
     return df
 
 
+class AllDataSourcesUnavailableError(Exception):
+    """所有数据源均不可用时抛出"""
+    pass
+
+
 def get_stock_data(symbol: str, days: int = 250) -> pd.DataFrame:
-    """获取股票历史数据（统一数据层，多数据源自动切换）"""
+    """获取股票历史数据（统一数据层，多数据源自动切换）
+
+    Raises:
+        AllDataSourcesUnavailableError: 所有数据源失败时抛出，不返回空 DataFrame
+    """
     from lib.data_layer import get_stock_hist_multi_source, AllDataSourcesFailedError
     try:
         df = get_stock_hist_multi_source(symbol, days=days, source="auto")
-    except AllDataSourcesFailedError:
-        return pd.DataFrame()
+    except AllDataSourcesFailedError as e:
+        raise AllDataSourcesUnavailableError(
+            f"所有数据源失败，无法获取 {symbol} 历史数据: {e}"
+        ) from e
     if df.empty:
-        return pd.DataFrame()
+        raise AllDataSourcesUnavailableError(f"数据源返回空结果，无法获取 {symbol} 历史数据")
     # 确保有 trade_date 列（ABroker 需要）
     if "date" in df.columns and "trade_date" not in df.columns:
         df = df.rename(columns={"date": "trade_date"})

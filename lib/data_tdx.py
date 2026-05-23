@@ -178,6 +178,24 @@ def get_kline(code: str, days: int = 180, period: str = "daily") -> pd.DataFrame
         logger.debug(f"TDX 使用本地文件获取 {code}")
         return df
 
+    # 本地文件也不存在，fallback 到 akshare
+    logger.debug(f"TDX 网络+本地均失败，fallback 到 akshare 获取 {code}")
+    try:
+        import akshare as ak
+        symbol = code if code.startswith(("sh", "sz")) else (("sh" if code.startswith(("6", "5", "9")) else "sz") + code)
+        df_ak = ak.stock_zh_a_hist(symbol=symbol, period="daily", adjust="qfq")
+        if df_ak is not None and not df_ak.empty:
+            df_ak = df_ak.rename(columns={
+                "日期": "date", "开盘": "open", "收盘": "close",
+                "最高": "high", "最低": "low", "成交量": "volume",
+            })
+            df_ak["date"] = pd.to_datetime(df_ak["date"])
+            if len(df_ak) >= days:
+                df_ak = df_ak.tail(days)
+            return df_ak[["date", "open", "high", "low", "close", "volume"]]
+    except Exception:
+        pass
+
     return pd.DataFrame()
 
 

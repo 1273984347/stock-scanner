@@ -261,13 +261,31 @@ class PortfolioOptimizer:
                 sector_weights[sector] = []
             sector_weights[sector].append(i)
 
+        # 第一轮：按比例削减所有超限行业
         for sector, indices in sector_weights.items():
             sector_total = sum(weights[i] for i in indices)
             if sector_total > max_sector_pct:
-                # 按比例削减
                 scale = max_sector_pct / sector_total
                 for i in indices:
                     weights[i] *= scale
+
+        # 安全边界：二次检查，若削减后仍有超限，强制归一化
+        for sector, indices in sector_weights.items():
+            sector_total = sum(weights[i] for i in indices)
+            if sector_total > max_sector_pct * 1.001:
+                # 强制裁剪到上限，多余权重重新分配给未超限行业
+                overage = sector_total - max_sector_pct
+                safe_indices = [i for s, idx in sector_weights.items()
+                               if sum(weights[j] for j in idx) <= max_sector_pct * 0.99
+                               for j in idx]
+                if safe_indices:
+                    # 按权重比例将超限部分转移给未超限行业
+                    excess_per_stock = overage / len(indices)
+                    deficit_per_stock = overage / len(safe_indices)
+                    for i in indices:
+                        weights[i] = max(0, weights[i] - excess_per_stock)
+                    for i in safe_indices:
+                        weights[i] += deficit_per_stock
 
         # 重新归一化
         total = weights.sum()

@@ -530,6 +530,32 @@ def get_stock_score(code: str) -> dict:
         judge_result = panel.evaluate_with_ml(ml_prediction)
     except Exception as e:
         logger.warning(f"[pipeline] 裁判团评分失败: {e}")
+    # ========== 偏移值监控（A 股特有风险检测）==========
+    offset_alert = None
+    try:
+        from lib.scorer import get_board_type, calc_deviation_value, check_anomaly_threshold
+        idx_df = get_index_hist("000001", days=20)
+        if not idx_df.empty and "close" in idx_df.columns:
+            stock_return = result["factors"].get("momentum_5", 0) / 100
+            idx_return = float(idx_df["close"].iloc[-1] / idx_df["close"].iloc[0] - 1)
+            deviation_info = calc_deviation_value(stock_return, idx_return)
+            board_type = get_board_type(code)
+            threshold_result = check_anomaly_threshold(deviation_info["deviation"], board_type)
+            if threshold_result.get("triggered"):
+                offset_alert = {
+                    "deviation": deviation_info,
+                    "board_type": board_type,
+                    "threshold_result": threshold_result,
+                }
+                # 评分扣减
+                adj = threshold_result.get("score_adjustment", 0)
+                if adj != 0 and not score_result.get("judge_adjusted"):
+                    score_result["score"] = max(0, score_result.get("score", 0) + adj)
+                    score_result["offset_adjusted"] = True
+                    score_result["offset_alert"] = offset_alert
+    except Exception:
+        pass  # 偏移值监控失败不影响主流程
+
     return {
         "code": code, "factors": result.get("factors", {}),
         "combined": result.get("combined", {}),
