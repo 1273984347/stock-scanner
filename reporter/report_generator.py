@@ -49,15 +49,6 @@ def _get_market_overview() -> Tuple[float, str, float]:
     return sentiment, macro_state, position_multiplier
 
 
-# ---------------------------------------------------------------------------
-# 2. is_trading_day
-# ---------------------------------------------------------------------------
-
-
-def is_trading_day() -> bool:
-    """判断今天是否为 A 股交易日（仅检查周末，不接 holidays 包）"""
-    today = date.today()
-    return today.weekday() < 5  # 0=Mon … 4=Fri
 
 
 # ---------------------------------------------------------------------------
