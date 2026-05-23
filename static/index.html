@@ -41,6 +41,7 @@
     <div class="nav-tab" data-panel="eval">因子评估</div>
     <div class="nav-tab" data-panel="audit">决策审计</div>
     <div class="nav-tab" data-panel="backtest">策略回测</div>
+    <div class="nav-tab" data-panel="reports">历史报告</div>
   </div>
 
   <!-- 组合优化面板 -->
@@ -173,6 +174,31 @@
     <div class="portfolio-grid" id="btCharts" style="display:none">
       <div class="portfolio-card"><div class="metric-label">收益 vs 基准</div><canvas id="btReturnChart"></canvas></div>
       <div class="portfolio-card"><div class="metric-label">退出原因分布</div><canvas id="btExitChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- 历史报告面板 -->
+  <div class="panel" id="panel-reports">
+    <div class="portfolio-grid">
+      <div class="portfolio-card">
+        <div class="metric-label">每日策略报告</div>
+        <div class="table-wrap">
+          <table id="reportsTable">
+            <thead><tr><th>日期</th><th>情绪</th><th>候选股</th><th>信号明细</th></tr></thead>
+            <tbody id="reportsBody"></tbody>
+          </table>
+        </div>
+        <div class="loading" id="reportsLoading"><span class="spinner"></span>加载中...</div>
+      </div>
+      <div class="portfolio-card">
+        <div class="metric-label">推送日志</div>
+        <div class="table-wrap">
+          <table id="pushLogTable">
+            <thead><tr><th>时间</th><th>类型</th><th>状态</th><th>详情</th></tr></thead>
+            <tbody id="pushLogBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 </div>

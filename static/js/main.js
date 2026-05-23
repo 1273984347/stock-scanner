@@ -116,8 +116,97 @@ function setupTabSwitching() {
       panels.forEach(p => p.classList.remove('active'));
       tab.classList.add('active');
       document.getElementById('panel-' + tab.dataset.panel)?.classList.add('active');
+      if (tab.dataset.panel === 'reports') {
+        loadReportsTab();
+      }
     });
   });
+}
+
+let _reportsLoaded = false;
+async function loadReportsTab() {
+  if (_reportsLoaded) return;
+  _reportsLoaded = true;
+  const loading = document.getElementById('reportsLoading');
+  const tbody = document.getElementById('reportsBody');
+  const logBody = document.getElementById('pushLogBody');
+  try {
+    const data = await apiClient.get('/api/reports');
+    loading.style.display = 'none';
+
+    // 策略报告
+    if (data.reports && data.reports.length > 0) {
+      tbody.innerHTML = '';
+      data.reports.forEach(r => {
+        const totalSignals = Object.values(r.signals || {}).reduce((a, b) => a + b, 0);
+        const signalsStr = Object.entries(r.signals || {})
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(', ');
+        const tr = document.createElement('tr');
+        [
+          r.date || '--',
+          r.sentiment != null ? r.sentiment.toFixed(2) : '--',
+          String(totalSignals),
+          signalsStr || '--',
+        ].forEach((txt, i) => {
+          const td = document.createElement('td');
+          td.textContent = txt;
+          if (i === 3) td.style.cssText = 'font-size:12px;color:var(--text-dim);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+          else if (i > 0) td.style.cssText = 'text-align:center';
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    } else {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 4;
+      td.textContent = '暂无历史报告';
+      td.style.cssText = 'color:var(--text-dim);padding:16px';
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
+
+    // 推送日志
+    if (data.push_logs && data.push_logs.length > 0) {
+      logBody.innerHTML = '';
+      data.push_logs.forEach(log => {
+        const d = new Date(log.timestamp);
+        const timeStr = d.toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'});
+        const statusSpan = document.createElement('span');
+        statusSpan.textContent = log.success ? '成功' : '失败';
+        statusSpan.style.cssText = log.success ? 'color:#4ecdc4' : 'color:#ff6b6b';
+        const typeSpan = document.createElement('span');
+        typeSpan.textContent = log.type === 'morning_report' ? '晨间报告' : '策略报告';
+        const tr = document.createElement('tr');
+        [
+          timeStr,
+          typeSpan,
+          statusSpan,
+          log.detail || '--',
+        ].forEach((el, i) => {
+          const td = document.createElement('td');
+          if (typeof el === 'string') td.textContent = el;
+          else td.appendChild(el);
+          if (i === 0) td.style.cssText = 'font-size:12px';
+          else if (i === 3) td.style.cssText = 'font-size:12px;color:var(--text-dim)';
+          tr.appendChild(td);
+        });
+        logBody.appendChild(tr);
+      });
+    } else {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 4;
+      td.textContent = '暂无推送记录';
+      td.style.cssText = 'color:var(--text-dim);padding:16px';
+      tr.appendChild(td);
+      logBody.appendChild(tr);
+    }
+  } catch (e) {
+    console.error('[Reports] 加载失败:', e);
+    if (loading) loading.textContent = '加载失败';
+  }
 }
 
 window.openStockDetail = async function(code, name) {

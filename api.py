@@ -866,6 +866,41 @@ def _run_stress_tests() -> dict:
     return scenarios
 
 
+@app.get("/api/reports", dependencies=[Security(verify_api_key)])
+async def report_history(_=Security(verify_api_key)):
+    """历史报告列表（来自 cache/reports/）"""
+    reports_dir = Path(__file__).parent / "cache" / "reports"
+    if not reports_dir.exists():
+        return {"reports": [], "push_logs": []}
+
+    # 策略报告 JSON
+    reports = []
+    for f in sorted(reports_dir.glob("strategy_*.json"), reverse=True):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            reports.append({
+                "type": "strategy",
+                "date": data.get("date", f.stem.replace("strategy_", "")),
+                "sentiment": data.get("sentiment"),
+                "signals": data.get("signals", {}),
+                "file": f.name,
+            })
+        except Exception:
+            continue
+
+    # 推送日志
+    push_logs = []
+    log_path = reports_dir / "push_log.json"
+    if log_path.exists():
+        try:
+            logs = json.loads(log_path.read_text(encoding="utf-8"))
+            push_logs = sorted(logs, key=lambda x: x.get("timestamp", ""), reverse=True)[:50]
+        except Exception:
+            pass
+
+    return {"reports": reports, "push_logs": push_logs}
+
+
 @app.get("/api/factor-eval", dependencies=[Security(verify_api_key)])
 async def factor_evaluation(
     n_stocks: int = Query(default=30, ge=5, le=100),
