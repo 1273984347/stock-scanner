@@ -29,6 +29,23 @@ _position_sizer = RiskSizedPosition(PositionSizeConfig())
 _risk_manager = VolCorrRiskManager(VolCorrRiskConfig())
 
 
+def _batch_get_financial_data(codes: List[str]) -> Dict[str, Optional[pd.Series]]:
+    """批量并行获取财务数据（解决 N+1 查询问题）"""
+    results = {}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {
+            executor.submit(_get_financial_data, code): code
+            for code in codes
+        }
+        for future in as_completed(futures):
+            code = futures[future]
+            try:
+                results[code] = future.result()
+            except Exception:
+                results[code] = None
+    return results
+
+
 def _batch_get_stock_hist(codes: List[str], days: int = 180) -> Dict[str, pd.DataFrame]:
     """批量并行获取股票历史数据（解决 N+1 查询问题）
 
@@ -209,13 +226,14 @@ def get_volume_breakout_candidates(config: SystemConfig) -> pd.DataFrame:
         # 批量并行获取历史数据（解决 N+1 查询问题）
         all_codes = df["代码"].astype(str).tolist()
         stock_hist_data = _batch_get_stock_hist(all_codes, days=180)
+        batch_financial = _batch_get_financial_data(all_codes)
         candidates = []
         for _, row in df.iterrows():
             code = row["代码"]
             hist = stock_hist_data.get(code)
             if hist is None or len(hist) < 60:
                 continue
-            fin_data = _get_financial_data(code)
+            fin_data = batch_financial.get(code)
             cr = _constraints.check_ticker(code, market_data=hist, financial_data=fin_data, stock_name=row["名称"])
             if cr.blocked:
                 continue
@@ -360,13 +378,14 @@ def get_multi_factor_candidates(config: SystemConfig) -> pd.DataFrame:
         # 批量并行获取历史数据（解决 N+1 查询问题）
         all_codes = df["代码"].astype(str).tolist()
         stock_hist_data = _batch_get_stock_hist(all_codes, days=180)
+        batch_financial = _batch_get_financial_data(all_codes)
         candidates = []
         for _, row in df.iterrows():
             code = row["代码"]
             hist = stock_hist_data.get(code)
             if hist is None or len(hist) < 60:
                 continue
-            fin_data = _get_financial_data(code)
+            fin_data = batch_financial.get(code)
             cr = _constraints.check_ticker(code, market_data=hist, financial_data=fin_data, stock_name=row["名称"])
             if cr.blocked:
                 continue

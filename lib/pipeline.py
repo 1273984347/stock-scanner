@@ -386,100 +386,68 @@ def _enrich_with_ml_scores(results: dict) -> dict:
 
 def get_stock_score(code: str) -> dict:
     """单股完整评分：因子 + 技术 + 四维评分 + 约束 + 风控"""
-    try:
-        hist = get_stock_hist_multi_source(code, days=180, source="auto", prefer_adjusted=True)
-    except Exception:
-        return {"error": f"未找到 {code} 数据"}
+    from lib.pipeline_core.steps import (
+        fetch_stock_data, calculate_factors,
+        score_with_realtime, score_without_realtime,
+        evaluate_with_judge_ml, check_offset_anomaly,
+    )
+
+    # 1. 数据获取
+    hist, rt_row, fin_data, idx_df = fetch_stock_data(code, days=180)
     if hist.empty:
         return {"error": f"未找到 {code} 数据"}
-    result = compute_all_signals(hist, factor_config=get_config().factor)
-    if not result:
+
+    # 2. 因子计算
+    factors, tech = calculate_factors(hist)
+    if not factors:
         return {"error": f"{code} 因子计算失败"}
-    from lib.technical_signals import calc_composite_verdict
-    tech = calc_composite_verdict(hist)
-    realtime = get_realtime_quotes()
-    rt_row = None
-    if not realtime.empty:
-        # 向量化查找，避免 iterrows
-        mask = realtime["代码"].astype(str) == code
-        if mask.any():
-            rt_row = realtime[mask].iloc[0]
+
+    # 3. 评分（根据是否有实时行情选择路径）
     if rt_row is not None:
-        score_result = full_score(code, hist, result["factors"], rt_row)
+        score_result = score_with_realtime(code, hist, factors, rt_row, fin_data)
     else:
-        factors = result["factors"]
-        mom_5 = factors.get("momentum_5", 0) / 100
-        mom_20 = factors.get("momentum_20", 0) / 100
-        tech_score = score_technical(return_10d=mom_5, return_20d=mom_20)
-        fund_score = score_fundamental()
-        cap_score = score_capital_flow()
-        news_sig = get_news_signals(code)
-        news_score = score_news(
-            major_positive=news_sig["major_positive"],
-            institutional_buy=news_sig["institutional_buy"],
-            no_negative=news_sig["no_negative"],
-            earnings_positive=news_sig["earnings_positive"],
-        )
-        score_result = comprehensive_score(fund_score, cap_score, news_score, tech_score)
-    fin_data = _get_financial_data(code)
+        score_result = score_without_realtime(factors)
+
+    # 4. 约束检查
     from lib.constraints import DeterministicConstraints
-    cr = DeterministicConstraints().check_ticker(code, market_data=hist, financial_data=fin_data)
+    cr = DeterministicConstraints().check_ticker(code, hist, fin_data)
+
+    # 5. ML 预测
     ml_prediction = {}
     try:
         from lib.ml_predictor import MLPredictor
         predictor = MLPredictor()
         if not predictor.is_model_stale():
-            ml_prediction = predictor.predict_single(result.get("factors", {}))
+            ml_prediction = predictor.predict_single(factors)
     except Exception as e:
         logger.debug(f"ML 预测失败: {e}")
-    judge_result = {}
-    try:
-        from lib.judge_panel import JudgePanel
-        pe_val = result["factors"].get("pe_ttm", fin_data.get("pe", pd.NA) if fin_data is not None else pd.NA)
-        panel = JudgePanel(
-            factors={"pe_ttm": pe_val, **result.get("factors", {})},
-            fundamentals={}, market_data=hist,
-        )
-        judge_result = panel.evaluate_with_ml(ml_prediction)
-    except Exception as e:
-        logger.warning(f"[pipeline] 裁判团评分失败: {e}")
-    # ========== 偏移值监控（A 股特有风险检测）==========
-    offset_alert = None
-    try:
-        from lib.scorer import get_board_type, calc_deviation_value, check_anomaly_threshold
-        idx_df = get_index_hist("000001", days=20)
-        if not idx_df.empty and "close" in idx_df.columns:
-            stock_return = result["factors"].get("momentum_5", 0) / 100
-            idx_return = float(idx_df["close"].iloc[-1] / idx_df["close"].iloc[0] - 1)
-            deviation_info = calc_deviation_value(stock_return, idx_return)
-            board_type = get_board_type(code)
-            threshold_result = check_anomaly_threshold(deviation_info["deviation"], board_type)
-            if threshold_result.get("triggered"):
-                offset_alert = {
-                    "deviation": deviation_info,
-                    "board_type": board_type,
-                    "threshold_result": threshold_result,
-                }
-                # 评分扣减
-                adj = threshold_result.get("score_adjustment", 0)
-                if adj != 0 and not score_result.get("judge_adjusted"):
-                    score_result["score"] = max(0, score_result.get("score", 0) + adj)
-                    score_result["offset_adjusted"] = True
-                    score_result["offset_alert"] = offset_alert
-    except Exception:
-        pass  # 偏移值监控失败不影响主流程
+
+    # 6. 裁判团 + ML 评审
+    judge_result = evaluate_with_judge_ml(code, hist, factors, fin_data, ml_prediction)
+
+    # 7. 偏移值监控
+    offset_alert, score_adjustment = check_offset_anomaly(code, hist, factors, idx_df)
+    if offset_alert and score_adjustment != 0:
+        score_result["score"] = max(0, score_result.get("score", 0) + score_adjustment)
+        score_result["offset_adjusted"] = True
+        score_result["offset_alert"] = offset_alert
 
     return {
-        "code": code, "factors": result.get("factors", {}),
-        "combined": result.get("combined", {}),
-        "regime": result.get("regime", {}),
-        "macro_gate": result.get("macro_gate", {}),
-        "technical": {"verdict": tech.get("verdict"), "signals": tech.get("signals"),
-                       "summary": tech.get("summary")},
-        "score": score_result, "judge_panel": judge_result,
+        "code": code,
+        "factors": factors,
+        "combined": {},
+        "regime": {},
+        "macro_gate": {},
+        "technical": tech,
+        "score": score_result,
+        "judge_panel": judge_result,
         "ml_prediction": ml_prediction,
-        "constraints": {"passed": cr.passed, "blocked": cr.blocked,
-                         "violations": cr.violations, "score_adjustment": cr.score_adjustment},
+        "constraints": {
+            "passed": cr.passed,
+            "blocked": cr.blocked,
+            "violations": cr.violations,
+            "score_adjustment": cr.score_adjustment,
+        },
     }
 
 

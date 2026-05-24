@@ -10,6 +10,7 @@ import logging
 import threading
 import time
 
+from config import get_config
 from lib.cache import CircuitBreaker, CircuitOpenError
 from lib.broker import LRUCache
 from lib.utils import _safe_float
@@ -231,7 +232,7 @@ def _fetch_from_tdx_local(code: str, days: int) -> pd.DataFrame:
 def get_stock_hist(code: str, days: int = 180) -> pd.DataFrame:
     """获取个股日线：本地TDX优先，网络akshare兜底（带缓存）"""
     cache_key = f"hist_{code}_{days}"
-    cached = _load_cache(cache_key, max_age_hours=4)
+    cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
     if not cached.empty:
         return cached
 
@@ -280,7 +281,7 @@ def get_index_hist(code: str, days: int = 180) -> pd.DataFrame:
     """
     from lib.data_tdx import get_index_local
     cache_key = f"index_{code}_{days}"
-    cached = _load_cache(cache_key, max_age_hours=4)
+    cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
     if not cached.empty:
         return cached
     # 本地优先
@@ -303,7 +304,7 @@ def get_ggt_hist(code: str, days: int = 180) -> pd.DataFrame:
     """获取港股通日线（本地文件）"""
     from lib.data_tdx import get_ggt_local
     cache_key = f"ggt_{code}_{days}"
-    cached = _load_cache(cache_key, max_age_hours=4)
+    cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
     if not cached.empty:
         return cached
     df = get_ggt_local(code, days)
@@ -316,7 +317,7 @@ def get_option_hist(code: str, market: str = "sh", days: int = 180) -> pd.DataFr
     """获取期权日线（本地文件）"""
     from lib.data_tdx import _fetch_option_local
     cache_key = f"option_{market}_{code}_{days}"
-    cached = _load_cache(cache_key, max_age_hours=4)
+    cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
     if not cached.empty:
         return cached
     df = _fetch_option_local(code, market, days)
@@ -329,7 +330,7 @@ def get_fund_hist(code: str, market: str = "open", days: int = 180) -> pd.DataFr
     """获取基金净值日线（本地文件）"""
     from lib.data_tdx import _fetch_fund_local
     cache_key = f"fund_{market}_{code}_{days}"
-    cached = _load_cache(cache_key, max_age_hours=4)
+    cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
     if not cached.empty:
         return cached
     df = _fetch_fund_local(code, market, days)
@@ -347,7 +348,7 @@ def get_macro_hist_local(indicator: str = "CPI", days: int = 30) -> pd.DataFrame
     """
     from lib.data_tdx import _fetch_macro_local
     cache_key = f"macro_{indicator}_{days}"
-    cached = _load_cache(cache_key, max_age_hours=24)  # 宏观数据更新慢，缓存24h
+    cached = _load_cache(cache_key, max_age_hours=get_config().cache.macro_max_age_hours)
     if not cached.empty:
         return cached
     df = _fetch_macro_local(indicator, days)
@@ -360,7 +361,7 @@ def get_bj_hist(code: str, days: int = 180) -> pd.DataFrame:
     """获取北交所日线（本地文件）"""
     from lib.data_tdx import get_bj_local
     cache_key = f"bj_{code}_{days}"
-    cached = _load_cache(cache_key, max_age_hours=4)
+    cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
     if not cached.empty:
         return cached
     df = get_bj_local(code, days)
@@ -372,7 +373,7 @@ def get_bj_hist(code: str, days: int = 180) -> pd.DataFrame:
 # ========== 实时行情 ==========
 
 def get_realtime_quotes() -> pd.DataFrame:
-    cached = _load_cache("realtime", max_age_hours=0.5)
+    cached = _load_cache("realtime", max_age_hours=get_config().cache.realtime_max_age_minutes / 60)
     if not cached.empty:
         return cached
     try:

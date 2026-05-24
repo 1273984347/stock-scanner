@@ -31,6 +31,17 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="A股量化交易系统", version="3.0.0")
 
+
+@app.on_event("startup")
+def _verify_api_key_on_startup():
+    """启动时验证 API 密钥已配置"""
+    try:
+        _get_api_key()
+    except RuntimeError as e:
+        logger.error(f"启动失败: {e}")
+        raise SystemExit(1)
+
+
 # ========== 安全常量 ==========
 
 ALLOWED_PRESETS = {"balanced", "aggressive", "conservative"}
@@ -40,27 +51,30 @@ ALLOWED_PRESETS = {"balanced", "aggressive", "conservative"}
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
+def _get_api_key() -> str:
+    """获取 API 密钥，密钥不存在则拒绝启动"""
+    key = os.getenv("API_SECRET_KEY", "")
+    if not key:
+        raise RuntimeError(
+            "API_SECRET_KEY must be set in production. "
+            "Hint: export API_SECRET_KEY=your-secret-key"
+        )
+    return key
+
+
 async def verify_api_key(api_key: str = Security(API_KEY_HEADER)) -> str:
-    """验证 API Key（生产环境必须设置 API_SECRET_KEY 环境变量）"""
+    """验证 API Key（生产模式：API_SECRET_KEY 必须设置）"""
     if api_key is None:
-        logger.warning("API Key 缺失，拒绝访问")
         raise HTTPException(status_code=401, detail="缺少API密钥")
-    expected = os.getenv("API_SECRET_KEY", "")
-    if not expected:
-        # 未配置密钥时允许访问（开发模式），生产环境应设置环境变量
-        logger.warning("API_SECRET_KEY not set, allowing request (dev mode)")
-        return api_key
+    expected = _get_api_key()
     if api_key != expected:
-        logger.warning(f"无效的API密钥尝试: {api_key[:8]}...")
         raise HTTPException(status_code=401, detail="无效的API密钥")
     return api_key
 
 
 def verify_ws_token(token: str) -> bool:
-    """验证 WebSocket token（与 API Key 相同）"""
-    expected = os.getenv("API_SECRET_KEY", "")
-    if not expected:
-        return True  # 未配置时允许
+    """验证 WebSocket token"""
+    expected = _get_api_key()
     return token == expected
 
 

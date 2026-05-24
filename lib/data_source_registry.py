@@ -101,21 +101,52 @@ def _fetch_from_source(code: str, days: int, source: str) -> pd.DataFrame:
     return pd.DataFrame()
 
 
+# 列名标准化映射表
+COLUMN_MAPPINGS = {
+    # 日期列
+    "trade_date": "date",
+    "tradeDate": "date",
+    "日期": "date",
+    # OHLCV 核心列
+    "开盘": "open",
+    "收盘": "close",
+    "最高": "high",
+    "最低": "low",
+    "成交量": "volume",
+    "vol": "volume",
+    # 扩展列
+    "成交额": "amount",
+    "turnover": "amount",
+    "换手率": "turnover",
+    "turnoverRate": "turnover",
+    "涨跌幅": "pct_chg",
+    "changePct": "pct_chg",
+    "pctChg": "pct_chg",
+}
+
+
 def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """统一列名为 date/open/high/low/close/volume"""
+    """统一列名为标准列名"""
     if df.empty:
         return df
-    # vol -> volume 统一
-    if "vol" in df.columns and "volume" not in df.columns:
-        df = df.rename(columns={"vol": "volume"})
-    # 确保标准列存在
+
+    # 1. 应用所有映射
     rename_map = {}
-    for ch, en in [("日期", "date"), ("开盘", "open"), ("收盘", "close"),
-                    ("最高", "high"), ("最低", "low"), ("成交量", "volume")]:
-        if ch in df.columns and en not in df.columns:
-            rename_map[ch] = en
+    for orig, standard in COLUMN_MAPPINGS.items():
+        if orig in df.columns and standard not in df.columns:
+            rename_map[orig] = standard
     if rename_map:
         df = df.rename(columns=rename_map)
+
+    # 2. 日期格式统一
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+
+    # 3. 数值列类型统一
+    for col in ["open", "high", "low", "close", "volume", "amount", "turnover", "pct_chg"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
     return df
 
 

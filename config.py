@@ -156,6 +156,15 @@ class MonitorConfig:
 
 
 @dataclass
+class CacheConfig:
+    """缓存 TTL 配置"""
+    hist_max_age_hours: float = 4.0
+    index_max_age_hours: float = 4.0
+    realtime_max_age_minutes: float = 0.5
+    macro_max_age_hours: float = 24.0
+
+
+@dataclass
 class SystemConfig:
     """系统全局配置"""
     factor: FactorConfig = field(default_factory=FactorConfig)
@@ -165,6 +174,7 @@ class SystemConfig:
     llm: LLMConfig = field(default_factory=LLMConfig)
     portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
     monitor: MonitorConfig = field(default_factory=MonitorConfig)
+    cache: CacheConfig = field(default_factory=CacheConfig)
 
 
 # 预设策略模板
