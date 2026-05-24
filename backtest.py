@@ -468,9 +468,11 @@ def run_walk_forward(
     train_days: int = 180,
     validation_days: int = 30,
     step_days: int = 30,
+    strategy_name: str = "factor_strategy",
 ) -> Dict:
     """Walk-forward 验证"""
-    from lib.walkforward import WalkForwardBacktest, WalkForwardConfig, summarize_rounds
+    from lib.walkforward import (WalkForwardBacktest, WalkForwardConfig,
+                                  summarize_rounds, save_walkforward_results)
 
     # 获取数据
     market_data: Dict[str, pd.DataFrame] = {}
@@ -512,10 +514,14 @@ def run_walk_forward(
         market_data=market_data,
         dates=dates,
         symbols=symbols,
-        strategy_name="factor_strategy",
+        strategy_name=strategy_name,
     )
 
     summary = summarize_rounds(rounds)
+
+    # 持久化
+    save_walkforward_results(strategy_name, summary, len(rounds))
+
     return {"rounds": rounds, "summary": summary}
 
 

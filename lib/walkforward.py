@@ -422,3 +422,190 @@ def summarize_rounds(rounds: List[WalkForwardRound]) -> Dict:
         "median_profit_factor": _median(profit_factors),
         "total_trades": sum(m.get("total_trades", 0) for m in val_metrics),
     }
+
+
+# ========== V4 模块贡献分析 ==========
+
+@dataclass
+class ModuleContribution:
+    """单个模块的贡献"""
+    name: str
+    label: str
+    total_return: float
+    sharpe_ratio: float
+    win_rate: float
+    max_drawdown: float
+    n_trades: int
+    contribution: float = 0.0  # 与baseline的差值
+    is_independent: bool = True  # 是否有独立贡献
+
+
+class ModuleContributionAnalyzer:
+    """V4 模块贡献分析器（Ablation 测试）
+
+    V4 规则：不要把很多相关条件重复加分。
+    处理原则：
+    - 有独立贡献的，保留
+    - 重复的，降权
+    - 没贡献的，删除
+
+    用法：
+        analyzer = ModuleContributionAnalyzer(baseline_metrics)
+        analyzer.add_module("市场状态过滤", market_regime_metrics)
+        analyzer.add_module("板块过滤", sector_filter_metrics)
+        analyzer.add_module("个股筛选", stock_filter_metrics)
+        result = analyzer.compute_contributions()
+    """
+
+    def __init__(self, baseline_metrics: Dict):
+        """
+        Args:
+            baseline_metrics: 完整策略的基准指标
+                {total_return, sharpe_ratio, win_rate, max_drawdown, total_trades, ...}
+        """
+        self.baseline = baseline_metrics
+        self.modules: List[Tuple[str, str, Dict]] = []  # (name, label, metrics)
+
+    def add_module(self, name: str, label: str, metrics: Dict):
+        """添加一个模块的指标
+
+        Args:
+            name: 模块标识（英文）
+            label: 模块中文描述
+            metrics: 模块的回测指标
+        """
+        self.modules.append((name, label, metrics))
+
+    def compute_contributions(self) -> Dict:
+        """计算各模块的独立贡献
+
+        贡献计算：模块贡献 = 完整策略 - (完整策略 - 该模块结果)
+        即：用模块 vs 不用模块的差值
+
+        Returns:
+            {
+                "baseline": {...},
+                "modules": [
+                    {"name": "market_regime", "label": "市场状态过滤",
+                     "metrics": {...}, "contribution": {...}, "is_independent": bool},
+                    ...
+                ],
+                "redundant_modules": ["板块过滤"],  # 重复模块（无显著贡献）
+                "additive_modules": ["市场状态"],   # 独立贡献模块
+                "useless_modules": [],               # 无贡献模块
+            }
+        """
+        baseline = self.baseline
+        modules_result = []
+        contributions = []
+
+        for name, label, metrics in self.modules:
+            # 计算该模块的贡献 = baseline - (baseline - module) = module 的增量
+            contrib = {
+                "return_delta": metrics.get("total_return", 0) - baseline.get("total_return", 0),
+                "sharpe_delta": metrics.get("sharpe_ratio", 0) - baseline.get("sharpe_ratio", 0),
+                "drawdown_delta": metrics.get("max_drawdown", 0) - baseline.get("max_drawdown", 0),
+                "win_rate_delta": metrics.get("win_rate", 0) - baseline.get("win_rate", 0),
+            }
+
+            # 独立贡献判断：sharpe 差值 > 0.05 或 return 差值 > 5%
+            is_independent = (
+                abs(contrib["sharpe_delta"]) > 0.05
+                or abs(contrib["return_delta"]) > 0.05
+            )
+
+            modules_result.append({
+                "name": name,
+                "label": label,
+                "metrics": metrics,
+                "contribution": contrib,
+                "is_independent": is_independent,
+            })
+            contributions.append((name, contrib))
+
+        # 分类
+        redundant = [m["name"] for m in modules_result if not m["is_independent"]]
+        additive = [m["name"] for m in modules_result if m["is_independent"] and m["contribution"]["return_delta"] > 0]
+
+        return {
+            "baseline": baseline,
+            "modules": modules_result,
+            "redundant_modules": redundant,
+            "additive_modules": additive,
+            "useless_modules": [m["name"] for m in modules_result
+                                if m["contribution"]["return_delta"] < -0.02],
+        }
+
+    def get_summary_table(self) -> pd.DataFrame:
+        """生成模块贡献汇总表"""
+        result = self.compute_contributions()
+        rows = []
+        for m in result["modules"]:
+            c = m["contribution"]
+            rows.append({
+                "模块": m["label"],
+                "收益率": f"{m['metrics'].get('total_return', 0):.2%}",
+                "夏普": f"{m['metrics'].get('sharpe_ratio', 0):.2f}",
+                "胜率": f"{m['metrics'].get('win_rate', 0):.1%}",
+                "最大回撤": f"{m['metrics'].get('max_drawdown', 0):.2%}",
+                "收益增量": f"{c['return_delta']:+.2%}",
+                "夏普增量": f"{c['sharpe_delta']:+.2f}",
+                "独立": "✓" if m["is_independent"] else "✗",
+            })
+        df = pd.DataFrame(rows)
+        return df
+
+
+# ========== Walk-forward 结果持久化 ==========
+
+from pathlib import Path
+import json
+import hashlib
+
+
+def save_walkforward_results(strategy_name: str, summary: Dict, rounds_count: int) -> Path:
+    """保存 walk-forward 结果到 cache 目录
+
+    Args:
+        strategy_name: 策略名称
+        summary: summarize_rounds() 的输出
+        rounds_count: 回测轮次数
+
+    Returns:
+        保存的文件路径
+    """
+    cache_dir = Path(__file__).resolve().parent.parent / "cache" / "walkforward"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # 生成文件名：strategy_date_hash.json
+    date_str = datetime.now().strftime("%Y%m%d")
+    key = f"{strategy_name}_{date_str}"
+    hash_suffix = hashlib.md5(key.encode()).hexdigest()[:6]
+    filename = f"{strategy_name}_{date_str}_{hash_suffix}.json"
+    filepath = cache_dir / filename
+
+    data = {
+        "strategy_name": strategy_name,
+        "saved_at": datetime.now().isoformat(),
+        "rounds": rounds_count,
+        "summary": summary,
+    }
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    logger.info(f"Walk-forward 结果已保存: {filepath}")
+    return filepath
+
+
+def load_latest_walkforward(strategy_name: str) -> Optional[Dict]:
+    """加载最新的 walk-forward 结果"""
+    cache_dir = Path(__file__).resolve().parent.parent / "cache" / "walkforward"
+    if not cache_dir.exists():
+        return None
+
+    files = sorted(cache_dir.glob(f"{strategy_name}_*.json"), reverse=True)
+    if not files:
+        return None
+
+    with open(files[0], encoding="utf-8") as f:
+        return json.load(f)
