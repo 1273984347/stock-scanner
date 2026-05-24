@@ -240,3 +240,38 @@ def get_regime_description(regime: str) -> str:
         TREND_DOWN: "下跌趋势：不做多，仓位0%",
     }
     return descriptions.get(regime, "未知状态")
+
+
+# ========== HS300 驱动的市场状态检测 ==========
+
+HS300_CODE = "000300"  # 沪深300指数代码
+
+
+def detect_market_regime_from_hs300(days: int = 60) -> Dict:
+    """获取 HS300 数据，输出 V4 四态体制
+
+    这是市场状态检测的主入口。V4 框架要求：
+    - 市场状态由沪深300指数决定，而非个股
+    - TREND_DOWN 时禁止开仓
+
+    Args:
+        days: 获取历史数据天数（默认60）
+
+    Returns:
+        Dict:
+          - regime: str, 状态名称
+          - confidence: float, 置信度 0~1
+          - indicators: dict, 各指标值
+          - position_scalar: (min, max), 建议仓位系数
+          - index_code: str, "000300"
+    """
+    try:
+        from lib.data_layer import get_index_hist
+        index_df = get_index_hist(HS300_CODE, days=days)
+        if index_df.empty or len(index_df) < 30:
+            return _default_regime()
+        result = detect_market_regime(index_df)
+        result["index_code"] = HS300_CODE
+        return result
+    except Exception:
+        return _default_regime()

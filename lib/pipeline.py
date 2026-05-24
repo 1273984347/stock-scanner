@@ -20,6 +20,8 @@ from lib.strategies import (get_zt_candidates, get_volume_breakout_candidates,
                              get_hot_board_candidates, get_lhb_candidates,
                              get_multi_factor_candidates, full_score)
 from lib.broker import LRUCache
+from lib.market_regime import (detect_market_regime_from_hs300,
+                                 TREND_UP, MEAN_REVERSION, COMPRESSION, TREND_DOWN)
 
 logger = logging.getLogger(__name__)
 
@@ -516,6 +518,30 @@ def run_all_strategies(
         macro_filter["position_mult"] *= 0.5
         logger.info("指数熊市，仓位乘数减半")
     logger.info(f"宏观仓位乘数: {macro_filter['position_mult']}")
+
+    # ========== V4 市场状态检测（HS300 驱动）==========
+    try:
+        hs300_regime = detect_market_regime_from_hs300(days=60)
+        regime = hs300_regime["regime"]
+        regime_conf = hs300_regime["confidence"]
+        position_scalar = hs300_regime["position_scalar"]
+        logger.info(f"V4市场状态: {regime} (置信度 {regime_conf:.0%}), 仓位范围 {position_scalar}")
+
+        # V4 规则：TREND_DOWN 时禁止开仓
+        if regime == TREND_DOWN:
+            logger.warning("【V4】市场下跌，禁止开仓，返回空结果")
+            return {}
+
+        # V4 规则：COMPRESSION 时降低仓位
+        if regime == COMPRESSION:
+            macro_filter["position_mult"] *= 0.5
+            logger.info("【V4】市场压缩，仓位乘数减半")
+
+        # 将 V4 仓位范围注入 macro_filter 供后续使用
+        macro_filter["v4_regime"] = regime
+        macro_filter["v4_position_scalar"] = position_scalar
+    except Exception as e:
+        logger.debug(f"V4市场状态检测失败: {e}")
 
     strategies = {
         "涨停板复盘": get_zt_candidates,
