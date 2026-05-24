@@ -32,6 +32,42 @@ _risk_manager = VolCorrRiskManager(VolCorrRiskConfig())
 _ml_factor_cache = LRUCache(maxsize=256)
 
 
+# ========== V4 市场状态调整 ==========
+
+def _apply_regime_adjustment(candidates: list, regime: str) -> list:
+    """根据 V4 市场状态调整候选股评分
+
+    V4 规则：
+    - TREND_UP: 正常评分
+    - MEAN_REVERSION: 短线为主，降低趋势类因子权重（波动率20低 → 加分）
+    - COMPRESSION: 降低置信度，等突破确认
+    """
+    if not candidates or regime == TREND_UP:
+        return candidates
+
+    adjusted = []
+    for c in candidates:
+        c = c.copy()
+        if regime == COMPRESSION:
+            # 压缩市场：降低置信度，等突破确认
+            orig_conf = c.get("ML置信度", 0.5)
+            c["ML置信度"] = round(orig_conf * 0.5, 4)
+            c["调整原因"] = "COMPRESSION"
+
+        elif regime == MEAN_REVERSION:
+            # 均值回归市场：短线操作
+            vol = c.get("波动率20", 25)
+            # 低波动股票在均值回归市场表现更好，小幅加分
+            if vol < 20:
+                orig_conf = c.get("ML置信度", 0.5)
+                c["ML置信度"] = round(orig_conf * 1.1, 4)
+                c["调整原因"] = "MEAN_REVERSION低波动加分"
+
+        adjusted.append(c)
+
+    return adjusted
+
+
 # ========== 组合风控（委托给 pipeline_modules）==========
 
 def _check_portfolio_risk(results: dict, shibor_mult: float = 1.0) -> dict:
@@ -580,6 +616,13 @@ def run_all_strategies(
     ml_ranking = {}
     if include_ml:
         ml_ranking = _enrich_with_ml_scores(results)
+        # V4 市场状态调整
+        regime = macro_filter.get("v4_regime", MEAN_REVERSION)
+        if ml_ranking.get("data"):
+            ml_ranking = ml_ranking.copy()
+            ml_ranking["data"] = _apply_regime_adjustment(
+                ml_ranking["data"], regime
+            )
         # 因子监控预警
         _check_monitor_alerts(ml_ranking)
     else:
