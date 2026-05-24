@@ -45,6 +45,7 @@ class BacktestConfig:
     trailing_stop_atr_mult: float = 3.0  # ATR移动止损
     trend_exit_days: int = 20         # 趋势持有最大天数
     atr_period: int = 14
+    sector_filter_top_n: int = 0     # 板块过滤：只做近N日最强板块（0=禁用，5=top5，8=top8）；需200+只股票才有效
 
 
 # ============================================================
@@ -295,6 +296,55 @@ def run_backtest(
     hs300_regime_dict = dict(zip(hs300['date_str'], hs300['regime']))
     hs300_pvem_dict = dict(zip(hs300['date_str'], hs300['pvem']))
 
+    # ========== 板块强度预计算（STEP 5）==========
+    # 27只测试股已知板块映射（回测用）
+    SECTOR_MAP: Dict[str, str] = {
+        '000858': '白酒', '600519': '白酒', '000333': '家电',
+        '002475': '消费电子', '300750': '新能源', '600036': '银行',
+        '000001': '银行', '601318': '保险', '002594': '汽车',
+        '300059': '证券', '600276': '医药', '000568': '白酒',
+        '603259': '医药', '002415': '安防', '601888': '旅游',
+        '300033': '证券', '300124': '工业', '300274': '光伏',
+        '300496': '半导体', '002049': '半导体', '002371': '半导体',
+        '002456': '消费电子', '002460': '有色金属', '002466': '有色金属',
+        '002236': '安防', '300014': '新能源', '300751': '医药',
+    }
+
+    # 预计算：每只股票每天的5日收益率（用于板块强度代理）
+    stock_returns: Dict[str, pd.DataFrame] = {}
+    for code in stock_codes:
+        df_s = get_stock_hist(code, days=500)
+        if df_s is None or len(df_s) < 10:
+            continue
+        df_s = df_s.copy()
+        df_s['ret5'] = df_s['close'].pct_change(5) * 100  # 5日收益率%
+        df_s['date_str'] = df_s['date'].apply(
+            lambda d: str(d.date()) if hasattr(d, 'date') else str(d)
+        )
+        stock_returns[code] = df_s.set_index('date_str')['ret5']
+
+    def get_top_sectors(date_str: str, top_n: int = 5) -> set:
+        """返回指定日期的最强top_n板块名称集合"""
+        sector_returns = {}
+        for code, sret in stock_returns.items():
+            sector = SECTOR_MAP.get(code)
+            if sector is None:
+                continue
+            ret = sret.get(date_str)
+            if ret is not None and not pd.isna(ret):
+                if sector not in sector_returns:
+                    sector_returns[sector] = []
+                sector_returns[sector].append(ret)
+
+        if not sector_returns:
+            return set()  # 无数据时不过滤
+
+        # 取每个板块的平均5日收益
+        sector_avg = {s: np.mean(r) for s, r in sector_returns.items()}
+        # 按收益排序，取top_n
+        sorted_sectors = sorted(sector_avg, key=sector_avg.get, reverse=True)
+        return set(sorted_sectors[:top_n])
+
     exit_fn = {
         "v1_atr": check_exit_v1_atr,
         "v2_trend": check_exit_v2_trend,
@@ -335,6 +385,13 @@ def run_backtest(
                 pvem = hs300_pvem_dict.get(entry_date_str, 0.0)
                 if regime == "MEAN_REVERSION" and pvem <= 3.0:
                     continue  # 均值回归市场且趋势不够强，跳过
+
+                # STEP 5 板块过滤：只做近N日最强板块（需要200+只股票，每板块≥5只才有效）
+                if config.sector_filter_top_n > 0 and SECTOR_MAP:
+                    top_sectors = get_top_sectors(entry_date_str, top_n=config.sector_filter_top_n)
+                    stock_sector = SECTOR_MAP.get(code)
+                    if top_sectors and stock_sector not in top_sectors:
+                        continue  # 该股所在板块不在最强top_n，跳过
 
                 # 入场信号
                 entered, sig_type = check_entry(df, i)
