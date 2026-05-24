@@ -109,6 +109,10 @@ def _fetch_via_network(code: str, days: int, period: str) -> pd.DataFrame:
 
 def _fetch_from_local_file(code: str, days: int, period: str) -> pd.DataFrame:
     """读取本地 TDX .day 二进制文件"""
+    # 北交所股票特殊处理（使用标准整数分格式）
+    if code.startswith(("4", "8")):
+        return _fetch_bj_local(code, days)
+
     try:
         from pytdx.reader import TdxDailyBarReader
     except ImportError:
@@ -119,10 +123,7 @@ def _fetch_from_local_file(code: str, days: int, period: str) -> pd.DataFrame:
     file_path = Path(TDX_DATA_PATH) / market_str / "lday" / f"{market_str}{tdx_code}.day"
 
     if not file_path.exists():
-        # 尝试北交所路径
-        file_path = Path(TDX_DATA_PATH) / "bj" / "lday" / f"bj{tdx_code}.day"
-        if not file_path.exists():
-            return pd.DataFrame()
+        return pd.DataFrame()
 
     try:
         reader = TdxDailyBarReader()

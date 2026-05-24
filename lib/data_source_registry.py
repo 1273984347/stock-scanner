@@ -51,10 +51,6 @@ def _fetch_from_source(code: str, days: int, source: str) -> pd.DataFrame:
 
     try:
         if source == "tdx_local":
-            # 北交所本地数据陈旧（约2个月前），跳过使用网络数据源
-            if _is_bj_stock(code):
-                logger.debug(f"北交所 {code} 跳过本地数据（陈旧），使用网络数据源")
-                return pd.DataFrame()
             from lib.data_tdx import _fetch_from_local_file
             return _fetch_from_local_file(code, days, "daily")
         if source == "baostock":
@@ -165,6 +161,17 @@ def get_stock_hist_multi_source(
         if not _validate_dataframe(df):
             return pd.DataFrame()
         return df
+
+    # 北交所股票：强制使用 tdx_local（其他数据源不支持）
+    if _is_bj_stock(code):
+        df = _fetch_from_source(code, days, "tdx_local")
+        if not df.empty:
+            df = _normalize_columns(df)
+            if _validate_dataframe(df):
+                logger.debug(f"使用数据源 [tdx_local] 获取北交所 {code}")
+                return df
+        raise AllDataSourcesFailedError(code, ["北交所股票仅支持本地TDX数据源"])
+
     errors = []
     # 选择数据源优先级：prefer_adjusted=True 时前复权数据源优先
     priority = DATA_SOURCE_PRIORITY_ADJUSTED if prefer_adjusted else DATA_SOURCE_PRIORITY
