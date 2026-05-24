@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 import logging
 import threading
 import time
@@ -479,6 +479,36 @@ def _batch_fund_flow(codes: list) -> dict:
     except Exception as e:
         logger.debug(f"批量资金流向获取失败: {e}")
     return result
+
+
+def _batch_get_news_signals(codes: List[str]) -> Dict[str, dict]:
+    """批量并行获取新闻/事件信号（解决 N+1 查询问题）
+
+    Args:
+        codes: 股票代码列表
+
+    Returns:
+        Dict[code -> signals dict]，每个 dict 包含 major_positive/earnings_positive/institutional_buy/no_negative
+    """
+    from lib.signal_fetcher import get_news_signals as _get_news_signals
+    results = {}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {
+            executor.submit(_get_news_signals, code): code
+            for code in codes
+        }
+        for future in as_completed(futures):
+            code = futures[future]
+            try:
+                results[code] = future.result()
+            except Exception:
+                results[code] = {
+                    "major_positive": False,
+                    "earnings_positive": False,
+                    "institutional_buy": False,
+                    "no_negative": True,
+                }
+    return results
 
 
 # 新闻/业绩信号已移至 lib/signal_fetcher.py

@@ -19,7 +19,8 @@ from lib.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
 from lib.data_layer import (get_stock_hist_multi_source, get_realtime_quotes,
                              get_stock_fund_flow, get_news_signals,
                              get_market_sentiment, _get_financial_data,
-                             _retry_api_call, _safe_float, _load_cache)
+                             _retry_api_call, _safe_float, _load_cache,
+                             _batch_fund_flow, _batch_get_news_signals)
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,9 @@ def _batch_get_stock_hist(codes: List[str], days: int = 180) -> Dict[str, pd.Dat
 # ========== 四维评分 ==========
 
 def _compute_base_scores(row: pd.Series, code: str, tech_return_10d: float,
-                         tech_return_20d: float) -> dict:
+                         tech_return_20d: float,
+                         fund_flow: Optional[dict] = None,
+                         news_sig: Optional[dict] = None) -> dict:
     """提取 fund/cap/news 公共评分逻辑
 
     Args:
@@ -84,6 +87,8 @@ def _compute_base_scores(row: pd.Series, code: str, tech_return_10d: float,
         code: 股票代码
         tech_return_10d: 10日收益率（用于技术评分）
         tech_return_20d: 20日收益率（用于技术评分）
+        fund_flow: 可选，预获取的资金流向数据（避免 N+1）
+        news_sig: 可选，预获取的新闻信号数据（避免 N+1）
     """
     pe = _safe_float(row.get("市盈率-动态"))
     fund = score_fundamental(
@@ -95,20 +100,20 @@ def _compute_base_scores(row: pd.Series, code: str, tech_return_10d: float,
     vol_ratio = _safe_float(row.get("量比"))
     turnover = _safe_float(row.get("换手率")) / 100.0
     amount = _safe_float(row.get("成交额"))
-    fund_flow = get_stock_fund_flow(code)
+    ff = fund_flow if fund_flow is not None else get_stock_fund_flow(code)
     cap = score_capital_flow(
-        main_net_ratio=fund_flow["main_net_ratio"],
-        net_inflow_5d=fund_flow["net_inflow_5d"],
+        main_net_ratio=ff["main_net_ratio"],
+        net_inflow_5d=ff["net_inflow_5d"],
         northbound_increase=(vol_ratio > 1.3),
         super_large_net_inflow=(amount > 5e8),
         turnover_rate=turnover,
     )
-    news_sig = get_news_signals(code)
+    ns = news_sig if news_sig is not None else get_news_signals(code)
     news = score_news(
-        major_positive=news_sig["major_positive"],
-        institutional_buy=news_sig["institutional_buy"],
-        no_negative=news_sig["no_negative"],
-        earnings_positive=news_sig["earnings_positive"],
+        major_positive=ns["major_positive"],
+        institutional_buy=ns["institutional_buy"],
+        no_negative=ns["no_negative"],
+        earnings_positive=ns["earnings_positive"],
     )
     tech = score_technical(
         return_10d=tech_return_10d,
@@ -117,14 +122,23 @@ def _compute_base_scores(row: pd.Series, code: str, tech_return_10d: float,
     return comprehensive_score(fund, cap, news, tech)
 
 
-def quick_score(row: pd.Series) -> dict:
-    """快速四维评分 —— 仅用实时行情数据（无需拉 K 线）"""
+def quick_score(row: pd.Series,
+                fund_flow: Optional[dict] = None,
+                news_sig: Optional[dict] = None) -> dict:
+    """快速四维评分 —— 仅用实时行情数据（无需拉 K 线）
+
+    Args:
+        row: 股票实时行情
+        fund_flow: 可选，预获取的资金流向数据
+        news_sig: 可选，预获取的新闻信号数据
+    """
     code = str(row.get("代码", ""))
     pct_chg = _safe_float(row.get("涨跌幅"))
     ret_60d = _safe_float(row.get("60日涨跌幅"))
     tech_return_10d = pct_chg / 100 if abs(pct_chg) < 50 else 0
     tech_return_20d = ret_60d / 100 if abs(ret_60d) < 200 else 0
-    return _compute_base_scores(row, code, tech_return_10d, tech_return_20d)
+    return _compute_base_scores(row, code, tech_return_10d, tech_return_20d,
+                                fund_flow, news_sig)
 
 
 def full_score(code: str, hist: pd.DataFrame, factors: dict,
@@ -194,11 +208,18 @@ def get_zt_candidates(config: SystemConfig) -> pd.DataFrame:
         realtime = get_realtime_quotes()
         if not realtime.empty:
             row_map = realtime.set_index(realtime["代码"].astype(str)).to_dict("index")
+            # 批量预获取，避免 N+1
+            codes = [str(c) for c in result["代码"]]
+            batch_flows = _batch_fund_flow(codes)
+            batch_news = _batch_get_news_signals(codes)
             scores = []
             for _, cand in result.iterrows():
-                rt_row = row_map.get(str(cand["代码"]))
+                code = str(cand["代码"])
+                rt_row = row_map.get(code)
                 if rt_row is not None:
-                    sc = quick_score(rt_row)
+                    sc = quick_score(rt_row,
+                                   fund_flow=batch_flows.get(code),
+                                   news_sig=batch_news.get(code))
                     scores.append(sc["score"])
                 else:
                     scores.append(None)
@@ -346,11 +367,18 @@ def get_lhb_candidates(config: SystemConfig) -> pd.DataFrame:
         realtime = get_realtime_quotes()
         if not realtime.empty:
             row_map = realtime.set_index(realtime["代码"].astype(str)).to_dict("index")
+            # 批量预获取，避免 N+1
+            codes = [str(c) for c in result["代码"]]
+            batch_flows = _batch_fund_flow(codes)
+            batch_news = _batch_get_news_signals(codes)
             scores = []
             for _, cand in result.iterrows():
-                rt_row = row_map.get(str(cand.get("代码", "")))
+                code = str(cand.get("代码", ""))
+                rt_row = row_map.get(code)
                 if rt_row is not None:
-                    sc = quick_score(rt_row)
+                    sc = quick_score(rt_row,
+                                   fund_flow=batch_flows.get(code),
+                                   news_sig=batch_news.get(code))
                     scores.append(sc["score"])
                 else:
                     scores.append(None)
