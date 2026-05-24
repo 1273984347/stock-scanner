@@ -222,6 +222,24 @@ def push_morning_report(text: str, chart_paths: List[str]) -> bool:
     return _push("morning_report", text, chart_paths)
 
 
+def push_v4_report(scan_result: Dict, chart_paths: List[str] = None) -> bool:
+    """推送 V4 报告（整合版）
+
+    Args:
+        scan_result: run_all_strategies() 的返回值
+        chart_paths: 可选，图表路径列表
+
+    Returns:
+        推送是否成功
+    """
+    from reporter.report_generator import build_v4_dashboard_report, format_v4_report_text
+
+    report = build_v4_dashboard_report(scan_result)
+    text = format_v4_report_text(report)
+    paths = chart_paths or []
+    return _push("v4_report", text, paths)
+
+
 def _push(push_type: str, text: str, chart_paths: List[str]) -> bool:
     """通用推送逻辑。"""
     token = _get_tenant_token()

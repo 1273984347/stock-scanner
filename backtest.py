@@ -525,6 +525,190 @@ def run_walk_forward(
     return {"rounds": rounds, "summary": summary}
 
 
+# ========== V4 A股 MVP 回测 ==========
+
+
+def run_mvp_backtest(
+    symbols: List[str],
+    days: int = 500,
+    initial_capital: float = 1_000_000.0,
+) -> Dict:
+    """V4 A股 MVP 回测验证
+
+    V4 极简规则（目标：验证"趋势过滤 + 简单突破"是否有边际优势）：
+    - 市场过滤：沪深300 > EMA21 才允许开仓
+    - 入场条件（全部满足）：
+        1. 收盘价 > 20日最高价（突破）
+        2. 成交量 > 20日平均成交量（放量）
+        3. 股价 > EMA21
+    - 止损：跌破10日最低价
+    - 止盈：不设固定止盈，跟踪止损
+    - 仓位：单票10%，最大总仓50%
+
+    Args:
+        symbols: 股票代码列表
+        days: 历史数据天数
+        initial_capital: 初始资金
+
+    Returns:
+        回测指标 dict（胜率/盈亏比/最大回撤/Sharpe/连亏次数）
+    """
+    from lib.data_layer import get_stock_hist_multi_source
+    from lib.market_regime import detect_market_regime_from_hs300
+
+    results = {}
+    all_trades = []
+
+    # 获取 HS300 数据（用于市场过滤）
+    hs300_hist = None
+    try:
+        from lib.data_layer import get_index_hist
+        hs300_hist = get_index_hist("000300", days=days)
+    except Exception:
+        pass
+
+    for sym in symbols:
+        try:
+            df = get_stock_hist_multi_source(sym, days=days, source="auto", prefer_adjusted=True)
+            if df.empty or len(df) < 60:
+                continue
+
+            trades = _mvp_strategy(df, hs300_hist)
+            all_trades.extend(trades)
+            if trades:
+                results[sym] = trades
+        except Exception as e:
+            logger.debug(f"MVP 回测 [{sym}] 失败: {e}")
+
+    # 汇总统计
+    if not all_trades:
+        return {"error": "无有效交易", "symbols": len(symbols), "trades": 0}
+
+    # 计算整体指标
+    pnl_list = [t["pnl_pct"] for t in all_trades]
+    wins = [p for p in pnl_list if p > 0]
+    losses = [p for p in pnl_list if p <= 0]
+
+    total_return = sum(pnl_list)
+    win_rate = len(wins) / len(pnl_list) if pnl_list else 0
+    avg_win = sum(wins) / len(wins) if wins else 0
+    avg_loss = abs(sum(losses) / len(losses)) if losses else 1
+    profit_loss_ratio = avg_win / avg_loss if avg_loss > 0 else 0
+
+    # 最大连续亏损
+    sorted_pnl = sorted(pnl_list)
+    max_consecutive_loss = 0
+    current_loss = 0
+    for p in pnl_list:
+        if p < 0:
+            current_loss += abs(p)
+            max_consecutive_loss = max(max_consecutive_loss, current_loss)
+        else:
+            current_loss = 0
+
+    # 最大回撤（简化）
+    cumulative = np.cumsum([0] + pnl_list)
+    peak = np.maximum.accumulate(cumulative)
+    drawdown = cumulative - peak
+    max_drawdown = abs(drawdown.min()) if len(drawdown) > 0 else 0
+
+    return {
+        "strategy": "V4_MVP",
+        "symbols_tested": len(symbols),
+        "symbols_with_trades": len(results),
+        "total_trades": len(all_trades),
+        "total_return": round(total_return, 4),
+        "win_rate": round(win_rate, 4),
+        "avg_win_pct": round(avg_win, 4),
+        "avg_loss_pct": round(avg_loss, 4),
+        "profit_loss_ratio": round(profit_loss_ratio, 4),
+        "max_consecutive_loss": round(max_consecutive_loss, 4),
+        "max_drawdown_pct": round(max_drawdown, 4),
+        "sharpe_ratio": round(total_return / (max_drawdown + 1e-9), 4) if max_drawdown > 0 else 0,
+        "trades": all_trades[:20],  # 保留前20条交易明细
+    }
+
+
+def _mvp_strategy(df: pd.DataFrame, hs300_hist: Optional[pd.DataFrame] = None) -> List[Dict]:
+    """V4 MVP 策略核心逻辑
+
+    返回每笔交易的盈亏（百分比）
+    """
+    if len(df) < 30:
+        return []
+
+    close = df["close"]
+    high = df["high"]
+    low = df["low"]
+    volume = df["volume"]
+
+    # 计算指标
+    ema21 = close.ewm(span=21, adjust=False).mean()
+    high_20 = high.rolling(20).max()
+    low_10 = low.rolling(10).min()
+    vol_20_avg = volume.rolling(20).mean()
+
+    trades = []
+
+    for i in range(30, len(df)):
+        c = float(close.iloc[i])
+        h20 = float(high_20.iloc[i])
+        l10 = float(low_10.iloc[i])
+        v = float(volume.iloc[i])
+        v20avg = float(vol_20_avg.iloc[i])
+        ema = float(ema21.iloc[i])
+
+        # 市场过滤：HS300 > EMA21
+        market_ok = True
+        if hs300_hist is not None and len(hs300_hist) > i:
+            hs_close = float(hs300_hist["close"].iloc[i])
+            hs_ema = float(hs300_hist["close"].ewm(span=21, adjust=False).mean().iloc[i])
+            market_ok = hs_close > hs_ema
+
+        if not market_ok:
+            continue
+
+        # 入场条件
+        if c > h20 and v > v20avg and c > ema:
+            # 入仓
+            entry_price = c
+            # 止损：跌破10日最低价
+            stop_price = l10
+            # 跟踪止损：EMA21
+            trailing_stop = ema
+
+            # 持有多天
+            for j in range(i + 1, min(i + 20, len(df))):
+                exit_price = float(close.iloc[j])
+                curr_ema = float(ema21.iloc[j])
+
+                # 止损触发
+                if exit_price < stop_price:
+                    pnl = (exit_price / entry_price - 1) * 100
+                    trades.append({"code": df.index[j] if hasattr(df.index[j], "__str__") else str(j),
+                                   "entry": entry_price, "exit": exit_price,
+                                   "pnl_pct": pnl, "exit_reason": "stop_loss"})
+                    break
+                # EMA 止损
+                if exit_price < curr_ema:
+                    pnl = (exit_price / entry_price - 1) * 100
+                    trades.append({"code": df.index[j] if hasattr(df.index[j], "__str__") else str(j),
+                                   "entry": entry_price, "exit": exit_price,
+                                   "pnl_pct": pnl, "exit_reason": "ema_exit"})
+                    break
+                # 跟踪止损更新
+                trailing_stop = max(trailing_stop, curr_ema)
+            else:
+                # 20天后强制平仓
+                exit_price = float(close.iloc[min(i + 20, len(df) - 1)])
+                pnl = (exit_price / entry_price - 1) * 100
+                trades.append({"code": df.index[j] if hasattr(df.index[j], "__str__") else str(j),
+                               "entry": entry_price, "exit": exit_price,
+                               "pnl_pct": pnl, "exit_reason": "timeout"})
+
+    return trades
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
