@@ -5,9 +5,155 @@ import logging
 from datetime import date, datetime
 from glob import glob
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# V4 Dashboard Report Builder
+# ---------------------------------------------------------------------------
+
+def build_v4_dashboard_report(scan_result: Dict[str, Any]) -> Dict[str, Any]:
+    """将 scan_result 构建为 V4 结构化报告
+
+    V4 报告结构：
+    {
+        "市场状态": {regime, confidence, score, position_scalar, indicators},
+        "主线板块": [...],  # TODO: 后续接入板块引擎
+        "观察池": [...],    # ML排名候选股
+        "风控提示": [...],
+        "仓位建议": (min, max),
+    }
+
+    Args:
+        scan_result: run_all_strategies() 的返回值
+
+    Returns:
+        V4 结构化报告 dict
+    """
+    macro = scan_result.get("macro_filter", {})
+    v4_regime = macro.get("v4_regime", "MEAN_REVERSION")
+    v4_scalar = macro.get("v4_position_scalar", (0.25, 0.5))
+
+    # 市场状态
+    regime_info = {
+        "regime": v4_regime,
+        "confidence": macro.get("v4_regime", None),
+        "position_scalar": v4_scalar,
+    }
+
+    # 观察池：ML排名候选股
+    ml_ranking = scan_result.get("ml_ranking", {})
+    observation_pool = []
+    if ml_ranking.get("data"):
+        for item in ml_ranking["data"][:10]:  # 取前10
+            observation_pool.append({
+                "代码": item.get("代码", ""),
+                "名称": item.get("名称", ""),
+                "ML评分": item.get("ML评分", 0),
+                "调整原因": item.get("调整原因", ""),
+            })
+
+    # 风控提示
+    risk_check = scan_result.get("risk_check", {})
+    risk_alerts = []
+    if risk_check.get("alerts"):
+        for alert in risk_check["alerts"]:
+            risk_alerts.append({
+                "rule": alert.get("rule", ""),
+                "message": alert.get("message", ""),
+            })
+
+    # 各策略候选股汇总
+    results = scan_result.get("results", {})
+    strategy_summary = {}
+    for name, df in results.items():
+        if hasattr(df, "empty") and not df.empty:
+            strategy_summary[name] = len(df)
+
+    # 仓位说明
+    position_desc = {
+        "TREND_UP": "积极做多 (75%-100%)",
+        "MEAN_REVERSION": "短线回归 (25%-50%)",
+        "COMPRESSION": "少做等突破 (0%-25%)",
+        "TREND_DOWN": "禁止开仓 (0%)",
+    }
+
+    report = {
+        "生成时间": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "市场状态": {
+            "状态": v4_regime,
+            "置信度": f"{macro.get('_regime_conf', 0):.0%}",
+            "仓位范围": f"{v4_scalar[0]:.0%}-{v4_scalar[1]:.0%}",
+            "说明": position_desc.get(v4_regime, ""),
+        },
+        "仓位建议": {
+            "min": v4_scalar[0],
+            "max": v4_scalar[1],
+        },
+        "主线板块": [],  # 后续接入
+        "观察池": observation_pool,
+        "风控提示": risk_alerts,
+        "策略统计": strategy_summary,
+        "ml_ranking_count": ml_ranking.get("n_passed", 0),
+        "raw": scan_result,  # 保留原始数据供下游使用
+    }
+
+    return report
+
+
+def format_v4_report_text(report: Dict[str, Any]) -> str:
+    """将 V4 结构化报告格式化为文字
+
+    用于飞书推送等文字渠道。
+    """
+    ts = report["生成时间"]
+    regime = report["市场状态"]
+
+    lines = [
+        f"V4 私人交易终端 ({ts})",
+        "=" * 32,
+        "",
+        "【市场状态】",
+        f"  {regime['状态']} ({regime['置信度']})",
+        f"  {regime['说明']}",
+        f"  仓位范围: {regime['仓位范围']}",
+        "",
+    ]
+
+    # 风控提示
+    alerts = report.get("风控提示", [])
+    if alerts:
+        lines.append("【风控提示】")
+        for a in alerts[:3]:
+            lines.append(f"  [{a['rule']}] {a['message']}")
+        lines.append("")
+
+    # 观察池
+    pool = report.get("观察池", [])
+    if pool:
+        lines.append(f"【观察池】({len(pool)} 只)")
+        for item in pool[:5]:
+            name = item.get("名称", item.get("代码", ""))
+            score = item.get("ML评分", 0)
+            adj = item.get("调整原因", "")
+            adj_str = f" [{adj}]" if adj else ""
+            lines.append(f"  {name}: {score:.2f}{adj_str}")
+        if len(pool) > 5:
+            lines.append(f"  ... 还有 {len(pool) - 5} 只")
+        lines.append("")
+
+    # 策略统计
+    stats = report.get("策略统计", {})
+    if stats:
+        lines.append("【策略统计】")
+        for name, cnt in stats.items():
+            lines.append(f"  {name}: {cnt} 只")
+        lines.append("")
+
+    lines.append("仅供参考，不构成投资建议。")
+    return "\n".join(lines)
 
 # ---------------------------------------------------------------------------
 # 依赖模块（可选，测试环境可能不可用）
