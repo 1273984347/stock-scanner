@@ -40,16 +40,28 @@
 stock-scanner/
 ├── config.py              # 全局配置 (策略/风控/LLM/ML/组合)
 ├── factors.py             # 因子库 (技术指标/市场体制/宏观门控)
-├── scanner.py             # 选股策略主模块
+├── scanner.py             # 选股策略主模块 (legacy, 建议迁移至 lib/strategies.py)
 ├── backtest.py            # 回测引擎
 ├── api.py                 # FastAPI 端点
 ├── run.py                 # CLI 入口
 ├── notifier.py            # 飞书推送
 ├── lib/                   # 核心业务模块
 │   ├── data_layer.py      # 多源数据获取/缓存/限流
+│   ├── data_source_registry.py  # 数据源注册与标准化路由
+│   ├── data_tdx.py        # TDX 本地文件数据源 (含北交所支持)
+│   ├── data_baostock.py   # Baostock 数据源
+│   ├── data_akshare.py    # Akshare 数据源
+│   ├── data_tushare.py    # Tushare 数据源
 │   ├── strategies.py      # 5大选股策略 + 四维评分
 │   ├── pipeline.py        # 策略编排/组合优化/ML集成
-│   ├── broker.py          # A股券商模拟 (整手取整/T+1)
+│   ├── broker_data/       # broker 拆分模块
+│   │   ├── __init__.py
+│   │   ├── cache.py       # LRUCache
+│   │   ├── datatypes.py   # Order/Trade/Holding
+│   │   ├── market_impact.py  # 冲击成本模型
+│   │   └── trading_constraints.py  # 交易约束
+│   ├── broker_core.py     # A股券商核心 (整手取整/T+1)
+│   ├── live_broker.py     # 实盘券商 (Paper/TDX)
 │   ├── risk_manager.py    # 风控 (止损/回撤)
 │   ├── position_size.py   # 仓位管理
 │   ├── analyzer.py        # 性能分析
@@ -61,8 +73,9 @@ stock-scanner/
 │   ├── portfolio.py       # 组合管理
 │   ├── portfolio_optimizer.py  # 组合优化
 │   ├── walkforward.py     # Walk-forward 验证
-│   └── data_*.py          # 各数据源适配器
-├── tests/                 # 测试套件 (133 tests)
+│   ├── llm_utils/         # LLM 工具
+│   └── cache.py           # 通用缓存工具
+├── tests/                 # 测试套件 (208 tests, 网络隔离)
 ├── cache/                 # 数据缓存
 │   ├── *.parquet          # 行情/指数缓存
 │   ├── audit.db           # 审计日志
