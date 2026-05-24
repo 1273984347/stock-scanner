@@ -353,6 +353,8 @@ def evaluate_macro_gate(macro_score: float = 0) -> MacroGate:
 
     macro_score 由外部计算后传入，范围 -1 到 1
     """
+    if macro_score is None:
+        macro_score = 0.0
     score = max(-1, min(1, macro_score))
 
     if score <= -0.30:

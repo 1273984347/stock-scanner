@@ -4,6 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pandas as pd
 import numpy as np
+from unittest.mock import patch
 from lib.pipeline import _optimize_portfolio, _check_portfolio_risk
 
 
@@ -65,7 +66,13 @@ def test_check_portfolio_risk_basic():
         }),
     }
 
-    risk_check = _check_portfolio_risk(results)
+    mock_df = pd.DataFrame({
+        "代码": ["000001", "600519"],
+        "名称": ["平安银行", "贵州茅台"],
+        "行业": ["银行", "白酒"],
+    })
+    with patch("lib.pipeline.get_realtime_quotes", return_value=mock_df):
+        risk_check = _check_portfolio_risk(results)
 
     assert "alerts" in risk_check
     assert "risk_budget" in risk_check
@@ -83,7 +90,13 @@ def test_check_portfolio_risk_concentration():
         }),
     }
 
-    risk_check = _check_portfolio_risk(results)
+    mock_df = pd.DataFrame({
+        "代码": [f"00000{i}" for i in range(8)],
+        "名称": [f"股票{i}" for i in range(8)],
+        "行业": ["银行"] * 8,
+    })
+    with patch("lib.pipeline.get_realtime_quotes", return_value=mock_df):
+        risk_check = _check_portfolio_risk(results)
     alerts = risk_check.get("alerts", [])
 
     # 应该有策略集中度警告
@@ -101,10 +114,14 @@ def test_optimize_with_sector_map():
         }),
     }
 
-    # sector_map 会通过 _get_sector_map 获取
-    result = _optimize_portfolio(results)
+    mock_df = pd.DataFrame({
+        "代码": ["000001", "600519", "000858"],
+        "名称": ["平安银行", "贵州茅台", "五粮液"],
+        "行业": ["银行", "白酒", "白酒"],
+    })
+    with patch("lib.pipeline.get_realtime_quotes", return_value=mock_df):
+        result = _optimize_portfolio(results)
 
-    # 应该返回有效的优化结果
     assert "weights" in result
 
 
