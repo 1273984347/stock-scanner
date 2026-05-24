@@ -45,7 +45,7 @@ def fetch_stock_data(code: str, days: int = 180) -> Tuple[pd.DataFrame, Optional
     """
     # 1. 历史数据
     try:
-        hist = get_stock_hist_multi_source(code, days=days, source="auto")
+        hist = get_stock_hist_multi_source(code, days=days, source="auto", prefer_adjusted=True)
     except Exception:
         hist = pd.DataFrame()
 

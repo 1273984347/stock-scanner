@@ -337,7 +337,7 @@ def _enrich_with_ml_scores(results: dict) -> dict:
             if code in _ml_factor_cache:
                 result = _ml_factor_cache[code]
             else:
-                hist = get_stock_hist_multi_source(code, days=180, source="auto")
+                hist = get_stock_hist_multi_source(code, days=180, source="auto", prefer_adjusted=True)
                 if hist.empty or len(hist) < 60:
                     _ml_factor_cache[code] = None
                     continue
@@ -387,7 +387,7 @@ def _enrich_with_ml_scores(results: dict) -> dict:
 def get_stock_score(code: str) -> dict:
     """单股完整评分：因子 + 技术 + 四维评分 + 约束 + 风控"""
     try:
-        hist = get_stock_hist_multi_source(code, days=180, source="auto")
+        hist = get_stock_hist_multi_source(code, days=180, source="auto", prefer_adjusted=True)
     except Exception:
         return {"error": f"未找到 {code} 数据"}
     if hist.empty:

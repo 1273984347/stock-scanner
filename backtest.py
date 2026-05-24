@@ -87,7 +87,7 @@ def get_stock_data(symbol: str, days: int = 250) -> pd.DataFrame:
     """
     from lib.data_layer import get_stock_hist_multi_source, AllDataSourcesFailedError
     try:
-        df = get_stock_hist_multi_source(symbol, days=days, source="auto")
+        df = get_stock_hist_multi_source(symbol, days=days, source="auto", prefer_adjusted=True)
     except AllDataSourcesFailedError as e:
         raise AllDataSourcesUnavailableError(
             f"所有数据源失败，无法获取 {symbol} 历史数据: {e}"

@@ -17,6 +17,14 @@ logger = logging.getLogger(__name__)
 # ========== 数据源配置 ==========
 
 DATA_SOURCE_PRIORITY = ["tdx_local", "baostock", "tdx", "adata", "westock", "tushare", "akshare"]
+# 回测用：前复权数据源优先（tdx_local/tdx 是不复权的）
+DATA_SOURCE_PRIORITY_ADJUSTED = ["baostock", "akshare", "tdx_local", "tdx", "adata", "westock", "tushare"]
+
+
+def _is_bj_stock(code: str) -> bool:
+    """判断是否为北交所股票（8开头）"""
+    return code.startswith("8")
+
 
 # 每个数据源独立的熔断器
 _CIRCUIT_BREAKERS: Dict[str, CircuitBreaker] = {
@@ -43,6 +51,10 @@ def _fetch_from_source(code: str, days: int, source: str) -> pd.DataFrame:
 
     try:
         if source == "tdx_local":
+            # 北交所本地数据陈旧（约2个月前），跳过使用网络数据源
+            if _is_bj_stock(code):
+                logger.debug(f"北交所 {code} 跳过本地数据（陈旧），使用网络数据源")
+                return pd.DataFrame()
             from lib.data_tdx import _fetch_from_local_file
             return _fetch_from_local_file(code, days, "daily")
         if source == "baostock":
@@ -130,7 +142,8 @@ class AllDataSourcesFailedError(Exception):
 def get_stock_hist_multi_source(
     code: str,
     days: int = 180,
-    source: str = "auto"
+    source: str = "auto",
+    prefer_adjusted: bool = False,
 ) -> pd.DataFrame:
     """多数据源自动切换获取个股日线
 
@@ -141,6 +154,7 @@ def get_stock_hist_multi_source(
         code: 股票代码
         days: 历史天数
         source: 数据源，"auto" 表示自动切换
+        prefer_adjusted: 是否优先使用前复权数据（回测时应设为 True）
 
     Returns:
         DataFrame with columns: date/open/high/low/close/volume
@@ -152,7 +166,9 @@ def get_stock_hist_multi_source(
             return pd.DataFrame()
         return df
     errors = []
-    for src in DATA_SOURCE_PRIORITY:
+    # 选择数据源优先级：prefer_adjusted=True 时前复权数据源优先
+    priority = DATA_SOURCE_PRIORITY_ADJUSTED if prefer_adjusted else DATA_SOURCE_PRIORITY
+    for src in priority:
         df = _fetch_from_source(code, days, src)
         if not df.empty:
             df = _normalize_columns(df)
