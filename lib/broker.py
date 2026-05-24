@@ -4,44 +4,51 @@ A 股模拟券商 —— 严格模拟 A 股交易规则
 - 涨跌停限制（买不到/卖不掉）
 - 停牌处理
 - 交易成本（佣金+印花税+滑点+冲击成本）
+
+本模块已拆分为 lib/broker_data/ 子包：
+- lib.broker_data.datatypes: Order/Trade/Holding
+- lib.broker_data.impact: ImpactConfig/MarketImpactModel
+- lib.broker_data.constraints: TradingConstraints
+- ABroker 核心券商仍在本文件
 """
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import logging
 import threading
+from collections import OrderedDict
 
 import akshare as ak
 
 from config import (
-    MARKET_CAP_LARGE, MARKET_CAP_MEDIUM,
     COMMISSION_RATE, STAMP_DUTY_RATE, MIN_COMMISSION, SLIPPAGE_RATE,
 )
-from collections import OrderedDict
+
+# 从拆分模块导入
+from lib.broker_data.datatypes import Order, Trade, Holding
+from lib.broker_data.impact import ImpactConfig, MarketImpactModel, get_impact_config_by_market_cap
+from lib.broker_data.constraints import TradingConstraints
 
 logger = logging.getLogger(__name__)
 
 
+# 保留 LRUCache（被 data_layer 等模块使用）
 class LRUCache:
     """线程安全的 LRU 缓存，支持标准字典访问语法"""
-
     def __init__(self, maxsize: int = 128):
         self.maxsize = maxsize
         self.cache = OrderedDict()
         self._lock = threading.Lock()
-
     def __contains__(self, key) -> bool:
         with self._lock:
             return key in self.cache
-
     def __getitem__(self, key):
         with self._lock:
             if key not in self.cache:
                 raise KeyError(key)
             self.cache.move_to_end(key)
             return self.cache[key]
-
     def __setitem__(self, key, value):
         with self._lock:
             if key in self.cache:
@@ -49,183 +56,14 @@ class LRUCache:
             self.cache[key] = value
             if len(self.cache) > self.maxsize:
                 self.cache.popitem(last=False)
-
     def get(self, key, default=None):
         with self._lock:
             if key in self.cache:
                 self.cache.move_to_end(key)
                 return self.cache[key]
             return default
-
     def set(self, key, value):
         self[key] = value
-
-
-@dataclass
-class ImpactConfig:
-    """冲击成本模型配置
-
-    冲击成本公式（Almgren-Chriss 2005）：
-    1. 平方根模型：impact(bps) = η * σ_daily * sqrt(Q/ADV) * 10000
-       - η (eta): 系数，默认 0.1。值越大表示冲击成本对交易量的敏感度越高
-       - σ_daily: 日波动率
-       - Q: 交易股数，ADV: 日均成交量
-
-    2. 线性模型：impact(bps) = λ * (Q/ADV) * 10000
-       - λ (lambda_): 系数，默认 5.0
-
-    调参建议：
-    - 高流动性大盘股：η=0.05~0.1, λ=3~5
-    - 中小盘股：η=0.1~0.2, λ=5~10
-    - 极端市场（涨跌停附近）：η=0.2~0.5
-    """
-    model: str = "square_root"  # square_root / linear / none
-    eta: float = 0.1  # 平方根模型系数（bps 基准）
-    lambda_: float = 5.0  # 线性模型系数（bps）
-    volume_window: int = 20  # 日均成交量计算窗口
-    min_volume_ratio: float = 0.01  # 最小参与率（低于此值不计冲击）
-    max_impact_bps: float = 50.0  # 最大冲击成本上限（bps）
-    use_volatility_scaling: bool = True  # 是否用波动率缩放
-
-
-def get_impact_config_by_market_cap(market_cap: float) -> ImpactConfig:
-    """根据市值获取对应的冲击成本配置
-
-    Args:
-        market_cap: 流通市值（元）
-
-    Returns:
-        适合该市值分组的 ImpactConfig
-
-    市值分组标准（参考 A 股市场）：
-    - 大盘股：流通市值 > 500亿（> 5e10）
-    - 中盘股：流通市值 100~500亿（1e10 ~ 5e10）
-    - 小盘股：流通市值 < 100亿（< 1e10）
-    """
-    if market_cap is None or market_cap <= 0:
-        # 未知市值使用中档参数
-        return ImpactConfig(model="square_root", eta=0.15, lambda_=7.0,
-                          volume_window=20, max_impact_bps=50.0)
-    elif market_cap > MARKET_CAP_LARGE:  # 大盘股 > 500亿
-        return ImpactConfig(model="square_root", eta=0.07, lambda_=4.0,
-                          volume_window=20, max_impact_bps=30.0)
-    elif market_cap > MARKET_CAP_MEDIUM:  # 中盘股 100-500亿
-        return ImpactConfig(model="square_root", eta=0.12, lambda_=6.0,
-                          volume_window=20, max_impact_bps=40.0)
-    else:  # 小盘股 < 100亿
-        return ImpactConfig(model="square_root", eta=0.18, lambda_=9.0,
-                          volume_window=20, max_impact_bps=60.0)
-
-
-class MarketImpactModel:
-    """市场冲击成本模型
-
-    支持两种模型：
-    1. 平方根模型（Almgren-Chriss 经典）：
-       impact(bps) = η * σ_daily * sqrt(Q / ADV)
-       其中 σ_daily = 日波动率，Q = 交易量，ADV = 日均成交量
-
-    2. 线性模型：
-       impact(bps) = λ * (Q / ADV) * 10000
-
-    参考：Almgren, Thum, Hauptmann, Li (2005)
-    """
-
-    def __init__(self, config: ImpactConfig = None):
-        self.config = config or ImpactConfig()
-
-    def estimate_impact_bps(self, shares: int, price: float,
-                            daily_volume: float, volatility: float = None) -> float:
-        """估算冲击成本（bps）
-
-        Args:
-            shares: 交易股数
-            price: 当前价格
-            daily_volume: 日均成交量（股）
-            volatility: 日波动率（标准差，可选）
-
-        Returns:
-            冲击成本（bps）
-        """
-        if self.config.model == "none":
-            return 0.0
-
-        if daily_volume <= 0 or shares <= 0:
-            return 0.0
-
-        participation_rate = shares / daily_volume
-
-        if participation_rate < self.config.min_volume_ratio:
-            return 0.0
-
-        if self.config.model == "linear":
-            impact = self.config.lambda_ * participation_rate * 10000
-        elif self.config.model == "square_root":
-            sigma = volatility if (volatility is not None and self.config.use_volatility_scaling) else 0.02
-            impact = self.config.eta * sigma * np.sqrt(participation_rate) * 10000
-        else:
-            return 0.0
-
-        return min(impact, self.config.max_impact_bps)
-
-    def estimate_impact_price(self, shares: int, base_price: float,
-                              daily_volume: float, direction: str = "BUY",
-                              volatility: float = None) -> float:
-        """估算冲击调整后的成交价
-
-        Args:
-            shares: 交易股数
-            base_price: 基准价格（收盘价）
-            daily_volume: 日均成交量
-            direction: BUY / SELL
-            volatility: 日波动率
-
-        Returns:
-            冲击调整后的成交价
-        """
-        impact_bps = self.estimate_impact_bps(shares, base_price, daily_volume, volatility)
-        impact_pct = impact_bps / 10000.0
-
-        if direction == "BUY":
-            return base_price * (1 + impact_pct)
-        else:
-            return base_price * (1 - impact_pct)
-
-
-@dataclass
-class Order:
-    """订单"""
-    code: str
-    direction: str  # BUY / SELL
-    price: float
-    shares: int
-    date: str
-    reason: str = ""
-
-
-@dataclass
-class Trade:
-    """成交"""
-    code: str
-    direction: str
-    price: float
-    shares: int
-    amount: float
-    commission: float
-    stamp_tax: float
-    impact_cost: float = 0.0
-    date: str = ""
-    reason: str = ""
-
-
-@dataclass
-class Holding:
-    """持仓明细"""
-    code: str
-    shares: int
-    cost_price: float
-    buy_date: str
-    can_sell_date: str  # T+1 后可卖日期
 
 
 class ABroker:
@@ -640,156 +478,6 @@ class ABroker:
             "cost_ratio": (total_commission + total_stamp_tax + total_impact) / total_turnover
             if total_turnover > 0 else 0,
         }
-
-
-class TradingConstraints:
-    """A 股交易限制集中管理
-
-    统一管理所有交易限制规则，供回测引擎和策略层调用。
-    """
-
-    def __init__(self, lot_size: int = 100, max_single_weight: float = 0.10,
-                 exclude_st: bool = True, exclude_new_stocks: bool = True,
-                 new_stock_days: int = 60):
-        self.lot_size = lot_size
-        self.max_single_weight = max_single_weight
-        self.exclude_st = exclude_st
-        self.exclude_new_stocks = exclude_new_stocks
-        self.new_stock_days = new_stock_days
-
-    def is_st_stock(self, name: str) -> bool:
-        """判断是否为 ST 股票"""
-        if not name or not isinstance(name, str):
-            return False
-        return "ST" in name.upper()
-
-    def is_new_stock(self, code: str, market_data: Dict[str, pd.DataFrame],
-                     date: str) -> bool:
-        """判断是否为次新股（上市不足 N 天）"""
-        df = market_data.get(code)
-        if df is None or df.empty:
-            return True
-
-        target = pd.Timestamp(date)
-        first_date = df["trade_date"].min()
-        if pd.isna(first_date):
-            return True
-
-        days_since_listed = (target - first_date).days
-        return days_since_listed < self.new_stock_days
-
-    def adjust_shares_to_lot(self, shares: int) -> int:
-        """调整为整手数（向下取整）"""
-        return (shares // self.lot_size) * self.lot_size
-
-    def can_buy(self, code: str, market_data: Dict[str, pd.DataFrame],
-                date: str, stock_names: Dict[str, str] = None) -> Tuple[bool, str]:
-        """检查是否可以买入"""
-        target_date = pd.Timestamp(date)
-        df = market_data.get(code)
-        if df is None or df.empty:
-            return (False, "无行情数据")
-
-        latest = df[df["trade_date"] <= target_date]
-        if latest.empty:
-            return (False, "无当日行情")
-
-        row = latest.iloc[-1]
-
-        if row.get("is_suspend", False):
-            return (False, "停牌")
-
-        if row.get("is_limit_up", False):
-            return (False, "涨停无法买入")
-
-        if self.exclude_st and stock_names:
-            name = stock_names.get(code, "")
-            if self.is_st_stock(name):
-                return (False, "ST股票")
-
-        if self.exclude_new_stocks and self.is_new_stock(code, market_data, date):
-            return (False, f"次新股（上市不足{self.new_stock_days}天）")
-
-        return (True, "")
-
-    def can_sell(self, code: str, market_data: Dict[str, pd.DataFrame],
-                 date: str, holding=None) -> Tuple[bool, str]:
-        """检查是否可以卖出"""
-        target_date = pd.Timestamp(date)
-        df = market_data.get(code)
-        if df is None or df.empty:
-            return (False, "无行情数据")
-
-        latest = df[df["trade_date"] <= target_date]
-        if latest.empty:
-            return (False, "无当日行情")
-
-        row = latest.iloc[-1]
-
-        if row.get("is_suspend", False):
-            return (False, "停牌")
-
-        if row.get("is_limit_down", False):
-            return (False, "跌停无法卖出")
-
-        if holding and holding.can_sell_date > date:
-            return (False, "T+1限制")
-
-        return (True, "")
-
-    def compute_buy_shares(self, available_cash: float, price: float,
-                           max_weight: float = None) -> int:
-        """计算可买入股数（考虑手数限制）
-
-        Args:
-            available_cash: 可用资金
-            price: 买入价格
-            max_weight: 最大仓位权重（None=不限制）
-
-        Returns:
-            可买入股数（整手）
-        """
-        if price <= 0 or available_cash <= 0:
-            return 0
-
-        max_amount = available_cash
-        if max_weight is not None:
-            max_amount = min(max_amount, available_cash * max_weight)
-
-        raw_shares = int(max_amount / price)
-        return self.adjust_shares_to_lot(raw_shares)
-
-    def compute_sell_shares(self, holding_shares: int, target_shares: int = 0) -> int:
-        """计算可卖出股数（考虑手数限制）
-
-        Args:
-            holding_shares: 当前持仓
-            target_shares: 目标持仓（0=全部卖出）
-
-        Returns:
-            可卖出股数（清仓时允许零股，部分卖出时整手）
-        """
-        if target_shares >= holding_shares:
-            # 清仓：A 股允许零股卖出
-            return holding_shares
-
-        diff = holding_shares - target_shares
-        return self.adjust_shares_to_lot(diff)
-
-    def get_tradable_universe(self, codes: List[str],
-                              market_data: Dict[str, pd.DataFrame],
-                              date: str,
-                              stock_names: Dict[str, str] = None) -> List[str]:
-        """获取当日可交易股票池（剔除停牌/ST/次新/涨跌停）
-
-        这是回测上下文的核心方法，防止未来信息泄漏。
-        """
-        tradable = []
-        for code in codes:
-            can, _ = self.can_buy(code, market_data, date, stock_names)
-            if can:
-                tradable.append(code)
-        return tradable
 
 
 # ========== 实盘券商接口 ==========

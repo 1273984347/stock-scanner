@@ -4,7 +4,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import numpy as np
 import pandas as pd
-from lib.broker import ABroker, Order, TradingConstraints
+from lib.broker import ABroker  # ABroker 在 lib/broker.py 中
+from lib.broker_data import Order, TradingConstraints  # 从子包 lib/broker_data/ 导入
 
 
 def _make_market_data(dates, close_vec, limit_up=False, limit_down=False,

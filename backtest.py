@@ -14,6 +14,7 @@ from typing import Dict, List, Optional
 import logging
 
 from lib.broker import ABroker, Order, TradingConstraints
+from lib.broker_data import Holding
 from lib.analyzer import PerformanceAnalyzer
 from lib.position_size import RiskSizedPosition, PositionSizeConfig, atr_risk_size
 from lib.risk_manager import RiskManager, RiskConfig
@@ -145,6 +146,7 @@ def run_factor_backtest(
     confidence_threshold: float = 0.3,
     risk_per_trade_pct: float = 0.5,
     preset: str = "balanced",
+    initial_positions: List[Dict] = None,
 ) -> Optional[Dict]:
     """基于因子信号的多股票回测（增强版）
 
@@ -177,6 +179,33 @@ def run_factor_backtest(
     broker = ABroker(initial_cash=initial_cash)
     broker.set_trade_dates([str(d.date()) if hasattr(d, 'date') else str(d) for d in trade_dates])
     constraints = TradingConstraints(exclude_st=True)
+
+    # 预置初始持仓（用于测试已有持仓的止损）
+    if initial_positions:
+        first_date_str = trade_dates[0].date().isoformat() if hasattr(trade_dates[0], 'date') else str(trade_dates[0])
+        for pos in initial_positions:
+            code = pos["code"]
+            shares = pos["shares"]
+            buy_price = pos["buy_price"]
+            # buy_date 设为其前一日，can_sell_date 为首日（T+1 已过）
+            buy_date = (trade_dates[0] - timedelta(days=1)).date().isoformat() if hasattr(trade_dates[0], 'date') else first_date_str
+            holding = Holding(
+                code=code,
+                shares=shares,
+                cost_price=buy_price,
+                buy_date=buy_date,
+                can_sell_date=first_date_str,
+            )
+            broker.holdings[code] = holding
+            # 设置 last_price 为首日收盘价（用于计算持仓市值）
+            if code in market_data and not market_data[code].empty:
+                first_row = market_data[code][market_data[code]["trade_date"] == trade_dates[0]]
+                if not first_row.empty:
+                    broker._last_prices[code] = first_row.iloc[0]["close"]
+                else:
+                    broker._last_prices[code] = buy_price
+            else:
+                broker._last_prices[code] = buy_price
     position_sizer = RiskSizedPosition(PositionSizeConfig(
         risk_per_trade_pct=risk_per_trade_pct,
         max_position_pct=0.20,
@@ -426,6 +455,7 @@ def run_factor_backtest(
         "cost_summary": cost_summary,
         "perf_df": perf_df,
         "trade_count": len(broker.trade_history),
+        "trades": [vars(t) for t in broker.trade_history],
         "exit_reasons": exit_reasons,
         "benchmark": benchmark_metrics,
         "report": analyzer.summary_report(),
