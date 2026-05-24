@@ -184,9 +184,10 @@ def check_exit_v2_trend(df: pd.DataFrame, entry_i: int) -> Tuple[str, float]:
         if row['close'] < trailing_stop:
             return "trailing_stop", trailing_stop
 
-        # EMA21辅助退出（仅前15天，第16天起禁用）
+        # EMA21辅助退出（仅前10天，第11天起禁用）
         # 诊断确认：day16-20的EMA21破坏几乎全是假信号
-        if days_held <= 15:
+        # 收紧到10天：减少day11-15的假信号触发
+        if days_held <= 10:
             if row['close'] < row['EMA21'] and prev_row['close'] < prev_row['EMA21']:
                 return "trend_break", row['close']
 
@@ -270,7 +271,29 @@ def run_backtest(
     from lib.data_layer import get_index_hist
     hs300 = get_index_hist('000300', days=500)
     hs300['EMA21'] = ema(hs300['close'], 21)
-    hs300['date_str'] = hs300['date'].astype(str)
+    hs300['date_str'] = hs300['date'].apply(
+        lambda d: str(d.date()) if hasattr(d, 'date') else str(d)
+    )
+    # 计算价格偏离EMA21比例（趋势强度代理）
+    hs300['pvem'] = (hs300['close'] / hs300['EMA21'] - 1) * 100  # %偏离度
+
+    # 简化市场状态分类（与 backtest_regime_analysis.py 一致）
+    hs300['ema_slope_pct'] = hs300['EMA21'].pct_change(5) * 100
+    def _classify_regime(row):
+        t = row['pvem'] / 100  # 转为小数
+        s = row['ema_slope_pct']
+        if pd.isna(t) or pd.isna(s):
+            return "MEAN_REVERSION"
+        if t > 0.01 and s > 0.05:
+            return "TREND_UP"
+        elif t < -0.01 and s < -0.05:
+            return "TREND_DOWN"
+        else:
+            return "MEAN_REVERSION"  # 边界/震荡 → 均值回归
+    hs300['regime'] = hs300.apply(_classify_regime, axis=1)
+    # 建立日期→regime 和 日期→pvem 查表
+    hs300_regime_dict = dict(zip(hs300['date_str'], hs300['regime']))
+    hs300_pvem_dict = dict(zip(hs300['date_str'], hs300['pvem']))
 
     exit_fn = {
         "v1_atr": check_exit_v1_atr,
@@ -297,12 +320,21 @@ def run_backtest(
 
                 # 市场过滤: HS300 > EMA21
                 # 直接用 Timestamp 比较，不用字符串
+                entry_date_str = str(entry_date)
                 hs_match = hs300[hs300['date'] <= row['date']]
                 if len(hs_match) == 0:
                     continue
                 hs_latest = hs_match.iloc[-1]
                 if not (hs_latest['close'] > hs_latest['EMA21']):
                     continue
+
+                # MEAN_REVERSION时期：要求HS300趋势强度>3%（更严格入场）
+                # 诊断发现：near_ema(<1%偏离)胜率仅30%，strong_up(>5%)胜率67%
+                # 优化：MEAN_REVERSION市场只做偏离>3%的较强趋势
+                regime = hs300_regime_dict.get(entry_date_str, "MEAN_REVERSION")
+                pvem = hs300_pvem_dict.get(entry_date_str, 0.0)
+                if regime == "MEAN_REVERSION" and pvem <= 3.0:
+                    continue  # 均值回归市场且趋势不够强，跳过
 
                 # 入场信号
                 entered, sig_type = check_entry(df, i)
