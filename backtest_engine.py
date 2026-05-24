@@ -46,6 +46,9 @@ class BacktestConfig:
     trend_exit_days: int = 20         # 趋势持有最大天数
     atr_period: int = 14
     sector_filter_top_n: int = 0     # 板块过滤：只做近N日最强板块（0=禁用，5=top5，8=top8）；需200+只股票才有效
+    # STEP 6 相对强度过滤
+    relative_strength_threshold: float = 0.0  # 股票必须相对HS300强势X%（0=禁用，正数如2.0要求 stock_ret > hs300_ret + 2%）
+    relative_strength_lookback: int = 5       # 计算相对强度的回溯期（天）
 
 
 # ============================================================
@@ -296,6 +299,10 @@ def run_backtest(
     hs300_regime_dict = dict(zip(hs300['date_str'], hs300['regime']))
     hs300_pvem_dict = dict(zip(hs300['date_str'], hs300['pvem']))
 
+    # HS300 N日收益率（用于相对强度计算）
+    hs300[f'ret{config.relative_strength_lookback}'] = hs300['close'].pct_change(config.relative_strength_lookback) * 100
+    hs300_ret_dict = dict(zip(hs300['date_str'], hs300[f'ret{config.relative_strength_lookback}']))
+
     # ========== 板块强度预计算（STEP 5）==========
     # 27只测试股已知板块映射（回测用）
     SECTOR_MAP: Dict[str, str] = {
@@ -385,6 +392,16 @@ def run_backtest(
                 pvem = hs300_pvem_dict.get(entry_date_str, 0.0)
                 if regime == "MEAN_REVERSION" and pvem <= 3.0:
                     continue  # 均值回归市场且趋势不够强，跳过
+
+                # STEP 6 相对强度过滤：只做相对HS300强势的股票
+                # 逻辑：入场时股票近N日收益率 > HS300同期收益 + 阈值
+                if config.relative_strength_threshold > 0:
+                    stock_ret = stock_returns[code].get(entry_date_str) if code in stock_returns else None
+                    hs_ret = hs300_ret_dict.get(entry_date_str)
+                    if stock_ret is None or hs_ret is None:
+                        continue
+                    if (stock_ret - hs_ret) < config.relative_strength_threshold:
+                        continue  # 股票不够强势，跳过
 
                 # STEP 5 板块过滤：只做近N日最强板块（需要200+只股票，每板块≥5只才有效）
                 if config.sector_filter_top_n > 0 and SECTOR_MAP:
