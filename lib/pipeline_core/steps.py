@@ -60,10 +60,23 @@ def fetch_stock_data(code: str, days: int = 180) -> Tuple[pd.DataFrame, Optional
     except Exception:
         pass
 
-    # 3. 基本面数据
+    # 3. 基本面数据（akshare/baostock）
     fin_data = None
     try:
-        fin_data = _get_financial_data(code)
+        _fin_series = _get_financial_data(code)
+        if _fin_series is not None:
+            fin_data = _fin_series.to_dict()
+    except Exception:
+        pass
+
+    # 3.5 TDX 本地财务数据（补充 ROE/毛利率/负债率等，优先本地无需网络）
+    try:
+        from lib.data_tdx_fin_adapter import get_stock_fundamentals
+        tdx_fundamentals = get_stock_fundamentals(code)
+        if tdx_fundamentals:
+            if fin_data is None:
+                fin_data = {}
+            fin_data["tdx_fundamentals"] = tdx_fundamentals
     except Exception:
         pass
 
@@ -126,11 +139,13 @@ def score_with_realtime(code: str, hist: pd.DataFrame, factors: Dict, rt_row: pd
     return score_result
 
 
-def score_without_realtime(factors: Dict) -> Dict[str, Any]:
+def score_without_realtime(code: str, factors: Dict, fin_data: Optional[pd.Series] = None) -> Dict[str, Any]:
     """无实时行情的四维评分路径
 
     Args:
+        code: 股票代码
         factors: 因子字典
+        fin_data: 基本面数据（PE/PB/市值 + TDX财务指标）
 
     Returns:
         评分结果字典
@@ -139,8 +154,65 @@ def score_without_realtime(factors: Dict) -> Dict[str, Any]:
     mom_20 = factors.get("momentum_20", 0) / 100
 
     tech_score = score_technical(return_10d=mom_5, return_20d=mom_20)
-    fund_score = score_fundamental()
-    cap_score = score_capital_flow()
+
+    # 提取基本面评分参数
+    pe = None
+    roe = None
+    net_growth = None
+    gross_margin = None
+    debt_ratio = None
+    ocf_healthy = True
+
+    if fin_data is not None:
+        pe = fin_data.get("pe") if isinstance(fin_data, dict) else getattr(fin_data, "pe", None)
+        if fin_data.get("gross_margin") is not None and gross_margin is None:
+            gross_margin = fin_data.get("gross_margin")
+
+        # OCF 健康判断：经营现金流 > 0
+        ocf = fin_data.get("operating_cash_flow")
+        ocf_healthy = ocf is not None and ocf > 0
+
+        # 从 TDX 财务指标补充 ROE/毛利率/负债率
+        # fin_data 可能是 dict（包含 tdx_fundamentals）或 pd.Series（FinancialCache 缓存格式）
+        tdx_fundamentals = fin_data.get("tdx_fundamentals") if isinstance(fin_data, dict) else None
+        if tdx_fundamentals:
+            prof = tdx_fundamentals.get("profitability", {})
+            solv = tdx_fundamentals.get("solvency", {})
+            growth = tdx_fundamentals.get("growth", {})
+            if roe is None:
+                roe = prof.get("ROE")
+            if gross_margin is None:
+                gross_margin = prof.get("gross_margin")
+            if debt_ratio is None:
+                debt_ratio = solv.get("debt_to_asset")
+            if net_growth is None:
+                net_growth = growth.get("net_income_growth")
+        else:
+            # pd.Series 格式：ROE 在 _roe 字段，负债率在 _debt_to_asset 字段
+            if roe is None:
+                roe = fin_data.get("_roe") if not isinstance(fin_data, dict) else None
+            if debt_ratio is None:
+                debt_ratio = fin_data.get("_debt_to_asset") if not isinstance(fin_data, dict) else None
+            if net_growth is None:
+                net_growth = fin_data.get("revenue_growth") if not isinstance(fin_data, dict) else None
+
+    fund_score = score_fundamental(
+        pe=pe, roe=roe, net_growth=net_growth,
+        gross_margin=gross_margin, debt_ratio=debt_ratio, ocf_healthy=ocf_healthy
+    )
+
+    # 资金流评分（3层fallback：东方财富→腾讯估算→akshare）
+    cap_score = 0.0
+    try:
+        from lib.data_layer import get_stock_fund_flow
+        ff = get_stock_fund_flow(code)
+        cap_score = score_capital_flow(
+            main_net_ratio=ff.get("main_net_ratio", 0),
+            net_inflow_5d=ff.get("net_inflow_5d", 0),
+        )
+    except Exception:
+        pass
+
     news_sig = {"major_positive": False, "institutional_buy": False,
                  "no_negative": True, "earnings_positive": False}
     news_score = score_news(**news_sig)

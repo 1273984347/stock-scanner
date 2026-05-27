@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 
 # ========== 数据源配置 ==========
 
-DATA_SOURCE_PRIORITY = ["tdx_local", "baostock", "tdx", "adata", "westock", "tushare", "akshare"]
-# 回测用：前复权数据源优先（tdx_local/tdx 是不复权的）
-DATA_SOURCE_PRIORITY_ADJUSTED = ["baostock", "akshare", "tdx_local", "tdx", "adata", "westock", "tushare"]
+DATA_SOURCE_PRIORITY = ["tdx_local_qfq", "tdx_local", "baostock", "tdx", "adata", "westock", "tushare", "akshare"]
+# 回测用：前复权数据源优先（tdx_local_qfq 是前复权本地文件，优先于 baostock 网络）
+DATA_SOURCE_PRIORITY_ADJUSTED = ["tdx_local_qfq", "baostock", "akshare", "tdx_local", "tdx", "adata", "westock", "tushare"]
 
 
 def _is_bj_stock(code: str) -> bool:
@@ -50,6 +50,9 @@ def _fetch_from_source(code: str, days: int, source: str) -> pd.DataFrame:
         return pd.DataFrame()
 
     try:
+        if source == "tdx_local_qfq":
+            from lib.data_tdx import _fetch_qfq_local_file
+            return _fetch_qfq_local_file(code, days, "daily")
         if source == "tdx_local":
             from lib.data_tdx import _fetch_from_local_file
             return _fetch_from_local_file(code, days, "daily")
@@ -222,9 +225,9 @@ def get_circuit_breaker_status() -> Dict[str, dict]:
     """获取所有数据源熔断器状态"""
     return {
         src: {
-            "failure_count": cb.failure_count,
-            "last_failure_time": cb.last_failure_time,
-            "state": "open" if cb._is_open() else "closed",
+            "failure_count": cb._failures,
+            "last_failure_time": cb._last_failure_time,
+            "state": cb.state,
         }
         for src, cb in _CIRCUIT_BREAKERS.items()
     }

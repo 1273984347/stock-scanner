@@ -63,11 +63,11 @@ def _load_lhb_cache():
         from lib.data_layer import _load_cache, _retry_api_call, _save_cache
         import akshare as ak
 
-        df = _load_cache("lhb_codes", max_age_hours=4)
+        df = _load_cache("lhb/codes", max_age_hours=4)
         if df.empty:
             df = _retry_api_call(ak.stock_lhb_detail_em)
             if not df.empty:
-                _save_cache("lhb_codes", df)
+                _save_cache("lhb/codes", df)
         if not df.empty:
             code_col = None
             dir_col = None

@@ -706,13 +706,539 @@ def calc_channel_filter(hist_df: pd.DataFrame) -> Dict:
         return {"kc_pos": 0.5, "adjustment": 1.0, "reason": ""}
 
 
+# ========== 资金情绪因子（来自 ScJyData）==========
+
+def get_market_sentiment_factor(days: int = 10) -> Dict:
+    """资金情绪因子：基于涨跌停、上涨下跌家数、期货持仓的市场情绪
+
+    数据来源：D:/TDX/vipdoc/ds/ScJyData_zbca.csv
+    可用字段（2026-05-27数据）：
+      - IH5_JCC_V: 中证500期货持仓量（IM，负值表示净空头）
+      - IF6_JCC_V: 沪深300期货持仓量（IF）
+      - IC7_JCC_V: 中证1000期货持仓量（IC）
+      - DBZJ15_FBA/DBZJ15_ZBA: 期货保证金
+      - LB23_NUM: 龙虎榜上榜家数
+      - LB24_ZTNUM/LB24_DTNUM: 涨跌停股数
+      - ZTGD30: 30日涨停股数
+      - UP31_NUM/DOWN31_NUM: 31日内上涨/下跌家数（重要！）
+      - ZT35_HSBNUM/ZT35_FBL: 涨停板数量/幅比例
+      - CXG28_HH_NUM/CXG28_LL_NUM: 创新高/新低数量
+
+    Returns:
+        dict with keys:
+          - up_down_ratio: 上涨/下跌比（>1 看多，<1 看空）
+          - zt_count: 涨停股数量
+          - dt_count: 跌停股数量
+          - futures_net: 期货净持仓（IM+IF+IC，越负越看空）
+          - sentiment_score: 综合情绪分数 (-1 到 1)
+          - source: 数据来源标记
+    """
+    try:
+        from lib.data_layer import get_latest_market_stats
+    except ImportError:
+        return {"error": "data_layer not available"}
+
+    try:
+        stats = get_latest_market_stats()
+        if not isinstance(stats, dict):
+            return {"error": f"unexpected stats type: {type(stats)}"}
+
+        # 提取关键指标（使用 .get() 避免 KeyError）
+        up_count = float(stats.get("UP31_NUM", 0) or 0)
+        down_count = float(stats.get("DOWN31_NUM", 0) or 0)
+        zt_count = float(stats.get("LB24_ZTNUM", 0) or 0)
+        dt_count = float(stats.get("LB24_DTNUM", 0) or 0)
+        zt30 = float(stats.get("ZTGD30", 0) or 0)
+        ih5_jcc = float(stats.get("IH5_JCC_V", 0) or 0)
+        if6_jcc = float(stats.get("IF6_JCC_V", 0) or 0)
+        ic7_jcc = float(stats.get("IC7_JCC_V", 0) or 0)
+        dbzj = float(stats.get("DBZJ15_FBA", 0) or 0)
+        new_high = float(stats.get("CXG28_HH_NUM", 0) or 0)
+        new_low = float(stats.get("CXG28_LL_NUM", 0) or 0)
+        margin_balance = float(stats.get("DBZJ15_ZBA", 0) or 0)
+
+        # 上涨/下跌比
+        up_down_ratio = up_count / down_count if down_count > 0 else 1.0
+
+        # 期货净持仓（反映机构情绪，负值 = 净空头）
+        futures_net = ih5_jcc + if6_jcc + ic7_jcc
+
+        # 综合情绪评分（经验公式）
+        score = 0.0
+
+        # 1. 上涨下跌比（权重 40%）
+        if up_down_ratio > 0.5:
+            score += min(0.4, (up_down_ratio - 0.5) * 0.8)
+        elif up_down_ratio < 0.3:
+            score -= min(0.4, (0.3 - up_down_ratio) * 1.0)
+
+        # 2. 涨跌停（权重 20%）
+        if zt_count > 30:
+            score += 0.2
+        elif zt_count < 10:
+            score -= 0.1
+        if dt_count > 30:
+            score -= 0.2
+        elif dt_count < 10:
+            score += 0.05
+
+        # 3. 期货净持仓（权重 25%）
+        # 期货持仓为负表示净空头，负值越大（绝对值）越看空
+        if futures_net < -50000:
+            score -= 0.25
+        elif futures_net < -20000:
+            score -= 0.15
+        elif futures_net > 50000:
+            score += 0.15
+
+        # 4. 创新高新低（权重 15%）
+        if new_high > new_low * 2:
+            score += 0.15
+        elif new_low > new_high * 2:
+            score -= 0.15
+
+        score = max(-1.0, min(1.0, score))
+
+        return {
+            "up_count": int(up_count),
+            "down_count": int(down_count),
+            "up_down_ratio": round(up_down_ratio, 3),
+            "zt_count": int(zt_count),
+            "dt_count": int(dt_count),
+            "zt30": int(zt30),
+            "futures_net": round(futures_net, 0),
+            "dbzj": round(dbzj, 1),
+            "margin_balance": round(margin_balance, 1),
+            "new_high": int(new_high),
+            "new_low": int(new_low),
+            "sentiment_score": round(score, 3),
+            "date": str(stats.get("date", "unknown")),
+            "source": "ScJyData",
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def get_market_sentiment_history(days: int = 30) -> pd.DataFrame:
+    """获取市场情绪历史数据（用于时序分析）"""
+    try:
+        from lib.data_layer import get_market_stats
+    except ImportError:
+        return pd.DataFrame()
+
+    try:
+        df = get_market_stats(days=days)
+        if df.empty:
+            return pd.DataFrame()
+        return df[["date", "LHB16_BAMT_B", "LHB16_BAMT_S", "ZTGD30",
+                    "IH5_JCC_V", "IF6_JCC_V", "IC7_JCC_V"]].dropna()
+    except Exception:
+        return pd.DataFrame()
+
+
+# ========== 北向资金因子（来自 HSJ 沪股通）==========
+
+def get_northbound_flow_factor(code: str, market: str = "sh", days: int = 20) -> Dict:
+    """北向资金因子：基于沪股通交易数据
+
+    数据来源：D:/TDX/vipdoc/hsj/（sh/sz/bj/lday/）
+    数据列：date, open, high, low, close, volume, amount
+
+    注意：HSJ 数据只有日线 OHLCV+amount（总成交额），没有直接的
+    买/卖分解。amount = close × volume。
+
+    计算方法：
+      - activity: 日均成交额（反映北向活跃度）
+      - activity_ratio: 最近/历史成交额比（异常活跃度信号）
+      - price_momentum: 价格动量（来自 close 序列）
+      - trend: 趋势判断（increasing/decreasing/stable）
+
+    Returns:
+        dict with keys:
+          - activity: 日均成交额（万元）
+          - activity_ratio: 活跃度比（相比历史）
+          - price_return_5d: 5日收益率
+          - price_return_20d: 20日收益率
+          - trend: 趋势（increasing/decreasing/stable）
+          - record_count: 记录数
+          - source: 数据来源
+    """
+    try:
+        from lib.data_layer import get_hsj_hist
+    except ImportError:
+        return {"error": "data_layer not available"}
+
+    try:
+        df = get_hsj_hist(code, market=market, days=days)
+        if df.empty or len(df) < 5:
+            return {"error": "insufficient HSJ data"}
+
+        # 计算成交额相关指标
+        amounts = df["amount"].values
+        volumes = df["volume"].values if "volume" in df.columns else None
+        closes = df["close"].values
+
+        # 日均成交额
+        activity = float(amounts.mean())
+
+        # 活跃度比（近期 vs 早期）
+        if len(amounts) >= 10:
+            recent_avg = float(amounts[-5:].mean())
+            early_avg = float(amounts[:5].mean())
+            activity_ratio = recent_avg / early_avg if early_avg > 0 else 1.0
+        else:
+            activity_ratio = 1.0
+
+        # 价格动量
+        if len(closes) >= 6:
+            price_return_5d = (closes[-1] / closes[-6] - 1) * 100 if closes[-6] != 0 else 0.0
+        else:
+            price_return_5d = 0.0
+
+        if len(closes) >= 21:
+            price_return_20d = (closes[-1] / closes[-21] - 1) * 100 if closes[-21] != 0 else 0.0
+        else:
+            price_return_20d = 0.0
+
+        # 趋势判断（基于成交额）
+        if len(amounts) >= 5:
+            recent = amounts[-5:].mean()
+            prev = amounts[-10:-5].mean() if len(amounts) >= 10 else recent
+            if recent > prev * 1.15:
+                trend = "increasing"
+            elif recent < prev * 0.85:
+                trend = "decreasing"
+            else:
+                trend = "stable"
+        else:
+            trend = "stable"
+
+        # 相对价格变化（direction signal）
+        direction = "long" if price_return_5d > 1 else "short" if price_return_5d < -1 else "neutral"
+
+        return {
+            "activity": round(activity, 2),
+            "activity_ratio": round(activity_ratio, 3),
+            "price_return_5d": round(price_return_5d, 2),
+            "price_return_20d": round(price_return_20d, 2),
+            "trend": trend,
+            "direction": direction,
+            "latest_close": round(float(closes[-1]), 2),
+            "record_count": len(df),
+            "source": "HSJ",
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ========== 财务估值因子（来自 CW/gpcw）==========
+
+def get_financial_valuation_factor(code: str) -> Dict:
+    """财务估值因子：基于 TDX 财务报表数据
+
+    数据来源：D:/TDX/vipdoc/cw/gpcw*.dat（446字段/股票）
+    注意：字段具体含义（PE/PB/ROE等）尚未完全解码，
+         当前使用原始字段索引作为特征值。
+
+    Returns:
+        dict with keys:
+          - field_count: 非空字段数（反映财务数据完整性）
+          - latest_main_values: 最新主值字典（前20字段）
+          - data_freshness: 数据新鲜度
+          - source: 数据来源
+    """
+    try:
+        from lib.data_layer import get_stock_financial, get_financial_file_info
+    except ImportError:
+        return {"error": "data_layer not available"}
+
+    try:
+        df = get_stock_financial(code)
+        if df.empty:
+            return {"error": f"no financial data for {code}"}
+
+        info = get_financial_file_info()
+
+        # 取最新字段值（前10个非空）
+        latest_values = {}
+        for _, row in df.head(10).iterrows():
+            latest_values[f"field_{int(row['field_index'])}"] = {
+                "main": int(row["value_main"]),
+                "aux": int(row["value_aux"]),
+            }
+
+        return {
+            "field_count": len(df),
+            "latest_main_values": latest_values,
+            "file_date": info.get("filename", "unknown"),
+            "source": "CW/gpcw",
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ========== 高频盘口因子（来自 GP 高频Tick）==========
+
+def get_gp_market_factor(code: str, market: str = "sz") -> Dict:
+    """高频盘口因子：基于 GP 高频Tick数据
+
+    数据来源：D:/TDX/vipdoc/gp/gpsz*.dat（43种记录类型）
+    已知记录类型：
+      - 0x01 (1): 年报/季报财务数据
+      - 0x03 (3): 日线指标A
+      - 0x2F (47): 最近日线（约118条，2025-2026）
+
+    注意：GP文件格式尚未完全逆向，字段具体含义待确定。
+         当前版本提供已解码的基本指标。
+
+    Returns:
+        dict with keys:
+          - annual_count: 年报/季报记录数
+          - recent_count: 最近日线记录数
+          - latest_type: 最新记录类型
+          - latest_value_main: 最新主值
+          - source: 数据来源
+    """
+    try:
+        from lib.data_tdx_gp import get_gp_data
+    except ImportError:
+        return {"error": "data_tdx_gp not available"}
+
+    try:
+        df = get_gp_data(code, market=market)
+        if df.empty:
+            return {"error": f"no GP data for {code} ({market})"}
+
+        # 统计各类型记录数
+        type_counts = df["record_type"].value_counts().to_dict()
+
+        # 取最新记录
+        latest = df.sort_values("date").iloc[-1]
+
+        return {
+            "annual_count": type_counts.get(1, 0),  # 0x01
+            "recent_count": type_counts.get(47, 0),  # 0x2F
+            "daily_count": type_counts.get(3, 0),  # 0x03
+            "total_records": len(df),
+            "type_count": len(type_counts),
+            "latest_date": int(latest["date"]),
+            "latest_type": int(latest["record_type"]),
+            "latest_value_main": round(float(latest["value_main"]), 4),
+            "source": "GP/tdxgp",
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ========== 港股通因子（来自 GGT）==========
+
+def get_ggt_market_factor(code: str, days: int = 20) -> Dict:
+    """港股通因子：基于港股通日线交易数据
+
+    数据来源：D:/TDX/vipdoc/ggt/lday/
+    数据列：date, open, high, low, close, volume, amount
+
+    Returns:
+        dict with keys:
+          - activity: 日均成交额（万元）
+          - activity_ratio: 活跃度比（近期 vs 早期）
+          - price_return_5d: 5日收益率
+          - price_return_20d: 20日收益率
+          - trend: 趋势（increasing/decreasing/stable）
+          - record_count: 记录数
+          - source: 数据来源
+    """
+    try:
+        from lib.data_layer import get_ggt_hist
+    except ImportError:
+        return {"error": "data_layer not available"}
+
+    try:
+        df = get_ggt_hist(code, days=days)
+        if df.empty or len(df) < 5:
+            return {"error": "insufficient GGT data"}
+
+        amounts = df["amount"].values
+        volumes = df["volume"].values if "volume" in df.columns else None
+        closes = df["close"].values
+
+        # 日均成交额
+        activity = float(amounts.mean())
+
+        # 活跃度比
+        if len(amounts) >= 10:
+            recent_avg = float(amounts[-5:].mean())
+            early_avg = float(amounts[:5].mean())
+            activity_ratio = recent_avg / early_avg if early_avg > 0 else 1.0
+        else:
+            activity_ratio = 1.0
+
+        # 价格动量
+        if len(closes) >= 6:
+            price_return_5d = (closes[-1] / closes[-6] - 1) * 100 if closes[-6] != 0 else 0.0
+        else:
+            price_return_5d = 0.0
+
+        if len(closes) >= 21:
+            price_return_20d = (closes[-1] / closes[-21] - 1) * 100 if closes[-21] != 0 else 0.0
+        else:
+            price_return_20d = 0.0
+
+        # 趋势判断
+        if len(amounts) >= 5:
+            recent = amounts[-5:].mean()
+            prev = amounts[-10:-5].mean() if len(amounts) >= 10 else recent
+            if recent > prev * 1.15:
+                trend = "increasing"
+            elif recent < prev * 0.85:
+                trend = "decreasing"
+            else:
+                trend = "stable"
+        else:
+            trend = "stable"
+
+        direction = "long" if price_return_5d > 1 else "short" if price_return_5d < -1 else "neutral"
+
+        return {
+            "activity": round(activity, 2),
+            "activity_ratio": round(activity_ratio, 3),
+            "price_return_5d": round(price_return_5d, 2),
+            "price_return_20d": round(price_return_20d, 2),
+            "trend": trend,
+            "direction": direction,
+            "latest_close": round(float(closes[-1]), 2),
+            "record_count": len(df),
+            "source": "GGT",
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ========== 新三板因子（来自 XSB）==========
+
+def get_xsb_market_factor(code: str, days: int = 20) -> Dict:
+    """新三板因子：基于新三板日线数据
+
+    数据来源：D:/TDX/vipdoc/xsb/lday/
+
+    注意：新三板流动性较差，信号仅供参考。
+
+    Returns:
+        dict with keys:
+          - activity: 日均成交额
+          - price_return_5d: 5日收益率
+          - trend: 趋势
+          - record_count: 记录数
+          - source: 数据来源
+    """
+    try:
+        from lib.data_layer import get_xsb_hist
+    except ImportError:
+        return {"error": "data_layer not available"}
+
+    try:
+        df = get_xsb_hist(code, days=days)
+        if df.empty or len(df) < 5:
+            return {"error": "insufficient XSB data"}
+
+        amounts = df["amount"].values if "amount" in df.columns else None
+        closes = df["close"].values
+
+        activity = float(amounts.mean()) if amounts is not None else 0.0
+
+        if len(closes) >= 6:
+            price_return_5d = (closes[-1] / closes[-6] - 1) * 100 if closes[-6] != 0 else 0.0
+        else:
+            price_return_5d = 0.0
+
+        if len(closes) >= 5:
+            recent = closes[-5:].mean()
+            prev = closes[-10:-5].mean() if len(closes) >= 10 else recent
+            if recent > prev * 1.05:
+                trend = "increasing"
+            elif recent < prev * 0.95:
+                trend = "decreasing"
+            else:
+                trend = "stable"
+        else:
+            trend = "stable"
+
+        return {
+            "activity": round(activity, 2),
+            "price_return_5d": round(price_return_5d, 2),
+            "trend": trend,
+            "record_count": len(df),
+            "source": "XSB",
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ========== 指数增强因子（来自 CSI）==========
+
+def get_index_enhancement_factor(code: str, market: str = "sh") -> Dict:
+    """指数增强因子：获取主要指数信息
+
+    数据来源：D:/TDX/vipdoc/csi/zs/
+
+    主要指数：
+      - 000300: 沪深300
+      - 000905: 中证500
+      - 000852: 中证1000
+
+    Returns:
+        dict with keys:
+          - index_code: 指数代码
+          - index_name: 指数名称
+          - index_latest_close: 最新收盘点位
+          - source: 数据来源
+    """
+    try:
+        from lib.data_layer import get_index_hist
+    except ImportError:
+        return {"error": "data_layer not available"}
+
+    try:
+        # 判断市场并确定对应的指数代码
+        if market == "sh":
+            index_code = "000300"  # 上证 -> 沪深300
+        elif market == "sz":
+            index_code = "000300"  # 深证 -> 沪深300
+        else:
+            return {"error": "unsupported market for index factor"}
+
+        # 获取指数历史
+        index_df = get_index_hist(index_code, days=5)
+        if index_df.empty:
+            return {"error": f"no index data for {index_code}"}
+
+        result = {
+            "index_code": index_code,
+            "index_name": f"CSI{index_code}",
+            "index_latest_close": round(float(index_df["close"].iloc[-1]), 2),
+            "index_change_pct": round(
+                (float(index_df["close"].iloc[-1]) / float(index_df["close"].iloc[-2]) - 1) * 100
+                if len(index_df) >= 2 else 0.0, 2),
+            "source": "CSI",
+        }
+
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ========== 综合计算 ==========
 
 def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
-                        factor_config=None) -> Dict:
+                        factor_config=None, code: str = None, market: str = "sh") -> Dict:
     """计算所有策略信号
 
-    factor_config: 可选 FactorConfig 实例，控制因子开关；None=全部计算
+    Args:
+        hist_df: 历史K线数据（必须包含 close 列）
+        macro_score: 宏观评分 (-1 到 1)
+        factor_config: 可选 FactorConfig 实例，控制因子开关；None=全部计算
+        code: 股票代码（6位，如 "600000"），用于获取新数据源因子
+        market: 市场（sh/sz/bj），默认 sh
     """
     if hist_df.empty or len(hist_df) < 30:
         return {}
@@ -746,9 +1272,6 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
 
     if _use('use_volatility'):
         signals["volatility"] = calc_volatility_signal(close)
-
-    if _use('use_stat_arb'):
-        signals["stat_arb"] = calc_stat_arb_signal(close)
 
     # 4. 加权组合
     combined = weighted_signal_combination(signals)
@@ -811,6 +1334,51 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
     # 通道过滤结果
     ch_filter = calc_channel_filter(hist_df)
 
+    # 8. 新数据源因子（HSJ/ScJyData/CW/GP/GGT/XSB/CSI）
+    data_factors = {}
+    if code is not None:
+        # 北向资金因子（HSJ 沪股通）
+        if _use('use_hsj', default=True):
+            hsj_factor = get_northbound_flow_factor(code, market=market, days=20)
+            if "error" not in hsj_factor:
+                data_factors["northbound"] = hsj_factor
+
+        # 财务估值因子（CW/gpcw）
+        if _use('use_financial', default=True):
+            fin_factor = get_financial_valuation_factor(code)
+            if "error" not in fin_factor:
+                data_factors["financial"] = fin_factor
+
+        # 高频盘口因子（GP/tdxgp）
+        if _use('use_gp', default=True):
+            gp_factor = get_gp_market_factor(code, market=market)
+            if "error" not in gp_factor:
+                data_factors["gp"] = gp_factor
+
+        # 港股通因子（GGT）
+        if _use('use_ggt', default=False):
+            ggt_factor = get_ggt_market_factor(code, days=20)
+            if "error" not in ggt_factor:
+                data_factors["ggt"] = ggt_factor
+
+        # 新三板因子（XSB，仅当市场为 bj 时）
+        if market == "bj" and _use('use_xsb', default=False):
+            xsb_factor = get_xsb_market_factor(code, days=20)
+            if "error" not in xsb_factor:
+                data_factors["xsb"] = xsb_factor
+
+        # 指数增强因子（CSI）
+        if _use('use_csi', default=False):
+            index_factor = get_index_enhancement_factor(code, market=market)
+            if "error" not in index_factor:
+                data_factors["index_enhancement"] = index_factor
+
+    # 市场情绪因子（ScJyData，不需要 code）
+    if _use('use_scjy', default=True):
+        sentiment = get_market_sentiment_factor(days=10)
+        if "error" not in sentiment:
+            data_factors["market_sentiment"] = sentiment
+
     return {
         "signals": signals,
         "combined": combined,
@@ -832,6 +1400,7 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
             "reason": ch_filter.get("reason", ""),
         },
         "factors": factors,
+        "data_factors": data_factors,
     }
 
 

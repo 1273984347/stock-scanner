@@ -79,7 +79,8 @@ def _patched_get_stock(code, days=500):
 _dl.get_stock_hist = _patched_get_stock
 
 # 导入
-from lib.data_layer import get_stock_hist, get_index_hist
+from lib.data_layer import get_index_hist
+from lib.data_source_registry import get_stock_hist_multi_source
 
 
 # ============================================================
@@ -98,8 +99,11 @@ def _scan_local_stocks():
     sh_dir = Path('D:/TDX/vipdoc/sh/lday')
     sz_dir = Path('D:/TDX/vipdoc/sz/lday')
 
-    # 板块映射（简化版：按首字母分配，真实场景用 get_stock_info）
-    # 实际应用中应该用申万行业分类或东财行业分类
+    # 板块映射（简化版：按前3位分配，与真实行业分类存在较大偏差）
+    # 例如：600519(茅台)→金融(实际食品饮料)、600036(招行)→金融(实际银行)
+    # 如需精确行业分类：使用 baostock query_stock_industry() 并缓存，
+    # 但会增加网络依赖，与"纯本地数据回测"目标冲突。
+    # 当前板块映射仅用于回测参考，不应用于实盘决策。
     SH_SECTORS = {
         '600': '金融', '601': '金融', '603': '消费',
     }
@@ -174,20 +178,24 @@ def check_entry(df: pd.DataFrame, i: int) -> bool:
     return bool(ma5_cross and price_ok)
 
 
-def check_exit_v2(df: pd.DataFrame, entry_i: int, hs300_vol_ratio: float = 1.0) -> Tuple[str, float]:
+def check_exit_v2(df: pd.DataFrame, entry_i: int, hs300_vol_ratio: float = 1.0) -> Tuple[str, float, int]:
     """V2 趋势持有（day1-10 EMA21有效，day11-20禁用）
 
     D 情绪过滤：当 HS300 波动率升高时，禁用 EMA21 退出，
     改用 trailing_stop 或 timeout，避免在震荡中被洗出。
     hs300_vol_ratio: 当前 HS300 ATR / 20日均值（>1.5 表示高波动）
+
+    Returns:
+        (exit_reason, exit_price, exit_i)
     """
     entry_row = df.iloc[entry_i]
     trailing_stop = entry_row['low_10'] if not pd.isna(entry_row['low_10']) else entry_row['close'] * 0.95
+    max_exit_i = min(entry_i + 20, len(df) - 1)
 
     # D: 高波动时完全禁用 EMA21 退出
     use_ema21_exit = (hs300_vol_ratio <= 1.5) and (hs300_vol_ratio >= 0.5)
 
-    for j in range(entry_i + 1, min(entry_i + 20, len(df))):
+    for j in range(entry_i + 1, max_exit_i + 1):
         row = df.iloc[j]
         prev_row = df.iloc[j - 1]
         days_held = j - entry_i
@@ -196,15 +204,15 @@ def check_exit_v2(df: pd.DataFrame, entry_i: int, hs300_vol_ratio: float = 1.0) 
         if not pd.isna(row['low_10']):
             trailing_stop = max(trailing_stop, row['low_10'])
         if row['close'] < trailing_stop:
-            return "trailing_stop", float(trailing_stop)
+            return "trailing_stop", float(trailing_stop), j
 
         # EMA21 辅助（仅前10天，且非高波动）
         if use_ema21_exit and days_held <= 10:
             if row['close'] < row['EMA21'] and prev_row['close'] < prev_row['EMA21']:
-                return "trend_break", float(row['close'])
+                return "trend_break", float(row['close']), j
 
-    last_i = min(entry_i + 20, len(df) - 1)
-    return "timeout", float(df.iloc[last_i]['close'])
+    last_i = max_exit_i
+    return "timeout", float(df.iloc[last_i]['close']), last_i
 
 
 # ============================================================
@@ -255,7 +263,7 @@ def build_stock_returns(stock_codes: List[str]):
     stock_rets = {}
     for code in stock_codes:
         try:
-            df = get_stock_hist(code, days=500)
+            df = get_stock_hist_multi_source(code, days=500, source="tdx_local_qfq")
             if df is None or len(df) < 20:
                 continue
             df = df.copy()
@@ -328,7 +336,7 @@ def run_full_backtest(
 
     for code_idx, code in enumerate(stock_codes):
         try:
-            df = get_stock_hist(code, days=500)
+            df = get_stock_hist_multi_source(code, days=500, source="tdx_local_qfq")
             if df is None or len(df) < 60:
                 continue
             df = add_indicators(df)
@@ -381,15 +389,16 @@ def run_full_backtest(
                 hs300_vol_ratio = hs300_vol.get(entry_date_str, 1.0) if use_sentiment_filter else 1.0
 
                 # 出场
-                exit_reason, exit_price = check_exit_v2(df, i, hs300_vol_ratio=hs300_vol_ratio)
+                exit_reason, exit_price, exit_i = check_exit_v2(df, i, hs300_vol_ratio=hs300_vol_ratio)
 
                 entry_price = float(row['close'])
                 pnl_pct = round((exit_price / entry_price - 1) * 100, 2)
-                hold_days = min(20, len(df) - 1 - i)
+                hold_days = exit_i - i
+                exit_row = df.iloc[exit_i]
 
                 all_trades.append({
                     'entry_date': entry_date_str,
-                    'exit_date': row['date_str'],
+                    'exit_date': exit_row['date_str'],
                     'code': code,
                     'pnl_pct': pnl_pct,
                     'hold_days': hold_days,

@@ -27,6 +27,12 @@ import signal
 
 import pandas as pd
 
+# 导入 FinancialCache（统一缓存层）
+try:
+    from lib.data_cache import get_financial_cache
+except ImportError:
+    get_financial_cache = None
+
 # 强制刷新日志
 def _flush_log():
     for handler in logger.handlers:
@@ -361,6 +367,91 @@ def fetch_financial_indicators(code: str, timeout: int = 20) -> dict:
     return _fetch_with_timeout(_fetch, timeout, f"{code} 财务指标")
 
 
+_em_debt_ratio_cache = {}  # code -> debt_ratio，批量预热时复用
+
+
+def _fetch_em_debt_ratio_batch(code: str) -> None:
+    """从 East Money 批量获取 debt_ratio（写入模块级缓存，避免重复请求）"""
+    if code in _em_debt_ratio_cache:
+        return
+    try:
+        from lib.data_eastmoney_fin import get_debt_ratio as _get_em_dr
+        dr = _get_em_dr(code)
+        _em_debt_ratio_cache[code] = dr
+    except Exception:
+        _em_debt_ratio_cache[code] = None
+
+
+def _to_financial_cache_format(record: dict) -> dict:
+    """将 THS/baostock 记录转换为 FinancialCache 标准格式
+
+    FinancialCache 统一格式:
+        {
+            "profitability": {ROE, gross_margin, net_margin, operating_margin, ebitda_margin},
+            "solvency": {debt_to_asset, debt_to_equity, equity_multiplier, interest_coverage},
+            "growth": {revenue_growth, net_income_growth},
+            "_source": "thshare",
+        }
+    """
+    prof = {}
+    sol = {}
+    growth = {}
+
+    roe = record.get("roe")
+    if roe is not None:
+        prof["ROE"] = roe
+
+    gm = record.get("gross_margin")
+    if gm is not None:
+        prof["gross_margin"] = gm
+
+    nm = record.get("net_margin")
+    if nm is not None:
+        prof["net_margin"] = nm
+
+    om = record.get("operating_margin")
+    if om is not None:
+        prof["operating_margin"] = om
+
+    dr = record.get("debt_ratio")
+    if dr is not None:
+        sol["debt_to_asset"] = dr
+
+    rg = record.get("revenue_growth")
+    if rg is not None:
+        growth["revenue_growth"] = rg
+
+    pg = record.get("profit_growth")
+    if pg is not None:
+        growth["net_income_growth"] = pg
+
+    return {
+        "profitability": prof,
+        "solvency": sol,
+        "growth": growth,
+        "_source": "thshare",
+    }
+
+
+def _prewarm_cache(code: str, record: dict) -> None:
+    """将单条记录写入 FinancialCache（如可用）"""
+    if get_financial_cache is None:
+        return
+    try:
+        # 先从 East Money 补充 debt_ratio
+        _fetch_em_debt_ratio_batch(code)
+        em_dr = _em_debt_ratio_cache.get(code)
+        if em_dr is not None and record.get("debt_ratio") is None:
+            record = dict(record)  # 浅拷贝，避免修改原 record
+            record["debt_ratio"] = em_dr
+
+        cache = get_financial_cache()
+        formatted = _to_financial_cache_format(record)
+        cache.set(code, formatted)
+    except Exception:
+        pass  # 预热失败不影响主流程
+
+
 def fetch_single_stock(code: str, name: str = "") -> dict:
     """获取单只股票的完整基本面数据"""
     if _is_stopped():
@@ -391,6 +482,9 @@ def fetch_single_stock(code: str, name: str = "") -> dict:
     # baostock 的 ROE 覆盖 THS 的 ROE（通常更准）
     if pe_data.get("roe") is not None:
         result["roe"] = pe_data["roe"]
+
+    # 预热 FinancialCache（异步写入，不阻塞主流程）
+    _prewarm_cache(code, result)
 
     return result
 

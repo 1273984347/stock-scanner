@@ -19,7 +19,7 @@ class TestRiskManager:
         """RiskConfig 默认值正确"""
         cfg = RiskConfig()
         assert cfg.max_drawdown_stop == 0.20
-        assert cfg.single_stock_stop_loss == 0.08
+        assert cfg.single_stock_stop_loss == 0.05
         assert cfg.single_stock_take_profit == 0.30
         assert cfg.max_single_position == 0.15
         assert cfg.daily_loss_limit == 0.05

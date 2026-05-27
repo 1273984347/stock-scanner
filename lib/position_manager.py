@@ -14,6 +14,7 @@ import sys
 import threading
 
 from config import DEFAULT_STOP_LOSS, DEFAULT_TAKE_PROFIT
+from lib.risk_manager import ProofInvalidationManager
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,17 @@ class Position:
     stop_loss: float = DEFAULT_STOP_LOSS
     take_profit: float = DEFAULT_TAKE_PROFIT
     notes: str = ""
+    # ATR 自适应止损
+    atr: float = 0.0          # 入场时 ATR 值（0=无ATR，使用固定止损）
+    atr_mult: float = 2.0     # ATR 倍数
+    atr_stop_price: float = 0.0  # ATR 止损价位（入场时计算）
+    # 移动止盈
+    peak_price: float = 0.0   # 持仓期间最高价
+    trailing_mult: float = 3.0  # 移动止盈 ATR 倍数
+    trailing_stop_price: float = 0.0  # 移动止盈价位（随 peak 更新）
+    # ATR 止盈
+    atr_tp_mult: float = 4.0   # ATR 止盈倍数
+    atr_take_profit_price: float = 0.0  # ATR 止盈价位
 
 
 class PositionManager:
@@ -52,6 +64,7 @@ class PositionManager:
         self.positions: Dict[str, Position] = {}
         self._lock_file: Optional[object] = None
         self._stop_event = threading.Event()
+        self._proof_manager = ProofInvalidationManager()
         self._load()
 
     def _acquire_lock(self, mode="r"):
@@ -125,6 +138,14 @@ class PositionManager:
                     "buy_date": p.buy_date,
                     "stop_loss": p.stop_loss, "take_profit": p.take_profit,
                     "notes": p.notes,
+                    "atr": p.atr,
+                    "atr_mult": p.atr_mult,
+                    "atr_stop_price": p.atr_stop_price,
+                    "peak_price": p.peak_price,
+                    "trailing_mult": p.trailing_mult,
+                    "trailing_stop_price": p.trailing_stop_price,
+                    "atr_tp_mult": p.atr_tp_mult,
+                    "atr_take_profit_price": p.atr_take_profit_price,
                 }
             # 原子写入：先写临时文件再 rename
             tmp_file = self.file.with_suffix(".tmp")
@@ -140,33 +161,97 @@ class PositionManager:
 
     def track_position(self, code: str, name: str, buy_price: float,
                        shares: int, stop_loss: float = DEFAULT_STOP_LOSS,
-                       take_profit: float = DEFAULT_TAKE_PROFIT, notes: str = ""):
-        """记录持仓"""
+                       take_profit: float = DEFAULT_TAKE_PROFIT, notes: str = "",
+                       atr: float = 0.0, atr_mult: float = 2.0,
+                       atr_tp_mult: float = 4.0, trailing_mult: float = 3.0):
+        """记录持仓
+
+        Args:
+            atr: 入场时 ATR 值（0=无ATR，使用固定止损）
+            atr_mult: ATR 止损倍数
+            atr_tp_mult: ATR 止盈倍数
+            trailing_mult: 移动止盈 ATR 倍数
+        """
+        peak_price = buy_price
+        atr_stop_price = buy_price - atr * atr_mult if atr > 0 else 0.0
+        atr_take_profit_price = buy_price + atr * atr_tp_mult if atr > 0 else 0.0
+        trailing_stop_price = buy_price  # 初始移动止盈 = 入场价
         self.positions[code] = Position(
             code=code, name=name, buy_price=buy_price,
             shares=shares, buy_date=datetime.now().strftime("%Y-%m-%d"),
             stop_loss=stop_loss, take_profit=take_profit, notes=notes,
+            atr=atr, atr_mult=atr_mult,
+            atr_stop_price=atr_stop_price,
+            peak_price=peak_price,
+            trailing_mult=trailing_mult,
+            trailing_stop_price=trailing_stop_price,
+            atr_tp_mult=atr_tp_mult,
+            atr_take_profit_price=atr_take_profit_price,
         )
         self._save()
-        logger.info(f"记录持仓: {code} {name} {shares}股 @ {buy_price}")
+        logger.info(f"记录持仓: {code} {name} {shares}股 @ {buy_price} ATR={atr:.4f} stop={atr_stop_price:.2f}" if atr > 0 else f"记录持仓: {code} {name} {shares}股 @ {buy_price}")
+        # 记录到证伪管理器
+        entry_date = datetime.now().strftime("%Y-%m-%d")
+        stop_price = atr_stop_price if atr > 0 else buy_price * (1 - stop_loss)
+        first_target = atr_take_profit_price if atr > 0 else 0.0
+        self._proof_manager.record_entry(code, entry_date, buy_price, stop_price, first_target)
 
-    def remove_position(self, code: str):
-        """移除持仓"""
+    def set_atr(self, code: str, atr: float, atr_mult: float = 2.0,
+                 atr_tp_mult: float = 4.0, trailing_mult: float = 3.0):
+        """为已有持仓设置/更新 ATR 参数
+
+        Args:
+            code: 股票代码
+            atr: 当前 ATR 值
+            atr_mult: ATR 止损倍数
+            atr_tp_mult: ATR 止盈倍数
+            trailing_mult: 移动止盈 ATR 倍数
+        """
+        if code not in self.positions:
+            return
+        pos = self.positions[code]
+        pos.atr = atr
+        pos.atr_mult = atr_mult
+        pos.atr_tp_mult = atr_tp_mult
+        pos.trailing_mult = trailing_mult
+        pos.peak_price = max(pos.peak_price, pos.buy_price)
+        if atr > 0:
+            pos.atr_stop_price = pos.buy_price - atr * atr_mult
+            pos.atr_take_profit_price = pos.buy_price + atr * atr_tp_mult
+            pos.trailing_stop_price = pos.peak_price - atr * trailing_mult
+        self._save()
+        logger.info(f"更新ATR: {code} ATR={atr:.4f} stop={pos.atr_stop_price:.2f} tp={pos.atr_take_profit_price:.2f}")
+
+    def remove_position(self, code: str, close_price: float = None):
+        """移除持仓
+
+        Args:
+            code: 股票代码
+            close_price: 平仓价格（用于证伪管理器记录）
+        """
         if code in self.positions:
+            pos = self.positions[code]
+            if close_price is not None:
+                self._proof_manager.close_position(code, close_price)
+            else:
+                self._proof_manager.close_position(code, pos.buy_price)
             del self.positions[code]
             self._save()
             logger.info(f"移除持仓: {code}")
 
-    def check_stop_loss(self, current_prices: Dict[str, float]) -> List[Dict]:
-        """检查止损止盈
+    def check_stop_loss(self, current_prices: Dict[str, float],
+                        max_hold_days: int = 20) -> List[Dict]:
+        """检查止损/止盈/移动止盈/持仓天数
 
         Args:
             current_prices: {code: current_price}
+            max_hold_days: 最大持仓天数（默认20天）
 
         Returns:
             [{"code", "name", "action", "reason", "pnl_pct"}]
         """
         alerts = []
+        today = datetime.now()
         for code, pos in self.positions.items():
             price = current_prices.get(code)
             if price is None:
@@ -174,22 +259,105 @@ class PositionManager:
 
             pnl_pct = (price - pos.buy_price) / pos.buy_price if pos.buy_price > 0 else 0
 
-            if pnl_pct <= -pos.stop_loss:
-                alerts.append({
-                    "code": code, "name": pos.name,
-                    "action": "止损", "reason": f"亏损 {pnl_pct:.1%} 超过 {pos.stop_loss:.0%}",
-                    "pnl_pct": round(pnl_pct, 4),
-                    "buy_price": pos.buy_price, "current_price": price,
-                })
-            elif pnl_pct >= pos.take_profit:
-                alerts.append({
-                    "code": code, "name": pos.name,
-                    "action": "止盈", "reason": f"盈利 {pnl_pct:.1%} 达到 {pos.take_profit:.0%}",
-                    "pnl_pct": round(pnl_pct, 4),
-                    "buy_price": pos.buy_price, "current_price": price,
-                })
+            # 1. ATR 止损（优先）
+            if pos.atr > 0 and pos.atr_stop_price > 0:
+                if price <= pos.atr_stop_price:
+                    alerts.append({
+                        "code": code, "name": pos.name,
+                        "action": "止损", "reason": f"ATR止损 @{pos.atr_stop_price:.2f} (ATR×{pos.atr_mult})",
+                        "pnl_pct": round(pnl_pct, 4),
+                        "buy_price": pos.buy_price, "current_price": price,
+                    })
+                    continue
+                # 2. 固定止损（无ATR时）
+                if pnl_pct <= -pos.stop_loss:
+                    alerts.append({
+                        "code": code, "name": pos.name,
+                        "action": "止损", "reason": f"固定止损 {pnl_pct:.1%} 超过 {pos.stop_loss:.0%}",
+                        "pnl_pct": round(pnl_pct, 4),
+                        "buy_price": pos.buy_price, "current_price": price,
+                    })
+                    continue
+            else:
+                if pnl_pct <= -pos.stop_loss:
+                    alerts.append({
+                        "code": code, "name": pos.name,
+                        "action": "止损", "reason": f"亏损 {pnl_pct:.1%} 超过 {pos.stop_loss:.0%}",
+                        "pnl_pct": round(pnl_pct, 4),
+                        "buy_price": pos.buy_price, "current_price": price,
+                    })
+                    continue
+
+            # 3. ATR 止盈
+            if pos.atr > 0 and pos.atr_take_profit_price > 0:
+                if price >= pos.atr_take_profit_price:
+                    alerts.append({
+                        "code": code, "name": pos.name,
+                        "action": "止盈", "reason": f"ATR止盈 @{pos.atr_take_profit_price:.2f} (ATR×{pos.atr_tp_mult})",
+                        "pnl_pct": round(pnl_pct, 4),
+                        "buy_price": pos.buy_price, "current_price": price,
+                    })
+                    continue
+                # 4. 固定止盈（无ATR时）
+                if pnl_pct >= pos.take_profit:
+                    alerts.append({
+                        "code": code, "name": pos.name,
+                        "action": "止盈", "reason": f"固定止盈 {pnl_pct:.1%} 达到 {pos.take_profit:.0%}",
+                        "pnl_pct": round(pnl_pct, 4),
+                        "buy_price": pos.buy_price, "current_price": price,
+                    })
+                    continue
+            else:
+                if pnl_pct >= pos.take_profit:
+                    alerts.append({
+                        "code": code, "name": pos.name,
+                        "action": "止盈", "reason": f"盈利 {pnl_pct:.1%} 达到 {pos.take_profit:.0%}",
+                        "pnl_pct": round(pnl_pct, 4),
+                        "buy_price": pos.buy_price, "current_price": price,
+                    })
+                    continue
+
+            # 5. 移动止盈（仅在持仓盈利时生效）
+            if pos.atr > 0 and pos.trailing_stop_price > 0:
+                if price <= pos.trailing_stop_price and pnl_pct > 0:
+                    alerts.append({
+                        "code": code, "name": pos.name,
+                        "action": "移动止盈", "reason": f"移动止盈 @{pos.trailing_stop_price:.2f} (peak-{pos.peak_price:.2f}, ATR×{pos.trailing_mult})",
+                        "pnl_pct": round(pnl_pct, 4),
+                        "buy_price": pos.buy_price, "current_price": price,
+                    })
+                    continue
+
+            # 6. 最大持仓天数
+            try:
+                buy_dt = datetime.strptime(pos.buy_date, "%Y-%m-%d")
+                hold_days = (today - buy_dt).days
+                if hold_days >= max_hold_days:
+                    alerts.append({
+                        "code": code, "name": pos.name,
+                        "action": "到期", "reason": f"持仓 {hold_days} 天，超限 {max_hold_days} 天",
+                        "pnl_pct": round(pnl_pct, 4),
+                        "buy_price": pos.buy_price, "current_price": price,
+                    })
+            except Exception:
+                pass
 
         return alerts
+
+    def update_peak_and_trailing_stop(self, current_prices: Dict[str, float]):
+        """更新持仓期间最高价和移动止盈价位
+
+        每次行情更新时调用，动态跟踪止盈
+        """
+        for code, pos in self.positions.items():
+            price = current_prices.get(code)
+            if price is None or pos.atr <= 0:
+                continue
+            if price > pos.peak_price:
+                pos.peak_price = price
+                # 移动止盈：peak - ATR * trailing_mult
+                pos.trailing_stop_price = pos.peak_price - pos.atr * pos.trailing_mult
+                logger.debug(f"更新peak: {code} peak={pos.peak_price:.2f} trailing_stop={pos.trailing_stop_price:.2f}")
 
     def get_portfolio_summary(self, current_prices: Dict[str, float]) -> Dict:
         """组合概况"""
@@ -381,12 +549,17 @@ class PositionManager:
 
         这是一个阻塞调用，会持续运行直到达到 max_iterations、被 stop() 中断或异常退出。
         常用于实盘盯盘场景。
+
+        证伪机制：每次迭代调用 update_holding_days() 更新持仓天数，
+        并在 check_stop_loss() 中同步调用证伪检查。
         """
         import time
         self._stop_event.clear()
         iterations = 0
         while not self._stop_event.is_set() and (max_iterations is None or iterations < max_iterations):
             try:
+                # 更新证伪管理器的持仓天数
+                self._proof_manager.update_holding_days()
                 result = self.monitor_positions()
                 if result["alerts"]:
                     logger.warning(f"实盘监控 [{iterations}]: 发现 {len(result['alerts'])} 个告警")

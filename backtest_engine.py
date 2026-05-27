@@ -15,7 +15,8 @@ import numpy as np
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 from lib.technical_signals import ema
-from lib.data_layer import get_stock_hist, get_index_hist
+from lib.data_layer import get_index_hist
+from lib.data_source_registry import get_stock_hist_multi_source
 
 
 # ============================================================
@@ -320,7 +321,7 @@ def run_backtest(
     # 预计算：每只股票每天的5日收益率（用于板块强度代理）
     stock_returns: Dict[str, pd.DataFrame] = {}
     for code in stock_codes:
-        df_s = get_stock_hist(code, days=500)
+        df_s = get_stock_hist_multi_source(code, days=500, source="tdx_local_qfq")
         if df_s is None or len(df_s) < 10:
             continue
         df_s = df_s.copy()
@@ -360,7 +361,7 @@ def run_backtest(
 
     for code in stock_codes:
         try:
-            df = get_stock_hist(code, days=500)
+            df = get_stock_hist_multi_source(code, days=500, source="tdx_local_qfq")
             if df is None or len(df) < 60:
                 continue
             df = add_indicators(df)
@@ -422,12 +423,46 @@ def run_backtest(
                 entry_price = float(row['close'])
                 pnl_pct = (exit_price / entry_price - 1) * 100
 
-                # 持仓天数（找exit行）
-                exit_i = min(i + 1, len(df) - 1)
-                for tmp_j in range(i + 1, min(i + 21, len(df))):
-                    exit_i = tmp_j
-                    if tmp_j == min(i + 20, len(df) - 1):
-                        break
+                # 持仓天数（根据 exit_reason 找真实出场索引）
+                max_exit_i = min(i + 20, len(df) - 1)
+                if exit_reason == "timeout":
+                    exit_i = max_exit_i
+                elif exit_reason == "atr_stop":
+                    # ATR止损：向前找第一根突破止损价的bar
+                    entry_atr_pct = float(row['atr_pct']) if not pd.isna(row['atr_pct']) else 0.0
+                    stop_price = entry_price * (1 - entry_atr_pct * 2.0 / 100)
+                    exit_i = max_exit_i
+                    for tmp_j in range(i + 1, max_exit_i + 1):
+                        if df.iloc[tmp_j]['low'] < stop_price:
+                            exit_i = tmp_j
+                            break
+                elif exit_reason in ("ema21_confirm", "trend_break"):
+                    # EMA21确认退出：向前找第一根确认跌破EMA21的bar
+                    start_scan = i + 5
+                    exit_i = max_exit_i
+                    for tmp_j in range(start_scan, max_exit_i + 1):
+                        row_j = df.iloc[tmp_j]
+                        prev_j = df.iloc[tmp_j - 1]
+                        if row_j['close'] < row_j['EMA21'] and prev_j['close'] < prev_j['EMA21']:
+                            exit_i = tmp_j
+                            break
+                elif exit_reason == "trailing_stop":
+                    # 移动止损：向前找第一根收盘<trailing_stop的bar
+                    trailing_stop = float(row['low_10']) if not pd.isna(row['low_10']) else entry_price * 0.95
+                    exit_i = max_exit_i
+                    for tmp_j in range(i + 1, max_exit_i + 1):
+                        row_j = df.iloc[tmp_j]
+                        # 跟踪止损随时间上移，重新计算
+                        if not pd.isna(row_j['low_10']):
+                            ts = row_j['low_10']
+                        else:
+                            ts = trailing_stop
+                        if row_j['close'] < ts:
+                            exit_i = tmp_j
+                            break
+                else:
+                    # 其他退出原因，默认到最大期
+                    exit_i = max_exit_i
 
                 hold_days = exit_i - i
                 atr_pct = float(row['atr_pct']) if not pd.isna(row['atr_pct']) else 0.0

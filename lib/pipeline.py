@@ -444,7 +444,7 @@ def get_stock_score(code: str) -> dict:
     if rt_row is not None:
         score_result = score_with_realtime(code, hist, factors, rt_row, fin_data)
     else:
-        score_result = score_without_realtime(factors)
+        score_result = score_without_realtime(code, factors, fin_data)
 
     # 4. 约束检查
     from lib.constraints import DeterministicConstraints

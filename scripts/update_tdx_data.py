@@ -5,9 +5,15 @@
 下载页面：https://www.tdx.com.cn/article/alldata.html
 
 用法：
-    python scripts/update_tdx_data.py              # 下载全部 16 个包
+    python scripts/update_tdx_data.py              # 增量更新（跳过无变化的包）
+    python scripts/update_tdx_data.py --force       # 强制重新下载全部包
     python scripts/update_tdx_data.py --package shlday  # 只下载单个包
-    python scripts/update_tdx_data.py --list       # 列出所有包
+    python scripts/update_tdx_data.py --list        # 列出所有包
+    python scripts/update_tdx_data.py --verify       # 验证已下载数据
+
+包分类：
+    realtime   - 每个交易日更新（shlday/szlday/hsjday/tdxgp/ScJyData_zbca 等）
+    historical - 历史数据包，一次下载后长期有效（33day/34day/38day）
 """
 
 import argparse
@@ -19,8 +25,9 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from urllib.request import urlretrieve
+from urllib.request import urlretrieve, urlopen, Request
 import zipfile
+import json
 
 
 def _get_day_fmt(filename: str) -> str:
@@ -178,19 +185,172 @@ PACKAGES = {
         "name": "开放式基金日线",
         "subdir": "fund/open",
         "zip": "33day.zip",
+        "data_type": "historical",
     },
     "34day": {
         "name": "货币型基金日线",
         "subdir": "fund/money",
         "zip": "34day.zip",
+        "data_type": "historical",
     },
     # ---- 宏观----
     "38day": {
         "name": "宏观指标日线",
         "subdir": "macro/lday",
         "zip": "38day.zip",
+        "data_type": "historical",
+    },
+    # ---- 财务数据----
+    "tdxfin": {
+        "name": "财务报表数据",
+        "subdir": "cw",
+        "zip": "tdxfin.zip",
+        "data_type": "historical",
+        "file_pattern": "*.dat",
+    },
+    # ---- 新增：沪股通/高频/市场统计----
+    "hsjday": {
+        "name": "沪股通日线",
+        "subdir": "hsj",
+        "zip": "hsjday.zip",
+        "data_type": "realtime",
+        "file_pattern": "**/*.day",
+    },
+    "tdxgp": {
+        "name": "高频数据(Tick)",
+        "subdir": "gp",
+        "zip": "tdxgp.zip",
+        "data_type": "realtime",
+        "file_pattern": "*.dat",
+    },
+    "ScJyData_zbca": {
+        "name": "市场统计汇总",
+        "subdir": "ds",
+        "zip": "ScJyData_zbca.zip",
+        "data_type": "realtime",
+        "file_format": "csv",
     },
 }
+
+
+# 增量更新元数据
+META_FILE = Path("D:/TDX/update_meta.json")
+
+
+def load_meta() -> dict:
+    """加载更新元数据"""
+    if META_FILE.exists():
+        try:
+            return json.loads(META_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def save_meta(meta: dict):
+    """保存更新元数据"""
+    META_FILE.parent.mkdir(parents=True, exist_ok=True)
+    META_FILE.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def get_local_latest_date(pkg: dict) -> str | None:
+    """获取本地数据的最新日期（格式 YYYYMMDD）"""
+    subdir = Path(TDX_DATA_PATH) / pkg["subdir"]
+    file_format = pkg.get("file_format", "")
+    file_pattern = pkg.get("file_pattern", "")
+
+    if file_format == "csv":
+        # CSV 包：在目录中找唯一的 .csv 文件
+        csv_files = list(subdir.glob("*.csv")) if subdir.exists() else []
+        if not csv_files:
+            return None
+        last_file = max(csv_files, key=lambda f: f.stat().st_mtime)
+        try:
+            # CSV 第一列是 date，格式 YYYY_MM_DD
+            # 文件按日期升序排列（最旧的在最后），找最大日期
+            with open(last_file, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            if len(lines) < 2:
+                return None
+            max_date = "00000000"
+            for row in lines[1:]:  # 跳过表头
+                date_str = row.strip().split(",")[0].replace("_", "")
+                if date_str > max_date:
+                    max_date = date_str
+            return max_date if max_date != "00000000" else None
+        except Exception:
+            return None
+
+    # 处理嵌套目录（如 hsjday 的 sh/lday, sz/lday）
+    if file_pattern == "**/*.day":
+        all_files = list(subdir.glob("**/*.day")) if subdir.exists() else []
+    else:
+        all_files = list(subdir.glob("*.day")) if subdir.exists() else []
+    if not all_files:
+        return None
+    # 取最新一条记录
+    last_file = max(all_files, key=lambda f: f.stat().st_mtime)
+    info = verify_day_file(last_file)
+    return str(info.get("end_date")) if info.get("ok") else None
+
+
+def check_remote_modified(url: str) -> datetime | None:
+    """用 HTTP HEAD 请求检查服务器文件最后修改时间"""
+    try:
+        req = Request(url, method="HEAD")
+        with urlopen(req, timeout=15) as resp:
+            last_mod = resp.headers.get("Last-Modified")
+            if last_mod:
+                from email.utils import parsedate_to_datetime
+                return parsedate_to_datetime(last_mod)
+    except Exception as e:
+        logger.debug(f"  HEAD 检查失败（将强制下载）: {e}")
+    return None
+
+
+def is_update_needed(key: str, pkg: dict, remote_mtime: datetime | None, force: bool = False) -> tuple[bool, str]:
+    """判断是否需要更新此包
+
+    返回 (是否需要, 原因说明)
+    """
+    if force:
+        return True, "强制更新"
+
+    meta = load_meta()
+    local_info = meta.get(key, {})
+    data_type = pkg.get("data_type", "realtime")
+
+    # 无本地记录 → 需要更新
+    if not local_info:
+        return True, "首次更新"
+
+    local_date = local_info.get("date")  # 本地数据最新日期
+    local_mtime = local_info.get("mtime")  # 上次下载的 zip 时间
+
+    # historical 类型：数据稳定，一次下载后长期有效，跳过每日检查
+    if data_type == "historical":
+        return False, f"历史数据包（本地: {local_date}），跳过每日检查"
+
+    # 无法获取本地日期 → 仍需更新
+    if not local_date:
+        return True, "无本地日期记录"
+
+    # 服务器未返回修改时间 → 跳过
+    if remote_mtime is None:
+        return False, "服务器不支持时间检查，跳过"
+
+    # 服务器 zip 未更新 → 跳过
+    if local_mtime:
+        import email.utils
+        try:
+            remote_dt = email.utils.parsedate_to_datetime(remote_mtime) if isinstance(remote_mtime, str) else remote_mtime
+            local_dt = datetime.fromisoformat(local_mtime) if isinstance(local_mtime, str) else local_mtime
+            if remote_dt <= local_dt:
+                return False, f"服务器无新数据（本地: {local_date}，服务器未更新）"
+        except Exception:
+            pass
+
+    return True, f"本地数据: {local_date}，服务器有新数据"
 
 
 def download_with_progress(url: str, dest: Path):
@@ -218,18 +378,32 @@ def download_with_progress(url: str, dest: Path):
         return False
 
 
-def extract_zip(zip_path: Path, target_subdir: str) -> int:
+def extract_zip(zip_path: Path, pkg: dict) -> int:
     """解压 ZIP 文件到目标子目录，返回解压文件数"""
     if not zip_path.exists():
         return 0
 
+    target_subdir = pkg["subdir"]
     target_dir = Path(TDX_DATA_PATH) / target_subdir
     target_dir.mkdir(parents=True, exist_ok=True)
+
+    file_format = pkg.get("file_format", "")
+    file_pattern = pkg.get("file_pattern", "*.day")
 
     count = 0
     with zipfile.ZipFile(zip_path, "r") as zf:
         for name in zf.namelist():
-            if name.endswith(".day"):
+            if file_format == "csv" and name.endswith(".csv"):
+                target_path = target_dir / name
+                with zf.open(name) as src, open(target_path, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                count += 1
+            elif file_pattern == "*.dat" and name.endswith(".dat"):
+                target_path = target_dir / name
+                with zf.open(name) as src, open(target_path, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                count += 1
+            elif name.endswith(".day"):
                 target_path = target_dir / name
                 with zf.open(name) as src, open(target_path, "wb") as dst:
                     shutil.copyfileobj(src, dst)
@@ -238,17 +412,29 @@ def extract_zip(zip_path: Path, target_subdir: str) -> int:
     return count
 
 
-def update_package(key: str, pkg: dict, tmp_dir: Path) -> int:
-    """下载并更新单个数据包"""
+def update_package(key: str, pkg: dict, tmp_dir: Path, force: bool = False) -> int:
+    """下载并更新单个数据包（增量更新）"""
     zip_name = pkg["zip"]
     zip_url = f"{TDX_BASE_URL}/{zip_name}"
     zip_path = tmp_dir / zip_name
 
     logger.info(f"\n{'='*50}")
-    logger.info(f"更新: {pkg['name']} ({key})")
+    logger.info(f"检查: {pkg['name']} ({key})")
     logger.info(f"{'='*50}")
 
-    # 1. 下载
+    # 1. 检查服务器是否有更新
+    remote_mtime = None if force else check_remote_modified(zip_url)
+    needed, reason = is_update_needed(key, pkg, remote_mtime, force)
+
+    if not needed:
+        local_date = load_meta().get(key, {}).get("date", "未知")
+        logger.info(f"  跳过: {reason}")
+        logger.info(f"  本地最新: {local_date}")
+        return 0
+
+    logger.info(f"  需更新: {reason}")
+
+    # 2. 下载
     start = time.time()
     ok = download_with_progress(zip_url, zip_path)
     if not ok:
@@ -257,22 +443,43 @@ def update_package(key: str, pkg: dict, tmp_dir: Path) -> int:
 
     download_time = time.time() - start
 
-    # 2. 解压
+    # 3. 解压
     extract_start = time.time()
-    file_count = extract_zip(zip_path, pkg["subdir"])
+    file_count = extract_zip(zip_path, pkg)
     extract_time = time.time() - extract_start
 
-    logger.info(f"  解压: {file_count} 个 .day 文件")
+    file_ext = pkg.get("file_format", "csv") if pkg.get("file_format") == "csv" else (pkg.get("file_pattern", "*.day").lstrip("*"))
+    logger.info(f"  解压: {file_count} 个 .{file_ext} 文件")
     logger.info(f"  下载耗时: {download_time:.1f}s")
     logger.info(f"  解压耗时: {extract_time:.1f}s")
 
-    # 3. 验证
+    # 4. 验证
     target_dir = Path(TDX_DATA_PATH) / pkg["subdir"]
-    actual = len(list(target_dir.glob("*.day"))) if target_dir.exists() else 0
+    file_format = pkg.get("file_format", "")
+    file_pattern = pkg.get("file_pattern", "")
+    if file_format == "csv":
+        actual = len(list(target_dir.glob("*.csv"))) if target_dir.exists() else 0
+    elif file_pattern == "*.dat":
+        actual = len(list(target_dir.glob("*.dat"))) if target_dir.exists() else 0
+    elif file_pattern == "**/*.day":
+        actual = len(list(target_dir.glob("**/*.day"))) if target_dir.exists() else 0
+    else:
+        actual = len(list(target_dir.glob("*.day"))) if target_dir.exists() else 0
     logger.info(f"  验证: {actual} 个文件")
 
-    # 4. 清理 ZIP
+    # 5. 清理 ZIP
     zip_path.unlink()
+
+    # 6. 记录元数据
+    meta = load_meta()
+    local_date = get_local_latest_date(pkg)
+    mtime_str = remote_mtime.isoformat() if remote_mtime else datetime.now().isoformat()
+    meta[key] = {
+        "date": local_date,
+        "mtime": mtime_str,
+        "updated_at": datetime.now().isoformat(),
+    }
+    save_meta(meta)
 
     return file_count
 
@@ -282,6 +489,7 @@ def main():
     parser.add_argument("--package", help="只下载指定包（如 shlday）")
     parser.add_argument("--list", action="store_true", help="列出所有包")
     parser.add_argument("--verify", action="store_true", help="验证所有已下载数据")
+    parser.add_argument("--force", action="store_true", help="强制重新下载所有包（忽略增量检查）")
     args = parser.parse_args()
 
     logger.info(f"TDX_DATA_PATH: {TDX_DATA_PATH}")
@@ -299,12 +507,35 @@ def main():
         print("-" * 80)
         for key, pkg in PACKAGES.items():
             subdir = Path(TDX_DATA_PATH) / pkg["subdir"]
-            files = list(subdir.glob("*.day")) if subdir.exists() else []
+            file_format = pkg.get("file_format", "")
+            file_pattern = pkg.get("file_pattern", "")
+            if file_format == "csv":
+                files = list(subdir.glob("*.csv")) if subdir.exists() else []
+            elif file_pattern == "*.dat":
+                files = list(subdir.glob("*.dat")) if subdir.exists() else []
+            elif file_pattern == "**/*.day":
+                files = list(subdir.glob("**/*.day")) if subdir.exists() else []
+            else:
+                files = list(subdir.glob("*.day")) if subdir.exists() else []
             if not files:
                 print(f"{key:15s} {pkg['subdir']:25s} {'0':>8s} {'无数据':>10s} {'':>12s} {'无数据'}")
                 continue
             # 抽样验证第一条和最后一条
             sample = files[0]
+            if file_format == "csv":
+                # CSV 包只做基本信息检查
+                try:
+                    with open(sample, "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+                    # CSV 按日期升序，找最大日期
+                    max_date = max(
+                        (ln.split(",")[0].replace("_", "") for ln in lines[1:] if ln.strip()),
+                        default="?"
+                    )
+                    print(f"{key:15s} {pkg['subdir']:25s} {len(files):>8d} {max_date:>10s} {'':>12s} CSV OK")
+                except Exception as e:
+                    print(f"{key:15s} {pkg['subdir']:25s} {len(files):>8d} {'?':>10s} {'':>12s} ERR: {e}")
+                continue
             info = verify_day_file(sample)
             if not info['ok']:
                 print(f"{key:15s} {pkg['subdir']:25s} {len(files):>8d} {'格式错误':>10s} {'':>12s} {info.get('error')}")
@@ -331,7 +562,7 @@ def main():
     total_files = 0
     for key, pkg in packages_to_download.items():
         try:
-            total_files += update_package(key, pkg, tmp_dir)
+            total_files += update_package(key, pkg, tmp_dir, force=args.force)
         except Exception as e:
             logger.error(f"  处理 {key} 时出错: {e}")
 

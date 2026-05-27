@@ -1,5 +1,5 @@
 """Pipeline 步骤分解模块"""
-from lib.pipeline.steps import (
+from lib.pipeline_core.steps import (
     fetch_stock_data,
     calculate_factors,
     score_with_realtime,

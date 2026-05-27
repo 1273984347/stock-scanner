@@ -11,7 +11,8 @@ import numpy as np
 from typing import List, Dict, Tuple
 from dataclasses import dataclass
 
-from lib.data_layer import get_stock_hist, get_index_hist
+from lib.data_layer import get_index_hist
+from lib.data_source_registry import get_stock_hist_multi_source
 from lib.technical_signals import ema
 
 
@@ -87,7 +88,7 @@ def run_backtest(
 
     for code in stock_codes:
         try:
-            df = get_stock_hist(code, days=500)
+            df = get_stock_hist_multi_source(code, days=500, source="tdx_local_qfq")
             if df is None or len(df) < 60:
                 continue
             df = add_indicators(df)

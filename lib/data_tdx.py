@@ -155,6 +155,64 @@ def _fetch_from_local_file(code: str, days: int, period: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def _fetch_qfq_local_file(code: str, days: int, period: str) -> pd.DataFrame:
+    """读取本地 TDX 前复权 .day 二进制文件（sh/lday_4/, sz/lday_4/）
+
+    Args:
+        code: 6位股票代码
+        days: 获取天数
+        period: "daily" | "weekly" | "monthly"
+
+    Returns:
+        DataFrame with columns: date, open, high, low, close, volume
+    """
+    # 北交所股票没有前复权数据，退回不复权版本
+    if code.startswith(("4", "8")):
+        return _fetch_from_local_file(code, days, period)
+
+    try:
+        from pytdx.reader import TdxDailyBarReader
+    except ImportError:
+        return pd.DataFrame()
+
+    market, tdx_code = _to_tdx_market_code(code)
+    market_str = "sh" if market == 1 else "sz"
+
+    # 前复权文件在 lday_4 子目录
+    file_path = Path(TDX_DATA_PATH) / market_str / "lday_4" / f"{market_str}{tdx_code}.day"
+
+    if not file_path.exists():
+        # 前复权文件不存在时，fallback 到不复权版本
+        return _fetch_from_local_file(code, days, period)
+
+    try:
+        reader = TdxDailyBarReader()
+        df = reader.get_df(str(file_path))
+        if df.empty:
+            return _fetch_from_local_file(code, days, period)
+
+        df = df.reset_index()
+
+        col_map = {
+            "open": "open", "high": "high", "low": "low",
+            "close": "close", "volume": "volume",
+        }
+        df = df.rename(columns=col_map)
+        for c in ["open", "high", "low", "close", "volume"]:
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors="coerce")
+
+        if len(df) > days:
+            df = df.tail(days)
+
+        return df[["date", "open", "high", "low", "close", "volume"]].copy()
+
+    except Exception as e:
+        logger.debug(f"TDX 前复权文件读取 {code} 失败: {e}")
+        # 前复权读取失败时 fallback 到不复权版本
+        return _fetch_from_local_file(code, days, period)
+
+
 # ========== 主接口 ==========
 
 def get_kline(code: str, days: int = 180, period: str = "daily") -> pd.DataFrame:
@@ -515,6 +573,25 @@ def _parse_macro_file(file_path: Path, days: int) -> pd.DataFrame:
         return df[["date", "open", "high", "low", "close", "amount", "volume"]].copy()
     except Exception:
         return pd.DataFrame()
+
+
+# ========== 本地文件：沪股通 ==========
+
+def _fetch_hsj_local(code: str, market: str, days: int) -> pd.DataFrame:
+    """读取沪股通本地 .day 文件（标准整数分格式，价格单位 0.01）
+
+    文件：hsj/sh/lday/sh600000.day, hsj/sz/lday/sz000001.day, hsj/bj/lday/bj800010.day
+    """
+    code = code.strip().zfill(6)
+    file_path = Path(TDX_DATA_PATH) / "hsj" / market / "lday" / f"{market}{code}.day"
+    if not file_path.exists():
+        return pd.DataFrame()
+    return _read_standard_file(file_path, days, price_unit=0.01)
+
+
+def get_hsj_local(code: str, market: str, days: int = 180) -> pd.DataFrame:
+    """获取沪股通日线（本地文件）"""
+    return _fetch_hsj_local(code, market, days)
 
 
 # ========== 通用二进制文件读取 ==========

@@ -63,6 +63,8 @@ def _get_tencent_quotes(codes: List[str]) -> pd.DataFrame:
                     "成交额": float(parts[37]) if parts[37] else 0,
                     "换手率": float(parts[38]) if parts[38] else 0,
                     "市盈率": float(parts[39]) if parts[39] else 0,
+                    "市净率": float(parts[46]) if len(parts) > 46 and parts[46] not in ("", "-", "0") else None,
+                    "总市值": float(parts[44]) if len(parts) > 44 and parts[44] not in ("", "-", "0") else None,
                 }
                 rows.append(row)
             except (ValueError, IndexError):
@@ -168,3 +170,23 @@ def get_realtime_quotes() -> pd.DataFrame:
     except Exception as e:
         logger.warning(f"全市场行情失败: {e}")
         return pd.DataFrame()
+
+
+def get_tencent_pe_pb(code: str) -> dict:
+    """获取单只股票的 PE/PB/市值（腾讯接口）
+
+    Args:
+        code: 6位股票代码，如 "600519"
+
+    Returns:
+        dict with keys: pe, pb, market_cap (亿元)
+    """
+    df = _get_tencent_quotes([code])
+    if df.empty:
+        return {}
+    row = df.iloc[0]
+    return {
+        "pe": row.get("市盈率") if row.get("市盈率", 0) > 0 else None,
+        "pb": row.get("市净率"),
+        "market_cap": row.get("总市值"),
+    }

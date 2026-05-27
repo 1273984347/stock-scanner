@@ -61,7 +61,7 @@ def check_portfolio_risk(results: dict, shibor_mult: float = 1.0) -> dict:
     _risk_manager = VolCorrRiskManager(VolCorrRiskConfig())
     vol_regime = "normal"
     try:
-        idx_cache = _load_cache("hs300_cache", max_age_hours=4)
+        idx_cache = _load_cache("hs300/cache", max_age_hours=4)
         if not idx_cache.empty and len(idx_cache) >= 60 and "close" in idx_cache.columns:
             exposure = calc_market_exposure(idx_cache["close"])
             vol_regime = exposure.get("state", "neutral")

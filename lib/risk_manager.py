@@ -9,7 +9,7 @@ from datetime import datetime
 import logging
 import threading
 
-from config import HIGH_VOL_POSITION_SCALAR, MEDIUM_VOL_POSITION_SCALAR, LOW_VOL_POSITION_SCALAR
+from config import HIGH_VOL_POSITION_SCALAR, MEDIUM_VOL_POSITION_SCALAR, LOW_VOL_POSITION_SCALAR, DEFAULT_STOP_LOSS
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class RiskAlert:
 class RiskConfig:
     """风控参数配置"""
     max_drawdown_stop: float = 0.20
-    single_stock_stop_loss: float = 0.08
+    single_stock_stop_loss: float = DEFAULT_STOP_LOSS
     single_stock_take_profit: float = 0.30
     max_single_position: float = 0.15
     max_industry_exposure: float = 0.30

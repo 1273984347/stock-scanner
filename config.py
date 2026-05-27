@@ -58,8 +58,6 @@ class FactorConfig:
         "volume_ratio": 0.10,
         "trend_strength": 0.15,
         "rsi_14": 0.05,
-        "turnover_avg": 0.05,
-        "max_drawdown": -0.05,  # 低回撤更好
     })
 
 
