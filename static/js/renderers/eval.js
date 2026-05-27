@@ -1,4 +1,5 @@
 import { stateManager } from '../state.js';
+import { apiClient } from '../api.js';
 
 function esc(s) {
   if (s == null) return '';
@@ -22,7 +23,7 @@ class EvalRenderer {
     this._loaded = true;
     document.getElementById('evalLoading').style.display = '';
     try {
-      const r = await fetch('/api/factor-eval?n_stocks=30', { signal: AbortSignal.timeout(60000) }).then(res => res.json());
+      const r = await apiClient.get('/api/factor-eval', { n_stocks: 30 });
       document.getElementById('evalLoading').style.display = 'none';
       if (r.error) return;
       document.getElementById('evalInfo').textContent = `样本股: ${r.n_stocks||0}只 | 因子: ${Object.keys(r.factor_ic||{}).length}个 | 高相关对: ${(r.high_corr_pairs||[]).length}`;
@@ -62,7 +63,17 @@ class EvalRenderer {
         tr.appendChild(td0); tr.appendChild(td1); tr.appendChild(td2);
         corrBody.appendChild(tr);
       });
-    } catch(e) { console.error(e); }
+    } catch(e) {
+      document.getElementById('evalLoading').style.display = 'none';
+      const icBody = document.getElementById('evalIcBody');
+      icBody.innerHTML = '';
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 4;
+      td.style.cssText = 'color:var(--down);padding:20px;text-align:center';
+      td.textContent = '加载失败，请稍后重试';
+      tr.appendChild(td); icBody.appendChild(tr);
+    }
   }
   unmount() { this._unsubscribers.forEach(u => u()); }
 }

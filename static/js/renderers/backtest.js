@@ -10,7 +10,16 @@ class BacktestRenderer {
     const btn = document.getElementById('btRunBtn');
     btn.disabled = true; btn.textContent = '回测中...';
     document.getElementById('btResult').innerHTML = '<span class="spinner"></span>正在运行回测，请稍候...';
-    const symbols = document.getElementById('btSymbols').value;
+    const symbols = document.getElementById('btSymbols').value.trim();
+    if (!/^\d{6}(,\d{6})*$/.test(symbols)) {
+      const err = document.createElement('span');
+      err.style.cssText = 'color:var(--down)';
+      err.textContent = '股票代码格式错误，请输入6位数字代码，多个用逗号分隔（如 000001,600000）';
+      document.getElementById('btResult').innerHTML = '';
+      document.getElementById('btResult').appendChild(err);
+      btn.disabled = false; btn.textContent = '运行回测';
+      return;
+    }
     const days = document.getElementById('btDays').value;
     const sl = document.getElementById('btSL').value;
     const tp = document.getElementById('btTP').value;

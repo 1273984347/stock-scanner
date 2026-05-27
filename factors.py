@@ -816,7 +816,7 @@ def get_market_sentiment_factor(days: int = 10) -> Dict:
             "source": "ScJyData",
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Data fetch failed"}
 
 
 def get_market_sentiment_history(days: int = 30) -> pd.DataFrame:
@@ -928,7 +928,7 @@ def get_northbound_flow_factor(code: str, market: str = "sh", days: int = 20) ->
             "source": "HSJ",
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Data fetch failed"}
 
 
 # ========== 财务估值因子（来自 CW/gpcw）==========
@@ -974,7 +974,7 @@ def get_financial_valuation_factor(code: str) -> Dict:
             "source": "CW/gpcw",
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Data fetch failed"}
 
 
 # ========== 高频盘口因子（来自 GP 高频Tick）==========
@@ -1027,7 +1027,7 @@ def get_gp_market_factor(code: str, market: str = "sz") -> Dict:
             "source": "GP/tdxgp",
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Data fetch failed"}
 
 
 # ========== 港股通因子（来自 GGT）==========
@@ -1111,7 +1111,7 @@ def get_ggt_market_factor(code: str, days: int = 20) -> Dict:
             "source": "GGT",
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Data fetch failed"}
 
 
 # ========== 新三板因子（来自 XSB）==========
@@ -1171,7 +1171,7 @@ def get_xsb_market_factor(code: str, days: int = 20) -> Dict:
             "source": "XSB",
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Data fetch failed"}
 
 
 # ========== 指数增强因子（来自 CSI）==========
@@ -1224,7 +1224,7 @@ def get_index_enhancement_factor(code: str, market: str = "sh") -> Dict:
 
         return result
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Data fetch failed"}
 
 
 # ========== 综合计算 ==========
@@ -1465,4 +1465,4 @@ def evaluate_factor(factor_values: pd.Series, forward_returns: pd.Series) -> Dic
             "spread": round(group_returns.iloc[-1] - group_returns.iloc[0], 4) if len(group_returns) >= 2 else 0,
         }
     except Exception as e:
-        return {"valid": False, "reason": str(e)}
+        return {"valid": False, "reason": "Validation failed"}
