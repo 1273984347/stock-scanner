@@ -6,7 +6,10 @@ import { stateManager } from './state.js';
  */
 class WebSocketManager {
   constructor(url = `ws://${window.location.host}/ws`) {
-    this.url = url;
+    const apiKey = sessionStorage.getItem('api_key') || 'dev';
+    this.url = url
+      ? `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(apiKey)}`
+      : `ws://${window.location.host}/ws?token=${encodeURIComponent(apiKey)}`;
     this._ws = null;
     this._reconnectDelay = 1000;  // 初始重连延迟 1s
     this._maxDelay = 30000;        // 最大重连延迟 30s

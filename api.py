@@ -1070,7 +1070,7 @@ manager = ConnectionManager()
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     # S3: WebSocket 认证
-    token = websocket.headers.get("authorization", "").replace("Bearer ", "")
+    token = websocket.query_params.get("token", "") or websocket.headers.get("authorization", "").replace("Bearer ", "")
     if not verify_ws_token(token):
         await websocket.close(code=4001)
         return
