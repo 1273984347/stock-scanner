@@ -264,16 +264,22 @@ with tab_candidates:
     sh_dir = Path('D:/TDX/vipdoc/sh/lday')
     sz_dir = Path('D:/TDX/vipdoc/sz/lday')
     all_stocks = []
-    for f in sh_dir.iterdir():
-        if f.name.endswith('.day'):
-            code = f.name[2:-4]
-            if code.startswith(('600', '601', '603')):
-                all_stocks.append(code)
-    for f in sz_dir.iterdir():
-        if f.name.endswith('.day'):
-            code = f.name[2:-4]
-            if code.startswith(('000', '002')):
-                all_stocks.append(code)
+    # 安全检查：TDX 目录不存在时给出提示而非崩溃
+    if sh_dir.exists():
+        for f in sh_dir.iterdir():
+            if f.name.endswith('.day'):
+                code = f.name[2:-4]
+                if code.startswith(('600', '601', '603')):
+                    all_stocks.append(code)
+    if sz_dir.exists():
+        for f in sz_dir.iterdir():
+            if f.name.endswith('.day'):
+                code = f.name[2:-4]
+                if code.startswith(('000', '002')):
+                    all_stocks.append(code)
+    if not all_stocks:
+        st.warning("未找到本地 TDX 数据。请确保通达信已安装且数据目录存在：D:/TDX/vipdoc/{sh,sz}/lday")
+        st.stop()
 
     # 取样（避免全量扫描太慢）
     import random

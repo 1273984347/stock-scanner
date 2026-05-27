@@ -17,7 +17,7 @@ class BacktestRenderer {
     try {
       const res = await fetch(`/api/backtest?symbols=${encodeURIComponent(symbols)}&days=${days}&stop_loss_atr=${sl}&take_profit_atr=${tp}`, {
         method: 'POST',
-        headers: { 'X-API-Key': localStorage.getItem('api_key') || 'dev' },
+        headers: { 'X-API-Key': sessionStorage.getItem('api_key') || 'dev' },
         signal: AbortSignal.timeout(120000)
       }).then(r => r.json());
       if (res.error) { document.getElementById('btResult').innerHTML = `<span style="color:var(--down)">${res.error}</span>`; return; }

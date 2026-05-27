@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from config import get_config
 from lib.cache import CircuitBreaker, CircuitOpenError
@@ -62,7 +63,26 @@ def _retry_api_call(func, *args, max_retries: int = 3, **kwargs):
 
 # ========== 数据缓存 ==========
 
+FIN_CACHE_DIR = CACHE_DIR / "fin"
+FIN_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
 def _cache_path(key: str) -> Path:
+    """支持多层级子目录的缓存路径，如 fin/600519 或 hsj/sh/600000/180
+
+    安全：禁止包含 .. 或绝对路径，防止路径遍历攻击
+    """
+    # 防止路径遍历：禁止 .. 或绝对路径分量
+    if ".." in key or key.startswith("/") or key.startswith("~"):
+        raise ValueError(f"Invalid cache key: {key}")
+    if "/" in key:
+        parts = key.split("/")
+        subdir = parts[0]
+        # 再次检查 subdir 不包含 ..
+        if ".." in subdir or subdir.startswith("/"):
+            raise ValueError(f"Invalid cache key subdir: {subdir}")
+        (CACHE_DIR / subdir).mkdir(parents=True, exist_ok=True)
+        return CACHE_DIR / (key.replace("/", "_") + ".parquet")
     return CACHE_DIR / f"{key}.parquet"
 
 
@@ -127,7 +147,9 @@ def clean_cache(max_age_hours: int = 24, max_total_mb: int = 500):
 
 # ========== 基本面数据获取 ==========
 
-_financial_cache = LRUCache(maxsize=500)  # LRU缓存，容量500
+from lib.data_cache import get_financial_cache
+
+_financial_cache = get_financial_cache()  # 统一缓存实例
 
 
 def _to_float(v) -> Optional[float]:
@@ -140,59 +162,94 @@ def _to_float(v) -> Optional[float]:
 
 
 def _get_financial_data(code: str) -> Optional[pd.Series]:
-    """获取个股基本面数据（PE/PB/市值/质押率等），5 分钟缓存"""
-    now = time.time()
+    """获取个股基本面数据（PE/PB/市值/质押率等）
+
+    数据源优先级：
+    1. FinancialCache（统一缓存，内存5min + 磁盘7天）
+    2. 腾讯财经（PE/PB/市值）—— 直连，不依赖第三方
+    3. akshare（PE/PB/市值）—— 备用
+    4. 东方财富财报（毛利率/经营现金流/负债率/增长率）
+
+    缓存：5分钟内存LRU + 7天 parquet 持久化（通过 FinancialCache 统一管理）
+    """
+    # 1. 缓存检查（优先复用 get_stock_fundamentals 的结果）
     cached = _financial_cache.get(code)
     if cached is not None:
-        data, ts = cached
-        if now - ts < 300:
-            return data
+        # 从统一 dict 格式转换为 _get_financial_data 约定的 pd.Series
+        prof = cached.get("profitability") or {}
+        solv = cached.get("solvency") or {}
+        growth = cached.get("growth") or {}
+        return pd.Series({
+            "pe": None, "pb": None, "market_cap": None,
+            "gross_margin": prof.get("gross_margin"),
+            "revenue_growth": growth.get("revenue_growth"),
+            "net_income_growth": growth.get("net_income_growth"),
+            "operating_cash_flow": None,
+            "_roe": prof.get("ROE"),
+            "_debt_to_asset": solv.get("debt_to_asset"),
+            "_source": cached.get("_source"),
+        })
+
+    # 2. 腾讯 PE/PB/市值（直连，不走缓存）
+    data = pd.Series({
+        "pe": None, "pb": None, "market_cap": None,
+        "pledge_ratio": None, "net_assets": None,
+        "revenue_growth": None, "prev_revenue_growth": None,
+        "gross_margin": None, "operating_cash_flow": None,
+    })
+
+    try:
+        from lib.data_ashare import get_tencent_pe_pb
+        tencent = get_tencent_pe_pb(code)
+        if tencent.get("pe"):
+            data["pe"] = tencent["pe"]
+        if tencent.get("pb"):
+            data["pb"] = tencent["pb"]
+        if tencent.get("market_cap"):
+            data["market_cap"] = tencent["market_cap"]
+    except Exception as e:
+        logger.debug(f"[data_layer] 腾讯 PE/PB 获取失败 {code}: {e}")
+
+    # 3. akshare 兜底（PE/PB/市值）
     try:
         info_df = _retry_api_call(ak.stock_individual_info_em, symbol=code)
-        if info_df is None or info_df.empty:
-            return None
-        info = {}
-        if not info_df.empty and "item" in info_df.columns and "value" in info_df.columns:
-            # 向量化处理，避免 iterrows
+        if info_df is not None and not info_df.empty and "item" in info_df.columns and "value" in info_df.columns:
             info = dict(zip(info_df["item"].astype(str), info_df["value"]))
-        data = pd.Series({
-            "pe": _to_float(info.get("市盈率-动态")),
-            "pb": _to_float(info.get("市净率")),
-            "market_cap": _to_float(info.get("总市值")),
-            "pledge_ratio": None, "net_assets": None,
-            "revenue_growth": None, "prev_revenue_growth": None,
-        })
-        import baostock as bs
-        try:
-            lg = bs.login()
-            if lg.error_code == "0":
-                clean = code.replace("sh.", "").replace("sz.", "")
-                bs_code = f"sh.{clean}" if clean.startswith("6") else f"sz.{clean}"
-                year = datetime.now().year
-                rs = bs.query_growth_data(bs_code, year=year, quarter=1)
-                while (rs.error_code == "0") and rs.next():
-                    rd = rs.get_row_data()
-                    if len(rd) >= 6:
-                        data["revenue_growth"] = _to_float(rd[4]) or _to_float(rd[5])
-                rs = bs.query_balance_data(bs_code, year=year, quarter=1)
-                while (rs.error_code == "0") and rs.next():
-                    rd = rs.get_row_data()
-                    if len(rd) >= 6:
-                        data["net_assets"] = _to_float(rd[5])
-                bs.logout()
-        except Exception as e:
-            logger.warning(f"[data_layer] baostock 营收/净资产查询失败: {e}")
-        _financial_cache[code] = (data, now)
-        return data
+            if data.get("pe") is None:
+                data["pe"] = _to_float(info.get("市盈率-动态"))
+            if data.get("pb") is None:
+                data["pb"] = _to_float(info.get("市净率"))
+            if data.get("market_cap") is None:
+                data["market_cap"] = _to_float(info.get("总市值"))
     except Exception as e:
-        logger.debug(f"获取 {code} 基本面数据失败: {e}")
-        return None
+        logger.debug(f"[data_layer] akshare 基本面获取失败 {code}: {e}")
+
+    # 4. 东方财富财报（毛利率 + 经营现金流 + 负债率 + 增长率）
+    try:
+        from lib.data_eastmoney_fin import get_em_financial
+        em_data = get_em_financial(code)
+        if em_data:
+            if data.get("gross_margin") is None and em_data.get("gross_margin") is not None:
+                data["gross_margin"] = em_data["gross_margin"]
+            ocf = em_data.get("ocf_per_share")
+            if ocf is not None:
+                data["operating_cash_flow"] = ocf  # 每股经营现金流（元），用于 ocf_healthy 判断
+            if em_data.get("revenue_growth") is not None:
+                data["revenue_growth"] = em_data["revenue_growth"]
+    except Exception as e:
+        logger.debug(f"[data_layer] 东方财富财报获取失败 {code}: {e}")
+
+    return data
 
 
 # ========== 日线数据获取 ==========
 
 def _fetch_from_tdx_local(code: str, days: int) -> pd.DataFrame:
-    """从本地 TDX .day 文件读取日线（优先）"""
+    """从本地 TDX .day 文件读取日线（优先前复权，不复权兜底）
+
+    前复权文件：sh/lday_4/, sz/lday_4/
+    不复权文件：sh/lday/, sz/lday/
+    """
     try:
         from pytdx.reader import TdxDailyBarReader
     except ImportError:
@@ -207,10 +264,30 @@ def _fetch_from_tdx_local(code: str, days: int) -> pd.DataFrame:
         return pd.DataFrame()
 
     tdx_path = os.environ.get("TDX_DATA_PATH", "D:/TDX/vipdoc")
+
+    # 1. 优先前复权文件（sh/lday_4/, sz/lday_4/）
+    qfq_path = Path(tdx_path) / market_str / "lday_4" / f"{market_str}{code}.day"
+    if qfq_path.exists():
+        try:
+            reader = TdxDailyBarReader()
+            df = reader.get_df(str(qfq_path))
+            if not df.empty:
+                df = df.reset_index()
+                col_map = {"open": "open", "high": "high", "low": "low", "close": "close", "volume": "volume"}
+                df = df.rename(columns=col_map)
+                for c in ["open", "high", "low", "close", "volume"]:
+                    if c in df.columns:
+                        df[c] = pd.to_numeric(df[c], errors="coerce")
+                if len(df) > days:
+                    df = df.tail(days)
+                return df[["date", "open", "high", "low", "close", "volume"]].copy()
+        except Exception:
+            pass
+
+    # 2. Fallback 到不复权文件（sh/lday/, sz/lday/）
     file_path = Path(tdx_path) / market_str / "lday" / f"{market_str}{code}.day"
     if not file_path.exists():
         return pd.DataFrame()
-
     try:
         reader = TdxDailyBarReader()
         df = reader.get_df(str(file_path))
@@ -231,7 +308,7 @@ def _fetch_from_tdx_local(code: str, days: int) -> pd.DataFrame:
 
 def get_stock_hist(code: str, days: int = 180) -> pd.DataFrame:
     """获取个股日线：本地TDX优先，网络akshare兜底（带缓存）"""
-    cache_key = f"hist_{code}_{days}"
+    cache_key = f"hist/{code}/{days}"
     cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
     if not cached.empty:
         return cached
@@ -280,7 +357,7 @@ def get_index_hist(code: str, days: int = 180) -> pd.DataFrame:
         days: 获取天数
     """
     from lib.data_tdx import get_index_local
-    cache_key = f"index_{code}_{days}"
+    cache_key = f"index/{code}/{days}"
     cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
     if not cached.empty:
         return cached
@@ -303,7 +380,7 @@ def get_index_hist(code: str, days: int = 180) -> pd.DataFrame:
 def get_ggt_hist(code: str, days: int = 180) -> pd.DataFrame:
     """获取港股通日线（本地文件）"""
     from lib.data_tdx import get_ggt_local
-    cache_key = f"ggt_{code}_{days}"
+    cache_key = f"ggt/{code}/{days}"
     cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
     if not cached.empty:
         return cached
@@ -313,10 +390,25 @@ def get_ggt_hist(code: str, days: int = 180) -> pd.DataFrame:
     return df
 
 
+# ========== 沪股通日线（hsj）==========
+
+def get_hsj_hist(code: str, market: str = "sh", days: int = 180) -> pd.DataFrame:
+    """获取沪股通日线（本地文件）"""
+    from lib.data_tdx import get_hsj_local
+    cache_key = f"hsj/{market}/{code}/{days}"
+    cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
+    if not cached.empty:
+        return cached
+    df = get_hsj_local(code, market, days)
+    if not df.empty:
+        _save_cache(cache_key, df)
+    return df
+
+
 def get_option_hist(code: str, market: str = "sh", days: int = 180) -> pd.DataFrame:
     """获取期权日线（本地文件）"""
     from lib.data_tdx import _fetch_option_local
-    cache_key = f"option_{market}_{code}_{days}"
+    cache_key = f"option/{market}/{code}/{days}"
     cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
     if not cached.empty:
         return cached
@@ -329,7 +421,7 @@ def get_option_hist(code: str, market: str = "sh", days: int = 180) -> pd.DataFr
 def get_fund_hist(code: str, market: str = "open", days: int = 180) -> pd.DataFrame:
     """获取基金净值日线（本地文件）"""
     from lib.data_tdx import _fetch_fund_local
-    cache_key = f"fund_{market}_{code}_{days}"
+    cache_key = f"fund/{market}/{code}/{days}"
     cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
     if not cached.empty:
         return cached
@@ -347,7 +439,7 @@ def get_macro_hist_local(indicator: str = "CPI", days: int = 30) -> pd.DataFrame
         days: 最大记录数（宏观数据通常为月度/季度，优先返回最新数据）
     """
     from lib.data_tdx import _fetch_macro_local
-    cache_key = f"macro_{indicator}_{days}"
+    cache_key = f"macro/{indicator}/{days}"
     cached = _load_cache(cache_key, max_age_hours=get_config().cache.macro_max_age_hours)
     if not cached.empty:
         return cached
@@ -360,7 +452,7 @@ def get_macro_hist_local(indicator: str = "CPI", days: int = 30) -> pd.DataFrame
 def get_bj_hist(code: str, days: int = 180) -> pd.DataFrame:
     """获取北交所日线（本地文件）"""
     from lib.data_tdx import get_bj_local
-    cache_key = f"bj_{code}_{days}"
+    cache_key = f"bj/{code}/{days}"
     cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
     if not cached.empty:
         return cached
@@ -370,16 +462,38 @@ def get_bj_hist(code: str, days: int = 180) -> pd.DataFrame:
     return df
 
 
+# ========== 新三板日线（xsb）==========
+
+def get_xsb_hist(code: str, days: int = 180) -> pd.DataFrame:
+    """获取新三板日线（本地文件）
+
+    注意：新三板流动性较差，仅作数据完整性保留。
+
+    Args:
+        code: 股票代码（6位，如 "400001"）
+        days: 获取天数
+    """
+    from lib.data_tdx import get_xsb_local
+    cache_key = f"xsb/{code}/{days}"
+    cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
+    if not cached.empty:
+        return cached
+    df = get_xsb_local(code, days)
+    if not df.empty:
+        _save_cache(cache_key, df)
+    return df
+
+
 # ========== 实时行情 ==========
 
 def get_realtime_quotes() -> pd.DataFrame:
-    cached = _load_cache("realtime", max_age_hours=get_config().cache.realtime_max_age_minutes / 60)
+    cached = _load_cache("realtime/realtime", max_age_hours=get_config().cache.realtime_max_age_minutes / 60)
     if not cached.empty:
         return cached
     try:
         df = _retry_api_call(ak.stock_zh_a_spot)
         if not df.empty:
-            _save_cache("realtime", df)
+            _save_cache("realtime/realtime", df)
         return df
     except Exception as e:
         logger.error(f"获取实时行情失败: {e}")
@@ -409,27 +523,48 @@ def get_market_sentiment() -> Optional[float]:
 # ========== 资金流向 ==========
 
 def get_stock_fund_flow(code: str) -> dict:
+    """获取资金流向数据
+
+    数据源优先级：
+    1. 东方财富（优先）
+    2. 腾讯成交量估算（次级）
+    3. akshare（兜底）
+
+    Returns:
+        dict with keys: main_net_ratio, net_inflow_5d
+    """
+    # 1. 东方财富 + 腾讯估算（统一入口）
+    try:
+        from lib.data_fund_flow import get_fund_flow_simple
+        result = get_fund_flow_simple(code)
+        # 只要有有效数据就返回
+        if result.get("main_net_ratio", 0) != 0 or result.get("net_inflow_5d", 0) != 0:
+            return result
+    except Exception as e:
+        logger.debug(f"[data_layer] 资金流向获取失败 {code}: {e}")
+
+    # 2. akshare 兜底
     try:
         market = "sh" if code.startswith(("6", "5")) else "sz"
         df = _retry_api_call(ak.stock_individual_fund_flow, stock=code, market=market)
-        if df.empty:
-            return {"main_net_ratio": 0, "net_inflow_5d": 0}
-        latest = df.iloc[-1]
-        main_net_ratio = 0.0
-        for col in df.columns:
-            if "主力净流入-净占比" in str(col):
-                main_net_ratio = _safe_float(latest[col]) / 100.0
-                break
-        net_inflow_5d = 0.0
-        recent = df.tail(5)
-        for col in df.columns:
-            if "主力净流入-净额" in str(col):
-                net_inflow_5d = recent[col].sum()
-                break
-        return {"main_net_ratio": main_net_ratio, "net_inflow_5d": net_inflow_5d}
+        if not df.empty:
+            latest = df.iloc[-1]
+            main_net_ratio = 0.0
+            for col in df.columns:
+                if "主力净流入-净占比" in str(col):
+                    main_net_ratio = _safe_float(latest[col]) / 100.0
+                    break
+            net_inflow_5d = 0.0
+            recent = df.tail(5)
+            for col in df.columns:
+                if "主力净流入-净额" in str(col):
+                    net_inflow_5d = recent[col].sum()
+                    break
+            return {"main_net_ratio": main_net_ratio, "net_inflow_5d": net_inflow_5d}
     except Exception as e:
-        logger.debug(f"获取 {code} 资金流向失败: {e}")
-        return {"main_net_ratio": 0, "net_inflow_5d": 0}
+        logger.debug(f"[data_layer] akshare 资金流向失败 {code}: {e}")
+
+    return {"main_net_ratio": 0, "net_inflow_5d": 0}
 
 
 def _batch_fund_flow(codes: list) -> dict:
@@ -581,3 +716,89 @@ def get_macro_hist(indicator: str = "shibor", days: int = 30) -> pd.DataFrame:
     except Exception as e:
         logger.debug(f"获取宏观指标 {indicator} 失败: {e}")
         return pd.DataFrame()
+
+
+# ========== 市场统计数据（ScJyData_zbca）==========
+
+def get_market_stats(days: int = 30) -> pd.DataFrame:
+    """获取市场统计面板（ScJyData_zbca）
+
+    包含：期货持仓(IH5/IF6/IC7)、担保品(DBZJ)、龙虎榜(LHB)、涨跌停(ZT)等指标
+    """
+    from lib.data_scjy import get_market_stats as _get
+    cache_key = f"scjy/market_stats/{days}"
+    cached = _load_cache(cache_key, max_age_hours=24)
+    if not cached.empty:
+        return cached
+    df = _get(days)
+    if not df.empty:
+        _save_cache(cache_key, df)
+    return df
+
+
+def get_latest_market_stats() -> dict:
+    """获取最新市场统计（dict 格式）"""
+    from lib.data_scjy import get_latest_stats as _get_latest
+    cache_key = "scjy/latest"
+    cached = _load_cache(cache_key, max_age_hours=24)
+    if not cached.empty:
+        return {col: cached.iloc[0][col] for col in cached.columns}
+    result = _get_latest()
+    if result:
+        # 缓存 dict 格式（转单行 DataFrame）
+        _save_cache(cache_key, pd.DataFrame([result]))
+    return result
+
+
+# ========== 高频Tick数据（tdxgp）==========
+
+def get_gp_data(code: str, market: str = "sz",
+                record_types: list = None) -> pd.DataFrame:
+    """获取高频Tick数据
+
+    Args:
+        code: 股票代码（6位，如 "000001"）
+        market: 市场 sh/sz/bj
+        record_types: 可选，只解析指定类型（如 [1, 47]）
+                     1 = 年报/季报财务（0x01）
+                     47 = 最近日线（0x2F）
+                     3 = 日线指标A（0x03）
+    """
+    from lib.data_tdx_gp import get_gp_data as _get_gp
+    return _get_gp(code, market, record_types=record_types)
+
+
+# ========== 财务报表（cw/gpcw）==========
+
+def get_stock_financial(code: str) -> pd.DataFrame:
+    """获取股票财务数据
+
+    数据来源：TDX 本地 gpcw*.dat 财务报表
+    返回：field_index, value_main, value_aux, raw_bytes
+
+    注意：字段含义（收入/利润/EPS等）尚未完全解码。
+    具体含义参考 lib/data_tdx_fin.py 头部注释。
+    """
+    from lib.data_tdx_fin import GpcwReader
+    cache_key = f"fin/cw/{code}"
+    cached = _load_cache(cache_key, max_age_hours=168)  # 财务报表季度更新，缓存7天
+    if not cached.empty:
+        return cached
+
+    reader = GpcwReader()
+    df = reader.read_stock(code)
+    if not df.empty:
+        _save_cache(cache_key, df)
+    return df
+
+def get_financial_codes() -> list:
+    """获取所有有财务数据的股票代码"""
+    from lib.data_tdx_fin import GpcwReader
+    reader = GpcwReader()
+    return reader.read_all_codes()
+
+def get_financial_file_info() -> dict:
+    """获取当前财务数据文件信息"""
+    from lib.data_tdx_fin import GpcwReader
+    reader = GpcwReader()
+    return reader.get_file_info()

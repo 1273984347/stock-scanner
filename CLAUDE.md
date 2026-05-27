@@ -225,6 +225,7 @@ Tushare (主) → AkShare → WeStock → 通达信 → Baostock → 东方财�
 | 策略逻辑修改 | 回测验证 + Walk-forward |
 | Bug 调试 >10min | `/experience-capture` |
 | P0/P1 Bug | `/fix-verify-loop` |
+| 新增 API 端点 | 过 API 安全 Checklist（输入校验→认证→鉴权→错误消息→资源限制）|
 
 ## 常见错误
 
@@ -312,10 +313,17 @@ curl http://localhost:8000/api/scan
 
 **更新脚本**:
 ```bash
-python3 scripts/update_tdx_data.py              # 下载全部 16 个包
+python3 scripts/update_tdx_data.py              # 增量更新（跳过无变化的包）
+python3 scripts/update_tdx_data.py --force     # 强制重新下载全部 16 个包
 python3 scripts/update_tdx_data.py --package shlday  # 只下载单个包
 python3 scripts/update_tdx_data.py --list       # 列出所有包
 ```
+
+**增量更新机制**:
+- 用 HTTP HEAD 请求检查 TDX 服务器 ZIP 文件的 `Last-Modified` 时间
+- 元数据存储在 `D:/TDX/update_meta.json`
+- 服务器文件未更新时跳过下载，节省时间
+- 首次运行后生效；需要时可用 `--force` 强制全量更新
 
 **定时任务**: 每个工作日 18:30 自动运行 (收盘后 ~3.5 小时)
 

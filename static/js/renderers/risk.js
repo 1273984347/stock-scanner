@@ -1,5 +1,15 @@
 import { stateManager } from '../state.js';
 
+// Escape HTML special characters to prevent XSS
+function esc(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 /**
  * RiskRenderer — 风控中心面板渲染器
  * 负责宏观门控 + VaR/CVaR + 压力测试 + 风控建议
@@ -30,26 +40,26 @@ class RiskRenderer {
     const mg = r.macro_gate || {};
     const mgClass = mg.state === 'BLOCK_NEW_RISK' ? 'tag-down' : mg.state === 'REDUCE_RISK' ? 'tag-warn' : 'tag-up';
     alertsEl.appendChild(this._alertCard('宏观门控',
-      `<span class="tag ${mgClass}">${mg.state || 'UNKNOWN'}</span><br>${mg.reasoning || '--'}<br>仓位乘数: ${((mg.multiplier || 1) * 100).toFixed(0)}%`
+      `<span class="tag ${esc(mgClass)}">${esc(mg.state || 'UNKNOWN')}</span><br>${esc(mg.reasoning || '--')}<br>仓位乘数: ${esc(((mg.multiplier || 1) * 100).toFixed(0))}%`
     ));
 
     // 风险预算
     const rb = r.risk_budget || {};
     alertsEl.appendChild(this._alertCard('风险预算',
-      `建议仓位: ${((rb.equity || 0) * 100).toFixed(0)}%<br>最多持仓: ${rb.max_positions || '--'} 只<br>波动体制: ${r.vol_regime || '--'}`
+      `建议仓位: ${esc(((rb.equity || 0) * 100).toFixed(0))}%<br>最多持仓: ${esc(rb.max_positions || '--')} 只<br>波动体制: ${esc(r.vol_regime || '--')}`
     ));
 
     // VaR/CVaR
     const varData = r.var || {};
     let varHtml = varData.var_95_pct != null
-      ? `VaR(95%): <b class="text-down">${(varData.var_95_pct * 100).toFixed(2)}%</b><br>CVaR(95%): <b class="text-down">${(varData.cvar_95_pct * 100).toFixed(2)}%</b><br>VaR金额: ¥${(varData.var_95 || 0).toFixed(0)}`
+      ? `VaR(95%): <b class="text-down">${esc((varData.var_95_pct * 100).toFixed(2))}%</b><br>CVaR(95%): <b class="text-down">${esc((varData.cvar_95_pct * 100).toFixed(2))}%</b><br>VaR金额: ¥${esc((varData.var_95 || 0).toFixed(0))}`
       : '暂无持仓数据';
     alertsEl.appendChild(this._alertCard('VaR / CVaR', varHtml));
 
     // 分散化
     const corrData = r.correlation || {};
     let corrHtml = corrData.avg_correlation != null
-      ? `平均相关性: <b>${corrData.avg_correlation.toFixed(3)}</b><br>分散化评分: <b>${(corrData.diversification_score || 0).toFixed(2)}</b>`
+      ? `平均相关性: <b>${esc(corrData.avg_correlation.toFixed(3))}</b><br>分散化评分: <b>${esc((corrData.diversification_score || 0).toFixed(2))}</b>`
       : '暂无持仓数据';
     alertsEl.appendChild(this._alertCard('相关性 / 分散化', corrHtml));
 
@@ -59,7 +69,7 @@ class RiskRenderer {
       let alertHtml = '';
       riskAlerts.forEach(a => {
         const cls = a.level === 'CRITICAL' ? 'tag-down' : a.level === 'WARNING' ? 'tag-warn' : 'tag-up';
-        alertHtml += `<span class="tag ${cls}">${a.level}</span> ${a.message}<br>`;
+        alertHtml += `<span class="tag ${esc(cls)}">${esc(a.level || '')}</span> ${esc(a.message || '')}<br>`;
       });
       alertsEl.appendChild(this._alertCard('风控预警', alertHtml));
     }
@@ -73,7 +83,7 @@ class RiskRenderer {
     titleEl.textContent = title;
     const bodyEl = document.createElement('div');
     bodyEl.className = 'risk-alert-body';
-    bodyEl.innerHTML = body; // body 已经是纯文本或简单HTML，无用户输入
+    bodyEl.innerHTML = body;
     div.appendChild(titleEl);
     div.appendChild(bodyEl);
     return div;

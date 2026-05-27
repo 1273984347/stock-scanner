@@ -25,6 +25,8 @@ import json
 import logging
 import threading
 import os
+import asyncio
+import secrets
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -67,7 +69,7 @@ async def verify_api_key(api_key: str = Security(API_KEY_HEADER)) -> str:
     if api_key is None:
         raise HTTPException(status_code=401, detail="缺少API密钥")
     expected = _get_api_key()
-    if api_key != expected:
+    if not secrets.compare_digest(api_key, expected):
         raise HTTPException(status_code=401, detail="无效的API密钥")
     return api_key
 
@@ -75,7 +77,7 @@ async def verify_api_key(api_key: str = Security(API_KEY_HEADER)) -> str:
 def verify_ws_token(token: str) -> bool:
     """验证 WebSocket token"""
     expected = _get_api_key()
-    return token == expected
+    return secrets.compare_digest(token, expected)
 
 
 @app.middleware("http")
@@ -246,18 +248,41 @@ def _cache_set(key: str, data):
 # ========== 统一入口 ==========
 
 from scanner import ScanOrchestrator
+from lib.broker import LRUCache
 
-# 编排器缓存（按 preset 缓存，避免重复创建）
-_orchestrator_cache: dict = {}
-_orchestrator_lock = threading.Lock()
+# 编排器缓存（按 preset 缓存，避免重复创建，使用 LRU 限制内存占用）
+_orchestrator_cache = LRUCache(maxsize=16)
 
+# 回测并发限制（最多 2 个并发回测）
+_backtest_semaphore = asyncio.Semaphore(2)
+
+from concurrent.futures import ThreadPoolExecutor
+
+def _batch_get_stock_hist(codes: list, days: int = 120, source: str = "auto") -> dict:
+    """并行批量获取多只股票历史数据，避免 N+1 串行查询"""
+    results = {}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {
+            executor.submit(_get_orchestrator().get_stock_hist_multi_source, code, days, source): code
+            for code in codes
+        }
+        for future in futures:
+            code = futures[future]
+            try:
+                hist = future.result()
+                if hist is not None and not hist.empty:
+                    results[code] = hist
+            except Exception:
+                continue
+    return results
 
 def _get_orchestrator(preset: str = "balanced") -> ScanOrchestrator:
-    """获取指定 preset 的编排器（带缓存，线程安全）"""
-    with _orchestrator_lock:
-        if preset not in _orchestrator_cache:
-            _orchestrator_cache[preset] = ScanOrchestrator(preset=preset)
-        return _orchestrator_cache[preset]
+    """获取指定 preset 的编排器（带缓存，线程安全，LRU 自动淘汰）"""
+    orch = _orchestrator_cache.get(preset)
+    if orch is None:
+        orch = ScanOrchestrator(preset=preset)
+        _orchestrator_cache.set(preset, orch)
+    return orch
 
 
 # ========== 核心端点 ==========
@@ -447,7 +472,7 @@ async def positions(_=Security(verify_api_key)):
         alerts = pm.check_stop_loss(prices)
         return {"summary": summary, "alerts": alerts}
     except Exception as e:
-        return {"summary": {"total_positions": 0}, "alerts": [], "error": str(e)}
+        return {"summary": {"total_positions": 0}, "alerts": [], "error": "服务暂时不可用"}
 
 
 # ========== 新增端点 ==========
@@ -486,15 +511,10 @@ async def risk_assessment(_=Security(verify_api_key)):
             pass
 
         # 获取市场数据（用于波动率/相关性/VaR计算）
+        # 并行批量获取，避免 N+1 串行查询
         market_data = {}
         if tickers:
-            for code in tickers[:15]:  # 限制数量避免超时
-                try:
-                    hist = orchestrator.get_stock_hist_multi_source(code, days=120, source="auto")
-                    if hist is not None and not hist.empty:
-                        market_data[code] = hist
-                except Exception:
-                    continue
+            market_data = _batch_get_stock_hist(tickers[:15], days=120, source="auto")
 
         # 调用 full_risk_assessment
         risk_mgr = VolCorrRiskManager(VolCorrRiskConfig())
@@ -690,17 +710,17 @@ async def dashboard(preset: str = Query("balanced", description="策略预设"))
         raise HTTPException(status_code=500, detail="内部服务器错误")
 
 
-@app.get("/api/audit")
+@app.get("/api/audit", dependencies=[Security(verify_api_key)])
 async def audit_history(limit: int = Query(default=20, ge=1, le=100)):
     """审计日志列表"""
     try:
         from lib.audit_logger import get_scan_history
         return {"history": get_scan_history(limit)}
     except Exception as e:
-        return {"history": [], "error": str(e)}
+        return {"history": [], "error": "服务暂时不可用"}
 
 
-@app.get("/api/audit/{scan_id}")
+@app.get("/api/audit/{scan_id}", dependencies=[Security(verify_api_key)])
 async def audit_detail(scan_id: int):
     """某次扫描的审计详情"""
     try:
@@ -728,31 +748,31 @@ async def run_backtest(
     _=Security(verify_api_key),
 ):
     """运行回测"""
-    try:
-        from backtest import run_factor_backtest
-        sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
-        result = run_factor_backtest(
-            sym_list, days=days,
-            stop_loss_atr_mult=stop_loss_atr_mult,
-            take_profit_atr_mult=take_profit_atr_mult,
-            max_hold_days=max_hold_days,
-            confidence_threshold=confidence_threshold,
-            risk_per_trade_pct=risk_per_trade_pct,
-            preset=preset,
-        )
-        if not result:
-            return {"error": "回测无结果"}
-        # 序列化
-        return {
-            "metrics": result.get("metrics"),
-            "benchmark": result.get("benchmark"),
-            "trade_count": result.get("trade_count"),
-            "exit_reasons": result.get("exit_reasons"),
-            "cost_summary": result.get("cost_summary"),
-        }
-    except Exception as e:
-        logger.error(f"回测失败: {e}")
-        raise HTTPException(status_code=500, detail="内部服务器错误")
+    async with _backtest_semaphore:
+        try:
+            from backtest import run_factor_backtest
+            sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+            result = run_factor_backtest(
+                sym_list, days=days,
+                stop_loss_atr_mult=stop_loss_atr_mult,
+                take_profit_atr_mult=take_profit_atr_mult,
+                max_hold_days=max_hold_days,
+                confidence_threshold=confidence_threshold,
+                risk_per_trade_pct=risk_per_trade_pct,
+                preset=preset,
+            )
+            if not result:
+                return {"error": "回测无结果"}
+            return {
+                "metrics": result.get("metrics"),
+                "benchmark": result.get("benchmark"),
+                "trade_count": result.get("trade_count"),
+                "exit_reasons": result.get("exit_reasons"),
+                "cost_summary": result.get("cost_summary"),
+            }
+        except Exception as e:
+            logger.error(f"回测失败: {e}")
+            raise HTTPException(status_code=500, detail="内部服务器错误")
 
 
 @app.post("/api/walkforward")
@@ -771,17 +791,14 @@ async def run_walkforward(
         orchestrator = _get_orchestrator()
         sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
 
-        # 获取市场数据
-        market_data = {}
+        # 获取市场数据（并行批量获取，避免 N+1）
+        market_data = _batch_get_stock_hist(sym_list, days=train_days + validation_days + 60, source="auto")
         all_dates = set()
-        for code in sym_list:
-            hist = orchestrator.get_stock_hist_multi_source(code, days=train_days + validation_days + 60, source="auto")
-            if hist is not None and not hist.empty:
-                market_data[code] = hist
-                if "date" in hist.columns:
-                    all_dates.update(hist["date"].tolist())
-                elif hist.index.dtype == object:
-                    all_dates.update(hist.index.tolist())
+        for hist in market_data.values():
+            if "date" in hist.columns:
+                all_dates.update(hist["date"].tolist())
+            elif hist.index.dtype == object:
+                all_dates.update(hist.index.tolist())
 
         if not market_data:
             return {"error": "无法获取市场数据"}

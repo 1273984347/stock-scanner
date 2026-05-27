@@ -10,38 +10,45 @@ class APIClient {
     this._abortControllers = new Map();
   }
 
-  // 获取当前 API Key（优先 localStorage，其次默认 dev key）
+  // 获取当前 API Key（优先 sessionStorage，其次默认 dev key）
+  // 使用 sessionStorage 而非 localStorage：数据不跨标签页持久化，XSS 攻击面更小
   _getApiKey() {
     try {
-      return localStorage.getItem('api_key') || 'dev';
+      return sessionStorage.getItem('api_key') || 'dev';
     } catch {
       return 'dev';
     }
   }
 
-  // 通用请求方法
+  // 通用请求方法（支持重试）
   async request(endpoint, options = {}) {
-    const { timeout = 60000, signal } = options;
-    const controller = signal ? null : new AbortController();
-    const timeoutId = setTimeout(() => controller?.abort(), timeout);
-
-    try {
-      const res = await fetch(this.base + endpoint, {
-        ...options,
-        signal: signal || controller?.signal,
-        headers: {
-          ...options.headers,
-          'X-API-Key': this._getApiKey(),
-        },
-      });
-      clearTimeout(timeoutId);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
-    } catch (e) {
-      clearTimeout(timeoutId);
-      if (e.name === 'AbortError') return null;
-      throw e;
+    const { timeout = 60000, signal, retries = 1 } = options;
+    let lastError;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const controller = signal ? null : new AbortController();
+      const timeoutId = setTimeout(() => controller?.abort(), timeout);
+      try {
+        const res = await fetch(this.base + endpoint, {
+          ...options,
+          signal: signal || controller?.signal,
+          headers: {
+            ...options.headers,
+            'X-API-Key': this._getApiKey(),
+          },
+        });
+        clearTimeout(timeoutId);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+      } catch (e) {
+        clearTimeout(timeoutId);
+        lastError = e;
+        if (e.name === 'AbortError' || attempt >= retries) break;
+        // 指数退避：1s → 2s
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+      }
     }
+    if (lastError?.name === 'AbortError') return null;
+    throw lastError;
   }
 
   // GET 请求
