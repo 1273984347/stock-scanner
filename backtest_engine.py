@@ -50,6 +50,10 @@ class BacktestConfig:
     # STEP 6 相对强度过滤
     relative_strength_threshold: float = 0.0  # 股票必须相对HS300强势X%（0=禁用，正数如2.0要求 stock_ret > hs300_ret + 2%）
     relative_strength_lookback: int = 5       # 计算相对强度的回溯期（天）
+    # 交易成本（从 config.py 导入默认值）
+    commission_rate: float = 0.00025   # 佣金费率（买卖各收）
+    stamp_duty_rate: float = 0.0005    # 印花税（仅卖出）
+    slippage_rate: float = 0.001       # 滑点（买卖各计）
 
 
 # ============================================================
@@ -419,9 +423,12 @@ def run_backtest(
                 # 执行退出
                 exit_reason, exit_price = exit_fn(df, i)
 
-                # 计算收益
+                # 计算收益（扣除交易成本）
                 entry_price = float(row['close'])
-                pnl_pct = (exit_price / entry_price - 1) * 100
+                buy_cost = config.commission_rate + config.slippage_rate
+                sell_cost = config.commission_rate + config.stamp_duty_rate + config.slippage_rate
+                total_cost = buy_cost + sell_cost
+                pnl_pct = (exit_price / entry_price - 1 - total_cost) * 100
 
                 # 持仓天数（根据 exit_reason 找真实出场索引）
                 max_exit_i = min(i + 20, len(df) - 1)
@@ -589,6 +596,10 @@ def run_backtest(
             "initial_capital": config.initial_capital,
             "position_size_pct": config.position_size_pct,
             "exit_version": exit_version,
+            "commission_rate": config.commission_rate,
+            "stamp_duty_rate": config.stamp_duty_rate,
+            "slippage_rate": config.slippage_rate,
+            "total_cost_pct": round((config.commission_rate * 2 + config.stamp_duty_rate + config.slippage_rate * 2) * 100, 3),
         }
     }
 
@@ -601,7 +612,8 @@ def print_report(result: Dict):
     print(f"{'='*60}")
     print(f"Config: capital={m.get('final_capital', result['config']['initial_capital']):.0f}, "
           f"pos_size={result['config']['position_size_pct']*100:.0f}%, "
-          f"exit={result['config']['exit_version']}")
+          f"exit={result['config']['exit_version']}, "
+          f"cost/trade={result['config'].get('total_cost_pct', 0):.3f}%")
     print(f"\n--- Core Metrics ---")
     print(f"Total trades:    {m['total_trades']}")
     print(f"Win rate:        {m['win_rate']:.1f}%")
