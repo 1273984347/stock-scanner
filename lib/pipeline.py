@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 import logging
+import json
 
 from config import get_config
 from factors import (compute_all_signals, evaluate_macro_gate, calc_market_exposure)
@@ -33,6 +34,65 @@ _risk_manager = VolCorrRiskManager(VolCorrRiskConfig())
 
 # ML 因子缓存（容量限制的 LRU 缓存，避免无界增长）
 _ml_factor_cache = LRUCache(maxsize=256)
+
+
+# ========== 策略降频机制（V6 设计要求） ==========
+
+class StrategyFailureTracker:
+    """策略连续失效跟踪器
+
+    设计要求（V6 系统失效规则）：
+    - 信号连续失效 → 先降频，不硬扛
+    - 连续 3 次空结果或异常 → 跳过该策略（降低扫描频率）
+    - 策略恢复产出 → 重置计数器
+
+    持久化到 cache/strategy_failures.json，跨 session 保持。
+    """
+
+    def __init__(self):
+        self._path = Path(__file__).parent.parent / "cache" / "strategy_failures.json"
+        self._failures: Dict[str, int] = {}  # strategy_name -> consecutive failures
+        self._threshold = 3  # 连续失效次数阈值
+        self._load()
+
+    def record_failure(self, strategy_name: str):
+        """记录策略失效（空结果或异常）"""
+        self._failures[strategy_name] = self._failures.get(strategy_name, 0) + 1
+        if self._failures[strategy_name] >= self._threshold:
+            logger.warning(
+                f"【降频】策略 {strategy_name} 连续失效 {self._failures[strategy_name]} 次，本轮跳过"
+            )
+
+    def record_success(self, strategy_name: str):
+        """记录策略成功（有候选股产出）"""
+        if self._failures.get(strategy_name, 0) > 0:
+            logger.info(f"【恢复】策略 {strategy_name} 恢复产出，重置失效计数")
+        self._failures[strategy_name] = 0
+
+    def should_skip(self, strategy_name: str) -> bool:
+        """检查是否应跳过该策略"""
+        return self._failures.get(strategy_name, 0) >= self._threshold
+
+    def get_failure_count(self, strategy_name: str) -> int:
+        return self._failures.get(strategy_name, 0)
+
+    def save(self):
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self._path, "w", encoding="utf-8") as f:
+            json.dump(self._failures, f)
+
+    def _load(self):
+        if not self._path.exists():
+            return
+        try:
+            with open(self._path, "r", encoding="utf-8") as f:
+                self._failures = json.load(f)
+        except Exception:
+            self._failures = {}
+
+
+# 全局实例
+_failure_tracker = StrategyFailureTracker()
 
 
 # ========== V4 市场状态调整 ==========
@@ -591,6 +651,11 @@ def run_all_strategies(
         "多因子选股": get_multi_factor_candidates,
     }
     for name, func in strategies.items():
+        # 降频机制：连续失效 3 次的策略跳过
+        if _failure_tracker.should_skip(name):
+            logger.warning(f"跳过策略 {name}（连续失效 {_failure_tracker.get_failure_count(name)} 次）")
+            continue
+
         logger.info(f"运行策略: {name}")
         try:
             df = func(config)
@@ -600,13 +665,19 @@ def run_all_strategies(
                     df = df[df["代码"].isin(symbols)] if "代码" in df.columns else df
                 if not df.empty:
                     results[name] = df
+                    _failure_tracker.record_success(name)
                     logger.info(f"  -> {len(df)} 只候选股")
                 else:
+                    _failure_tracker.record_failure(name)
                     logger.info(f"  -> 无候选股（过滤后）")
             else:
+                _failure_tracker.record_failure(name)
                 logger.info(f"  -> 无候选股")
         except Exception as e:
+            _failure_tracker.record_failure(name)
             logger.error(f"  -> 策略执行失败: {e}")
+    # 保存降频状态
+    _failure_tracker.save()
     # ========== 主线板块过滤 ==========
     try:
         hot_boards = get_hot_board_candidates(config)
