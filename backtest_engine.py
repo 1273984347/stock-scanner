@@ -95,26 +95,34 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
 # ============================================================
 
 def check_entry(df: pd.DataFrame, i: int) -> Tuple[bool, str]:
+    """Check if day i meets entry conditions (design spec version)
+
+    Design requirements:
+    1. Price > EMA21
+    2. Breakout 20-day high (Donchian breakout)
+    3. Volume confirmation (volume > 20-day average)
+    4. Next-day entry (return signal at close of day i, execute on i+1 open)
     """
-    检查第i天是否满足入场条件（金叉当日入场）
-    返回 (满足条件, 信号类型)
-    """
-    if i < 20:  # 需要至少20天数据供 vol_ma20 有效
+    if i < 20:
         return False, ""
 
     row = df.iloc[i]
-    prev = df.iloc[i - 1]
 
-    # MA5/MA21 金叉（当日 EMA5 上穿 EMA21）
-    ma5_cross = (row['EMA5'] > row['EMA21']) and (prev['EMA5'] <= prev['EMA21'])
-    vol_ok = (row['vol_ma20'] > 0) and (row['volume'] > row['vol_ma20'])
-    price_above_ema5 = row['close'] > row['EMA5']
+    # 1. Price > EMA21
+    if row['close'] <= row['EMA21']:
+        return False, ""
 
-    if ma5_cross and price_above_ema5:
-        # 金叉 + 价格站上EMA5（不完全要求放量，放宽条件）
-        return True, "ma5_ma21_gc"
+    # 2. Breakout 20-day high (Donchian breakout)
+    high_20 = row.get('high_20', 0)
+    if high_20 > 0 and row['close'] < high_20:
+        return False, ""
 
-    return False, ""
+    # 3. Volume confirmation (volume > 20-day average)
+    vol_ma20 = row.get('vol_ma20', 0)
+    if vol_ma20 > 0 and row['volume'] <= vol_ma20:
+        return False, ""
+
+    return True, "donchian_breakout"
 
 
 # ============================================================
@@ -416,37 +424,41 @@ def run_backtest(
                     if top_sectors and stock_sector not in top_sectors:
                         continue  # 该股所在板块不在最强top_n，跳过
 
-                # 入场信号
+                # 入场信号（Donchian突破+放量确认，信号日收盘确认）
                 entered, sig_type = check_entry(df, i)
                 if not entered:
                     continue
 
-                # 执行退出
-                exit_reason, exit_price = exit_fn(df, i)
+                # 次日入场（信号日收盘确认，次日开盘价执行）
+                if i + 1 >= len(df):
+                    continue
+                entry_row = df.iloc[i + 1]
+                entry_price = float(entry_row['open'])
+                entry_i = i + 1  # 实际入场日索引
 
-                # 计算收益（扣除交易成本）
-                entry_price = float(row['close'])
+                # 执行退出（从实际入场日开始扫描）
+                exit_reason, exit_price = exit_fn(df, entry_i)
                 buy_cost = config.commission_rate + config.slippage_rate
                 sell_cost = config.commission_rate + config.stamp_duty_rate + config.slippage_rate
                 total_cost = buy_cost + sell_cost
                 pnl_pct = (exit_price / entry_price - 1 - total_cost) * 100
 
                 # 持仓天数（根据 exit_reason 找真实出场索引）
-                max_exit_i = min(i + 20, len(df) - 1)
+                max_exit_i = min(entry_i + 20, len(df) - 1)
                 if exit_reason == "timeout":
                     exit_i = max_exit_i
                 elif exit_reason == "atr_stop":
                     # ATR止损：向前找第一根突破止损价的bar
-                    entry_atr_pct = float(row['atr_pct']) if not pd.isna(row['atr_pct']) else 0.0
+                    entry_atr_pct = float(entry_row['atr_pct']) if not pd.isna(entry_row['atr_pct']) else 0.0
                     stop_price = entry_price * (1 - entry_atr_pct * 2.0 / 100)
                     exit_i = max_exit_i
-                    for tmp_j in range(i + 1, max_exit_i + 1):
+                    for tmp_j in range(entry_i + 1, max_exit_i + 1):
                         if df.iloc[tmp_j]['low'] < stop_price:
                             exit_i = tmp_j
                             break
                 elif exit_reason in ("ema21_confirm", "trend_break"):
                     # EMA21确认退出：向前找第一根确认跌破EMA21的bar
-                    start_scan = i + 5
+                    start_scan = entry_i + 5
                     exit_i = max_exit_i
                     for tmp_j in range(start_scan, max_exit_i + 1):
                         row_j = df.iloc[tmp_j]
@@ -456,9 +468,9 @@ def run_backtest(
                             break
                 elif exit_reason == "trailing_stop":
                     # 移动止损：向前找第一根收盘<trailing_stop的bar
-                    trailing_stop = float(row['low_10']) if not pd.isna(row['low_10']) else entry_price * 0.95
+                    trailing_stop = float(entry_row['low_10']) if not pd.isna(entry_row['low_10']) else entry_price * 0.95
                     exit_i = max_exit_i
-                    for tmp_j in range(i + 1, max_exit_i + 1):
+                    for tmp_j in range(entry_i + 1, max_exit_i + 1):
                         row_j = df.iloc[tmp_j]
                         # 跟踪止损随时间上移，重新计算
                         if not pd.isna(row_j['low_10']):
@@ -472,11 +484,14 @@ def run_backtest(
                     # 其他退出原因，默认到最大期
                     exit_i = max_exit_i
 
-                hold_days = exit_i - i
-                atr_pct = float(row['atr_pct']) if not pd.isna(row['atr_pct']) else 0.0
+                hold_days = exit_i - entry_i
+                atr_pct = float(entry_row['atr_pct']) if not pd.isna(entry_row['atr_pct']) else 0.0
+
+                # 使用实际入场日（i+1）的日期
+                actual_entry_date = entry_row['date'].date() if hasattr(entry_row['date'], 'date') else entry_row['date']
 
                 trade = Trade(
-                    entry_date=str(entry_date),
+                    entry_date=str(actual_entry_date),
                     entry_price=entry_price,
                     exit_date=str(df.iloc[exit_i]['date'].date() if hasattr(df.iloc[exit_i]['date'], 'date') else df.iloc[exit_i]['date']),
                     exit_price=float(exit_price),
