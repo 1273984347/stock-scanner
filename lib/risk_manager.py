@@ -517,11 +517,21 @@ class VolCorrRiskManager(RiskManager):
             return {"var_95": 0.0, "cvar_95": 0.0, "var_95_pct": 0.0, "cvar_95_pct": 0.0}
 
         w = np.array([weights.get(t, 1.0 / len(common_tickers)) for t in common_tickers])
-        w = w / w.sum()
+        w_sum = w.sum()
+        if w_sum == 0:
+            w = np.ones(len(w)) / len(w)  # Equal weight fallback
+        else:
+            w = w / w_sum
 
         portfolio_returns = (returns_df[common_tickers] * w).sum(axis=1)
         var_95 = float(np.percentile(portfolio_returns, (1 - self.config.var_confidence) * 100))
-        cvar_95 = float(portfolio_returns[portfolio_returns <= var_95].mean())
+        tail_returns = portfolio_returns[portfolio_returns <= var_95]
+        if len(tail_returns) == 0:
+            cvar_95 = float(var_95)  # No tail returns, use VaR as fallback
+        else:
+            cvar_95 = float(tail_returns.mean())
+        if np.isnan(cvar_95):
+            cvar_95 = 0.0
 
         return {
             "var_95": float(var_95 * total_value),
