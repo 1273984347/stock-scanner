@@ -22,7 +22,8 @@ from lib.strategies import (get_zt_candidates, get_volume_breakout_candidates,
 from lib.broker import LRUCache
 from lib.market_regime import (detect_market_regime_from_hs300,
                                  TREND_UP, MEAN_REVERSION, COMPRESSION, TREND_DOWN,
-                                 RISK_OFF)
+                                 RISK_OFF, REGIME_POSITION_SCALAR)
+from lib.position_size import RegimeAwarePositionSizer
 
 logger = logging.getLogger(__name__)
 
@@ -607,6 +608,42 @@ def run_all_strategies(
     risk_check = _check_portfolio_risk(results, shibor_mult=macro_filter["position_mult"])
     factor_health = _check_factor_health(results)
     portfolio = _optimize_portfolio(results)
+
+    # ========== RegimeAwarePositionSizer: 市场状态仓位限制 ==========
+    regime = macro_filter.get("v4_regime")
+    regime_scalar = macro_filter.get("v4_position_scalar", (0.5, 1.0))
+    sizer = RegimeAwarePositionSizer()
+
+    if regime and regime not in (TREND_DOWN, RISK_OFF):
+        # 用 regime 的 max scalar 作为组合权重上限
+        max_weight = regime_scalar[1] if regime_scalar else 1.0
+        min_weight = regime_scalar[0] if regime_scalar else 0.0
+
+        weights = portfolio.get("weights", {})
+        capped_weights = {}
+        capped_count = 0
+        for code, w in weights.items():
+            capped = min(w, max_weight)
+            capped_weights[code] = capped
+            if capped < w:
+                capped_count += 1
+
+        # 如果有裁剪，重新归一化权重
+        if capped_count > 0:
+            total = sum(capped_weights.values())
+            if total > 0:
+                capped_weights = {k: v / total for k, v in capped_weights.items()}
+            portfolio["weights"] = capped_weights
+            # 同步更新 details 中的 weight
+            for d in portfolio.get("details", []):
+                if d["code"] in capped_weights:
+                    d["weight"] = round(capped_weights[d["code"]], 4)
+
+        logger.info(
+            f"RegimeAwarePositionSizer: regime={regime}, "
+            f"scalar={regime_scalar}, max_weight={max_weight:.0%}, "
+            f"capped={capped_count} positions"
+        )
 
     alpha_analysis = {}
     if include_alpha:
