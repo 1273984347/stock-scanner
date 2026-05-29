@@ -165,7 +165,14 @@ def detect_market_regime(
 
     # 8. Ride rail detection: price near upper Keltner band (deviation < 5%)
     keltner_upper = kc_mid + 2 * atr
+    keltner_lower = kc_mid - 2 * atr
     ride_rail = bool(abs(close.iloc[-1] - keltner_upper.iloc[-1]) / keltner_upper.iloc[-1] < 0.05)
+
+    # 8b. Keltner 反复触碰：近10天内价格多次触及上下轨
+    recent_close = close.iloc[-10:]
+    touches_upper = (recent_close >= keltner_upper.iloc[-10:] * 0.98).sum()
+    touches_lower = (recent_close <= keltner_lower.iloc[-10:] * 1.02).sum()
+    keltner_touches = int(touches_upper + touches_lower)
 
     # 9. Donchian channel narrowing check
     dc_width = dc_upper - dc_lower
@@ -184,6 +191,7 @@ def detect_market_regime(
         "ride_rail": ride_rail,
         "dc_width_ratio": round(dc_width_ratio, 4),
         "dc_narrow": dc_narrow,
+        "keltner_touches": keltner_touches,
     }
 
     # RISK_OFF: 极端波动扩张（ATR ratio > 2.0）
@@ -211,8 +219,8 @@ def detect_market_regime(
         regime = COMPRESSION
         confidence = min(0.85, 0.4 + compression * 0.4)
 
-    # MEAN_REVERSION: EMA走平 + 震荡 + Donchian收窄
-    elif abs(ema_slope) < 0.1 and abs(trend_score) < 0.4 and dc_narrow:
+    # MEAN_REVERSION: EMA走平 + 震荡 + Donchian收窄 + Keltner反复触碰
+    elif abs(ema_slope) < 0.1 and abs(trend_score) < 0.4 and dc_narrow and keltner_touches >= 3:
         regime = MEAN_REVERSION
         confidence = min(0.80, 0.4 + (1 - compression) * 0.3)
 

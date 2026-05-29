@@ -22,6 +22,7 @@ from lib.data_layer import (get_stock_hist_multi_source, get_realtime_quotes,
                              _retry_api_call, _safe_float, _load_cache,
                              _batch_fund_flow, _batch_get_news_signals,
                              get_index_hist)
+from factors import calc_rsi as compute_rsi
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +208,8 @@ def get_zt_candidates(config: SystemConfig) -> pd.DataFrame:
         result["置信度"] = result.apply(
             lambda r: min(0.3 + r["连板数"] * 0.15, 0.9), axis=1).round(2)
         result["策略"] = "涨停板复盘"
+        result["entry_timing"] = "次日开盘"
+        result["signal_date"] = datetime.now().strftime("%Y-%m-%d")
         realtime = get_realtime_quotes()
         if not realtime.empty:
             row_map = realtime.set_index(realtime["代码"].astype(str)).to_dict("index")
@@ -328,6 +331,8 @@ def get_volume_breakout_candidates(config: SystemConfig) -> pd.DataFrame:
                 "综合评分": comp_score,
                 "评级": comp_rating,
                 "波动率20": round(factors.get("volatility_20", 25), 1),
+                "entry_timing": "次日开盘",
+                "signal_date": datetime.now().strftime("%Y-%m-%d"),
             })
             if len(candidates) >= config.scan.max_candidates:
                 break
@@ -427,6 +432,8 @@ def get_hot_board_candidates(config: SystemConfig) -> pd.DataFrame:
 
         result = board_stats.head(8).copy()
         result["策略"] = "热门板块"
+        result["entry_timing"] = "次日开盘"
+        result["signal_date"] = datetime.now().strftime("%Y-%m-%d")
         result = result.rename(columns={"所属行业": "板块"})
         return result
     except Exception as e:
@@ -477,6 +484,8 @@ def get_lhb_candidates(config: SystemConfig) -> pd.DataFrame:
                     scores.append(None)
             result["综合评分"] = scores
         result["策略"] = "龙虎榜"
+        result["entry_timing"] = "次日开盘"
+        result["signal_date"] = datetime.now().strftime("%Y-%m-%d")
         return result
     except Exception as e:
         logger.error(f"龙虎榜策略出错: {e}")
@@ -550,6 +559,8 @@ def get_multi_factor_candidates(config: SystemConfig) -> pd.DataFrame:
                 "评级": comp_rating,
                 "评分明细": score_breakdown,
                 "波动率20": round(factors.get("volatility_20", 25), 1),
+                "entry_timing": "次日开盘",
+                "signal_date": datetime.now().strftime("%Y-%m-%d"),
             })
         if not candidates:
             return pd.DataFrame()
@@ -660,6 +671,24 @@ def get_keltner_xosi_mt_candidates(config: SystemConfig) -> pd.DataFrame:
             if confidence < 0.6:
                 continue
 
+            # ---- 回踩型入场增强：已确认突破 + 再次转强 ----
+            # 已确认突破：近20日内曾突破过20日新高
+            hist_high_20 = hist["high"].rolling(20).max()
+            recent_breakout = bool(
+                (hist["close"].iloc[-20:] > hist_high_20.iloc[-20:].shift(1)).any()
+            ) if len(hist) > 20 else False
+
+            # 再次转强：当前RSI从低位回升（RSI > 前一日RSI 且 前一日RSI < 40）
+            rsi_series = compute_rsi(hist["close"], 14) if len(hist) > 14 else pd.Series([50] * len(hist))
+            rsi_today = rsi_series.iloc[-1]
+            rsi_yesterday = rsi_series.iloc[-2] if len(rsi_series) > 1 else 50
+            turning_up = bool(rsi_today > rsi_yesterday and rsi_yesterday < 40)
+
+            if not recent_breakout:
+                continue  # 没有突破历史，不算回踩型
+            if not turning_up:
+                continue  # 还没转强，继续等
+
             # 计算入场价位和止损
             kc = channels.get("kc")
             if kc is None or kc.empty:
@@ -693,6 +722,8 @@ def get_keltner_xosi_mt_candidates(config: SystemConfig) -> pd.DataFrame:
                 "缩量确认": "是" if volume_cond else "否",
                 "通道信号": reason,
                 "策略": "超短线通道",
+                "entry_timing": "次日开盘",
+                "signal_date": datetime.now().strftime("%Y-%m-%d"),
             })
 
         if not candidates:

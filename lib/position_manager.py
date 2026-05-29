@@ -57,6 +57,8 @@ class Position:
     # 分批止盈
     partial_exits_done: int = 0   # number of partial exits executed
     remaining_ratio: float = 1.0  # remaining position ratio
+    # 结构破坏退出
+    _key_low: float = 0.0  # 入场前20日最低价（关键低点）
 
 
 class PositionManager:
@@ -152,6 +154,7 @@ class PositionManager:
                     "atr_take_profit_price": p.atr_take_profit_price,
                     "partial_exits_done": p.partial_exits_done,
                     "remaining_ratio": p.remaining_ratio,
+                    "_key_low": p._key_low,
                 }
             # 原子写入：先写临时文件再 rename
             tmp_file = self.file.with_suffix(".tmp")
@@ -165,11 +168,30 @@ class PositionManager:
         finally:
             self._release_lock()
 
+    @staticmethod
+    def get_regime_adjusted_params(regime: str) -> dict:
+        """根据市场状态返回动态参数（V6自适应设计）
+
+        TREND_UP: 更宽止损(2.5ATR) + 更长持有(25天)
+        MEAN_REVERSION: 更紧止损(1.5ATR) + 更短持有(10天)
+        COMPRESSION: 标准止损(2ATR) + 短持有(5天)
+        TREND_DOWN: 不持仓
+        """
+        params = {
+            "TREND_UP": {"atr_mult": 2.5, "max_hold_days": 25, "trailing_mult": 3.0},
+            "MEAN_REVERSION": {"atr_mult": 1.5, "max_hold_days": 10, "trailing_mult": 2.0},
+            "COMPRESSION": {"atr_mult": 2.0, "max_hold_days": 5, "trailing_mult": 2.5},
+            "TREND_DOWN": {"atr_mult": 1.0, "max_hold_days": 0, "trailing_mult": 1.5},
+            "RISK_OFF": {"atr_mult": 1.0, "max_hold_days": 0, "trailing_mult": 1.0},
+        }
+        return params.get(regime, {"atr_mult": 2.0, "max_hold_days": 20, "trailing_mult": 3.0})
+
     def track_position(self, code: str, name: str, buy_price: float,
                        shares: int, stop_loss: float = DEFAULT_STOP_LOSS,
                        take_profit: float = DEFAULT_TAKE_PROFIT, notes: str = "",
                        atr: float = 0.0, atr_mult: float = 2.0,
-                       atr_tp_mult: float = 4.0, trailing_mult: float = 3.0):
+                       atr_tp_mult: float = 4.0, trailing_mult: float = 3.0,
+                       regime: str = None, market_data=None):
         """记录持仓
 
         Args:
@@ -177,7 +199,14 @@ class PositionManager:
             atr_mult: ATR 止损倍数
             atr_tp_mult: ATR 止盈倍数
             trailing_mult: 移动止盈 ATR 倍数
+            regime: 市场状态（可选，传入时自动调整 atr_mult / trailing_mult）
         """
+        # 根据市场状态动态调整参数
+        if regime:
+            regime_params = self.get_regime_adjusted_params(regime)
+            atr_mult = regime_params["atr_mult"]
+            trailing_mult = regime_params["trailing_mult"]
+
         peak_price = buy_price
         atr_stop_price = buy_price - atr * atr_mult if atr > 0 else 0.0
         atr_take_profit_price = buy_price + atr * atr_tp_mult if atr > 0 else 0.0
@@ -194,6 +223,11 @@ class PositionManager:
             atr_tp_mult=atr_tp_mult,
             atr_take_profit_price=atr_take_profit_price,
         )
+        # 新建持仓时计算关键低点（入场前20日最低价）
+        if market_data is not None and len(market_data) >= 20:
+            self.positions[code]._key_low = float(market_data["low"].tail(20).min())
+        else:
+            self.positions[code]._key_low = 0.0
         self._save()
         logger.info(f"记录持仓: {code} {name} {shares}股 @ {buy_price} ATR={atr:.4f} stop={atr_stop_price:.2f}" if atr > 0 else f"记录持仓: {code} {name} {shares}股 @ {buy_price}")
         # 记录到证伪管理器
@@ -342,6 +376,17 @@ class PositionManager:
                         "buy_price": pos.buy_price, "current_price": price,
                     })
                     continue
+
+            # 2.5. 结构破坏退出（跌破关键低点）
+            if pos._key_low > 0 and price < pos._key_low:
+                alerts.append({
+                    "code": code, "name": pos.name,
+                    "action": "结构破坏",
+                    "reason": f"跌破关键低点 {pos._key_low:.2f}",
+                    "pnl_pct": round(pnl_pct, 4),
+                    "buy_price": pos.buy_price, "current_price": price,
+                })
+                continue
 
             # 3. 分批止盈（优先于固定止盈）
             partial = self._check_partial_exit(pos, price, pnl_pct)

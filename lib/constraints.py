@@ -120,6 +120,26 @@ class DeterministicConstraints:
                 check_fn=self._check_small_cap,
                 penalty=0.15,
             ),
+            Constraint(
+                name="consecutive_decline",
+                description="连续阴跌（近5日中4日下跌且单日跌幅<3%）",
+                level=ConstraintLevel.SOFT,
+                check_fn=self._check_consecutive_decline,
+                penalty=0.05,
+            ),
+            Constraint(
+                name="high_volume_stall",
+                description="高位爆量滞涨（价格高位+成交量>2倍均量+涨幅<0.5%）",
+                level=ConstraintLevel.SOFT,
+                check_fn=self._check_high_volume_stall,
+                penalty=0.08,
+            ),
+            Constraint(
+                name="chase_high_filter",
+                description="禁止追高潮段（连续一字板或巨量长阳后）",
+                level=ConstraintLevel.HARD,
+                check_fn=self._check_chase_high,
+            ),
         ]
 
     def add_constraint(self, constraint: Constraint):
@@ -308,4 +328,61 @@ class DeterministicConstraints:
             market_cap = fin.get("market_cap")
             if market_cap is not None and market_cap < 2_000_000_000:
                 return f"市值 {market_cap/1e8:.1f}亿，小盘股风险"
+        return None
+
+    def _check_consecutive_decline(self, ctx: dict) -> Optional[str]:
+        """连续阴跌：近5日中4日下跌且单日跌幅<3%"""
+        df = ctx.get("market_data")
+        if df is None or len(df) < 5:
+            return None
+        recent = df.tail(5)
+        if "涨跌幅" in recent.columns:
+            down_days = int((recent["涨跌幅"] < -0.3).sum())
+            max_drop = float(recent["涨跌幅"].min())
+            if down_days >= 4 and max_drop > -3.0:
+                return f"连续阴跌：近5日{down_days}天下跌"
+        return None
+
+    def _check_high_volume_stall(self, ctx: dict) -> Optional[str]:
+        """高位爆量滞涨：价格在20日高位+成交量>2倍均量+涨幅<0.5%"""
+        df = ctx.get("market_data")
+        if df is None or len(df) < 20:
+            return None
+        last = df.iloc[-1]
+        high_20 = df["high"].rolling(20).max().iloc[-1] if "high" in df.columns else 0
+        vol_ma20 = df["volume"].rolling(20).mean().iloc[-1] if "volume" in df.columns else 0
+        close = last.get("close", 0) if hasattr(last, "get") else 0
+        vol = last.get("volume", 0) if hasattr(last, "get") else 0
+        pct_chg = last.get("涨跌幅", 0) if hasattr(last, "get") else 0
+
+        if close > 0 and high_20 > 0:
+            near_high = close >= high_20 * 0.90
+            vol_surge = vol_ma20 > 0 and vol > vol_ma20 * 2.0
+            stall = abs(pct_chg) < 0.5
+            if near_high and vol_surge and stall:
+                ratio = vol / vol_ma20 if vol_ma20 > 0 else 0
+                return f"高位爆量滞涨：价格在20日高位90%+，成交量>{ratio:.1f}倍均量，涨幅{pct_chg:.1f}%"
+        return None
+
+    def _check_chase_high(self, ctx: dict) -> Optional[str]:
+        """禁止追高潮段：连续一字板或巨量长阳后"""
+        df = ctx.get("market_data")
+        if df is None or len(df) < 3:
+            return None
+        recent = df.tail(3)
+        # 连续一字板：近3日全部涨停（涨跌幅>9.5%）且振幅极小（<1%）
+        if "涨跌幅" in recent.columns:
+            all_limit_up = bool((recent["涨跌幅"] > 9.5).all())
+            if all_limit_up and "high" in recent.columns and "low" in recent.columns:
+                avg_amplitude = float(((recent["high"] - recent["low"]) / recent["low"] * 100).mean())
+                if avg_amplitude < 1.0:
+                    return "连续一字板，禁止追高"
+        # 巨量长阳：单日成交量>5倍均量 + 涨幅>7%
+        if len(df) >= 20 and "volume" in df.columns:
+            vol_ma20 = df["volume"].rolling(20).mean().iloc[-1]
+            last = df.iloc[-1]
+            last_vol = last.get("volume", 0) if hasattr(last, "get") else 0
+            last_chg = last.get("涨跌幅", 0) if hasattr(last, "get") else 0
+            if vol_ma20 > 0 and last_vol > vol_ma20 * 5 and last_chg > 7:
+                return "巨量长阳后禁止追高"
         return None

@@ -158,56 +158,52 @@ class TradeAttribution:
 
 
 def analyze_trade(record: Dict) -> TradeAttribution:
-    """Automatic attribution analysis for a closed trade.
+    """自动归因分析
 
-    Decomposes P&L into market, sector, signal quality, and timing components.
-    Requires record to have: market_regime, pnl_pct, signal_type, max_runup_pct,
-    max_drawdown_pct, entry_date, exit_date.
+    分解盈亏为：市场贡献、板块贡献、信号质量、入场时机
     """
     pnl = record.get("pnl_pct", 0.0)
     regime = record.get("market_regime", "UNKNOWN")
     signal = record.get("signal_type", "")
+    max_runup = record.get("max_runup_pct", 0.0)
+    max_dd = record.get("max_drawdown_pct", 0.0)
+    hold_days = record.get("hold_days", 0)
 
-    # 1. Market contribution: heuristic based on regime
+    # 1. 市场贡献：根据持仓期间市场状态
     regime_bias = {
-        "TREND_UP": 0.4,
-        "MEAN_REVERSION": 0.0,
-        "COMPRESSION": -0.1,
-        "TREND_DOWN": -0.3,
-        "UNKNOWN": 0.0,
+        "TREND_UP": 0.4, "MEAN_REVERSION": 0.0,
+        "COMPRESSION": -0.1, "TREND_DOWN": -0.3, "UNKNOWN": 0.0,
     }
     market_contribution = pnl * regime_bias.get(regime, 0.0)
 
-    # 2. Sector contribution: residual after market (placeholder — needs sector data)
-    sector_contribution = 0.0  # TODO: needs sector index data
+    # 2. 板块贡献：用持仓期间板块涨幅（如果有数据）
+    sector_ret = record.get("sector_return", 0.0)
+    sector_contribution = sector_ret * 0.5 if sector_ret != 0 else 0.0
 
-    # 3. Signal quality: reward well-known signals more
+    # 3. 信号质量：根据信号类型的历史胜率
     signal_quality_map = {
-        "MA5_MA21_GC": 0.8,
-        "VOLUME_BREAK": 0.7,
-        "MACD_GC": 0.6,
-        "KDJ_CROSS": 0.5,
+        "donchian_breakout": 0.8, "ma5_ma21_gc": 0.7,
+        "volume_break": 0.7, "macd_gc": 0.6, "kdj_cross": 0.5,
+        "MA5_MA21_GC": 0.7, "VOLUME_BREAK": 0.7,
+        "MACD_GC": 0.6, "KDJ_CROSS": 0.5,
     }
     signal_quality = signal_quality_map.get(signal, 0.5)
 
-    # 4. Timing score: based on max_runup vs realized pnl
-    max_runup = record.get("max_runup_pct", 0.0)
+    # 4. 入场时机：已实现收益 vs 最大浮盈的比率
     if max_runup > 0 and pnl > 0:
-        # How much of the available profit was captured
-        timing_score = min(pnl / max_runup, 1.0) if max_runup > 0 else 0.5
+        timing_score = min(pnl / max_runup, 1.0)
+    elif pnl > 0:
+        timing_score = 0.6  # 盈利但无浮盈数据
     else:
-        timing_score = 0.3  # Losing trade gets low timing score
+        timing_score = 0.2  # 亏损
 
-    # 5. Main factor: which factor contributed most (absolute)
+    # 5. 主因子判断
     factors = {
         "市场": abs(market_contribution),
-        "信号质量": abs(signal_quality * pnl * 0.3),
-        "择时": abs(timing_score * pnl * 0.3),
+        "板块": abs(sector_contribution),
+        "信号": signal_quality * abs(pnl),
+        "时机": timing_score * abs(pnl),
     }
-    # If sector data available, include it
-    if sector_contribution != 0:
-        factors["板块"] = abs(sector_contribution)
-
     main_factor = max(factors, key=factors.get) if factors else "未知"
 
     return TradeAttribution(
