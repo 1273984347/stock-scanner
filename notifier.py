@@ -1,4 +1,9 @@
-"""飞书推送模块"""
+"""飞书推送模块 — 已废弃，请使用 reporter.feishu_pusher"""
+import warnings
+warnings.warn(
+    "notifier.py 已废弃，请使用 reporter.feishu_pusher",
+    DeprecationWarning, stacklevel=1
+)
 
 import requests
 import json

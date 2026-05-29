@@ -1,10 +1,16 @@
-"""新闻/业绩/龙虎榜信号获取模块
+"""新闻/业绩/龙虎榜信号获取模块 — 已废弃，请使用 lib.news_signal
 
 从 data_layer.py 提取的业务逻辑，负责：
 - 业绩预告/快报信号
 - 龙虎榜买入席位信号
 - 新闻信号缓存管理
 """
+import warnings
+warnings.warn(
+    "signal_fetcher.py 已废弃，请使用 lib.news_signal",
+    DeprecationWarning, stacklevel=1
+)
+
 import pandas as pd
 import time
 import logging

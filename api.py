@@ -102,69 +102,11 @@ async def add_security_headers(request: Request, call_next):
 # 缓存操作全局锁（保护 JSON 缓存文件的并发读写）
 _cache_lock = threading.Lock()
 
-# ========== 断路器（防止外部 API 故障导致雪崩）==========
-from dataclasses import dataclass, field
-from typing import Dict
-import time
-
-@dataclass
-class CircuitBreakerState:
-    failure_count: int = 0
-    last_failure_time: float = 0.0
-    is_open: bool = False
-
-class CircuitBreaker:
-    """简单断路器：连续失败 N 次后暂停调用外部 API"""
-
-    def __init__(self, failure_threshold: int = 5, recovery_timeout: float = 60.0):
-        self.failure_threshold = failure_threshold
-        self.recovery_timeout = recovery_timeout
-        self._states: Dict[str, CircuitBreakerState] = {}
-
-    def _get_state(self, name: str) -> CircuitBreakerState:
-        if name not in self._states:
-            self._states[name] = CircuitBreakerState()
-        return self._states[name]
-
-    def record_success(self, name: str):
-        state = self._get_state(name)
-        state.failure_count = 0
-        state.is_open = False
-
-    def record_failure(self, name: str):
-        state = self._get_state(name)
-        state.failure_count += 1
-        state.last_failure_time = time.time()
-        if state.failure_count >= self.failure_threshold:
-            state.is_open = True
-            logger.warning(f"[断路器] {name} 已熔断（连续失败 {state.failure_count} 次）")
-
-    def can_call(self, name: str) -> bool:
-        state = self._get_state(name)
-        if not state.is_open:
-            return True
-        # 超时后进入半开状态，尝试一次
-        if time.time() - state.last_failure_time > self.recovery_timeout:
-            state.is_open = False
-            state.failure_count = 0
-            logger.info(f"[断路器] {name} 进入半开状态")
-            return True
-        return False
-
-    def call(self, name: str, func, *args, **kwargs):
-        """带断路器保护的调用"""
-        if not self.can_call(name):
-            raise Exception(f"[断路器] {name} 已熔断，拒绝调用")
-        try:
-            result = func(*args, **kwargs)
-            self.record_success(name)
-            return result
-        except Exception as e:
-            self.record_failure(name)
-            raise e
+# ========== 断路器（使用 lib/cache.py 统一实现）==========
+from lib.cache import CircuitBreaker
 
 # 全局断路器实例
-circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=60.0)
+circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=60)
 
 
 def _prefetch_hs300():

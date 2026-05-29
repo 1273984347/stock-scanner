@@ -91,39 +91,101 @@ class CircuitOpenError(Exception):
 
 
 class CircuitBreaker:
-    """熔断器 - API 连续失败 N 次后自动熔断，不再尝试"""
+    """熔断器 - API 连续失败 N 次后自动熔断，不再尝试
+
+    支持命名断路器（name 参数），不同服务独立计数。
+    不传 name 时使用默认断路器（向后兼容）。
+
+    两种调用方式：
+    - call(func, *args, **kwargs)         — 默认断路器
+    - call(name, func, *args, **kwargs)   — 命名断路器（不同 name 独立计数）
+    """
 
     def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 60):
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout  # 秒
+        # 默认断路器状态
         self._failures = 0
         self._last_failure_time = 0
         self._state = "closed"  # closed / open / half_open
+        # 命名断路器状态（per-service）
+        self._named_states: Dict[str, dict] = {}
         self._lock = threading.Lock()
 
-    def call(self, func, *args, **kwargs):
-        """执行函数，失败时更新熔断状态"""
-        with self._lock:
-            if self._state == "open":
-                if time.time() - self._last_failure_time > self.recovery_timeout:
-                    self._state = "half_open"
-                else:
-                    raise CircuitOpenError(
-                        f"Circuit open, retry after {self.recovery_timeout}s"
-                    )
+    def _check_state(self, failures: int, last_ft: float, state: str) -> str:
+        """检查并更新断路器状态，返回可能的新状态"""
+        if state == "open":
+            if time.time() - last_ft > self.recovery_timeout:
+                return "half_open"
+            raise CircuitOpenError(
+                f"Circuit open, retry after {self.recovery_timeout}s"
+            )
+        return state
 
-            # 函数执行在锁内，防止 half_open 阶段并发绕过熔断
-            try:
-                result = func(*args, **kwargs)
+    def _record_success(self, name: str | None):
+        with self._lock:
+            if name and name in self._named_states:
+                self._named_states[name]["failures"] = 0
+                self._named_states[name]["state"] = "closed"
+            else:
                 self._failures = 0
                 self._state = "closed"
-                return result
-            except Exception as e:
+
+    def _record_failure(self, name: str | None):
+        with self._lock:
+            if name and name in self._named_states:
+                ns = self._named_states[name]
+                ns["failures"] += 1
+                ns["last_failure_time"] = time.time()
+                if ns["failures"] >= self.failure_threshold:
+                    ns["state"] = "open"
+                    logger.warning(f"[断路器] {name} 已熔断（连续失败 {ns['failures']} 次）")
+            else:
                 self._failures += 1
                 self._last_failure_time = time.time()
                 if self._failures >= self.failure_threshold:
                     self._state = "open"
-                raise
+
+    def call(self, name_or_func, *args, **kwargs):
+        """执行函数，失败时更新熔断状态。"""
+        if callable(name_or_func):
+            # 向后兼容：call(func, *args, **kwargs)
+            func = name_or_func
+            name = None
+        else:
+            # 命名断路器：call(name, func, *args, **kwargs)
+            name = name_or_func
+            func = args[0]
+            args = args[1:]
+
+        # 初始化命名断路器
+        if name is not None:
+            with self._lock:
+                if name not in self._named_states:
+                    self._named_states[name] = {
+                        "failures": 0, "last_failure_time": 0, "state": "closed",
+                    }
+
+        # 检查断路状态
+        with self._lock:
+            if name and name in self._named_states:
+                ns = self._named_states[name]
+                ns["state"] = self._check_state(
+                    ns["failures"], ns["last_failure_time"], ns["state"]
+                )
+            else:
+                self._state = self._check_state(
+                    self._failures, self._last_failure_time, self._state
+                )
+
+        # 执行函数（锁外，允许并发）
+        try:
+            result = func(*args, **kwargs)
+            self._record_success(name)
+            return result
+        except Exception as e:
+            self._record_failure(name)
+            raise
 
     @property
     def state(self) -> str:
