@@ -267,79 +267,32 @@ class MacroGate:
 
 def detect_market_regime(prices: pd.Series, volume: pd.Series = None,
                          market_sentiment: float = 0) -> MarketRegime:
-    """检测市场体制（A股适用版）
+    """检测市场体制（已废弃，请使用 lib/market_regime.detect_market_regime）
 
-    A股可用指标：
-    - 趋势：EMA 多周期
-    - 动量：多周期收益率
-    - 量能：成交量变化
-    - 情绪：涨跌比、涨停数（外部输入）
-
-    去掉加密货币特有指标（资金费率、订单簿、链上数据）
+    .. deprecated::
+        此函数已废弃，请使用 ``lib.market_regime.detect_market_regime`` 作为统一来源。
     """
-    if len(prices) < 60:
-        return MarketRegime("UNKNOWN", 0, 0, "数据不足")
-
-    # 趋势分数
-    ema_20 = calc_ema(prices, 20).iloc[-1]
-    ema_60 = calc_ema(prices, 60).iloc[-1]
-    trend_score = (ema_20 / ema_60 - 1) * 10 if ema_60 != 0 else 0
-    trend_score = max(-1, min(1, trend_score))
-
-    # 动量分数
-    returns = prices.pct_change()
-    mom_5 = returns.tail(5).sum() * 10
-    mom_20 = returns.tail(20).sum() * 5
-    momentum_score = (mom_5 * 0.6 + mom_20 * 0.4)
-    momentum_score = max(-1, min(1, momentum_score))
-
-    # 量能分数
-    volume_score = 0
-    if volume is not None and len(volume) > 20:
-        vol_5 = volume.tail(5).mean()
-        vol_20 = volume.tail(20).mean()
-        # 放量上涨看多，缩量下跌看空
-        price_change = (prices.iloc[-1] / prices.iloc[-6] - 1)
-        if vol_5 > vol_20 * 1.2 and price_change > 0:
-            volume_score = 0.5
-        elif vol_5 > vol_20 * 1.2 and price_change < 0:
-            volume_score = -0.5
-        elif vol_5 < vol_20 * 0.8:
-            volume_score = -0.3
-
-    # 波动率分数
-    volatility = returns.tail(20).std() * math.sqrt(252)
-    volatility_spike = min(volatility / 0.30, 1)  # 30% 年化波动率为基准
-
-    # 综合体制分数
-    regime_score = (
-        trend_score * 0.35 +
-        momentum_score * 0.30 +
-        volume_score * 0.20 +
-        market_sentiment * 0.15 -
-        volatility_spike * 0.15
+    import warnings
+    warnings.warn(
+        "factors.detect_market_regime 已废弃，请使用 lib.market_regime.detect_market_regime",
+        DeprecationWarning, stacklevel=2
     )
-    regime_score = max(-1, min(1, regime_score))
-
-    # 判断体制
-    if volatility_spike > 0.85:
-        regime = "RISK_OFF"
-        confidence = 0.95
-        reasoning = f"波动率过高({volatility:.1%})，市场恐慌"
-    elif regime_score > 0.35:
-        regime = "TREND_UP"
-        confidence = min(0.7 + abs(regime_score) * 0.3, 0.95)
-        reasoning = f"趋势向上，分数={regime_score:.3f}"
-    elif regime_score < -0.35:
-        regime = "TREND_DOWN"
-        confidence = min(0.7 + abs(regime_score) * 0.3, 0.95)
-        reasoning = f"趋势向下，分数={regime_score:.3f}"
-    else:
-        regime = "RANGE"
-        confidence = 0.5
-        reasoning = f"震荡区间，分数={regime_score:.3f}"
-
-    return MarketRegime(regime, regime_score, confidence, reasoning)
+    from lib.market_regime import detect_market_regime as _detect
+    index_df = pd.DataFrame({"close": prices, "high": prices, "low": prices})
+    result = _detect(index_df)
+    regime_map = {
+        "TREND_UP": "TREND_UP",
+        "TREND_DOWN": "TREND_DOWN",
+        "MEAN_REVERSION": "RANGE",
+        "COMPRESSION": "RANGE",
+        "RISK_OFF": "RISK_OFF",
+    }
+    return MarketRegime(
+        regime=regime_map.get(result["regime"], "UNKNOWN"),
+        score=result["indicators"].get("trend_score", 0),
+        confidence=result["confidence"],
+        reasoning=f"统一到 market_regime.py: {result['regime']}"
+    )
 
 
 def evaluate_macro_gate(macro_score: float = 0) -> MacroGate:

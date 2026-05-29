@@ -21,7 +21,8 @@ from lib.strategies import (get_zt_candidates, get_volume_breakout_candidates,
                              get_multi_factor_candidates, full_score)
 from lib.broker import LRUCache
 from lib.market_regime import (detect_market_regime_from_hs300,
-                                 TREND_UP, MEAN_REVERSION, COMPRESSION, TREND_DOWN)
+                                 TREND_UP, MEAN_REVERSION, COMPRESSION, TREND_DOWN,
+                                 RISK_OFF)
 
 logger = logging.getLogger(__name__)
 
@@ -563,9 +564,9 @@ def run_all_strategies(
         position_scalar = hs300_regime["position_scalar"]
         logger.info(f"V4市场状态: {regime} (置信度 {regime_conf:.0%}), 仓位范围 {position_scalar}")
 
-        # V4 规则：TREND_DOWN 时禁止开仓
-        if regime == TREND_DOWN:
-            logger.warning("【V4】市场下跌，禁止开仓，返回空结果")
+        # V4 规则：TREND_DOWN 或 RISK_OFF 时禁止开仓
+        if regime in (TREND_DOWN, RISK_OFF):
+            logger.warning(f"【V4】市场状态 {regime}，禁止开仓，返回空结果")
             return {}
 
         # V4 规则：COMPRESSION 时降低仓位

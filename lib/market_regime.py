@@ -1,27 +1,29 @@
 """
-市场体制检测器 —— 四态模型
+市场体制检测器 —— 五态模型
 
 参考：因子.txt (V4修正版)
 
-四种状态：
-- TREND_UP:    积极做多
+五种状态：
+- TREND_UP:       积极做多
 - MEAN_REVERSION: 短线回归
-- COMPRESSION: 少做等突破
-- TREND_DOWN:  不做多
+- COMPRESSION:    少做等突破
+- TREND_DOWN:     不做多
+- RISK_OFF:       极端波动，禁止一切开仓
 """
 import numpy as np
 import pandas as pd
 from typing import Dict, Optional, Tuple
 
 
-# ========== 四态常量 ==========
+# ========== 五态常量 ==========
 
 TREND_UP = "TREND_UP"
 MEAN_REVERSION = "MEAN_REVERSION"
 COMPRESSION = "COMPRESSION"
 TREND_DOWN = "TREND_DOWN"
+RISK_OFF = "RISK_OFF"
 
-REGIME_STATES = [TREND_UP, MEAN_REVERSION, COMPRESSION, TREND_DOWN]
+REGIME_STATES = [TREND_UP, MEAN_REVERSION, COMPRESSION, TREND_DOWN, RISK_OFF]
 
 # 状态 → 仓位系数（默认值，可被 position_size 覆盖）
 REGIME_POSITION_SCALAR = {
@@ -29,6 +31,7 @@ REGIME_POSITION_SCALAR = {
     MEAN_REVERSION: (0.25, 0.50),
     COMPRESSION: (0.00, 0.25),
     TREND_DOWN: (0.00, 0.00),
+    RISK_OFF: (0.00, 0.00),       # 极端波动，禁止一切开仓
 }
 
 
@@ -170,8 +173,13 @@ def detect_market_regime(
         "trend_score": round(trend_score, 4),
     }
 
+    # RISK_OFF: 极端波动扩张（ATR ratio > 2.0）
+    if atr_ratio > 2.0:
+        regime = RISK_OFF
+        confidence = min(0.95, 0.7 + (atr_ratio - 2.0) * 0.2)
+
     # TREND_UP: 价格>EMA + EMA向上 + ATR扩张 + Donchian上移
-    if (price_vs_ema > 0.01 and
+    elif (price_vs_ema > 0.01 and
             ema_slope > 0.05 and
             dc_slope > 0 and
             atr_ratio > 1.1):
@@ -238,6 +246,7 @@ def get_regime_description(regime: str) -> str:
         MEAN_REVERSION: "均值回归：短线回归操作，仓位25%-50%",
         COMPRESSION: "压缩区间：少做等突破，仓位0%-25%",
         TREND_DOWN: "下跌趋势：不做多，仓位0%",
+        RISK_OFF: "极端波动：市场恐慌，禁止一切开仓",
     }
     return descriptions.get(regime, "未知状态")
 
