@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import pytest
 import numpy as np
 import pandas as pd
-from lib.risk_manager import RiskManager, RiskConfig, RiskAlert
+from lib.risk_manager import RiskManager, RiskConfig, RiskAlert, ActionExecutor
 
 
 class TestRiskManager:
@@ -18,29 +18,30 @@ class TestRiskManager:
     def test_risk_config_defaults(self):
         """RiskConfig 默认值正确"""
         cfg = RiskConfig()
-        assert cfg.max_drawdown_stop == 0.20
+        assert cfg.max_drawdown_stop == 0.15
         assert cfg.single_stock_stop_loss == 0.05
         assert cfg.single_stock_take_profit == 0.30
         assert cfg.max_single_position == 0.15
-        assert cfg.daily_loss_limit == 0.05
+        assert cfg.daily_loss_limit == 0.03
+        assert cfg.weekly_loss_limit == 0.08
 
     def test_daily_loss_limit_triggered(self):
         """日亏损超限时 is_daily_loss_limit_triggered 返回 True"""
-        rm = RiskManager(RiskConfig(daily_loss_limit=0.05))
+        rm = RiskManager(RiskConfig(daily_loss_limit=0.03))
         prev_value = 1_000_000
-        daily_loss = -60_000  # -6%
+        daily_loss = -40_000  # -4%
         assert rm.is_daily_loss_limit_triggered(daily_loss, prev_value) is True
 
     def test_daily_loss_limit_not_triggered(self):
         """日亏损未超限时返回 False"""
-        rm = RiskManager(RiskConfig(daily_loss_limit=0.05))
+        rm = RiskManager(RiskConfig(daily_loss_limit=0.03))
         prev_value = 1_000_000
-        daily_loss = -30_000  # -3%
+        daily_loss = -20_000  # -2%
         assert rm.is_daily_loss_limit_triggered(daily_loss, prev_value) is False
 
     def test_drawdown_calculation(self):
         """回撤计算正确"""
-        rm = RiskManager(RiskConfig(max_drawdown_stop=0.20))
+        rm = RiskManager(RiskConfig(max_drawdown_stop=0.15))
         # peak=100, current=82 → drawdown=18%
         peak = 100_000
         current = 82_000

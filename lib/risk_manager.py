@@ -34,14 +34,67 @@ class RiskAlert:
 
 
 @dataclass
+class RiskAction:
+    """风控动作"""
+    action_type: str  # REDUCE_POSITION / STOP_TRADING / RESUME_TRADING
+    target: str       # target (stock code or "ALL")
+    reason: str
+    severity: str     # WARNING / CRITICAL
+
+
+class ActionExecutor:
+    """风控动作执行器
+
+    Executes actual position operations via callbacks.
+    Live trading: inject real order functions.
+    Backtesting: inject simulation functions.
+    """
+    def __init__(self):
+        self._callbacks: Dict[str, Callable] = {}
+        self._trading_suspended = False
+        self._suspension_reason = ""
+
+    def register(self, action_type: str, callback: Callable):
+        self._callbacks[action_type] = callback
+
+    def execute(self, action: RiskAction) -> bool:
+        if action.action_type == "STOP_TRADING":
+            self._trading_suspended = True
+            self._suspension_reason = action.reason
+            logger.warning(f"【风控】交易暂停: {action.reason}")
+
+        if action.action_type == "RESUME_TRADING":
+            self._trading_suspended = False
+            self._suspension_reason = ""
+            logger.info("【风控】交易恢复")
+
+        callback = self._callbacks.get(action.action_type)
+        if callback:
+            try:
+                callback(action)
+                return True
+            except Exception as e:
+                logger.error(f"【风控】动作执行失败 {action.action_type}: {e}")
+                return False
+        else:
+            logger.warning(f"【风控】未注册的动作: {action.action_type}")
+            return False
+
+    @property
+    def is_trading_suspended(self) -> bool:
+        return self._trading_suspended
+
+
+@dataclass
 class RiskConfig:
     """风控参数配置"""
-    max_drawdown_stop: float = 0.20
+    max_drawdown_stop: float = 0.15
     single_stock_stop_loss: float = DEFAULT_STOP_LOSS
     single_stock_take_profit: float = 0.30
     max_single_position: float = 0.15
     max_industry_exposure: float = 0.30
-    daily_loss_limit: float = 0.05
+    daily_loss_limit: float = 0.03
+    weekly_loss_limit: float = 0.08
     enable_trailing_stop: bool = True
     trailing_stop_pct: float = 0.05
 
@@ -49,10 +102,14 @@ class RiskConfig:
 class RiskManager:
     """风控管理器"""
 
-    def __init__(self, config: RiskConfig = None):
+    def __init__(self, config: RiskConfig = None, executor: ActionExecutor = None):
         self.config = config or RiskConfig()
         self.rules: List[RiskRule] = []
         self.alerts: List[RiskAlert] = []
+        self.actions: List[RiskAction] = []
+        self.executor = executor or ActionExecutor()
+        self._weekly_returns: List[float] = []
+        self._last_week_reset: Optional[datetime] = None
         self._register_default_rules()
 
     def _register_default_rules(self):
@@ -85,8 +142,14 @@ class RiskManager:
             RiskRule(
                 name="daily_loss_limit",
                 check_fn=self._check_daily_loss,
+                action="REDUCE",
+                description=f"单日亏损超过 {self.config.daily_loss_limit:.0%} 减仓"
+            ),
+            RiskRule(
+                name="weekly_loss_limit",
+                check_fn=self._check_weekly_loss,
                 action="STOP",
-                description=f"单日亏损超过 {self.config.daily_loss_limit:.0%} 暂停"
+                description=f"周亏损超过 {self.config.weekly_loss_limit:.0%} 暂停交易"
             ),
         ]
 
@@ -97,9 +160,10 @@ class RiskManager:
 
     def check_all(self, portfolio_value: float, positions: Dict,
                   daily_return: float = 0, industry_map: Dict[str, str] = None,
-                  max_drawdown: float = 0) -> List[RiskAlert]:
-        """执行所有风控检查"""
+                  max_drawdown: float = 0) -> Tuple[List[RiskAlert], List[RiskAction]]:
+        """执行所有风控检查，返回 (alerts, actions)"""
         self.alerts = []
+        self.actions = []
         context = {
             "portfolio_value": portfolio_value,
             "positions": positions,
@@ -119,7 +183,19 @@ class RiskManager:
             except Exception as e:
                 logger.error(f"风控规则 {rule.name} 执行失败: {e}")
 
-        return self.alerts
+        # Generate actions from alerts
+        for alert in self.alerts:
+            if alert.level == "CRITICAL":
+                action = RiskAction(
+                    action_type="STOP_TRADING" if "回撤" in alert.message or "周亏损" in alert.message else "REDUCE_POSITION",
+                    target="ALL",
+                    reason=alert.message,
+                    severity="CRITICAL"
+                )
+                self.actions.append(action)
+                self.executor.execute(action)
+
+        return self.alerts, self.actions
 
     def _check_max_drawdown(self, ctx: dict) -> Optional[RiskAlert]:
         if ctx["max_drawdown"] < -self.config.max_drawdown_stop:
@@ -190,6 +266,30 @@ class RiskManager:
                 level="CRITICAL",
                 message=f"单日亏损 {ctx['daily_return']:.2%} 超过 {self.config.daily_loss_limit:.0%}",
                 details={"daily_return": ctx["daily_return"]}
+            )
+        return None
+
+    def _check_weekly_loss(self, ctx: dict) -> Optional[RiskAlert]:
+        daily_return = ctx.get("daily_return", 0)
+        now = datetime.now()
+
+        # Reset weekly tracking on Monday (or first call)
+        if self._last_week_reset is None or (
+            now.weekday() == 0 and (now - self._last_week_reset).days >= 1
+        ):
+            self._weekly_returns = []
+            self._last_week_reset = now
+
+        self._weekly_returns.append(daily_return)
+        weekly_cum = sum(self._weekly_returns)
+
+        if weekly_cum < -self.config.weekly_loss_limit:
+            return RiskAlert(
+                timestamp=now.isoformat(),
+                rule_name="weekly_loss_limit",
+                level="CRITICAL",
+                message=f"周亏损 {weekly_cum:.2%} 超过阈值 {-self.config.weekly_loss_limit:.2%}",
+                details={"weekly_return": weekly_cum, "threshold": -self.config.weekly_loss_limit}
             )
         return None
 

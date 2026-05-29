@@ -91,7 +91,9 @@ class RiskConfig:
 
     # 风险预警阈值
     max_single_weight: float = 0.20  # 单票最大仓位
-    max_drawdown: float = 0.15  # 最大回撤预警
+    max_drawdown: float = 0.15       # 最大回撤预警（15%）
+    daily_loss_limit: float = 0.03   # 单日亏损限制（3%）
+    weekly_loss_limit: float = 0.08  # 周亏损限制（8%）
 
 
 @dataclass
