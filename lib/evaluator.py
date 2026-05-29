@@ -166,7 +166,8 @@ class FactorEvaluator:
                         "factor": factor_col,
                         "rank_ic": rank_ic,
                     })
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"[evaluator] IC 计算异常 [{col}]: {e}")
                     continue
             return local_records
 

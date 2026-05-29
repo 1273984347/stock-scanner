@@ -46,7 +46,8 @@ def fetch_stock_data(code: str, days: int = 180) -> Tuple[pd.DataFrame, Optional
     # 1. 历史数据
     try:
         hist = get_stock_hist_multi_source(code, days=days, source="auto", prefer_adjusted=True)
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[steps] 历史数据获取失败 [{code}]: {e}")
         hist = pd.DataFrame()
 
     # 2. 实时行情
@@ -57,8 +58,8 @@ def fetch_stock_data(code: str, days: int = 180) -> Tuple[pd.DataFrame, Optional
             mask = realtime["代码"].astype(str) == code
             if mask.any():
                 rt_row = realtime[mask].iloc[0]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[steps] 实时行情获取失败 [{code}]: {e}")
 
     # 3. 基本面数据（akshare/baostock）
     fin_data = None
@@ -66,8 +67,8 @@ def fetch_stock_data(code: str, days: int = 180) -> Tuple[pd.DataFrame, Optional
         _fin_series = _get_financial_data(code)
         if _fin_series is not None:
             fin_data = _fin_series.to_dict()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[steps] 基本面数据获取失败 [{code}]: {e}")
 
     # 3.5 TDX 本地财务数据（补充 ROE/毛利率/负债率等，优先本地无需网络）
     try:
@@ -77,15 +78,15 @@ def fetch_stock_data(code: str, days: int = 180) -> Tuple[pd.DataFrame, Optional
             if fin_data is None:
                 fin_data = {}
             fin_data["tdx_fundamentals"] = tdx_fundamentals
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[steps] TDX 财务数据获取失败 [{code}]: {e}")
 
     # 4. 指数历史（用于偏移值监控）
     idx_df = pd.DataFrame()
     try:
         idx_df = get_index_hist("000001", days=20)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[steps] 指数历史获取失败: {e}")
 
     return hist, rt_row, fin_data, idx_df
 
@@ -210,8 +211,8 @@ def score_without_realtime(code: str, factors: Dict, fin_data: Optional[pd.Serie
             main_net_ratio=ff.get("main_net_ratio", 0),
             net_inflow_5d=ff.get("net_inflow_5d", 0),
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[steps] 资金流评分失败 [{code}]: {e}")
 
     news_sig = {"major_positive": False, "institutional_buy": False,
                  "no_negative": True, "earnings_positive": False}
@@ -281,7 +282,7 @@ def check_offset_anomaly(code: str, hist: pd.DataFrame, factors: Dict,
 
         if threshold_result.get("triggered"):
             return True, threshold_result.get("score_adjustment", 0)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[steps] 偏移值监控失败 [{code}]: {e}")
 
     return False, 0.0

@@ -218,7 +218,8 @@ class PortfolioOptimizer:
         try:
             inv_cov = np.linalg.pinv(cov_matrix)
             w_unc = inv_cov @ expected_returns / (risk_aversion * np.ones(n) @ inv_cov @ expected_returns + 1e-10)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[portfolio_optimizer] 协方差矩阵求逆失败，使用等权: {e}")
             w_unc = np.ones(n) / n
 
         # 约束投影：裁剪到 [0, max_weight]

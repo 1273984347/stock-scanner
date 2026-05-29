@@ -556,8 +556,8 @@ class LiveBrokerABC:
         """断开连接"""
         try:
             self._disconnect()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[broker] 断开连接异常: {e}")
         self._connected = False
         logger.info("实盘券商已断开")
 
@@ -636,7 +636,8 @@ class PaperBroker(LiveBrokerABC):
             from lib.data_layer import get_stock_hist_multi_source
             try:
                 df = get_stock_hist_multi_source(order.code, days=5, source="auto")
-            except Exception:
+            except Exception as e:
+                logger.debug(f"[broker] 历史数据获取失败 [{order.code}]: {e}")
                 df = pd.DataFrame()
             if not df.empty:
                 df = df.rename(columns={"date": "trade_date"})
@@ -780,8 +781,8 @@ class TDXBroker(LiveBrokerABC):
         if self._api and self._client_id >= 0:
             try:
                 self._api.logoff(self._client_id)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[broker] TDX 登出异常: {e}")
         self._api = None
         self._client_id = -1
 

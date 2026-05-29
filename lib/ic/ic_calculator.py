@@ -133,6 +133,7 @@ def load_all_panels(start_date: str = None, end_date: str = None) -> List[Dict]:
         try:
             with open(f, encoding="utf-8") as fp:
                 panels.append(json.load(fp))
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[ic_calculator] IC 面板文件读取失败 [{f}]: {e}")
             continue
     return panels

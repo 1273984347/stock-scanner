@@ -72,7 +72,8 @@ def load_cache(key: str, max_age_hours: int = 2) -> pd.DataFrame:
         return pd.DataFrame()
     try:
         return pd.read_parquet(path)
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[cache] 缓存读取失败 [{key}]: {e}")
         path.unlink(missing_ok=True)
         return pd.DataFrame()
 
@@ -154,7 +155,8 @@ def clean_cache(max_age_hours: int = 24, max_total_mb: int = 500):
             else:
                 total_size += size
                 alive_files.append((path, mtime, size))
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[cache] 缓存文件处理失败: {e}")
             continue
     max_bytes = max_total_mb * 1024 * 1024
     if total_size > max_bytes:

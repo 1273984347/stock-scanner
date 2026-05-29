@@ -355,7 +355,8 @@ def _get_stock_returns_batch(codes: list, days: int = 20) -> dict:
                 continue
             close = hist["close"].values
             results[code] = close[-1] / close[-days] - 1
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[scorecard] 股票收益率获取失败 [{code}]: {e}")
             results[code] = None
     return results
 
@@ -375,7 +376,8 @@ def _get_market_return(days: int = 20) -> float:
             return None
         close = idx["close"].values
         return close[-1] / close[-days] - 1
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[scorecard] 市场收益率获取失败: {e}")
         return None
 
 
@@ -398,5 +400,6 @@ def _get_industry_return(code: str, days: int = 5) -> float:
         if not returns:
             return None
         return float(np.mean(returns))
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[scorecard] 行业收益率获取失败 [{code}]: {e}")
         return None

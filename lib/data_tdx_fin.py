@@ -83,7 +83,8 @@ class GpcwReader:
         def parse_date(f):
             try:
                 return f.stem[4:]
-            except Exception:
+            except Exception as e:
+                logger.debug(f"[tdx_fin] 文件日期解析失败: {e}")
                 return ""
 
         valid_files = [f for f in files if f.stat().st_size > HEADER_SIZE]

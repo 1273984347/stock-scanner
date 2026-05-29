@@ -707,7 +707,8 @@ def covariance_shrinkage(returns_df: pd.DataFrame) -> Optional[pd.DataFrame]:
         lw = LedoitWolf().fit(data.values)
         shrunk = pd.DataFrame(lw.covariance_, index=codes, columns=codes)
         return shrunk
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[risk_manager] Ledoit-Wolf 收缩估计失败，使用普通协方差: {e}")
         return returns_df.cov()
 
 

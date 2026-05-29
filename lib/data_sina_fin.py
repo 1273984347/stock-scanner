@@ -79,7 +79,8 @@ def _parse_report(data: dict, report_type: str) -> Optional[Dict]:
         if report.get("report_type", "").lower() != report_type:
             return None
         return report
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[sina_fin] 财报解析异常: {e}")
         return None
 
 

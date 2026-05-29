@@ -118,7 +118,8 @@ def _get_preset_weight(factor: str) -> float:
         from config import get_config
         cfg = get_config("balanced")
         return cfg.factor.factor_weights.get(factor, 0.05)
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[ic_reporter] preset 权重获取失败 [{factor}]: {e}")
         return 0.05
 
 def save_ic_report(report: str, date: str) -> str:

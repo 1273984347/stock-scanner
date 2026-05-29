@@ -90,8 +90,8 @@ class PositionManager:
             if self._lock_file:
                 try:
                     self._lock_file.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"[position_manager] 文件锁关闭异常: {e}")
                 self._lock_file = None
             raise IOError(f"无法获取文件锁: {self.file}") from e
 
@@ -105,8 +105,8 @@ class PositionManager:
                 fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_UN)
                 self._lock_file.close()
                 self._lock_file = None
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[position_manager] 文件锁释放异常: {e}")
 
     def _load(self):
         """从文件加载持仓"""
@@ -339,8 +339,8 @@ class PositionManager:
                         "pnl_pct": round(pnl_pct, 4),
                         "buy_price": pos.buy_price, "current_price": price,
                     })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[position_manager] 持仓到期检查异常 [{code}]: {e}")
 
         return alerts
 

@@ -116,8 +116,8 @@ class FinancialCache:
         if p.exists():
             try:
                 p.unlink()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[FinancialCache] 缓存失效操作失败 [{code}]: {e}")
 
     def clear_memory(self) -> None:
         """清空内存缓存（用于测试）"""
@@ -200,7 +200,8 @@ class FinancialCache:
         try:
             data = row.to_dict()
             return self._dict_to_standard(data)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[FinancialCache] row 转 dict 失败: {e}")
             return None
 
 

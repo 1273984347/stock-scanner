@@ -42,7 +42,8 @@ def _batch_get_financial_data(codes: List[str]) -> Dict[str, Optional[pd.Series]
             code = futures[future]
             try:
                 results[code] = future.result()
-            except Exception:
+            except Exception as e:
+                logger.debug(f"[strategies] 基本面数据获取失败 [{code}]: {e}")
                 results[code] = None
     return results
 
@@ -69,8 +70,8 @@ def _batch_get_stock_hist(codes: List[str], days: int = 180) -> Dict[str, pd.Dat
                 df = future.result()
                 if df is not None and not df.empty and len(df) >= 60:
                     results[code] = df
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[strategies] 历史数据获取失败 [{code}]: {e}")
     return results
 
 
@@ -518,8 +519,8 @@ def get_keltner_xosi_mt_candidates(config: SystemConfig) -> pd.DataFrame:
                     index_hist = get_stock_hist_multi_source(code, 60)
                     if index_hist is not None and not index_hist.empty:
                         index_df = index_hist
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[strategies] 上证指数数据获取失败: {e}")
 
         # 大盘状态
         market_regime_info = {"regime": "MEAN_REVERSION", "confidence": 0.3}
@@ -548,7 +549,8 @@ def get_keltner_xosi_mt_candidates(config: SystemConfig) -> pd.DataFrame:
 
             try:
                 channels = compute_all_channels(hist)
-            except Exception:
+            except Exception as e:
+                logger.debug(f"[strategies] 通道计算失败 [{code}]: {e}")
                 continue
 
             signals = channels.get("signals")

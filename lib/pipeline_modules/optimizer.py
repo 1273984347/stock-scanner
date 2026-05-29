@@ -24,8 +24,8 @@ def _get_sector_map(codes: list) -> dict:
             df_filtered["代码"] = df_filtered["代码"].astype(str)
             df_filtered["行业"] = df_filtered["行业"].fillna(df_filtered["所属行业"]).fillna("")
             sector_map = df_filtered.set_index("代码")["行业"].to_dict()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[optimizer] 行业分布获取失败: {e}")
     return sector_map
 
 
@@ -42,7 +42,8 @@ def _load_current_weights() -> dict:
             return {}
         return {code: p.get("market_value", 0) / total_value
                 for code, p in positions.items()}
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[optimizer] 持仓权重获取失败: {e}")
         return {}
 
 

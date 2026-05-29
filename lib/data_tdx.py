@@ -101,8 +101,8 @@ def _fetch_via_network(code: str, days: int, period: str) -> pd.DataFrame:
     finally:
         try:
             api.disconnect()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[tdx] 网络连接断开异常: {e}")
 
 
 # ========== 本地文件获取 ==========
@@ -252,8 +252,8 @@ def get_kline(code: str, days: int = 180, period: str = "daily") -> pd.DataFrame
             if len(df_ak) >= days:
                 df_ak = df_ak.tail(days)
             return df_ak[["date", "open", "high", "low", "close", "volume"]]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[tdx] akshare fallback 失败 [{code}]: {e}")
 
     return pd.DataFrame()
 
@@ -303,8 +303,8 @@ def get_index_daily(index_code: str, days: int = 180) -> pd.DataFrame:
     finally:
         try:
             api.disconnect()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[tdx] 指数连接断开异常: {e}")
 
 
 # ========== 本地文件：指数（sh/zs, sz/zs, tdx/zs）==========
@@ -408,7 +408,8 @@ def _parse_csi_file(file_path: Path, days: int) -> pd.DataFrame:
         if len(df) > days:
             df = df.tail(days)
         return df[["date", "open", "high", "low", "close"]].copy()
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[tdx] CSI 指数文件解析失败: {e}")
         return pd.DataFrame()
 
 
@@ -479,7 +480,8 @@ def _fetch_xsb_local(code: str, days: int) -> pd.DataFrame:
         if len(df) > days:
             df = df.tail(days)
         return df[["date", "open", "high", "low", "close", "volume", "amount"]].copy()
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[tdx] 新三板文件解析失败 [{code}]: {e}")
         return pd.DataFrame()
 
 
@@ -571,7 +573,8 @@ def _parse_macro_file(file_path: Path, days: int) -> pd.DataFrame:
         if len(df) > days:
             df = df.tail(days)
         return df[["date", "open", "high", "low", "close", "amount", "volume"]].copy()
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[tdx] 宏观指标文件解析失败: {e}")
         return pd.DataFrame()
 
 
@@ -633,7 +636,8 @@ def _read_standard_file(file_path: Path, days: int, price_unit: float = 0.01,
         if len(df) > days:
             df = df.tail(days)
         return df[["date", "open", "high", "low", "close", "volume", "amount"]].copy()
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[tdx] 标准文件读取失败 [{file_path}]: {e}")
         return pd.DataFrame()
 
 

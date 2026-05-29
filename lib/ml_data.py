@@ -327,8 +327,8 @@ class MLDataPipeline:
         """
         try:
             hist = get_stock_hist_multi_source(code, days=LOOKBACK_DAYS, source="auto")
-        except Exception:
-            logger.debug(f"{code}: 数据获取失败")
+        except Exception as e:
+            logger.debug(f"[ml_data] {code}: 数据获取失败: {e}")
             return pd.DataFrame()
         if hist.empty or len(hist) < MIN_HISTORY:
             logger.debug(f"{code}: 数据不足 ({len(hist) if not hist.empty else 0})")
@@ -409,9 +409,9 @@ class MLDataPipeline:
         excess_Nd = 股票前视N日收益 - 基准前视N日收益
         """
         bench = bench_close.sort_index()
-        bench_fwd_5d = bench.pct_change(5).shift(-5)  # forward return: series[i+5]/series[i]-1
-        bench_fwd_10d = bench.pct_change(10).shift(-10)
-        bench_fwd_20d = bench.pct_change(20).shift(-20)
+        bench_fwd_5d = bench.pct_change(5).shift(-5 - 1)  # match evaluator.py: forward return from day i+1
+        bench_fwd_10d = bench.pct_change(10).shift(-10 - 1)
+        bench_fwd_20d = bench.pct_change(20).shift(-20 - 1)
 
         panel["benchmark_fwd_5d"] = panel["date"].map(bench_fwd_5d)
         panel["benchmark_fwd_10d"] = panel["date"].map(bench_fwd_10d)

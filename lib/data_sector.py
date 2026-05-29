@@ -75,8 +75,8 @@ def get_sector_stocks(sector: str = "白酒", max_stocks: int = 50) -> List[str]
                                 if len(stocks) >= max_stocks:
                                     break
                         break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[sector] 板块成分股查询异常: {e}")
 
         api.disconnect()
         return stocks[:max_stocks]
@@ -100,8 +100,8 @@ def get_tencent_sector_code(code: str) -> Optional[str]:
         if len(parts) > 10:
             sector_code = parts[10].strip()
             return sector_code if sector_code else None
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[sector] 腾讯板块代码获取失败 [{code}]: {e}")
     return None
 
 

@@ -57,7 +57,8 @@ class FactorMonitor:
                     ic, _ = spearmanr(fv, excess)
                     if not np.isnan(ic):
                         raw[factor].append(ic)
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"[factor_monitor] IC 计算异常 [{factor}]: {e}")
                     continue
 
         out: Dict[str, Dict] = {}
@@ -163,7 +164,8 @@ class FactorMonitor:
                     existing = json.load(f)
                 if not isinstance(existing, list):
                     existing = [existing]
-            except Exception:
+            except Exception as e:
+                logger.debug(f"[factor_monitor] 日志文件读取失败: {e}")
                 existing = []
         existing.append(entry)
 

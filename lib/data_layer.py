@@ -96,7 +96,8 @@ def _load_cache(key: str, max_age_hours: int = 2) -> pd.DataFrame:
         return pd.DataFrame()
     try:
         return pd.read_parquet(path)
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[data_layer] 缓存读取失败 [{key}]: {e}")
         path.unlink(missing_ok=True)
         return pd.DataFrame()
 
@@ -129,7 +130,8 @@ def clean_cache(max_age_hours: int = 24, max_total_mb: int = 500):
             else:
                 total_size += size
                 alive_files.append((path, mtime, size))
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[data_layer] 缓存文件处理失败: {e}")
             continue
     max_bytes = max_total_mb * 1024 * 1024
     if total_size > max_bytes:
@@ -281,8 +283,8 @@ def _fetch_from_tdx_local(code: str, days: int) -> pd.DataFrame:
                 if len(df) > days:
                     df = df.tail(days)
                 return df[["date", "open", "high", "low", "close", "volume"]].copy()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[data_layer] TDX 前复权文件读取失败 [{code}]: {e}")
 
     # 2. Fallback 到不复权文件（sh/lday/, sz/lday/）
     file_path = Path(tdx_path) / market_str / "lday" / f"{market_str}{code}.day"
@@ -302,7 +304,8 @@ def _fetch_from_tdx_local(code: str, days: int) -> pd.DataFrame:
         if len(df) > days:
             df = df.tail(days)
         return df[["date", "open", "high", "low", "close", "volume"]].copy()
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[data_layer] TDX 不复权文件读取失败 [{code}]: {e}")
         return pd.DataFrame()
 
 
@@ -373,7 +376,8 @@ def get_index_hist(code: str, days: int = 180) -> pd.DataFrame:
         if not df.empty:
             _save_cache(cache_key, df)
         return df
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[data_layer] 指数日线获取失败 [{code}]: {e}")
         return pd.DataFrame()
 
 
@@ -636,7 +640,8 @@ def _batch_get_news_signals(codes: List[str]) -> Dict[str, dict]:
             code = futures[future]
             try:
                 results[code] = future.result()
-            except Exception:
+            except Exception as e:
+                logger.debug(f"[data_layer] 新闻信号获取失败 [{code}]: {e}")
                 results[code] = {
                     "major_positive": False,
                     "earnings_positive": False,

@@ -19,10 +19,13 @@
 """
 from datetime import datetime
 from pathlib import Path
+import logging
 import pandas as pd
 from typing import Dict, Optional, List
 from lib.data_tdx_fin import GpcwReader
 from lib.data_cache import get_financial_cache
+
+logger = logging.getLogger(__name__)
 
 # gpcw 字段到 compute_fundamentals 输入的映射
 # 格式: gpcw_field_index: (target_key, multiplier)
@@ -232,8 +235,8 @@ class TdxFinAdapter:
                         None if curr_rev is None or prior_rev is None else curr_rev - prior_rev,
                         prior_rev
                     )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[tdx_fin_adapter] 增长率计算失败 [{code}]: {e}")
 
         return result
 
@@ -299,8 +302,8 @@ def _fetch_baostock_fundamentals(code: str) -> Optional[Dict]:
                         dupont_roe = _to_float(row[3])
                         asset_to_equity = _to_float(row[4])
                         break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[tdx_fin_adapter] baostock dupont 查询失败 [{code}] year={year}: {e}")
 
             # ── profit_data ──
             net_margin = None
@@ -319,8 +322,8 @@ def _fetch_baostock_fundamentals(code: str) -> Optional[Dict]:
                         net_income = _to_float(row[6])
                         revenue = _to_float(row[8])
                         break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[tdx_fin_adapter] baostock profit 查询失败 [{code}] year={year}: {e}")
 
             # 只要有 ROE 数据就算成功
             if dupont_roe is None and roe_avg is None:
@@ -337,8 +340,8 @@ def _fetch_baostock_fundamentals(code: str) -> Optional[Dict]:
                         revenue_growth = _to_float(row[4])
                         net_income_growth = _to_float(row[5])
                         break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[tdx_fin_adapter] baostock growth 查询失败 [{code}] year={year}: {e}")
 
             # ── balance_data ──
             total_assets = None
@@ -351,8 +354,8 @@ def _fetch_baostock_fundamentals(code: str) -> Optional[Dict]:
                         total_assets = _to_float(row[3])
                         total_liabilities = _to_float(row[4])
                         break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[tdx_fin_adapter] baostock balance 查询失败 [{code}] year={year}: {e}")
 
             roe = dupont_roe if dupont_roe is not None else roe_avg
             debt_to_asset = None
@@ -383,7 +386,8 @@ def _fetch_baostock_fundamentals(code: str) -> Optional[Dict]:
             break
 
         return result
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[tdx_fin_adapter] baostock 财务数据获取失败 [{code}]: {e}")
         return None
 
 
@@ -409,8 +413,8 @@ def get_stock_fundamentals(code: str, period: Optional[str] = None) -> Optional[
                     em_dr = _em_debt_ratio(code)
                     if em_dr is not None:
                         solv["debt_to_asset"] = em_dr
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"[tdx_fin_adapter] East Money 负债率获取失败 [{code}]: {e}")
 
             # 从 East Money 补充增长率（如 TDX 没有）
             growth = result.get("growth", {})
@@ -422,8 +426,8 @@ def get_stock_fundamentals(code: str, period: Optional[str] = None) -> Optional[
                         growth["revenue_growth"] = em_data["revenue_growth"]
                     if growth.get("net_income_growth") is None and em_data.get("net_income_growth") is not None:
                         growth["net_income_growth"] = em_data["net_income_growth"]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[tdx_fin_adapter] East Money 增长率补充失败 [{code}]: {e}")
 
             result["_source"] = "tdx"
             cache.set(code, result)
@@ -445,8 +449,8 @@ def get_stock_fundamentals(code: str, period: Optional[str] = None) -> Optional[
                     growth["revenue_growth"] = em_data["revenue_growth"]
                 if growth.get("net_income_growth") is None and em_data.get("net_income_growth") is not None:
                     growth["net_income_growth"] = em_data["net_income_growth"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[tdx_fin_adapter] baostock East Money 补充失败 [{code}]: {e}")
 
         bs_result["_source"] = "baostock"
         cache.set(code, bs_result)

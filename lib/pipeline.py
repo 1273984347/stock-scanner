@@ -105,8 +105,8 @@ def _get_sector_map(codes: list) -> dict:
                 # 只筛选 codes 中存在的股票，然后转 dict
                 mask = df[code_col].astype(str).isin(codes)
                 sector_map = df.loc[mask].set_index(code_col)[sector_col].astype(str).to_dict()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[pipeline] 行业分布获取失败: {e}")
     return sector_map
 
 
@@ -122,7 +122,8 @@ def _load_current_weights() -> dict:
             return {}
         return {code: p.get("market_value", 0) / total_value
                 for code, p in positions.items()}
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[pipeline] 持仓权重获取失败: {e}")
         return {}
 
 
@@ -332,8 +333,8 @@ def _check_monitor_alerts(ml_ranking: dict = None):
                                 {"type": "ic_decay_alert", "alerts": decay_alerts},
                                 preset="alert"
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"[pipeline] 飞书通知发送失败: {e}")
                 else:
                     logger.info("因子监控: 全部因子 IC 正常")
         except Exception as e:

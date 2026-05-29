@@ -46,8 +46,8 @@ def get_fund_flow_estimate(code: str) -> dict:
                 "net_inflow_5d": flow.get("main_net_inflow", 0),
                 "source": "eastmoney",
             }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[fund_flow] 东方财富资金流获取失败 [{code}]: {e}")
 
     # 2. 腾讯 + 历史成交量估算（仅在有明确估算时返回，否则继续akshare）
     tencent_result = None
@@ -86,8 +86,8 @@ def get_fund_flow_estimate(code: str) -> dict:
                     "net_inflow_5d": 0,
                     "source": "tencent_estimate",
                 }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[fund_flow] 腾讯资金流估算失败 [{code}]: {e}")
 
     if tencent_result is not None:
         return tencent_result
@@ -115,8 +115,8 @@ def get_fund_flow_estimate(code: str) -> dict:
                         "net_inflow_5d": net,
                         "source": "akshare",
                     }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[fund_flow] akshare 资金流获取失败 [{code}]: {e}")
 
     return _empty_flow()
 
@@ -129,8 +129,8 @@ def _get_hist_avg_volume(code: str, days: int = 20) -> Optional[float]:
         df = get_stock_hist(code, days=days)
         if not df.empty and "volume" in df.columns:
             return float(df["volume"].iloc[:-1].mean())  # 排除今日
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[fund_flow] 历史成交量获取失败 [{code}]: {e}")
     return None
 
 

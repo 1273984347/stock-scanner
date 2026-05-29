@@ -151,7 +151,8 @@ def detect_market_regime(
     dc_slope = float(dc["dc_mid"].pct_change(5).iloc[-1] * 100)
 
     # 4. ATR 变化
-    atr_ratio = float(atr.iloc[-1] / (atr.iloc[-20:].mean() + 1e-9))
+    atr_mean = atr.iloc[-20:].mean()
+    atr_ratio = float(atr.iloc[-1] / atr_mean) if (pd.notna(atr_mean) and atr_mean > 0) else 1.0
 
     # 5. 压缩程度
     compression = _detect_compression(kc_range, atr)
@@ -257,7 +258,7 @@ HS300_CODE = "000300"  # 沪深300指数代码
 
 
 def detect_market_regime_from_hs300(days: int = 60) -> Dict:
-    """获取 HS300 数据，输出 V4 四态体制
+    """获取 HS300 数据，输出 V4 五态体制
 
     这是市场状态检测的主入口。V4 框架要求：
     - 市场状态由沪深300指数决定，而非个股
@@ -282,5 +283,6 @@ def detect_market_regime_from_hs300(days: int = 60) -> Dict:
         result = detect_market_regime(index_df)
         result["index_code"] = HS300_CODE
         return result
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[market_regime] HS300 市场状态检测失败: {e}")
         return _default_regime()

@@ -74,8 +74,8 @@ def get_options_list() -> pd.DataFrame:
     finally:
         try:
             api.disconnect()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[options] 期权列表断开连接异常: {e}")
 
 
 def get_options_daily(code: str, start_date: str = None, end_date: str = None,
@@ -138,8 +138,8 @@ def get_options_daily(code: str, start_date: str = None, end_date: str = None,
     finally:
         try:
             api.disconnect()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[options] 期权日线断开连接异常: {e}")
 
 
 # ========== 常用期权快捷函数 ==========
@@ -199,5 +199,5 @@ def get_50etf_options_daily(expiry_month: str = None, option_type: str = "call",
     finally:
         try:
             api.disconnect()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[options] 50ETF 期权断开连接异常: {e}")

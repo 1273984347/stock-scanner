@@ -132,7 +132,8 @@ def log_scan(scan_result: Dict) -> int:
                         "SELECTED" if score is not None else "SCREENED",
                         f"策略{strategy_name}选出",
                     ))
-            except Exception:
+            except Exception as e:
+                logger.debug(f"[audit_logger] 股票决策记录写入异常 [{code}]: {e}")
                 continue
 
         conn.commit()
