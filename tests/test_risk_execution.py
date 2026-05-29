@@ -29,11 +29,11 @@ class TestRiskExecution:
         """周亏损超过8%触发停止交易"""
         config = RiskConfig(weekly_loss_limit=0.08)
         rm = RiskManager(config=config, executor=self.executor)
-        for i in range(5):
-            alerts, actions = rm.check_all(
-                portfolio_value=100000, positions={},
-                daily_return=-0.02, max_drawdown=0.10
-            )
+        # 单日亏损超过周阈值（日期守卫防止同一天重复累积）
+        alerts, actions = rm.check_all(
+            portfolio_value=100000, positions={},
+            daily_return=-0.09, max_drawdown=0.10
+        )
         weekly_alerts = [a for a in alerts if a.rule_name == "weekly_loss_limit"]
         assert len(weekly_alerts) >= 1
         assert self.executor.is_trading_suspended

@@ -110,6 +110,7 @@ class RiskManager:
         self.executor = executor or ActionExecutor()
         self._weekly_returns: List[float] = []
         self._last_week_reset: Optional[datetime] = None
+        self._last_return_date: Optional[str] = None  # 防止同一天重复累积
         self._register_default_rules()
 
     def _register_default_rules(self):
@@ -187,7 +188,7 @@ class RiskManager:
         for alert in self.alerts:
             if alert.level == "CRITICAL":
                 action = RiskAction(
-                    action_type="STOP_TRADING" if "回撤" in alert.message or "周亏损" in alert.message else "REDUCE_POSITION",
+                    action_type="STOP_TRADING" if alert.rule_name in ("max_drawdown", "weekly_loss_limit") else "REDUCE_POSITION",
                     target="ALL",
                     reason=alert.message,
                     severity="CRITICAL"
@@ -272,6 +273,7 @@ class RiskManager:
     def _check_weekly_loss(self, ctx: dict) -> Optional[RiskAlert]:
         daily_return = ctx.get("daily_return", 0)
         now = datetime.now()
+        today_str = now.strftime("%Y-%m-%d")
 
         # Reset weekly tracking on Monday (or first call)
         if self._last_week_reset is None or (
@@ -280,7 +282,10 @@ class RiskManager:
             self._weekly_returns = []
             self._last_week_reset = now
 
-        self._weekly_returns.append(daily_return)
+        # 防止同一天重复累积
+        if self._last_return_date != today_str:
+            self._weekly_returns.append(daily_return)
+            self._last_return_date = today_str
         weekly_cum = sum(self._weekly_returns)
 
         if weekly_cum < -self.config.weekly_loss_limit:
