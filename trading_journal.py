@@ -76,6 +76,10 @@ class TradeEntry:
     stop_loss: float           # 止损价
     position_pct: float       # 仓位%
     notes: str = ""
+    # 情绪与纪律（G6）
+    emotion_state: str = ""      # Emotion: 冷静/焦虑/贪婪/恐惧
+    rule_violated: bool = False  # Rule violated?
+    violation_desc: str = ""     # Violation description
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
 
@@ -141,6 +145,78 @@ class TradeRecord:
     # 元数据
     created_at: str = ""
     closed_at: Optional[str] = None
+
+
+@dataclass
+class TradeAttribution:
+    """Trade attribution (design: why profit/loss)"""
+    market_contribution: float  # Market regime contribution
+    sector_contribution: float  # Sector contribution
+    signal_quality: float       # Signal quality at entry
+    timing_score: float         # Entry timing score
+    main_factor: str            # Main P&L factor
+
+
+def analyze_trade(record: Dict) -> TradeAttribution:
+    """Automatic attribution analysis for a closed trade.
+
+    Decomposes P&L into market, sector, signal quality, and timing components.
+    Requires record to have: market_regime, pnl_pct, signal_type, max_runup_pct,
+    max_drawdown_pct, entry_date, exit_date.
+    """
+    pnl = record.get("pnl_pct", 0.0)
+    regime = record.get("market_regime", "UNKNOWN")
+    signal = record.get("signal_type", "")
+
+    # 1. Market contribution: heuristic based on regime
+    regime_bias = {
+        "TREND_UP": 0.4,
+        "MEAN_REVERSION": 0.0,
+        "COMPRESSION": -0.1,
+        "TREND_DOWN": -0.3,
+        "UNKNOWN": 0.0,
+    }
+    market_contribution = pnl * regime_bias.get(regime, 0.0)
+
+    # 2. Sector contribution: residual after market (placeholder — needs sector data)
+    sector_contribution = 0.0  # TODO: needs sector index data
+
+    # 3. Signal quality: reward well-known signals more
+    signal_quality_map = {
+        "MA5_MA21_GC": 0.8,
+        "VOLUME_BREAK": 0.7,
+        "MACD_GC": 0.6,
+        "KDJ_CROSS": 0.5,
+    }
+    signal_quality = signal_quality_map.get(signal, 0.5)
+
+    # 4. Timing score: based on max_runup vs realized pnl
+    max_runup = record.get("max_runup_pct", 0.0)
+    if max_runup > 0 and pnl > 0:
+        # How much of the available profit was captured
+        timing_score = min(pnl / max_runup, 1.0) if max_runup > 0 else 0.5
+    else:
+        timing_score = 0.3  # Losing trade gets low timing score
+
+    # 5. Main factor: which factor contributed most (absolute)
+    factors = {
+        "市场": abs(market_contribution),
+        "信号质量": abs(signal_quality * pnl * 0.3),
+        "择时": abs(timing_score * pnl * 0.3),
+    }
+    # If sector data available, include it
+    if sector_contribution != 0:
+        factors["板块"] = abs(sector_contribution)
+
+    main_factor = max(factors, key=factors.get) if factors else "未知"
+
+    return TradeAttribution(
+        market_contribution=round(market_contribution, 4),
+        sector_contribution=round(sector_contribution, 4),
+        signal_quality=round(signal_quality, 4),
+        timing_score=round(timing_score, 4),
+        main_factor=main_factor,
+    )
 
 
 class TradingJournal:

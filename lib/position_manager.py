@@ -6,7 +6,7 @@ import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
 import logging
@@ -227,6 +227,26 @@ class PositionManager:
             pos.trailing_stop_price = pos.peak_price - atr * trailing_mult
         self._save()
         logger.info(f"更新ATR: {code} ATR={atr:.4f} stop={pos.atr_stop_price:.2f} tp={pos.atr_take_profit_price:.2f}")
+
+    def can_add_position(self, code: str, current_price: float) -> Tuple[bool, str]:
+        """Check if adding to position is allowed (design: only profitable positions)
+
+        Returns:
+            (allowed, reason)
+        """
+        pos = self.positions.get(code)
+        if pos is None:
+            return True, "新建仓位"
+
+        pnl_pct = (current_price - pos.buy_price) / pos.buy_price
+        if pnl_pct <= 0:
+            return False, f"禁止亏损补仓（当前亏损 {pnl_pct:.1%}）"
+
+        # Profitable position allows adding, but check max position
+        if pos.remaining_ratio >= 1.5:  # Max 1.5x initial
+            return False, "已达到加仓上限"
+
+        return True, f"盈利 {pnl_pct:.1%}，允许加仓"
 
     def remove_position(self, code: str, close_price: float = None):
         """移除持仓
