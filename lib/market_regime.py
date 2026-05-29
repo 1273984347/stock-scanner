@@ -163,6 +163,15 @@ def detect_market_regime(
     # 7. 趋势得分
     trend_score = _detect_trend(index_df, kc_mid)
 
+    # 8. Ride rail detection: price near upper Keltner band (deviation < 5%)
+    keltner_upper = kc_mid + 2 * atr
+    ride_rail = bool(abs(close.iloc[-1] - keltner_upper.iloc[-1]) / keltner_upper.iloc[-1] < 0.05)
+
+    # 9. Donchian channel narrowing check
+    dc_width = dc_upper - dc_lower
+    dc_width_ratio = dc_width.iloc[-1] / dc_width.iloc[-20:].mean() if dc_width.iloc[-20:].mean() > 0 else 1
+    dc_narrow = dc_width_ratio < 0.7  # Donchian channel narrowed to <70% of historical
+
     # ========== 状态判断 ==========
     indicators = {
         "price_vs_ema": round(price_vs_ema, 4),
@@ -172,6 +181,9 @@ def detect_market_regime(
         "compression": round(compression, 4),
         "vol_expanding": vol_expanding,
         "trend_score": round(trend_score, 4),
+        "ride_rail": ride_rail,
+        "dc_width_ratio": round(dc_width_ratio, 4),
+        "dc_narrow": dc_narrow,
     }
 
     # RISK_OFF: 极端波动扩张（ATR ratio > 2.0）
@@ -199,8 +211,8 @@ def detect_market_regime(
         regime = COMPRESSION
         confidence = min(0.85, 0.4 + compression * 0.4)
 
-    # MEAN_REVERSION: EMA走平 + 震荡
-    elif abs(ema_slope) < 0.1 and abs(trend_score) < 0.4:
+    # MEAN_REVERSION: EMA走平 + 震荡 + Donchian收窄
+    elif abs(ema_slope) < 0.1 and abs(trend_score) < 0.4 and dc_narrow:
         regime = MEAN_REVERSION
         confidence = min(0.80, 0.4 + (1 - compression) * 0.3)
 
