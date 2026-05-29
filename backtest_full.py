@@ -187,7 +187,14 @@ def check_exit_v2(df: pd.DataFrame, entry_i: int, hs300_vol_ratio: float = 1.0) 
         (exit_reason, exit_price, exit_i)
     """
     entry_row = df.iloc[entry_i]
-    trailing_stop = entry_row['low_10'] if not pd.isna(entry_row['low_10']) else entry_row['close'] * 0.95
+    entry_price = float(entry_row['open']) if 'open' in entry_row.index else float(entry_row['close'])
+    atr_at_entry = float(entry_row.get('atr', 0))
+    if atr_at_entry <= 0 or pd.isna(atr_at_entry):
+        atr_at_entry = entry_price * 0.02  # fallback: 2% of price
+
+    # ATR-based trailing stop（优化4: 更适应波动率）
+    trailing_stop = entry_price - 2.0 * atr_at_entry  # 初始止损: 入场价 - 2ATR
+    peak_price = entry_price
     max_exit_i = min(entry_i + 20, len(df) - 1)
 
     # D: 高波动时完全禁用 EMA21 退出
@@ -197,17 +204,25 @@ def check_exit_v2(df: pd.DataFrame, entry_i: int, hs300_vol_ratio: float = 1.0) 
         row = df.iloc[j]
         prev_row = df.iloc[j - 1]
         days_held = j - entry_i
+        current_price = float(row['close'])
+        current_atr = float(row.get('atr', atr_at_entry))
+        if current_atr <= 0 or pd.isna(current_atr):
+            current_atr = atr_at_entry
 
-        # 移动止损（全程）
-        if not pd.isna(row['low_10']):
-            trailing_stop = max(trailing_stop, row['low_10'])
-        if row['close'] < trailing_stop:
+        # 更新峰值和移动止损
+        if current_price > peak_price:
+            peak_price = current_price
+            # 移动止损: 峰值 - 2ATR（随价格上涨而上移）
+            trailing_stop = max(trailing_stop, peak_price - 2.0 * current_atr)
+
+        # 移动止损触发
+        if current_price < trailing_stop:
             return "trailing_stop", float(trailing_stop), j
 
         # EMA21 辅助（仅前10天，且非高波动）
         if use_ema21_exit and days_held <= 10:
-            if row['close'] < row['EMA21'] and prev_row['close'] < prev_row['EMA21']:
-                return "trend_break", float(row['close']), j
+            if current_price < row['EMA21'] and float(prev_row['close']) < float(prev_row['EMA21']):
+                return "trend_break", current_price, j
 
     last_i = max_exit_i
     return "timeout", float(df.iloc[last_i]['close']), last_i
@@ -237,6 +252,10 @@ def build_hs300_series(days=500):
     hs300['regime'] = hs300.apply(classify_regime, axis=1)
     hs300['date_str'] = hs300['date'].apply(lambda d: str(d.date()) if hasattr(d, 'date') else str(d))
     hs300['ret5'] = hs300['close'].pct_change(5) * 100
+
+    # 趋势强度评分（用于入场过滤）
+    # trend_score = abs(ema_slope) / atr_ratio，值越大趋势越强
+    hs300['trend_score'] = hs300['ema_slope_pct'].abs()
 
     # HS300 波动率（用于 D 情绪过滤）
     high = hs300['high']
@@ -330,7 +349,7 @@ def _process_single_stock(args):
         list of trade dicts
     """
     code, start_date, data_days, hs300_dates, hs300_closes, hs300_emas, hs300_regime_dict, \
-        hs300_pvem_dict, hs300_ret5_dict, hs300_vol_dict, \
+        hs300_pvem_dict, hs300_ret5_dict, hs300_vol_dict, hs300_trend_dict, \
         sector_map, sector_filter_top_n, rel_strength_threshold, \
         use_sentiment_filter, precomputed_sectors = args
 
@@ -357,11 +376,23 @@ def _process_single_stock(args):
             if not (hs300_closes.get(entry_date_str, 0) > hs300_emas.get(entry_date_str, 0)):
                 continue
 
-            # MEAN_REVERSION 过滤
+            # 市场状态过滤（优化1: 跳过COMPRESSION，收紧MEAN_REVERSION）
             regime = hs300_regime_dict.get(entry_date_str, "MEAN_REVERSION")
             pvem = hs300_pvem_dict.get(entry_date_str, 0.0)
-            if regime == "MEAN_REVERSION" and pvem <= 3.0:
-                continue
+
+            if regime == "COMPRESSION":
+                continue  # 压缩状态不做多
+
+            if regime == "MEAN_REVERSION" and pvem <= 5.0:
+                continue  # 均值回归时需要更强的趋势偏离（pvem>5%）
+
+            if regime == "TREND_DOWN":
+                continue  # 下跌趋势不做多
+
+            # 趋势强度过滤（优化3: 只在趋势明确时交易）
+            trend_score = hs300_trend_dict.get(entry_date_str, 0)
+            if trend_score < 0.3:
+                continue  # 趋势太弱，不做
 
             # 情绪过滤（入场级）：高波动时跳过入场
             if use_sentiment_filter:
@@ -467,6 +498,7 @@ def run_full_backtest(
     hs300_pvem_dict = dict(zip(hs300['date_str'], hs300['pvem']))
     hs300_ret5_dict = dict(zip(hs300['date_str'], hs300['ret5']))
     hs300_vol_dict = dict(zip(hs300['date_str'], hs300['vol_ratio']))
+    hs300_trend_dict = dict(zip(hs300['date_str'], hs300['trend_score']))
 
     # 板块过滤和相对强度过滤需要预计算
     stock_rets = {}
@@ -492,6 +524,7 @@ def run_full_backtest(
         task_args = [
             (code, start_date, data_days, hs300_dates, hs300_closes, hs300_emas,
              hs300_regime_dict, hs300_pvem_dict, hs300_ret5_dict, hs300_vol_dict,
+             hs300_trend_dict,
              SECTOR_MAP, sector_filter_top_n, rel_strength_threshold,
              use_sentiment_filter,
              precomputed_sectors
