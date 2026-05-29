@@ -301,9 +301,136 @@ def get_top_sectors(date_str: str, stock_rets: Dict, top_n: int = 5) -> set:
     return set(sorted_sectors[:top_n])
 
 
+def precompute_top_sectors(stock_rets: Dict, top_n: int = 5) -> Dict[str, set]:
+    """预计算所有日期的板块排名（避免内层循环重复计算）
+
+    Returns:
+        {date_str: set_of_top_sector_names}
+    """
+    # 收集所有日期
+    all_dates = set()
+    for sret in stock_rets.values():
+        all_dates.update(sret.keys())
+
+    result = {}
+    for date_str in sorted(all_dates):
+        result[date_str] = get_top_sectors(date_str, stock_rets, top_n)
+    return result
+
+
 # ============================================================
 # 全量回测核心
 # ============================================================
+
+def _process_single_stock(args):
+    """处理单只股票的回测（用于多进程）
+
+    Args:
+        args: tuple(code, start_date, hs300_dict, sector_map, sector_filter_top_n,
+                    rel_strength_threshold, use_sentiment_filter, stock_rets_code_ret)
+    Returns:
+        list of trade dicts
+    """
+    code, start_date, hs300_dates, hs300_closes, hs300_emas, hs300_regime_dict, \
+        hs300_pvem_dict, hs300_ret5_dict, hs300_vol_dict, \
+        sector_map, sector_filter_top_n, rel_strength_threshold, \
+        use_sentiment_filter, precomputed_sectors = args
+
+    trades = []
+    try:
+        df = get_stock_hist_multi_source(code, days=500, source="tdx_local_qfq")
+        if df is None or len(df) < 60:
+            return trades
+        df = add_indicators(df)
+        df = df[df['date'] >= start_date]
+        if len(df) < 30:
+            return trades
+
+        df['date_str'] = df['date'].apply(lambda d: str(d.date()) if hasattr(d, 'date') else str(d))
+        df['stock_ret5'] = df['close'].pct_change(5) * 100
+
+        for i in range(30, len(df) - 1):
+            row = df.iloc[i]
+            entry_date_str = row['date_str']
+
+            # HS300 市场过滤（用 dict 查找替代 DataFrame 过滤）
+            if entry_date_str not in hs300_dates:
+                continue
+            if not (hs300_closes.get(entry_date_str, 0) > hs300_emas.get(entry_date_str, 0)):
+                continue
+
+            # MEAN_REVERSION 过滤
+            regime = hs300_regime_dict.get(entry_date_str, "MEAN_REVERSION")
+            pvem = hs300_pvem_dict.get(entry_date_str, 0.0)
+            if regime == "MEAN_REVERSION" and pvem <= 3.0:
+                continue
+
+            # 相对强度过滤
+            if rel_strength_threshold > 0:
+                stock_ret = row.get('stock_ret5')
+                hs_ret = hs300_ret5_dict.get(entry_date_str)
+                if stock_ret is None or hs_ret is None:
+                    continue
+                if (stock_ret - hs_ret) < rel_strength_threshold:
+                    continue
+
+            # 板块过滤（使用预计算的板块排名）
+            if sector_filter_top_n > 0 and precomputed_sectors:
+                top_sectors = precomputed_sectors.get(entry_date_str, set())
+                stock_sector = sector_map.get(code)
+                if top_sectors and stock_sector not in top_sectors:
+                    continue
+
+            # 入场信号
+            if not check_entry(df, i):
+                continue
+
+            # 入场（次日开盘价）
+            if i + 1 >= len(df):
+                continue
+            entry_row = df.iloc[i + 1]
+            entry_price = float(entry_row['open'])
+            entry_i = i + 1
+
+            # 退出（使用 backtest_full 的 check_exit_v2）
+            hs300_vol_ratio = hs300_vol_dict.get(entry_date_str, 1.0) if use_sentiment_filter else 1.0
+            exit_reason, exit_price, exit_i = check_exit_v2(df, entry_i, hs300_vol_ratio=hs300_vol_ratio)
+
+            # 入场信号
+            if not check_entry(df, i):
+                continue
+
+            # 入场（次日开盘价）
+            if i + 1 >= len(df):
+                continue
+            entry_row = df.iloc[i + 1]
+            entry_price = float(entry_row['open'])
+            entry_i = i + 1
+
+            # 退出（使用 backtest_full 的 check_exit_v2）
+            hs300_vol_ratio = hs300_vol_dict.get(entry_date_str, 1.0) if use_sentiment_filter else 1.0
+            exit_reason, exit_price, exit_i = check_exit_v2(df, entry_i, hs300_vol_ratio=hs300_vol_ratio)
+
+            pnl_pct = (exit_price / entry_price - 1) * 100
+            exit_row = df.iloc[exit_i]
+            exit_date_str = exit_row['date_str'] if 'date_str' in exit_row.index else entry_date_str
+
+            trades.append({
+                'code': code,
+                'entry_date': entry_date_str,
+                'exit_date': exit_date_str,
+                'entry_price': entry_price,
+                'exit_price': exit_price,
+                'pnl_pct': round(pnl_pct, 2),
+                'exit_reason': exit_reason,
+                'regime': regime,
+                'sector': sector_map.get(code, '未知'),
+            })
+    except Exception:
+        pass
+
+    return trades
+
 
 def run_full_backtest(
     stock_codes: List[str],
@@ -312,15 +439,23 @@ def run_full_backtest(
     sector_filter_top_n: int = 0,
     rel_strength_threshold: float = 0.0,
     use_sentiment_filter: bool = False,
+    parallel: bool = True,
+    max_workers: int = None,
 ) -> Dict:
-    """全量回测"""
+    """全量回测（支持多进程并行）"""
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import os
 
     print(f"  预计算 HS300 序列...")
     hs300 = build_hs300_series()
-    hs300_regime = dict(zip(hs300['date_str'], hs300['regime']))
-    hs300_pvem = dict(zip(hs300['date_str'], hs300['pvem']))
-    hs300_ret5 = dict(zip(hs300['date_str'], hs300['ret5']))
-    hs300_vol = dict(zip(hs300['date_str'], hs300['vol_ratio']))
+    hs300_dates = set(hs300['date_str'])
+    hs300_closes = dict(zip(hs300['date_str'], hs300['close']))
+    hs300_emas = dict(zip(hs300['date_str'], hs300['EMA21']))
+    hs300_regime_dict = dict(zip(hs300['date_str'], hs300['regime']))
+    hs300_pvem_dict = dict(zip(hs300['date_str'], hs300['pvem']))
+    hs300_ret5_dict = dict(zip(hs300['date_str'], hs300['ret5']))
+    hs300_vol_dict = dict(zip(hs300['date_str'], hs300['vol_ratio']))
 
     # 板块过滤和相对强度过滤需要预计算
     stock_rets = {}
@@ -329,85 +464,121 @@ def run_full_backtest(
         stock_rets = build_stock_returns(stock_codes)
 
     all_trades = []
-
-    print(f"  开始回测 ({len(stock_codes)} 只股票)...")
     t0 = time.time()
-    processed = 0
 
-    for code_idx, code in enumerate(stock_codes):
-        try:
-            df = get_stock_hist_multi_source(code, days=500, source="tdx_local_qfq")
-            if df is None or len(df) < 60:
+    if parallel and len(stock_codes) > 100:
+        # 多进程并行
+        workers = max_workers or min(os.cpu_count() or 4, 8)
+        print(f"  并行回测 ({len(stock_codes)} 只股票, {workers} 进程)...")
+
+        # 预计算板块排名（避免内层循环重复计算）
+        precomputed_sectors = {}
+        if sector_filter_top_n > 0 and stock_rets:
+            print(f"  预计算板块排名...")
+            precomputed_sectors = precompute_top_sectors(stock_rets, top_n=sector_filter_top_n)
+
+        # 构造每只股票的参数
+        task_args = [
+            (code, start_date, hs300_dates, hs300_closes, hs300_emas,
+             hs300_regime_dict, hs300_pvem_dict, hs300_ret5_dict, hs300_vol_dict,
+             SECTOR_MAP, sector_filter_top_n, rel_strength_threshold,
+             use_sentiment_filter,
+             precomputed_sectors
+            )
+            for code in stock_codes
+        ]
+
+        completed = 0
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(_process_single_stock, args): args[0] for args in task_args}
+            for future in as_completed(futures):
+                completed += 1
+                try:
+                    trades = future.result()
+                    all_trades.extend(trades)
+                except Exception:
+                    pass
+                if completed % 500 == 0:
+                    elapsed = time.time() - t0
+                    print(f"    进度: {completed}/{len(stock_codes)}, 耗时: {elapsed:.1f}s, 交易: {len(all_trades)}")
+    else:
+        # 单进程
+        # 预计算板块排名
+        precomputed_sectors = {}
+        if sector_filter_top_n > 0 and stock_rets:
+            print(f"  预计算板块排名...")
+            precomputed_sectors = precompute_top_sectors(stock_rets, top_n=sector_filter_top_n)
+
+        print(f"  串行回测 ({len(stock_codes)} 只股票)...")
+        processed = 0
+        for code_idx, code in enumerate(stock_codes):
+            try:
+                df = get_stock_hist_multi_source(code, days=500, source="tdx_local_qfq")
+                if df is None or len(df) < 60:
+                    continue
+                df = add_indicators(df)
+                df = df[df['date'] >= start_date]
+                if len(df) < 30:
+                    continue
+
+                df['date_str'] = df['date'].apply(lambda d: str(d.date()) if hasattr(d, 'date') else str(d))
+                df['stock_ret5'] = df['close'].pct_change(5) * 100
+
+                for i in range(30, len(df) - 1):
+                    row = df.iloc[i]
+                    entry_date_str = row['date_str']
+
+                    hs_match = hs300[hs300['date_str'] <= entry_date_str]
+                    if hs_match.empty:
+                        continue
+                    hs_latest = hs_match.iloc[-1]
+                    if not (hs_latest['close'] > hs_latest['EMA21']):
+                        continue
+
+                    regime = hs300_regime_dict.get(entry_date_str, "MEAN_REVERSION")
+                    pvem = hs300_pvem_dict.get(entry_date_str, 0.0)
+                    if regime == "MEAN_REVERSION" and pvem <= 3.0:
+                        continue
+
+                    if rel_strength_threshold > 0:
+                        stock_ret = row.get('stock_ret5')
+                        hs_ret = hs300_ret5_dict.get(entry_date_str)
+                        if stock_ret is None or hs_ret is None:
+                            continue
+                        if (stock_ret - hs_ret) < rel_strength_threshold:
+                            continue
+
+                    if sector_filter_top_n > 0 and precomputed_sectors:
+                        top_sectors = precomputed_sectors.get(entry_date_str, set())
+                        stock_sector = SECTOR_MAP.get(code)
+                        if top_sectors and stock_sector not in top_sectors:
+                            continue
+
+                    if not check_entry(df, i):
+                        continue
+
+                    # 入场（次日开盘价）
+                    if i + 1 >= len(df):
+                        continue
+                    entry_row = df.iloc[i + 1]
+                    entry_price = float(entry_row['open'])
+                    entry_i = i + 1
+
+                    # 退出
+                    exit_reason, exit_price = check_exit_v2_trend(df, entry_i)
+
+                    pnl_pct = (exit_price / entry_price - 1) * 100
+
+                    all_trades.append({
+                        'entry_date': entry_date_str,
+                        'code': code,
+                        'pnl_pct': round(pnl_pct, 2),
+                        'exit_reason': exit_reason,
+                        'regime': regime,
+                    })
+
+            except Exception:
                 continue
-            df = add_indicators(df)
-            df = df[df['date'] >= start_date]
-            if len(df) < 30:
-                continue
-
-            df['date_str'] = df['date'].apply(lambda d: str(d.date()) if hasattr(d, 'date') else str(d))
-            df['stock_ret5'] = df['close'].pct_change(5) * 100
-
-            for i in range(30, len(df) - 1):
-                row = df.iloc[i]
-                entry_date_str = row['date_str']
-
-                # HS300 市场过滤
-                hs_match = hs300[hs300['date_str'] <= entry_date_str]
-                if hs_match.empty:
-                    continue
-                hs_latest = hs_match.iloc[-1]
-                if not (hs_latest['close'] > hs_latest['EMA21']):
-                    continue
-
-                # MEAN_REVERSION 过滤
-                regime = hs300_regime.get(entry_date_str, "MEAN_REVERSION")
-                pvem = hs300_pvem.get(entry_date_str, 0.0)
-                if regime == "MEAN_REVERSION" and pvem <= 3.0:
-                    continue
-
-                # 相对强度过滤（仅当阈值 > 0 时）
-                if rel_strength_threshold > 0:
-                    stock_ret = row.get('stock_ret5')
-                    hs_ret = hs300_ret5.get(entry_date_str)
-                    if stock_ret is None or hs_ret is None:
-                        continue
-                    if (stock_ret - hs_ret) < rel_strength_threshold:
-                        continue
-
-                # 板块过滤（仅当 top_n > 0 时）
-                if sector_filter_top_n > 0 and stock_rets:
-                    top_sectors = get_top_sectors(entry_date_str, stock_rets, top_n=sector_filter_top_n)
-                    stock_sector = SECTOR_MAP.get(code)
-                    if top_sectors and stock_sector not in top_sectors:
-                        continue
-
-                # 入场信号
-                if not check_entry(df, i):
-                    continue
-
-                # D 情绪过滤：获取 HS300 波动率
-                hs300_vol_ratio = hs300_vol.get(entry_date_str, 1.0) if use_sentiment_filter else 1.0
-
-                # 出场
-                exit_reason, exit_price, exit_i = check_exit_v2(df, i, hs300_vol_ratio=hs300_vol_ratio)
-
-                entry_price = float(row['close'])
-                pnl_pct = round((exit_price / entry_price - 1) * 100, 2)
-                hold_days = exit_i - i
-                exit_row = df.iloc[exit_i]
-
-                all_trades.append({
-                    'entry_date': entry_date_str,
-                    'exit_date': exit_row['date_str'],
-                    'code': code,
-                    'pnl_pct': pnl_pct,
-                    'hold_days': hold_days,
-                    'exit_reason': exit_reason,
-                    'sector': SECTOR_MAP.get(code, '未知'),
-                })
-
-        except Exception:
-            continue
 
         processed += 1
         if processed % 500 == 0:
@@ -422,7 +593,7 @@ def run_full_backtest(
 
     # 计算指标
     df_t = pd.DataFrame(all_trades)
-    df_t = df_t.sort_values('exit_date')
+    df_t = df_t.sort_values('entry_date')
 
     pnl_list = df_t['pnl_pct'].tolist()
     wins = [p for p in pnl_list if p > 0]
@@ -435,18 +606,39 @@ def run_full_backtest(
     avg_loss = abs(np.mean(losses)) if losses else 0
     pf = abs(sum(wins) / sum(losses)) if losses and sum(losses) != 0 else 0
 
-    # 最大回撤（简化版：按 exit_date 累加）
-    initial_capital = 1_000_000
-    trade_amount = initial_capital * 0.10
-    equity = initial_capital
-    equity_curve = []
-    for _, r in df_t.iterrows():
-        equity += trade_amount * r['pnl_pct'] / 100
+    # 组合级回撤（月度收益法）
+    # 按月分组计算平均收益，假设每月持 max_positions 只票
+    df_t['entry_month'] = df_t['entry_date'].str[:7]  # YYYY-MM
+    monthly = df_t.groupby('entry_month')['pnl_pct'].agg(['mean', 'count'])
+    max_positions = 10  # 假设同时持有最多10只
+    position_pct = 0.10  # 每只10%仓位
+
+    # 月度组合收益 = 该月每只票平均收益 × 同时持仓数 × 仓位比例
+    monthly['portfolio_ret'] = monthly['mean'] * np.minimum(monthly['count'], max_positions) * position_pct
+
+    equity = 1_000_000
+    equity_curve = [equity]
+    for _, row in monthly.iterrows():
+        equity *= (1 + row['portfolio_ret'] / 100)
         equity_curve.append(equity)
     eq_series = pd.Series(equity_curve)
     rolling_max = eq_series.cummax()
     drawdown = (eq_series - rolling_max) / rolling_max * 100
     max_drawdown = drawdown.min()
+
+    # 总收益
+    total_return = (equity / 1_000_000 - 1) * 100
+
+    # 年化收益
+    n_years = len(monthly) / 12 if len(monthly) > 0 else 1
+    annual_return = ((equity / 1_000_000) ** (1 / max(n_years, 0.5)) - 1) * 100
+
+    # 夏普比率（假设无风险利率3%）
+    monthly_returns = monthly['portfolio_ret'].tolist()
+    if monthly_returns and np.std(monthly_returns) > 0:
+        sharpe = (np.mean(monthly_returns) - 0.25) / np.std(monthly_returns) * np.sqrt(12)
+    else:
+        sharpe = 0
 
     # 按退出原因
     by_reason = df_t.groupby('exit_reason')['pnl_pct'].agg(['count', 'mean'])
@@ -466,7 +658,9 @@ def run_full_backtest(
         'avg_loss': round(avg_loss, 2),
         'profit_factor': round(pf, 2),
         'max_drawdown': round(max_drawdown, 2),
-        'total_return': round((equity - initial_capital) / initial_capital * 100, 1),
+        'total_return': round(total_return, 1),
+        'annual_return': round(annual_return, 1),
+        'sharpe': round(sharpe, 2),
         'final_capital': round(equity, 0),
         'by_reason': by_reason,
         'by_sector': by_sector,
