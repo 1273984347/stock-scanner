@@ -23,6 +23,7 @@ from pathlib import Path
 from datetime import datetime
 import json
 import logging
+import re
 import threading
 import os
 import asyncio
@@ -47,6 +48,13 @@ def _verify_api_key_on_startup():
 # ========== 安全常量 ==========
 
 ALLOWED_PRESETS = {"balanced", "aggressive", "conservative"}
+
+
+def _validate_stock_code(code: str) -> str:
+    """Validate A-share stock code format (6 digits)"""
+    if not re.match(r'^\d{6}$', code):
+        raise HTTPException(status_code=400, detail=f"Invalid stock code format: {code}")
+    return code
 
 # ========== 安全中间件 ==========
 
@@ -88,6 +96,7 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Content-Security-Policy"] = "default-src 'self'"
     return response
 
 # 缓存操作全局锁（保护 JSON 缓存文件的并发读写）
@@ -255,6 +264,8 @@ _orchestrator_cache = LRUCache(maxsize=16)
 
 # 回测并发限制（最多 2 个并发回测）
 _backtest_semaphore = asyncio.Semaphore(2)
+# Walk-Forward 并发限制（最多 2 个并发）
+_wf_semaphore = asyncio.Semaphore(2)
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -360,6 +371,7 @@ async def scan(preset: str = "balanced", _=Security(verify_api_key)):
 @app.get("/api/score/{code}")
 async def stock_score(code: str, _=Security(verify_api_key)):
     """单股四维评分"""
+    code = _validate_stock_code(code)
     try:
         orchestrator = _get_orchestrator()
         result = orchestrator.get_stock_score(code)
@@ -376,6 +388,7 @@ async def stock_score(code: str, _=Security(verify_api_key)):
 @app.get("/api/stock/{code}")
 async def stock_detail(code: str, _=Security(verify_api_key)):
     """单股因子详情"""
+    code = _validate_stock_code(code)
     from factors import compute_all_signals
     from lib.technical_signals import calc_composite_verdict
 
@@ -751,7 +764,9 @@ async def run_backtest(
     async with _backtest_semaphore:
         try:
             from backtest import run_factor_backtest
-            sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+            sym_list = [_validate_stock_code(s.strip()) for s in symbols.split(",") if s.strip()]
+            if len(sym_list) > 50:
+                raise HTTPException(status_code=400, detail="最多支持50只股票同时回测")
             result = run_factor_backtest(
                 sym_list, days=days,
                 stop_loss_atr_mult=stop_loss_atr_mult,
@@ -784,90 +799,91 @@ async def run_walkforward(
     _=Security(verify_api_key),
 ):
     """运行 Walk-Forward 滚动前推验证"""
-    try:
-        from lib.walkforward import WalkForwardBacktest, WalkForwardConfig, summarize_rounds
-        from backtest import run_factor_backtest
+    async with _wf_semaphore:
+        try:
+            from lib.walkforward import WalkForwardBacktest, WalkForwardConfig, summarize_rounds
+            from backtest import run_factor_backtest
 
-        orchestrator = _get_orchestrator()
-        sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+            orchestrator = _get_orchestrator()
+            sym_list = [_validate_stock_code(s.strip()) for s in symbols.split(",") if s.strip()]
 
-        # 获取市场数据（并行批量获取，避免 N+1）
-        market_data = _batch_get_stock_hist(sym_list, days=train_days + validation_days + 60, source="auto")
-        all_dates = set()
-        for hist in market_data.values():
-            if "date" in hist.columns:
-                all_dates.update(hist["date"].tolist())
-            elif hist.index.dtype == object:
-                all_dates.update(hist.index.tolist())
+            # 获取市场数据（并行批量获取，避免 N+1）
+            market_data = _batch_get_stock_hist(sym_list, days=train_days + validation_days + 60, source="auto")
+            all_dates = set()
+            for hist in market_data.values():
+                if "date" in hist.columns:
+                    all_dates.update(hist["date"].tolist())
+                elif hist.index.dtype == object:
+                    all_dates.update(hist.index.tolist())
 
-        if not market_data:
-            return {"error": "无法获取市场数据"}
+            if not market_data:
+                return {"error": "无法获取市场数据"}
 
-        dates = sorted(all_dates)
+            dates = sorted(all_dates)
 
-        # 简化策略函数：对市场数据跑回测
-        def strategy_fn(market_data, factor_data=None, dates=None, symbols=None):
-            try:
-                syms = symbols or list(market_data.keys())
-                result = run_factor_backtest(
-                    syms,
-                    days=min(validation_days, 60),
-                )
-                if not result:
+            # 简化策略函数：对市场数据跑回测
+            def strategy_fn(market_data, factor_data=None, dates=None, symbols=None):
+                try:
+                    syms = symbols or list(market_data.keys())
+                    result = run_factor_backtest(
+                        syms,
+                        days=min(validation_days, 60),
+                    )
+                    if not result:
+                        return {"trades": []}
+                    # 转换为 walkforward 期望的格式
+                    metrics = result.get("metrics", {})
+                    return {
+                        "trades": [{"pnl": 1}],  # 占位
+                        "total_return": metrics.get("total_return", 0),
+                        "sharpe_ratio": metrics.get("sharpe", 0),
+                        "max_drawdown": metrics.get("max_drawdown", 0),
+                        "win_rate": metrics.get("win_rate", 0),
+                    }
+                except Exception:
                     return {"trades": []}
-                # 转换为 walkforward 期望的格式
-                metrics = result.get("metrics", {})
-                return {
-                    "trades": [{"pnl": 1}],  # 占位
-                    "total_return": metrics.get("total_return", 0),
-                    "sharpe_ratio": metrics.get("sharpe", 0),
-                    "max_drawdown": metrics.get("max_drawdown", 0),
-                    "win_rate": metrics.get("win_rate", 0),
-                }
-            except Exception:
-                return {"trades": []}
 
-        # 运行 walk-forward
-        wf_config = WalkForwardConfig(
-            train_days=train_days,
-            validation_days=validation_days,
-            step_days=step_days,
-        )
-        wf = WalkForwardBacktest(wf_config)
-        rounds = wf.run(
-            strategy_fn=strategy_fn,
-            market_data=market_data,
-            dates=dates,
-            symbols=sym_list,
-            strategy_name="factor_backtest",
-        )
+            # 运行 walk-forward
+            wf_config = WalkForwardConfig(
+                train_days=train_days,
+                validation_days=validation_days,
+                step_days=step_days,
+            )
+            wf = WalkForwardBacktest(wf_config)
+            rounds = wf.run(
+                strategy_fn=strategy_fn,
+                market_data=market_data,
+                dates=dates,
+                symbols=sym_list,
+                strategy_name="factor_backtest",
+            )
 
-        summary = summarize_rounds(rounds)
+            summary = summarize_rounds(rounds)
 
-        # 序列化轮次结果
-        rounds_data = []
-        for r in rounds:
-            rounds_data.append({
-                "window": r.window_index,
-                "strategy": r.strategy,
-                "status": r.validation_status.value if hasattr(r.validation_status, "value") else str(r.validation_status),
-                "train_metrics": r.train_metrics,
-                "validation_metrics": r.validation_metrics,
-            })
+            # 序列化轮次结果
+            rounds_data = []
+            for r in rounds:
+                rounds_data.append({
+                    "window": r.window_index,
+                    "strategy": r.strategy,
+                    "status": r.validation_status.value if hasattr(r.validation_status, "value") else str(r.validation_status),
+                    "train_metrics": r.train_metrics,
+                    "validation_metrics": r.validation_metrics,
+                })
 
-        return {
-            "summary": summary,
-            "rounds": rounds_data,
-            "config": {
-                "train_days": train_days,
-                "validation_days": validation_days,
-                "step_days": step_days,
-                "symbols": sym_list,
-            },
-        }
-    except Exception as e:
-        logger.error(f"Walk-Forward 验证失败: {e}")
-        raise HTTPException(status_code=500, detail="内部服务器错误")
+            return {
+                "summary": summary,
+                "rounds": rounds_data,
+                "config": {
+                    "train_days": train_days,
+                    "validation_days": validation_days,
+                    "step_days": step_days,
+                    "symbols": sym_list,
+                },
+            }
+        except Exception as e:
+            logger.error(f"Walk-Forward 验证失败: {e}")
+            raise HTTPException(status_code=500, detail="内部服务器错误")
 
 def _run_stress_tests() -> dict:
     """压力测试：相关系数冲击 + 波动率冲击 + 行业暴跌"""
@@ -1121,4 +1137,6 @@ async def _get_ws_data():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    api_host = os.environ.get("API_HOST", "127.0.0.1")
+    api_port = int(os.environ.get("API_PORT", "8000"))
+    uvicorn.run(app, host=api_host, port=api_port)
