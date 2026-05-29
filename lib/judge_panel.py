@@ -4,6 +4,9 @@
 7 组评委：经典价值/成长/宏观对冲/技术趋势/中国价投/A股游资/AI 量化
 每组 5-10 条规则，加权投票输出综合评级
 """
+import json
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional
@@ -31,8 +34,10 @@ class VoteResult:
     reason: str = ""
 
 
-# 评委组配置
-JUDGE_GROUPS = {
+# 评委组配置 — 优先从 config/judges.json 加载，不存在则用内置默认值
+_JUDGES_CONFIG_PATH = Path(__file__).parent.parent / "config" / "judges.json"
+
+_DEFAULT_JUDGE_GROUPS = {
     "经典价值": {"weight": 0.20, "judges": [
         "Benjamin Graham", "Warren Buffett", "Charlie Munger",
         "Seth Klarman", "Joel Greenblatt",
@@ -61,6 +66,17 @@ JUDGE_GROUPS = {
         "XGBoost-5d", "LightGBM-20d", "Ensemble",
     ]},
 }
+
+
+def _load_judge_groups() -> Dict:
+    """加载评委组配置，优先从 JSON 文件读取"""
+    if _JUDGES_CONFIG_PATH.exists():
+        with open(_JUDGES_CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return _DEFAULT_JUDGE_GROUPS
+
+
+JUDGE_GROUPS = _load_judge_groups()
 
 
 class JudgePanel:
