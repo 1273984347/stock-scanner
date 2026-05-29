@@ -19,6 +19,7 @@ from lib.evaluator import build_forward_returns
 from lib.strategies import (get_zt_candidates, get_volume_breakout_candidates,
                              get_hot_board_candidates, get_lhb_candidates,
                              get_multi_factor_candidates, full_score)
+from lib.data_sector import get_sector_stocks
 from lib.broker import LRUCache
 from lib.market_regime import (detect_market_regime_from_hs300,
                                  TREND_UP, MEAN_REVERSION, COMPRESSION, TREND_DOWN,
@@ -606,6 +607,32 @@ def run_all_strategies(
                 logger.info(f"  -> 无候选股")
         except Exception as e:
             logger.error(f"  -> 策略执行失败: {e}")
+    # ========== 主线板块过滤 ==========
+    try:
+        hot_boards = get_hot_board_candidates(config)
+        if not hot_boards.empty:
+            hot_sector_codes = set()
+            for _, row in hot_boards.iterrows():
+                sector = row.get('板块', '')
+                if sector:
+                    stocks = get_sector_stocks(sector)
+                    hot_sector_codes.update(stocks)
+            if hot_sector_codes:
+                logger.info(f"主线板块过滤: {len(hot_sector_codes)} 只股票在主线板块中")
+                filtered_results = {}
+                for name, df in results.items():
+                    if df.empty or "代码" not in df.columns:
+                        filtered_results[name] = df
+                        continue
+                    mask = df["代码"].astype(str).isin(hot_sector_codes)
+                    filtered = df[mask]
+                    if not filtered.empty:
+                        filtered_results[name] = filtered
+                    logger.info(f"  {name}: {len(df)} -> {len(filtered)} (板块过滤后)")
+                results = filtered_results
+    except Exception as e:
+        logger.debug(f"主线板块过滤失败（跳过）: {e}")
+
     risk_check = _check_portfolio_risk(results, shibor_mult=macro_filter["position_mult"])
     factor_health = _check_factor_health(results)
     portfolio = _optimize_portfolio(results)

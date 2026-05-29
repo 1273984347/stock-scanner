@@ -20,7 +20,8 @@ from lib.data_layer import (get_stock_hist_multi_source, get_realtime_quotes,
                              get_stock_fund_flow, get_news_signals,
                              get_market_sentiment, _get_financial_data,
                              _retry_api_call, _safe_float, _load_cache,
-                             _batch_fund_flow, _batch_get_news_signals)
+                             _batch_fund_flow, _batch_get_news_signals,
+                             get_index_hist)
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +250,8 @@ def get_volume_breakout_candidates(config: SystemConfig) -> pd.DataFrame:
         all_codes = df["代码"].astype(str).tolist()
         stock_hist_data = _batch_get_stock_hist(all_codes, days=180)
         batch_financial = _batch_get_financial_data(all_codes)
+        # 预获取 HS300 数据（用于相对强度过滤，避免循环内重复调用）
+        _hs300 = get_index_hist('000300', days=60)
         candidates = []
         for _, row in df.iterrows():
             code = row["代码"]
@@ -273,6 +276,30 @@ def get_volume_breakout_candidates(config: SystemConfig) -> pd.DataFrame:
             regime = result["regime"]
             if combined["signal"] != "bullish" or combined.get("macro_blocked"):
                 continue
+
+            # ---- 选股规则过滤（设计要求） ----
+            # 1. Price > EMA21
+            hist['ema21'] = hist['close'].ewm(span=21, adjust=False).mean()
+            if hist['close'].iloc[-1] <= hist['ema21'].iloc[-1]:
+                continue
+
+            # 2. Breakout 20-day high
+            high_20 = hist['high'].rolling(20).max().iloc[-1]
+            if hist['close'].iloc[-1] < high_20:
+                continue
+
+            # 3. Volume confirmation (volume > 20-day average)
+            vol_ma20 = hist['volume'].rolling(20).mean().iloc[-1]
+            if vol_ma20 > 0 and hist['volume'].iloc[-1] <= vol_ma20:
+                continue
+
+            # 4. Relative strength (stronger than HS300)
+            if not _hs300.empty:
+                stock_ret_20 = (hist['close'].iloc[-1] / hist['close'].iloc[-21] - 1) if len(hist) > 21 else 0
+                hs300_ret_20 = (_hs300['close'].iloc[-1] / _hs300['close'].iloc[-21] - 1) if len(_hs300) > 21 else 0
+                if stock_ret_20 <= hs300_ret_20:
+                    continue  # Weaker than index, filter out
+
             confidence = max(0, combined["confidence"] + cr.score_adjustment)
             vol = factors.get("volatility_20", 25) / 100
             position_limit = calc_volatility_adjusted_limit(vol)
