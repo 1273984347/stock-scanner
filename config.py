@@ -89,6 +89,12 @@ class RiskConfig:
     trailing_pct: float = 3.0
     max_hold_days: int = 5
 
+    # 分批止盈
+    partial_exit_enabled: bool = True
+    partial_exit_levels: List[float] = field(default_factory=lambda: [0.10, 0.20])  # +10%, +20%
+    partial_exit_ratios: List[float] = field(default_factory=lambda: [0.33, 0.33])  # reduce 1/3 each
+    use_fixed_take_profit: bool = False  # disable fixed take-profit by default
+
     # 风险预警阈值
     max_single_weight: float = 0.20  # 单票最大仓位
     max_drawdown: float = 0.15       # 最大回撤预警（15%）

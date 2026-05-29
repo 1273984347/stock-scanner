@@ -13,7 +13,7 @@ import logging
 import sys
 import threading
 
-from config import DEFAULT_STOP_LOSS, DEFAULT_TAKE_PROFIT
+from config import DEFAULT_STOP_LOSS, DEFAULT_TAKE_PROFIT, RiskConfig
 from lib.risk_manager import ProofInvalidationManager
 
 logger = logging.getLogger(__name__)
@@ -54,17 +54,21 @@ class Position:
     # ATR 止盈
     atr_tp_mult: float = 4.0   # ATR 止盈倍数
     atr_take_profit_price: float = 0.0  # ATR 止盈价位
+    # 分批止盈
+    partial_exits_done: int = 0   # number of partial exits executed
+    remaining_ratio: float = 1.0  # remaining position ratio
 
 
 class PositionManager:
     """仓位管理器（支持并发文件锁）"""
 
-    def __init__(self, positions_file: str = None):
+    def __init__(self, positions_file: str = None, risk_config: Optional[RiskConfig] = None):
         self.file = Path(positions_file) if positions_file else POSITIONS_FILE
         self.positions: Dict[str, Position] = {}
         self._lock_file: Optional[object] = None
         self._stop_event = threading.Event()
         self._proof_manager = ProofInvalidationManager()
+        self._risk_config = risk_config or RiskConfig()
         self._load()
 
     def _acquire_lock(self, mode="r"):
@@ -146,6 +150,8 @@ class PositionManager:
                     "trailing_stop_price": p.trailing_stop_price,
                     "atr_tp_mult": p.atr_tp_mult,
                     "atr_take_profit_price": p.atr_take_profit_price,
+                    "partial_exits_done": p.partial_exits_done,
+                    "remaining_ratio": p.remaining_ratio,
                 }
             # 原子写入：先写临时文件再 rename
             tmp_file = self.file.with_suffix(".tmp")
@@ -239,6 +245,35 @@ class PositionManager:
             self._save()
             logger.info(f"移除持仓: {code}")
 
+    def _check_partial_exit(self, pos: Position, price: float, pnl_pct: float) -> Optional[dict]:
+        """Check for staged position reduction (分批减仓止盈)
+
+        Returns partial exit alert dict if triggered, None otherwise.
+        """
+        cfg = self._risk_config
+        if not cfg.partial_exit_enabled:
+            return None
+        if pos.partial_exits_done >= len(cfg.partial_exit_levels):
+            return None
+
+        target_pnl = cfg.partial_exit_levels[pos.partial_exits_done]
+        exit_ratio = cfg.partial_exit_ratios[pos.partial_exits_done]
+
+        if pnl_pct >= target_pnl:
+            pos.partial_exits_done += 1
+            pos.remaining_ratio *= (1 - exit_ratio)
+            self._save()  # persist partial exit state
+            return {
+                "code": pos.code, "name": pos.name,
+                "action": "分批止盈",
+                "reason": f"盈利 {pnl_pct:.1%} 达到第{pos.partial_exits_done}级 {target_pnl:.0%}，减仓 {exit_ratio:.0%}",
+                "exit_ratio": exit_ratio,
+                "remaining_ratio": pos.remaining_ratio,
+                "pnl_pct": round(pnl_pct, 4),
+                "buy_price": pos.buy_price, "current_price": price,
+            }
+        return None
+
     def check_stop_loss(self, current_prices: Dict[str, float],
                         max_hold_days: int = 20) -> List[Dict]:
         """检查止损/止盈/移动止盈/持仓天数
@@ -288,34 +323,32 @@ class PositionManager:
                     })
                     continue
 
-            # 3. ATR 止盈
-            if pos.atr > 0 and pos.atr_take_profit_price > 0:
-                if price >= pos.atr_take_profit_price:
-                    alerts.append({
-                        "code": code, "name": pos.name,
-                        "action": "止盈", "reason": f"ATR止盈 @{pos.atr_take_profit_price:.2f} (ATR×{pos.atr_tp_mult})",
-                        "pnl_pct": round(pnl_pct, 4),
-                        "buy_price": pos.buy_price, "current_price": price,
-                    })
-                    continue
-                # 4. 固定止盈（无ATR时）
-                if pnl_pct >= pos.take_profit:
-                    alerts.append({
-                        "code": code, "name": pos.name,
-                        "action": "止盈", "reason": f"固定止盈 {pnl_pct:.1%} 达到 {pos.take_profit:.0%}",
-                        "pnl_pct": round(pnl_pct, 4),
-                        "buy_price": pos.buy_price, "current_price": price,
-                    })
-                    continue
-            else:
-                if pnl_pct >= pos.take_profit:
-                    alerts.append({
-                        "code": code, "name": pos.name,
-                        "action": "止盈", "reason": f"盈利 {pnl_pct:.1%} 达到 {pos.take_profit:.0%}",
-                        "pnl_pct": round(pnl_pct, 4),
-                        "buy_price": pos.buy_price, "current_price": price,
-                    })
-                    continue
+            # 3. 分批止盈（优先于固定止盈）
+            partial = self._check_partial_exit(pos, price, pnl_pct)
+            if partial:
+                alerts.append(partial)
+                continue  # Skip fixed take-profit; trailing stop protects remainder
+
+            # 4. 固定止盈（仅 use_fixed_take_profit=True 时生效）
+            if self._risk_config.use_fixed_take_profit:
+                if pos.atr > 0 and pos.atr_take_profit_price > 0:
+                    if price >= pos.atr_take_profit_price:
+                        alerts.append({
+                            "code": code, "name": pos.name,
+                            "action": "止盈", "reason": f"ATR止盈 @{pos.atr_take_profit_price:.2f} (ATR×{pos.atr_tp_mult})",
+                            "pnl_pct": round(pnl_pct, 4),
+                            "buy_price": pos.buy_price, "current_price": price,
+                        })
+                        continue
+                else:
+                    if pnl_pct >= pos.take_profit:
+                        alerts.append({
+                            "code": code, "name": pos.name,
+                            "action": "止盈", "reason": f"盈利 {pnl_pct:.1%} 达到 {pos.take_profit:.0%}",
+                            "pnl_pct": round(pnl_pct, 4),
+                            "buy_price": pos.buy_price, "current_price": price,
+                        })
+                        continue
 
             # 5. 移动止盈（仅在持仓盈利时生效）
             if pos.atr > 0 and pos.trailing_stop_price > 0:
