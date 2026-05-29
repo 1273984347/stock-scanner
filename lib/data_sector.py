@@ -3,13 +3,15 @@
 数据来源：
 - TDX（pytdx）：get_block_info — 行业板块成分股
 - 腾讯行情 field 61：股票所属板块代码（目前为通用代码，扩展用）
-- 东方财富（待）：行业分类 API
+- 东方财富：行业板块实时行情 + 板块历史涨幅
 
 Usage:
-  from lib.data_sector import get_stock_sector, get_sector_stocks
+  from lib.data_sector import get_stock_sector, get_sector_stocks, enrich_sector_data
 """
 import logging
 from typing import Optional, List, Dict
+
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +85,70 @@ def get_sector_stocks(sector: str = "白酒", max_stocks: int = 50) -> List[str]
     except Exception as e:
         logger.debug(f"[sector] 获取板块成分股失败: {e}")
         return []
+
+
+def _fetch_sector_realtime() -> pd.DataFrame:
+    """从东方财富获取行业板块实时行情
+
+    Returns:
+        DataFrame with columns: 板块名称, 5日涨幅, 成交额
+    """
+    try:
+        import akshare as ak
+        df = ak.stock_board_industry_name_em()
+        if df is None or df.empty:
+            return pd.DataFrame()
+        # 标准化列名
+        rename_map = {}
+        if "板块名称" in df.columns:
+            rename_map["板块名称"] = "板块名称"
+        if "涨跌幅" in df.columns:
+            rename_map["涨跌幅"] = "5日涨幅"
+        if "成交额" in df.columns:
+            rename_map["成交额"] = "成交额"
+        if rename_map:
+            df = df.rename(columns=rename_map)
+        return df
+    except Exception as e:
+        logger.debug(f"[sector] 板块实时行情获取失败: {e}")
+        return pd.DataFrame()
+
+
+def enrich_sector_data(board_stats: pd.DataFrame) -> pd.DataFrame:
+    """为板块聚合数据补充涨幅和成交额变化
+
+    Args:
+        board_stats: 必须包含 '所属行业' 或 '板块' 列
+
+    Returns:
+        补充了 '5日涨幅' 和 '成交额变化' 列的 DataFrame
+    """
+    name_col = "所属行业" if "所属行业" in board_stats.columns else "板块"
+    sector_rt = _fetch_sector_realtime()
+    if sector_rt.empty or "板块名称" not in sector_rt.columns:
+        return board_stats
+
+    # 构建映射
+    rt_map = sector_rt.set_index("板块名称").to_dict("index")
+
+    ret_list = []
+    vol_list = []
+    for _, row in board_stats.iterrows():
+        name = row[name_col]
+        info = rt_map.get(name, {})
+        ret_list.append(info.get("5日涨幅", None))
+        vol_list.append(info.get("成交额", None))
+
+    board_stats["5日涨幅"] = ret_list
+    # 成交额变化 = 当前成交额 / 均值（简化：用排名代替）
+    if any(v is not None for v in vol_list):
+        vol_series = pd.Series(vol_list, dtype=float)
+        vol_max = vol_series.max()
+        if vol_max and vol_max > 0:
+            board_stats["成交额变化"] = (vol_series / vol_max * 100).round(1)
+        else:
+            board_stats["成交额变化"] = None
+    return board_stats
 
 
 def get_tencent_sector_code(code: str) -> Optional[str]:

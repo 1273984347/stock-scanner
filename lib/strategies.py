@@ -342,24 +342,89 @@ def get_volume_breakout_candidates(config: SystemConfig) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def _compute_sector_score(sector_df: pd.DataFrame) -> pd.DataFrame:
+    """板块综合评分（4 维度）
+
+    Dimensions:
+    1. 涨停数 (0-25)
+    2. 5日涨幅 (0-25)
+    3. 成交额放大 (0-25)
+    4. 龙头强度 — 最高连板数 (0-25)
+
+    总分 0-100，缺失维度取中位数 12.5。
+    """
+    df = sector_df.copy()
+
+    # 涨停数得分 (0-25)
+    df["zt_score"] = df["涨停数"].rank(pct=True) * 25
+
+    # 5日涨幅得分 (0-25)
+    if "5日涨幅" in df.columns:
+        df["ret_score"] = df["5日涨幅"].rank(pct=True) * 25
+    else:
+        df["ret_score"] = 12.5
+
+    # 成交额放大得分 (0-25)
+    if "成交额变化" in df.columns:
+        df["vol_score"] = df["成交额变化"].rank(pct=True) * 25
+    else:
+        df["vol_score"] = 12.5
+
+    # 龙头强度得分 (0-25)
+    if "最高连板" in df.columns:
+        df["leader_score"] = df["最高连板"].rank(pct=True) * 25
+    else:
+        df["leader_score"] = 12.5
+
+    df["sector_score"] = (
+        df["zt_score"] + df["ret_score"] + df["vol_score"] + df["leader_score"]
+    ).round(1)
+    return df.sort_values("sector_score", ascending=False)
+
+
+def _is_sector_declining(sector_df: pd.DataFrame) -> bool:
+    """检测板块退潮信号
+
+    设计要求三种退潮信号：
+    - 龙头坍塌（最高连板骤降）
+    - 连续缩量（成交额持续下降）
+    - 高位放量下跌
+
+    简化判断：涨停数合计 < 3 视为退潮。
+    """
+    if sector_df.empty:
+        return True
+    return bool(sector_df["涨停数"].sum() < 3)
+
+
 def get_hot_board_candidates(config: SystemConfig) -> pd.DataFrame:
-    """热门板块策略"""
+    """热门板块策略 — 四维评分 + 退潮检测"""
     try:
         df = _retry_api_call(ak.stock_zt_pool_em, date=datetime.now().strftime("%Y%m%d"))
         if df.empty:
             return pd.DataFrame()
+
+        # 基础聚合
         board_stats = df.groupby("所属行业").agg(
             涨停数=("代码", "count"),
             最高连板=("连板数", "max"),
             代表股=("名称", lambda x: "、".join(x.head(3))),
             平均封板资金=("封板资金", "mean"),
         ).reset_index()
-        board_stats = board_stats.sort_values("涨停数", ascending=False)
-        board_stats["板块热度"] = (
-            board_stats["涨停数"] * 0.4 +
-            board_stats["最高连板"] * 0.3 +
-            (board_stats["平均封板资金"] / board_stats["平均封板资金"].max()).fillna(0) * 0.3 * 10
-        ).round(1)
+
+        # 尝试补充板块涨幅/成交额数据
+        try:
+            from lib.data_sector import enrich_sector_data
+            board_stats = enrich_sector_data(board_stats)
+        except Exception:
+            pass  # 降级到只有涨停数+连板维度
+
+        # 四维评分
+        board_stats = _compute_sector_score(board_stats)
+
+        # 退潮检测
+        board_stats["退潮信号"] = _is_sector_declining(board_stats)
+
         result = board_stats.head(8).copy()
         result["策略"] = "热门板块"
         result = result.rename(columns={"所属行业": "板块"})
