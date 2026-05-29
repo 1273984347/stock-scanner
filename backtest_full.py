@@ -217,8 +217,8 @@ def check_exit_v2(df: pd.DataFrame, entry_i: int, hs300_vol_ratio: float = 1.0) 
 # 预计算：HS300 序列
 # ============================================================
 
-def build_hs300_series():
-    hs300 = get_index_hist('000300', days=500)
+def build_hs300_series(days=500):
+    hs300 = get_index_hist('000300', days=days)
     hs300['EMA21'] = ema(hs300['close'], 21)
     hs300['pvem'] = (hs300['close'] / hs300['EMA21'] - 1) * 100
     hs300['ema_slope_pct'] = hs300['EMA21'].pct_change(5) * 100
@@ -256,12 +256,12 @@ def build_hs300_series():
 # 预计算：每只股票每天的 5 日收益率（用于板块强度）
 # ============================================================
 
-def build_stock_returns(stock_codes: List[str]):
+def build_stock_returns(stock_codes: List[str], days: int = 500):
     """预计算所有股票的 5 日收益率（避免重复计算）"""
     stock_rets = {}
     for code in stock_codes:
         try:
-            df = get_stock_hist_multi_source(code, days=500, source="tdx_local_qfq")
+            df = get_stock_hist_multi_source(code, days=days, source="tdx_local_qfq")
             if df is None or len(df) < 20:
                 continue
             df = df.copy()
@@ -324,19 +324,19 @@ def _process_single_stock(args):
     """处理单只股票的回测（用于多进程）
 
     Args:
-        args: tuple(code, start_date, hs300_dict, sector_map, sector_filter_top_n,
+        args: tuple(code, start_date, data_days, hs300_dict, sector_map, sector_filter_top_n,
                     rel_strength_threshold, use_sentiment_filter, stock_rets_code_ret)
     Returns:
         list of trade dicts
     """
-    code, start_date, hs300_dates, hs300_closes, hs300_emas, hs300_regime_dict, \
+    code, start_date, data_days, hs300_dates, hs300_closes, hs300_emas, hs300_regime_dict, \
         hs300_pvem_dict, hs300_ret5_dict, hs300_vol_dict, \
         sector_map, sector_filter_top_n, rel_strength_threshold, \
         use_sentiment_filter, precomputed_sectors = args
 
     trades = []
     try:
-        df = get_stock_hist_multi_source(code, days=500, source="tdx_local_qfq")
+        df = get_stock_hist_multi_source(code, days=data_days, source="tdx_local_qfq")
         if df is None or len(df) < 60:
             return trades
         df = add_indicators(df)
@@ -451,8 +451,15 @@ def run_full_backtest(
     from concurrent.futures import ThreadPoolExecutor, as_completed
     import os
 
-    print(f"  预计算 HS300 序列...")
-    hs300 = build_hs300_series()
+    # 根据 start_date 计算需要加载的数据天数
+    from datetime import datetime, timedelta
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    today = datetime.now()
+    delta_days = (today - start_dt).days + 365  # 多取1年作为指标计算缓冲
+    data_days = max(delta_days, 500)  # 至少500天
+
+    print(f"  预计算 HS300 序列 (data_days={data_days})...")
+    hs300 = build_hs300_series(days=data_days)
     hs300_dates = set(hs300['date_str'])
     hs300_closes = dict(zip(hs300['date_str'], hs300['close']))
     hs300_emas = dict(zip(hs300['date_str'], hs300['EMA21']))
@@ -465,7 +472,7 @@ def run_full_backtest(
     stock_rets = {}
     if sector_filter_top_n > 0 or rel_strength_threshold > 0:
         print(f"  预计算股票收益率 ({len(stock_codes)} 只)...")
-        stock_rets = build_stock_returns(stock_codes)
+        stock_rets = build_stock_returns(stock_codes, days=data_days)
 
     all_trades = []
     t0 = time.time()
@@ -483,7 +490,7 @@ def run_full_backtest(
 
         # 构造每只股票的参数
         task_args = [
-            (code, start_date, hs300_dates, hs300_closes, hs300_emas,
+            (code, start_date, data_days, hs300_dates, hs300_closes, hs300_emas,
              hs300_regime_dict, hs300_pvem_dict, hs300_ret5_dict, hs300_vol_dict,
              SECTOR_MAP, sector_filter_top_n, rel_strength_threshold,
              use_sentiment_filter,
@@ -517,7 +524,7 @@ def run_full_backtest(
         processed = 0
         for code_idx, code in enumerate(stock_codes):
             try:
-                df = get_stock_hist_multi_source(code, days=500, source="tdx_local_qfq")
+                df = get_stock_hist_multi_source(code, days=data_days, source="tdx_local_qfq")
                 if df is None or len(df) < 60:
                     continue
                 df = add_indicators(df)
