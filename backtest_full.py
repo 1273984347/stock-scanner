@@ -99,17 +99,14 @@ def _scan_local_stocks():
     sh_dir = Path('D:/TDX/vipdoc/sh/lday')
     sz_dir = Path('D:/TDX/vipdoc/sz/lday')
 
-    # 板块映射（简化版：按前3位分配，与真实行业分类存在较大偏差）
-    # 例如：600519(茅台)→金融(实际食品饮料)、600036(招行)→金融(实际银行)
-    # 如需精确行业分类：使用 baostock query_stock_industry() 并缓存，
-    # 但会增加网络依赖，与"纯本地数据回测"目标冲突。
-    # 当前板块映射仅用于回测参考，不应用于实盘决策。
-    SH_SECTORS = {
-        '600': '金融', '601': '金融', '603': '消费',
-    }
-    SZ_SECTORS = {
-        '000': '制造', '002': '制造',
-    }
+    # 加载真实行业分类（baostock 缓存）
+    sector_cache_path = Path('cache/sector_map.json')
+    cached_sectors = {}
+    if sector_cache_path.exists():
+        import json
+        with open(sector_cache_path, 'r', encoding='utf-8') as f:
+            cached_sectors = json.load(f)
+        print(f"  加载行业缓存: {len(cached_sectors)} 只股票")
 
     sh_codes, sz_codes = [], []
     for f in sh_dir.iterdir():
@@ -117,20 +114,21 @@ def _scan_local_stocks():
         code = f.name[2:-4]
         if code.startswith(('600', '601', '603')):
             sh_codes.append(code)
-            # 简化板块：取首三位的映射
-            prefix3 = code[:3]
-            SECTOR_MAP[code] = SH_SECTORS.get(prefix3, '工业')
+            SECTOR_MAP[code] = cached_sectors.get(code, '未知')
 
     for f in sz_dir.iterdir():
         if not f.name.endswith('.day'): continue
         code = f.name[2:-4]
         if code.startswith(('000', '002')):
             sz_codes.append(code)
-            prefix3 = code[:3]
-            SECTOR_MAP[code] = SZ_SECTORS.get(prefix3, '制造')
+            SECTOR_MAP[code] = cached_sectors.get(code, '未知')
 
     FULL_STOCKS = sh_codes + sz_codes
-    print(f"扫描完成: {len(FULL_STOCKS)} 只股票, {len(SECTOR_MAP)} 只有板块映射")
+    # 统计板块分布
+    from collections import Counter
+    sector_dist = Counter(SECTOR_MAP.values())
+    unknown = sector_dist.get('未知', 0)
+    print(f"扫描完成: {len(FULL_STOCKS)} 只股票, {len(SECTOR_MAP)} 只有板块映射, 未分类={unknown}")
 
 
 def get_all_stocks() -> List[str]:
@@ -193,7 +191,7 @@ def check_exit_v2(df: pd.DataFrame, entry_i: int, hs300_vol_ratio: float = 1.0) 
     max_exit_i = min(entry_i + 20, len(df) - 1)
 
     # D: 高波动时完全禁用 EMA21 退出
-    use_ema21_exit = (hs300_vol_ratio <= 1.5) and (hs300_vol_ratio >= 0.5)
+    use_ema21_exit = (hs300_vol_ratio <= 1.2) and (hs300_vol_ratio >= 0.5)
 
     for j in range(entry_i + 1, max_exit_i + 1):
         row = df.iloc[j]
@@ -364,6 +362,12 @@ def _process_single_stock(args):
             pvem = hs300_pvem_dict.get(entry_date_str, 0.0)
             if regime == "MEAN_REVERSION" and pvem <= 3.0:
                 continue
+
+            # 情绪过滤（入场级）：高波动时跳过入场
+            if use_sentiment_filter:
+                vol_ratio = hs300_vol_dict.get(entry_date_str, 1.0)
+                if vol_ratio > 1.2:  # ATR > 1.2倍均值 = 高波动
+                    continue
 
             # 相对强度过滤
             if rel_strength_threshold > 0:
