@@ -115,6 +115,79 @@ def compute_adx(high, low, close, period=14):
     return adx_val, plus_di, minus_di
 
 
+def detect_kdj_turn(j_series: pd.Series, lookback: int = 3) -> str:
+    """Detect KDJ turn (design: important is turn from extremes)
+
+    Returns:
+        "turn_up" -- J value turns up from oversold extreme
+        "turn_down" -- J value turns down from overbought extreme
+        "neutral" -- no clear turn
+    """
+    if len(j_series) < lookback + 1:
+        return "neutral"
+
+    j = j_series.iloc[-lookback - 1:]
+    # Turn up: prev J < prev-prev J, current J > prev J
+    if j.iloc[-2] < j.iloc[-3] and j.iloc[-1] > j.iloc[-2]:
+        if j.iloc[-2] < 20:  # Turn in oversold zone
+            return "turn_up"
+
+    # Turn down: prev J > prev-prev J, current J < prev J
+    if j.iloc[-2] > j.iloc[-3] and j.iloc[-1] < j.iloc[-2]:
+        if j.iloc[-2] > 80:  # Turn in overbought zone
+            return "turn_down"
+
+    return "neutral"
+
+
+def multi_period_kdj_verdict(daily_kdj: dict, h60_kdj: dict = None, m15_kdj: dict = None) -> dict:
+    """Multi-period KDJ comprehensive judgment
+
+    Daily for direction, 60-min for rhythm, 15-min for execution
+    """
+    score = 0
+    reasons = []
+
+    # Daily direction (highest weight)
+    if daily_kdj.get("j", 50) < 80 and daily_kdj.get("k", 50) > daily_kdj.get("d", 50):
+        score += 40
+        reasons.append("日线KDJ偏多")
+    elif daily_kdj.get("j", 50) > 80:
+        score -= 20
+        reasons.append("日线过热")
+
+    if daily_kdj.get("turn") == "turn_up":
+        score += 20
+        reasons.append("日线拐头向上")
+
+    # 60-min rhythm
+    if h60_kdj:
+        if h60_kdj.get("k", 50) > h60_kdj.get("d", 50):
+            score += 20
+            reasons.append("60分钟偏多")
+        if h60_kdj.get("turn") == "turn_up":
+            score += 10
+            reasons.append("60分钟拐头")
+
+    # 15-min execution
+    if m15_kdj:
+        if m15_kdj.get("k", 50) > m15_kdj.get("d", 50):
+            score += 10
+            reasons.append("15分钟偏多")
+
+    # Verdict
+    if score >= 60:
+        verdict = "buy"
+    elif score >= 30:
+        verdict = "hold"
+    elif score >= 0:
+        verdict = "wait"
+    else:
+        verdict = "avoid"
+
+    return {"verdict": verdict, "score": score, "reason": " | ".join(reasons)}
+
+
 def compute_roc(close, period=12):
     prev = close.shift(period).replace(0, np.nan)
     return (close - close.shift(period)) / prev * 100.0
@@ -180,16 +253,24 @@ def generate_signals(df: pd.DataFrame) -> Dict[str, str]:
         else:
             signals["Bollinger"] = "neutral"
 
-    # KDJ
+    # KDJ with turn detection
     k, d, j = compute_kdj(high, low, close)
     j_val = j.iloc[-1]
     k_val = k.iloc[-1]
     d_val = d.iloc[-1]
     if _safe(j_val) and _safe(k_val) and _safe(d_val):
-        if j_val < 20:
-            signals["KDJ"] = "bullish"
-        elif j_val > 80:
-            signals["KDJ"] = "bearish"
+        turn = detect_kdj_turn(j)
+        signals["KDJ_turn"] = turn
+        if j_val > 80:
+            if turn == "turn_down":
+                signals["KDJ"] = "bearish"  # Overbought + turn down = bearish
+            else:
+                signals["KDJ"] = "neutral"  # Overbought but no turn = neutral
+        elif j_val < 20:
+            if turn == "turn_up":
+                signals["KDJ"] = "bullish"  # Oversold + turn up = bullish
+            else:
+                signals["KDJ"] = "neutral"  # Oversold but no turn = neutral
         elif k_val > d_val:
             signals["KDJ"] = "bullish"
         else:
