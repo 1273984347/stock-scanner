@@ -111,25 +111,18 @@ class CircuitBreaker:
                         f"Circuit open, retry after {self.recovery_timeout}s"
                     )
 
-        try:
-            result = func(*args, **kwargs)
-            self._reset()
-            return result
-        except Exception as e:
-            self._record_failure()
-            raise
-
-    def _record_failure(self):
-        with self._lock:
-            self._failures += 1
-            self._last_failure_time = time.time()
-            if self._failures >= self.failure_threshold:
-                self._state = "open"
-
-    def _reset(self):
-        with self._lock:
-            self._failures = 0
-            self._state = "closed"
+            # 函数执行在锁内，防止 half_open 阶段并发绕过熔断
+            try:
+                result = func(*args, **kwargs)
+                self._failures = 0
+                self._state = "closed"
+                return result
+            except Exception as e:
+                self._failures += 1
+                self._last_failure_time = time.time()
+                if self._failures >= self.failure_threshold:
+                    self._state = "open"
+                raise
 
     @property
     def state(self) -> str:
