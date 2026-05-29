@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from lib.technical_signals import ema
 from lib.data_layer import get_index_hist
 from lib.data_source_registry import get_stock_hist_multi_source
+from lib.market_regime import detect_market_regime, TREND_DOWN, RISK_OFF
 
 
 # ============================================================
@@ -283,26 +284,21 @@ def run_backtest(
     hs300['date_str'] = hs300['date'].apply(
         lambda d: str(d.date()) if hasattr(d, 'date') else str(d)
     )
+    # 使用统一 market_regime 模块（V4 五态模型）替代简化分类
     # 计算价格偏离EMA21比例（趋势强度代理）
     hs300['pvem'] = (hs300['close'] / hs300['EMA21'] - 1) * 100  # %偏离度
 
-    # 简化市场状态分类（与 backtest_regime_analysis.py 一致）
-    hs300['ema_slope_pct'] = hs300['EMA21'].pct_change(5) * 100
-    def _classify_regime(row):
-        t = row['pvem'] / 100  # 转为小数
-        s = row['ema_slope_pct']
-        if pd.isna(t) or pd.isna(s):
-            return "MEAN_REVERSION"
-        if t > 0.01 and s > 0.05:
-            return "TREND_UP"
-        elif t < -0.01 and s < -0.05:
-            return "TREND_DOWN"
-        else:
-            return "MEAN_REVERSION"  # 边界/震荡 → 均值回归
-    hs300['regime'] = hs300.apply(_classify_regime, axis=1)
-    # 建立日期→regime 和 日期→pvem 查表
-    hs300_regime_dict = dict(zip(hs300['date_str'], hs300['regime']))
+    hs300_regime_dict = {}
     hs300_pvem_dict = dict(zip(hs300['date_str'], hs300['pvem']))
+    for j in range(len(hs300)):
+        row = hs300.iloc[j]
+        date_str = row['date_str']
+        if j >= 29:  # detect_market_regime 需要 >=30 行数据
+            slice_df = hs300.iloc[:j+1]
+            regime_result = detect_market_regime(slice_df)
+            hs300_regime_dict[date_str] = regime_result["regime"]
+        else:
+            hs300_regime_dict[date_str] = "MEAN_REVERSION"
 
     # HS300 N日收益率（用于相对强度计算）
     hs300[f'ret{config.relative_strength_lookback}'] = hs300['close'].pct_change(config.relative_strength_lookback) * 100
@@ -380,12 +376,18 @@ def run_backtest(
                 # 使用 .date() 避免时间戳不匹配
                 entry_date = row['date'].date() if hasattr(row['date'], 'date') else row['date']
 
-                # 市场过滤: HS300 > EMA21
+                # 市场过滤: 使用统一 V4 五态模型
                 # 直接用 Timestamp 比较，不用字符串
                 entry_date_str = str(entry_date)
                 hs_match = hs300[hs300['date'] <= row['date']]
                 if len(hs_match) == 0:
                     continue
+
+                # TREND_DOWN / RISK_OFF 禁止开仓
+                regime = hs300_regime_dict.get(entry_date_str, "MEAN_REVERSION")
+                if regime in (TREND_DOWN, RISK_OFF):
+                    continue
+
                 hs_latest = hs_match.iloc[-1]
                 if not (hs_latest['close'] > hs_latest['EMA21']):
                     continue
@@ -393,7 +395,6 @@ def run_backtest(
                 # MEAN_REVERSION时期：要求HS300趋势强度>3%（更严格入场）
                 # 诊断发现：near_ema(<1%偏离)胜率仅30%，strong_up(>5%)胜率67%
                 # 优化：MEAN_REVERSION市场只做偏离>3%的较强趋势
-                regime = hs300_regime_dict.get(entry_date_str, "MEAN_REVERSION")
                 pvem = hs300_pvem_dict.get(entry_date_str, 0.0)
                 if regime == "MEAN_REVERSION" and pvem <= 3.0:
                     continue  # 均值回归市场且趋势不够强，跳过
