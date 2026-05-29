@@ -262,17 +262,30 @@ def _to_float(v) -> Optional[float]:
         return None
 
 
-_bs_session: Optional["bs"] = None  # type: ignore
+_bs_session = None  # type: ignore
+_bs_last_used: float = 0
 
 
 def _get_bs():
-    """获取或创建 baostock session（避免重复 login）"""
-    global _bs_session
+    """获取或创建 baostock session（避免重复 login，30 分钟超时重连）"""
+    global _bs_session, _bs_last_used
+    import time
+    now = time.time()
+
+    # Session unused for 30+ minutes → reconnect
+    if _bs_session is not None and (now - _bs_last_used) > 1800:
+        try:
+            _bs_session.logout()
+        except Exception:
+            pass
+        _bs_session = None
+
     if _bs_session is None:
         import baostock as bs
         lg = bs.login()
         if lg.error_code == "0":
             _bs_session = bs
+    _bs_last_used = now
     return _bs_session
 
 
