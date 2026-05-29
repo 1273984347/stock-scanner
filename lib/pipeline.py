@@ -214,7 +214,10 @@ def _optimize_portfolio(results: dict) -> dict:
             df_work["_score"] = pd.to_numeric(df_work.get("置信度", 0), errors="coerce") * 10
 
         vol_col = "波动率20" if "波动率20" in df_work.columns else "volatility_20"
-        df_work["_volatility"] = pd.to_numeric(df_work.get(vol_col, 25), errors="coerce").fillna(25) / 100
+        if vol_col in df_work.columns:
+            df_work["_volatility"] = pd.to_numeric(df_work[vol_col], errors="coerce").fillna(25) / 100
+        else:
+            df_work["_volatility"] = 0.25  # 默认25%波动率
 
         df_valid = df_work[df_work["_score"].notna()].copy()
         strat_candidates = []
@@ -573,7 +576,11 @@ def run_all_strategies(
     results = {}
     clean_cache(max_age_hours=24)
     sentiment = get_market_sentiment()
-    logger.info(f"市场情绪分数: {sentiment:.2f}")
+    if sentiment is not None:
+        logger.info(f"市场情绪分数: {sentiment:.2f}")
+    else:
+        logger.warning("市场情绪获取失败，使用默认值 0")
+        sentiment = 0
 
     # ========== 宏观 + 指数过滤 ==========
     macro_filter = {"shibor": None, "shibor_regime": "UNKNOWN", "index_ma20": None, "index_trend": "UNKNOWN", "position_mult": 1.0}

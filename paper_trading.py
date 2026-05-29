@@ -91,16 +91,18 @@ def run_scan(preset: str = "balanced"):
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M')}] 开始扫描...")
 
     config = get_config(preset)
-    results = run_all_strategies(preset)
+    scan_result = run_all_strategies(preset)
 
-    if not results:
+    if not scan_result or not scan_result.get("results"):
         print("所有策略均无候选股")
         return
+
+    results = scan_result["results"]
 
     # 记录信号
     signals = []
     for strategy_name, df in results.items():
-        if df.empty:
+        if not isinstance(df, pd.DataFrame) or df.empty:
             continue
         for _, row in df.iterrows():
             code = str(row.get('代码', ''))
