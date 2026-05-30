@@ -236,9 +236,13 @@ class ABroker:
             except Exception as e:
                 logger.warning(f"[broker] 流通市值获取失败: {e}")
 
-            # 降级方案：使用成交量估算（误差大，但不至于完全失效）
+            # 降级方案：使用成交量估算（误差大，标记为估算值）
+            # 注：日成交量 ≠ 流通股本，此估算仅用于冲击成本的粗略参考
             if market_cap_result < 0 and volume > 0:
-                market_cap_result = close * volume * 100  # 假设 1 手=100股
+                # 使用更保守的估算：假设换手率约 3%，反推流通股本
+                estimated_float_shares = volume / 0.03 if volume > 0 else 0
+                market_cap_result = close * estimated_float_shares
+                logger.debug(f"[broker] {code} 市值为估算值（基于成交量反推），误差较大")
         # 缓存所有结果（包括失败结果-1），避免重复查询
         with self._broker_cache_lock:
             self._market_cap_cache[code] = market_cap_result
@@ -612,12 +616,17 @@ class PaperBroker(LiveBrokerABC):
     - 支持与 ABroker 互换使用
     """
 
-    def __init__(self, account: str = "paper", initial_cash: float = 1_000_000, **kwargs):
+    def __init__(self, account: str = "paper", initial_cash: float = 1_000_000,
+                 max_single_weight: float = 0.20, max_total_exposure: float = 0.95,
+                 stop_loss_pct: float = 0.05, **kwargs):
         super().__init__(account=account, env="paper")
         self.initial_cash = initial_cash
         self.cash = initial_cash
         self._broker = ABroker(initial_cash=initial_cash)
         self._market_data: Dict[str, pd.DataFrame] = {}
+        self._max_single_weight = max_single_weight
+        self._max_total_exposure = max_total_exposure
+        self._stop_loss_pct = stop_loss_pct
 
     def _connect(self):
         """PaperBroker 连接即初始化本地代理"""
@@ -630,7 +639,36 @@ class PaperBroker(LiveBrokerABC):
         pass
 
     def _place_order(self, order: Order) -> Optional[Trade]:
-        """通过本地 ABroker 执行订单"""
+        """通过本地 ABroker 执行订单（含风控检查）"""
+        # 风控检查：买入时验证仓位限制
+        if order.direction == "BUY":
+            total_value = self._broker.total_value
+            if total_value > 0:
+                # 单票仓位限制
+                existing = self._broker.holdings.get(order.code)
+                existing_value = (existing.shares * self._broker._last_prices.get(order.code, existing.cost_price)) if existing else 0
+                new_value = existing_value + order.price * order.shares
+                if new_value / total_value > self._max_single_weight:
+                    logger.warning(f"PaperBroker 风控: {order.code} 仓位 {new_value/total_value:.1%} 超过 {self._max_single_weight:.0%} 上限")
+                    # 缩减到限额内
+                    max_new_value = total_value * self._max_single_weight - existing_value
+                    if max_new_value <= 0:
+                        return None
+                    order.shares = int(max_new_value / order.price / 100) * 100
+                    if order.shares <= 0:
+                        return None
+
+                # 总仓位限制
+                total_market_value = self._broker.total_market_value
+                if (total_market_value + order.price * order.shares) / total_value > self._max_total_exposure:
+                    max_buy_value = total_value * self._max_total_exposure - total_market_value
+                    if max_buy_value <= 0:
+                        logger.warning("PaperBroker 风控: 总仓位已达上限")
+                        return None
+                    order.shares = int(max_buy_value / order.price / 100) * 100
+                    if order.shares <= 0:
+                        return None
+
         if not self._market_data:
             logger.warning("无市场数据，使用实时行情")
             from lib.data_layer import get_stock_hist_multi_source
@@ -754,6 +792,7 @@ class TDXBroker(LiveBrokerABC):
         self._tx_password = tx_password
         self._api = None
         self._client_id: int = -1
+        # 安全提示：密码在内存中明文存储，生产环境应使用密钥管理服务
 
     def _connect(self):
         from pytdx.trade import TdxTradeApi

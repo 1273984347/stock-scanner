@@ -221,8 +221,11 @@ class KellyPosition:
 
     @staticmethod
     def kelly_fraction(win_rate: float, avg_win: float, avg_loss: float) -> float:
-        """凯利比例"""
-        if avg_loss <= 0:
+        """凯利比例（带输入验证）"""
+        # 输入验证
+        if not (0 <= win_rate <= 1):
+            return 0
+        if avg_win < 0 or avg_loss <= 0:
             return 0
         b = avg_win / avg_loss
         f = (b * win_rate - (1 - win_rate)) / b
@@ -439,10 +442,19 @@ class RegimeAwarePositionSizer:
         else:
             adjusted_weight = base_result.weight_pct
 
-        # 返回调整后的结果（weight_pct 替换）
+        # 根据调整后的权重重新计算实际股数和名义金额
+        adjusted_notional = base_result.notional
+        adjusted_qty = base_result.qty
+        if base_result.weight_pct > 0 and adjusted_weight < base_result.weight_pct:
+            scale = adjusted_weight / base_result.weight_pct
+            adjusted_notional = base_result.notional * scale
+            adjusted_qty = int(adjusted_notional / entry_price / self.config.round_lot) * self.config.round_lot
+            adjusted_notional = adjusted_qty * entry_price
+
+        # 返回调整后的结果（qty/notional/weight_pct 全部更新）
         adjusted_result = PositionSizeResult(
-            qty=base_result.qty,
-            notional=base_result.notional,
+            qty=adjusted_qty,
+            notional=adjusted_notional,
             weight_pct=adjusted_weight,
             risk_budget=base_result.risk_budget,
             stop_distance=base_result.stop_distance,

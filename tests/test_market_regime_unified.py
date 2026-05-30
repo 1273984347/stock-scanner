@@ -5,7 +5,8 @@ import numpy as np
 from lib.market_regime import (
     detect_market_regime,
     RISK_OFF, TREND_UP, TREND_DOWN,
-    COMPRESSION, MEAN_REVERSION,
+    HIGH_VOLATILITY, LOW_VOLATILITY,
+    MEAN_REVERSION,
     REGIME_STATES, REGIME_POSITION_SCALAR,
     get_regime_description,
 )
@@ -63,7 +64,7 @@ class TestRiskOff:
         df.loc[df.index[-5:], "low"] = df["close"].iloc[-5:] * 0.90
         result = detect_market_regime(df)
         # 应为保护性状态之一
-        assert result["regime"] in (RISK_OFF, COMPRESSION, TREND_DOWN)
+        assert result["regime"] in (RISK_OFF, HIGH_VOLATILITY, TREND_DOWN)
 
     def test_risk_off_returns_zero_position_scalar(self):
         """RISK_OFF 状态返回的 position_scalar 为 (0, 0)"""
@@ -91,10 +92,10 @@ class TestRegimeDetection:
         assert result["regime"] in (TREND_DOWN, MEAN_REVERSION)
 
     def test_insufficient_data_returns_default(self):
-        """数据不足时返回默认状态"""
+        """数据不足时返回默认状态（HIGH_VOLATILITY 更安全）"""
         df = _make_index_df(10)
         result = detect_market_regime(df)
-        assert result["regime"] == MEAN_REVERSION
+        assert result["regime"] == HIGH_VOLATILITY
         assert result["confidence"] == 0.3
 
     def test_result_structure(self):
@@ -127,14 +128,14 @@ class TestFiveStateCompleteness:
     """五态模型完整性测试"""
 
     def test_five_states_defined(self):
-        """五种状态全部定义"""
-        assert len(REGIME_STATES) == 5
-        expected = {TREND_UP, MEAN_REVERSION, COMPRESSION, TREND_DOWN, RISK_OFF}
+        """六种状态全部定义"""
+        assert len(REGIME_STATES) == 6
+        expected = {TREND_UP, MEAN_REVERSION, HIGH_VOLATILITY, LOW_VOLATILITY, TREND_DOWN, RISK_OFF}
         assert set(REGIME_STATES) == expected
 
     def test_five_position_scalars(self):
-        """五种状态都有仓位系数"""
-        assert len(REGIME_POSITION_SCALAR) == 5
+        """六种状态都有仓位系数"""
+        assert len(REGIME_POSITION_SCALAR) == 6
 
     def test_five_descriptions(self):
         """五种状态都有描述"""

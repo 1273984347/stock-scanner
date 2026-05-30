@@ -126,7 +126,7 @@ class RiskManager:
                 name="single_stock_loss",
                 check_fn=self._check_single_stock_loss,
                 action="REDUCE",
-                description=f"单票亏损超过 {self.config.single_stock_stop_loss:.0%} 止损"
+                description=f"单票亏损超过 {self.config.single_stock_stop_loss:.0%} 止损（强制执行）"
             ),
             RiskRule(
                 name="concentration",
@@ -192,6 +192,16 @@ class RiskManager:
                     target="ALL",
                     reason=alert.message,
                     severity="CRITICAL"
+                )
+                self.actions.append(action)
+                self.executor.execute(action)
+            elif alert.level == "WARNING" and alert.rule_name == "single_stock_loss":
+                # 单股止损必须执行，不能只告警不动作
+                action = RiskAction(
+                    action_type="REDUCE_POSITION",
+                    target=alert.details.get("code", "ALL"),
+                    reason=alert.message,
+                    severity="WARNING"
                 )
                 self.actions.append(action)
                 self.executor.execute(action)

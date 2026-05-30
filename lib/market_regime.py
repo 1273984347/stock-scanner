@@ -13,23 +13,31 @@
 import numpy as np
 import pandas as pd
 from typing import Dict, Optional, Tuple
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ========== 五态常量 ==========
 
 TREND_UP = "TREND_UP"
 MEAN_REVERSION = "MEAN_REVERSION"
-COMPRESSION = "COMPRESSION"
+HIGH_VOLATILITY = "HIGH_VOLATILITY"
+LOW_VOLATILITY = "LOW_VOLATILITY"
 TREND_DOWN = "TREND_DOWN"
 RISK_OFF = "RISK_OFF"
 
-REGIME_STATES = [TREND_UP, MEAN_REVERSION, COMPRESSION, TREND_DOWN, RISK_OFF]
+# 向后兼容别名
+COMPRESSION = HIGH_VOLATILITY  # 旧代码中的 COMPRESSION 映射到 HIGH_VOLATILITY
+
+REGIME_STATES = [TREND_UP, MEAN_REVERSION, HIGH_VOLATILITY, LOW_VOLATILITY, TREND_DOWN, RISK_OFF]
 
 # 状态 → 仓位系数（默认值，可被 position_size 覆盖）
 REGIME_POSITION_SCALAR = {
     TREND_UP: (0.75, 1.00),       # (min, max)
     MEAN_REVERSION: (0.25, 0.50),
-    COMPRESSION: (0.00, 0.25),
+    HIGH_VOLATILITY: (0.00, 0.25),
+    LOW_VOLATILITY: (0.50, 0.75),
     TREND_DOWN: (0.00, 0.00),
     RISK_OFF: (0.00, 0.00),       # 极端波动，禁止一切开仓
 }
@@ -114,9 +122,14 @@ def detect_market_regime(
     if index_df is None or index_df.empty or len(index_df) < 30:
         return _default_regime()
 
-    close = index_df["close"]
-    high = index_df["high"]
-    low = index_df["low"]
+    # 使用 T-1 数据判断市场状态（避免未来数据泄漏）
+    # 实盘中当天收盘前无法知道今天的收盘价，必须用昨天的数据
+    if len(index_df) < 2:
+        return _default_regime()
+    df = index_df.iloc[:-1]  # 排除最后一天（今天）
+    close = df["close"]
+    high = df["high"]
+    low = df["low"]
 
     # 计算凯尔特纳通道（简化版）
     if kc_mid is None:
@@ -131,12 +144,12 @@ def detect_market_regime(
             h_pc = abs(high.iloc[i] - close.iloc[i - 1])
             l_pc = abs(low.iloc[i] - close.iloc[i - 1])
             tr[i] = max(h_l, h_pc, l_pc)
-        atr = pd.Series(tr, index=index_df.index).ewm(span=14, adjust=False).mean()
+        atr = pd.Series(tr, index=df.index).ewm(span=14, adjust=False).mean()
 
     kc_range = kc_mid + 2 * atr - (kc_mid - 2 * atr)
 
     # 计算 Donchian
-    dc = _calculate_donchian(index_df, period=20)
+    dc = _calculate_donchian(df, period=20)
     dc_upper = dc["dc_upper"]
     dc_lower = dc["dc_lower"]
 
@@ -214,10 +227,15 @@ def detect_market_regime(
         regime = TREND_DOWN
         confidence = min(0.95, 0.5 + abs(trend_score) * 0.4)
 
-    # COMPRESSION: 压缩明显 + 方向不明确
+    # HIGH_VOLATILITY: 波动率扩张 + 方向不明确（原 COMPRESSION）
     elif compression > 0.6 and abs(trend_score) < 0.3:
-        regime = COMPRESSION
+        regime = HIGH_VOLATILITY
         confidence = min(0.85, 0.4 + compression * 0.4)
+
+    # LOW_VOLATILITY: 波动率收缩 + 趋势不明确
+    elif atr_ratio < 0.7 and abs(trend_score) < 0.2:
+        regime = LOW_VOLATILITY
+        confidence = min(0.80, 0.4 + (1 - atr_ratio) * 0.3)
 
     # MEAN_REVERSION: EMA走平 + 震荡 + Donchian收窄 + Keltner反复触碰
     elif abs(ema_slope) < 0.1 and abs(trend_score) < 0.4 and dc_narrow and keltner_touches >= 3:
@@ -249,12 +267,12 @@ def detect_market_regime(
 
 
 def _default_regime() -> Dict:
-    """默认状态（数据不足时）"""
+    """默认状态（数据不足时）— 使用 HIGH_VOLATILITY 更安全"""
     return {
-        "regime": MEAN_REVERSION,
+        "regime": HIGH_VOLATILITY,
         "confidence": 0.3,
         "indicators": {},
-        "position_scalar": REGIME_POSITION_SCALAR[MEAN_REVERSION],
+        "position_scalar": REGIME_POSITION_SCALAR[HIGH_VOLATILITY],
         "atr_ratio": 1.0,
         "compression": 0.0,
     }
@@ -265,7 +283,8 @@ def get_regime_description(regime: str) -> str:
     descriptions = {
         TREND_UP: "上升趋势：积极做多，仓位75%-100%",
         MEAN_REVERSION: "均值回归：短线回归操作，仓位25%-50%",
-        COMPRESSION: "压缩区间：少做等突破，仓位0%-25%",
+        HIGH_VOLATILITY: "高波动：少做等突破，仓位0%-25%",
+        LOW_VOLATILITY: "低波动：适度加仓，仓位50%-75%",
         TREND_DOWN: "下跌趋势：不做多，仓位0%",
         RISK_OFF: "极端波动：市场恐慌，禁止一切开仓",
     }

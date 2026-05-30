@@ -109,113 +109,12 @@ TDX_BASE_URL = "https://www.tdx.com.cn/products/data/data/vipdoc"
 
 # 全部数据包定义
 # key: 包名(去掉.zip), name: 中文名, subdir: 解压目标子目录
+# =====================================================================
+# 下载配置（已禁用大量包，仅保留高频/统计数据）
+# 如需恢复，参考 archive/PACKAGES_full.py
+# =====================================================================
 PACKAGES = {
-    # ---- 日线（主要市场）----
-    "shlday": {
-        "name": "上证所有证券日线(TCKV4=0)",
-        "subdir": "sh/lday",
-        "zip": "shlday.zip",
-    },
-    "szlday": {
-        "name": "深证所有证券日线(TCKV4=0)",
-        "subdir": "sz/lday",
-        "zip": "szlday.zip",
-    },
-    "bjlday": {
-        "name": "北证所有证券日线",
-        "subdir": "bj/lday",
-        "zip": "bjlday.zip",
-    },
-    # ---- 指数日线----
-    "shzsday": {
-        "name": "上证指数日线",
-        "subdir": "sh/zs",
-        "zip": "shzsday.zip",
-    },
-    "szzsday": {
-        "name": "深证指数日线",
-        "subdir": "sz/zs",
-        "zip": "szzsday.zip",
-    },
-    "tdxzs_day": {
-        "name": "通达信板块指数日线",
-        "subdir": "tdx/zs",
-        "zip": "tdxzs_day.zip",
-    },
-    # ---- 前复权日线----
-    "shlday_4": {
-        "name": "上证所有证券日线(TCKV4=1)",
-        "subdir": "sh/lday_4",
-        "zip": "shlday_4.zip",
-    },
-    "szlday_4": {
-        "name": "深证所有证券日线(TCKV4=1)",
-        "subdir": "sz/lday_4",
-        "zip": "szlday_4.zip",
-    },
-    # ---- 期权----
-    "shqqday": {
-        "name": "上海股票期权日线",
-        "subdir": "sh/option",
-        "zip": "shqqday.zip",
-    },
-    "szqqday": {
-        "name": "深圳股票期权日线",
-        "subdir": "sz/option",
-        "zip": "szqqday.zip",
-    },
-    # ---- 其他市场----
-    "xsbday": {
-        "name": "股转系统日线",
-        "subdir": "xsb/lday",
-        "zip": "xsbday.zip",
-    },
-    "62day": {
-        "name": "中证指数日线",
-        "subdir": "csi/zs",
-        "zip": "62day.zip",
-    },
-    "ggtday": {
-        "name": "港股通日线",
-        "subdir": "ggt/lday",
-        "zip": "ggtday.zip",
-    },
-    # ---- 基金----
-    "33day": {
-        "name": "开放式基金日线",
-        "subdir": "fund/open",
-        "zip": "33day.zip",
-        "data_type": "historical",
-    },
-    "34day": {
-        "name": "货币型基金日线",
-        "subdir": "fund/money",
-        "zip": "34day.zip",
-        "data_type": "historical",
-    },
-    # ---- 宏观----
-    "38day": {
-        "name": "宏观指标日线",
-        "subdir": "macro/lday",
-        "zip": "38day.zip",
-        "data_type": "historical",
-    },
-    # ---- 财务数据----
-    "tdxfin": {
-        "name": "财务报表数据",
-        "subdir": "cw",
-        "zip": "tdxfin.zip",
-        "data_type": "historical",
-        "file_pattern": "*.dat",
-    },
-    # ---- 新增：沪股通/高频/市场统计----
-    "hsjday": {
-        "name": "沪股通日线",
-        "subdir": "hsj",
-        "zip": "hsjday.zip",
-        "data_type": "realtime",
-        "file_pattern": "**/*.day",
-    },
+    # ---- 高频/统计（当前保留）----
     "tdxgp": {
         "name": "高频数据(Tick)",
         "subdir": "gp",
@@ -230,6 +129,35 @@ PACKAGES = {
         "data_type": "realtime",
         "file_format": "csv",
     },
+
+    # ---- 以下已禁用 ----
+    # # ---- 日线（主要市场）----
+    # "shlday":  {"name": "上证所有证券日线(TCKV4=0)",  "subdir": "sh/lday",   "zip": "shlday.zip"},
+    # "szlday":  {"name": "深证所有证券日线(TCKV4=0)",  "subdir": "sz/lday",   "zip": "szlday.zip"},
+    # "bjlday":  {"name": "北证所有证券日线",           "subdir": "bj/lday",   "zip": "bjlday.zip"},
+    # # ---- 指数日线----
+    # "shzsday": {"name": "上证指数日线",               "subdir": "sh/zs",     "zip": "shzsday.zip"},
+    # "szzsday": {"name": "深证指数日线",               "subdir": "sz/zs",     "zip": "szzsday.zip"},
+    # "tdxzs_day": {"name": "通达信板块指数日线",       "subdir": "tdx/zs",    "zip": "tdxzs_day.zip"},
+    # # ---- 前复权日线----
+    # "shlday_4": {"name": "上证所有证券日线(TCKV4=1)","subdir": "sh/lday_4", "zip": "shlday_4.zip"},
+    # "szlday_4": {"name": "深证所有证券日线(TCKV4=1)","subdir": "sz/lday_4", "zip": "szlday_4.zip"},
+    # # ---- 期权----
+    # "shqqday": {"name": "上海股票期权日线",           "subdir": "sh/option", "zip": "shqqday.zip"},
+    # "szqqday": {"name": "深圳股票期权日线",           "subdir": "sz/option", "zip": "szqqday.zip"},
+    # # ---- 其他市场----
+    # "xsbday":  {"name": "股转系统日线",              "subdir": "xsb/lday",  "zip": "xsbday.zip"},
+    # "62day":   {"name": "中证指数日线",              "subdir": "csi/zs",    "zip": "62day.zip"},
+    # "ggtday":  {"name": "港股通日线",                "subdir": "ggt/lday",  "zip": "ggtday.zip"},
+    # # ---- 基金----
+    # "33day":   {"name": "开放式基金日线",            "subdir": "fund/open",  "zip": "33day.zip",  "data_type": "historical"},
+    # "34day":   {"name": "货币型基金日线",            "subdir": "fund/money", "zip": "34day.zip",  "data_type": "historical"},
+    # # ---- 宏观----
+    # "38day":   {"name": "宏观指标日线",              "subdir": "macro/lday", "zip": "38day.zip", "data_type": "historical"},
+    # # ---- 财务数据----
+    # "tdxfin":  {"name": "财务报表数据",               "subdir": "cw",         "zip": "tdxfin.zip", "data_type": "historical", "file_pattern": "*.dat"},
+    # # ---- 沪股通----
+    # "hsjday":  {"name": "沪股通日线",               "subdir": "hsj",        "zip": "hsjday.zip", "data_type": "realtime", "file_pattern": "**/*.day"},
 }
 
 

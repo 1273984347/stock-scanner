@@ -14,8 +14,9 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# 持久化路径
+# 持久化路径（回测和实盘分离，防止状态污染）
 _BAYES_STATE_PATH = Path(__file__).parent.parent / "cache" / "bayesian_state.json"
+_BAYES_BACKTEST_PATH = Path(__file__).parent.parent / "cache" / "bayesian_state_backtest.json"
 
 
 @dataclass
@@ -54,8 +55,18 @@ class BayesianUpdater:
         updater.save()
     """
 
-    def __init__(self, state_path: Path = None):
-        self._path = state_path or _BAYES_STATE_PATH
+    def __init__(self, state_path: Path = None, mode: str = "live"):
+        """
+        Args:
+            state_path: 自定义状态文件路径
+            mode: "live"（实盘）或 "backtest"（回测），使用不同的状态文件
+        """
+        if state_path:
+            self._path = state_path
+        elif mode == "backtest":
+            self._path = _BAYES_BACKTEST_PATH
+        else:
+            self._path = _BAYES_STATE_PATH
         # key: "market_state|sector_bucket|signal_type" -> ConditionStats
         self._stats: Dict[str, ConditionStats] = {}
         # 先验：无数据时的默认胜率

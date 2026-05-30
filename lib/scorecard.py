@@ -33,28 +33,7 @@ class MarketFilter:
             0.0 = 下跌趋势（指数 < 均线）
         """
         try:
-            import akshare as ak
-            idx = ak.stock_zh_index_daily(symbol="sh000300")
-            if idx.empty or len(idx) < days:
-                return 0.5
-            close = idx["close"].values
-            volume = idx.get("volume", idx.get("amount"))
-            current = close[-1]
-            ma = np.mean(close[-days:])
-            ratio = current / ma - 1
-            if ratio > 0.02:
-                # 上涨趋势，检查量能是否配合
-                if volume is not None and len(volume) >= 10:
-                    vol_5 = np.mean(volume[-5:])
-                    vol_10 = np.mean(volume[-10:])
-                    # 量能萎缩：近5日均量 < 近10日均量的90%
-                    if vol_10 > 0 and vol_5 < vol_10 * 0.9:
-                        logger.debug("L1 量价背离：指数上涨但量能萎缩")
-                        return 0.5
-                return 1.0
-            elif ratio < -0.02:
-                return 0.0
-            return 0.5
+            return MarketFilter._compute_l1(days)
         except Exception as e:
             logger.warning(f"L1 大盘判断失败: {e}")
             return 0.5
@@ -233,7 +212,8 @@ class ScoreCard:
 
     @classmethod
     def score(cls, code: str, row: pd.Series, hist: pd.DataFrame = None,
-              market_brief: dict = None, industry_ret: float = None) -> dict:
+              market_brief: dict = None, industry_ret: float = None,
+              sector_data: dict = None) -> dict:
         """对一只股票执行四层打分
 
         Args:
@@ -242,6 +222,7 @@ class ScoreCard:
             hist: 历史行情 DataFrame
             market_brief: 预获取的市场信息（包含 l1 和 bench_ret_5d）
             industry_ret: 预获取的行业收益率（5日）
+            sector_data: 预获取的行业数据（避免 N+1 调用）
         """
         # L1 使用传入的预计算值或重新计算
         if market_brief:
@@ -251,8 +232,11 @@ class ScoreCard:
             l1 = MarketFilter.layer1_market_trend()
             bench_ret_5d = _get_market_return(5)
 
-        # L2 使用传入的预计算值
-        l2 = MarketFilter.layer2_sector_strength(code)
+        # L2 使用预获取的行业数据或独立计算
+        if sector_data and code in sector_data:
+            l2 = sector_data[code].get("l2", 0.5)
+        else:
+            l2 = MarketFilter.layer2_sector_strength(code)
 
         # L3 使用预获取的 bench_ret_5d
         l3 = MarketFilter.layer3_money_flow(row)
@@ -300,6 +284,15 @@ _industry_cache_time = None
 _industry_cache_lock = threading.Lock()
 INDUSTRY_CACHE_TTL = 3600 * 24  # 24小时 TTL
 
+def refresh_industry_cache():
+    """强制刷新行业缓存（供外部调用）"""
+    global _industry_cache, _industry_cache_time
+    with _industry_cache_lock:
+        _industry_cache = None
+        _industry_cache_time = None
+    logger.info("行业缓存已清除，下次查询将重新加载")
+
+
 def _get_industry(code: str) -> str:
     """获取股票所属行业（带 TTL 缓存）"""
     global _industry_cache, _industry_cache_time
@@ -339,25 +332,34 @@ def _get_industry_stocks(industry: str) -> list:
 
 
 def _get_stock_returns_batch(codes: list, days: int = 20) -> dict:
-    """批量获取多只股票的收益率，减少 API 调用次数
+    """批量获取多只股票的收益率（并行获取，减少延迟）
 
     Returns:
         {code: return_float or None}
     """
-    from scanner import get_stock_hist_multi_source
+    from lib.data_layer import get_stock_hist_multi_source
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     results = {}
-    for code in codes:
+
+    def _fetch_one(code: str):
         try:
             clean_code = code.split('.')[-1] if '.' in code else code
             hist = get_stock_hist_multi_source(clean_code, days=days + 10, source="auto")
             if hist.empty or len(hist) < days:
-                results[code] = None
-                continue
+                return code, None
             close = hist["close"].values
-            results[code] = close[-1] / close[-days] - 1
+            return code, close[-1] / close[-days] - 1
         except Exception as e:
             logger.debug(f"[scorecard] 股票收益率获取失败 [{code}]: {e}")
-            results[code] = None
+            return code, None
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(_fetch_one, code) for code in codes]
+        for future in as_completed(futures):
+            code, ret = future.result()
+            results[code] = ret
+
     return results
 
 

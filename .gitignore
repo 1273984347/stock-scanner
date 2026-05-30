@@ -4,4 +4,6 @@ cache/
 *.parquet
 *.log
 .env
+.env.*
+!.env.example
 .gstack/
