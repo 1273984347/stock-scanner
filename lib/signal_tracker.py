@@ -27,6 +27,31 @@ logger = logging.getLogger(__name__)
 SIGNAL_LOG_DIR = Path("cache/signals")
 
 
+def _last_trading_day() -> str:
+    """获取最近的交易日（跳过周末和节假日，通过 TDX 数据验证）"""
+    import struct
+    dt = datetime.now()
+    tdx_path = Path("D:/TDX/vipdoc/sh/lday_4/sh600000.day")
+
+    for _ in range(30):
+        if tdx_path.exists():
+            date_int = int(dt.strftime("%Y%m%d"))
+            try:
+                with open(tdx_path, "rb") as f:
+                    raw = f.read()
+                    for i in range(0, len(raw), 32):
+                        d = struct.unpack_from("<I", raw, i)[0]
+                        if d == date_int:
+                            return dt.strftime("%Y-%m-%d")
+            except Exception:
+                pass
+        dt -= timedelta(days=1)
+        while dt.weekday() >= 5:
+            dt -= timedelta(days=1)
+
+    return dt.strftime("%Y-%m-%d")
+
+
 @dataclass
 class SignalRecord:
     """信号记录"""
@@ -72,10 +97,7 @@ class SignalTracker:
                       date: str = None, source: str = "ic_score", ic_score: float = 0):
         """记录一条信号"""
         if date is None:
-            dt = datetime.now()
-            while dt.weekday() >= 5:
-                dt -= timedelta(days=1)
-            date = dt.strftime("%Y-%m-%d")
+            date = _last_trading_day()
 
         record = SignalRecord(
             date=date,

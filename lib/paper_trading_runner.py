@@ -23,11 +23,37 @@ import pandas as pd
 
 
 def _last_trading_day() -> str:
-    """获取最近的交易日（跳过周末）"""
+    """获取最近的交易日（跳过周末和节假日）
+
+    通过检查 TDX 数据文件判断——有数据就是交易日。
+    回退方案：跳过周末 + 已知节假日。
+    """
+    import struct
+    from pathlib import Path as _Path
+
     dt = datetime.now()
-    # 周六=5, 周日=6
-    while dt.weekday() >= 5:
+    tdx_path = _Path("D:/TDX/vipdoc/sh/lday_4/sh600000.day")
+
+    for _ in range(30):  # 最多回溯 30 天
+        if tdx_path.exists():
+            # 检查 TDX 文件中是否有该日期的数据
+            date_int = int(dt.strftime("%Y%m%d"))
+            try:
+                with open(tdx_path, "rb") as f:
+                    raw = f.read()
+                    for i in range(0, len(raw), 32):
+                        d = struct.unpack_from("<I", raw, i)[0]
+                        if d == date_int:
+                            return dt.strftime("%Y-%m-%d")
+            except Exception:
+                pass
+
+        # 回退：跳过周末和已知节假日
         dt -= timedelta(days=1)
+        while dt.weekday() >= 5:
+            dt -= timedelta(days=1)
+
+    # 兜底
     return dt.strftime("%Y-%m-%d")
 
 logger = logging.getLogger(__name__)
