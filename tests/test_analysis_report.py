@@ -12,7 +12,7 @@ class TestBacktestPathComparison:
 
     def test_factor_backtest_runs(self):
         """因子择时路径可运行（不崩溃）"""
-        from backtest import run_factor_backtest
+        from backtest.core import run_factor_backtest
         r = run_factor_backtest(["000001", "600519", "000858"], days=250, confidence_threshold=0.3)
         # 可能无交易（信号频率低），但不应崩溃
         assert r is None or "metrics" in r

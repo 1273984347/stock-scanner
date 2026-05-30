@@ -38,7 +38,7 @@ def test_initial_position_triggers_hard_stop_loss_on_day1():
     Hard stop threshold = stop_loss_atr_mult * 0.05 = 2.0 * 0.05 = 0.10 (10%).
     Buy at 100, price on day1 = 89 (-11%) -> triggers hard stop.
     """
-    from backtest import run_factor_backtest
+    from backtest.core import run_factor_backtest
 
     base_date = datetime(2024, 1, 1)
     df_stock = _make_kline(base_date, n=35, start_price=100.0, slope=0.0)
@@ -67,7 +67,7 @@ def test_position_hard_stop_loss_during_holding():
 
     Hard stop threshold = 10%. Buy at 99, day4 price=89 -> pnl=-10.1% triggers.
     """
-    from backtest import run_factor_backtest
+    from backtest.core import run_factor_backtest
 
     base_date = datetime(2024, 1, 1)
     df_stock = _make_kline(base_date, n=35, start_price=100.0, slope=0.0)
@@ -96,7 +96,7 @@ def test_position_hard_stop_loss_during_holding():
 
 def test_no_stop_loss_when_price_rises():
     """No stop loss when price rises or stays stable."""
-    from backtest import run_factor_backtest
+    from backtest.core import run_factor_backtest
 
     base_date = datetime(2024, 1, 1)
     df_stock = _make_kline(base_date, n=35, start_price=100.0, slope=0.2)
@@ -118,7 +118,7 @@ def test_no_stop_loss_when_price_rises():
 
 def test_empty_initial_positions_does_not_break():
     """Empty initial_positions list should not break backtest."""
-    from backtest import run_factor_backtest
+    from backtest.core import run_factor_backtest
 
     base_date = datetime(2024, 1, 1)
     df_stock = _make_kline(base_date, n=35, start_price=100.0, slope=0.0)

@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 
 def test_get_stock_data_raises_on_all_sources_failed():
     """数据源全部失败时抛出 AllDataSourcesUnavailableError"""
-    from backtest import get_stock_data, AllDataSourcesUnavailableError
+    from backtest.core import get_stock_data, AllDataSourcesUnavailableError
     from lib.data_layer import AllDataSourcesFailedError
 
     with patch("lib.data_layer.get_stock_hist_multi_source") as mock_get:
@@ -26,7 +26,7 @@ def test_get_stock_data_raises_on_all_sources_failed():
 
 def test_get_stock_data_raises_on_empty_dataframe():
     """数据源返回空 DataFrame 时抛出异常"""
-    from backtest import get_stock_data, AllDataSourcesUnavailableError
+    from backtest.core import get_stock_data, AllDataSourcesUnavailableError
 
     mock_df = MagicMock()
     mock_df.empty = True
@@ -41,7 +41,7 @@ def test_get_stock_data_raises_on_empty_dataframe():
 
 def test_all_data_sources_unavailable_error_inherits_exception():
     """异常类型合理继承"""
-    from backtest import AllDataSourcesUnavailableError
+    from backtest.core import AllDataSourcesUnavailableError
 
     err = AllDataSourcesUnavailableError("test message")
     assert "test message" in str(err)

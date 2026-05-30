@@ -7,7 +7,7 @@ from typing import Dict, Optional
 import logging
 import json
 
-from config import get_config
+from config import get_config, SHIBOR_TIGHT_THRESHOLD, SHIBOR_CAUTION_THRESHOLD
 from factors import (compute_all_signals, evaluate_macro_gate, calc_market_exposure)
 from lib.data_layer import (get_stock_hist_multi_source, get_realtime_quotes,
                              get_market_sentiment, _load_cache, _get_financial_data,
@@ -23,8 +23,8 @@ from lib.strategies import (get_zt_candidates, get_volume_breakout_candidates,
 from lib.data_sector import get_sector_stocks
 from lib.broker import LRUCache
 from lib.market_regime import (detect_market_regime_from_hs300,
-                                 TREND_UP, MEAN_REVERSION, COMPRESSION, TREND_DOWN,
-                                 RISK_OFF, REGIME_POSITION_SCALAR)
+                                 TREND_UP, MEAN_REVERSION, HIGH_VOLATILITY, LOW_VOLATILITY,
+                                 TREND_DOWN, RISK_OFF, REGIME_POSITION_SCALAR)
 from lib.position_size import RegimeAwarePositionSizer
 
 logger = logging.getLogger(__name__)
@@ -49,11 +49,13 @@ class StrategyFailureTracker:
     持久化到 cache/strategy_failures.json，跨 session 保持。
     """
 
-    def __init__(self):
+    def __init__(self, persist: bool = False):
         self._path = Path(__file__).parent.parent / "cache" / "strategy_failures.json"
         self._failures: Dict[str, int] = {}  # strategy_name -> consecutive failures
         self._threshold = 3  # 连续失效次数阈值
-        self._load()
+        self._persist = persist
+        if persist:
+            self._load()
 
     def record_failure(self, strategy_name: str):
         """记录策略失效（空结果或异常）"""
@@ -77,6 +79,8 @@ class StrategyFailureTracker:
         return self._failures.get(strategy_name, 0)
 
     def save(self):
+        if not self._persist:
+            return
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with open(self._path, "w", encoding="utf-8") as f:
             json.dump(self._failures, f)
@@ -103,7 +107,8 @@ def _apply_regime_adjustment(candidates: list, regime: str) -> list:
     V4 规则：
     - TREND_UP: 正常评分
     - MEAN_REVERSION: 短线为主，降低趋势类因子权重（波动率20低 → 加分）
-    - COMPRESSION: 降低置信度，等突破确认
+    - HIGH_VOLATILITY: 降低置信度，等突破确认
+    - LOW_VOLATILITY: 适度加分
     """
     if not candidates or regime == TREND_UP:
         return candidates
@@ -111,11 +116,17 @@ def _apply_regime_adjustment(candidates: list, regime: str) -> list:
     adjusted = []
     for c in candidates:
         c = c.copy()
-        if regime == COMPRESSION:
-            # 压缩市场：降低置信度，等突破确认
+        if regime == HIGH_VOLATILITY:
+            # 高波动市场：降低置信度，等突破确认
             orig_conf = c.get("ML置信度", 0.5)
             c["ML置信度"] = round(orig_conf * 0.5, 4)
-            c["调整原因"] = "COMPRESSION"
+            c["调整原因"] = "HIGH_VOLATILITY"
+
+        elif regime == LOW_VOLATILITY:
+            # 低波动市场：适度加分
+            orig_conf = c.get("ML置信度", 0.5)
+            c["ML置信度"] = round(orig_conf * 1.1, 4)
+            c["调整原因"] = "LOW_VOLATILITY加分"
 
         elif regime == MEAN_REVERSION:
             # 均值回归市场：短线操作
@@ -446,7 +457,7 @@ def _enrich_with_ml_scores(results: dict) -> dict:
                 if hist.empty or len(hist) < 60:
                     _ml_factor_cache[code] = None
                     continue
-                result = compute_all_signals(hist)
+                result = compute_all_signals(hist, code=code)
                 _ml_factor_cache[code] = result
             if not result:
                 continue
@@ -590,10 +601,10 @@ def run_all_strategies(
         if not shibor_df.empty:
             shibor_val = float(shibor_df["close"].iloc[-1])
             macro_filter["shibor"] = shibor_val
-            if shibor_val > 3.5:
+            if shibor_val > SHIBOR_TIGHT_THRESHOLD:
                 macro_filter["shibor_regime"] = "TIGHT"
                 macro_filter["position_mult"] = 0.0
-            elif shibor_val > 2.5:
+            elif shibor_val > SHIBOR_CAUTION_THRESHOLD:
                 macro_filter["shibor_regime"] = "CAUTION"
                 macro_filter["position_mult"] = 0.5
             else:
@@ -639,10 +650,10 @@ def run_all_strategies(
             logger.warning(f"【V4】市场状态 {regime}，禁止开仓，返回空结果")
             return {}
 
-        # V4 规则：COMPRESSION 时降低仓位
-        if regime == COMPRESSION:
+        # V4 规则：HIGH_VOLATILITY 时降低仓位
+        if regime == HIGH_VOLATILITY:
             macro_filter["position_mult"] *= 0.5
-            logger.info("【V4】市场压缩，仓位乘数减半")
+            logger.info("【V4】市场高波动，仓位乘数减半")
 
         # 将 V4 仓位范围注入 macro_filter 供后续使用
         macro_filter["v4_regime"] = regime
@@ -657,6 +668,35 @@ def run_all_strategies(
         "龙虎榜": get_lhb_candidates,
         "多因子选股": get_multi_factor_candidates,
     }
+
+    # ========== 市场状态→策略映射（V6 连续权重分配）==========
+    regime = macro_filter.get("v4_regime", "MEAN_REVERSION")
+
+    # V6: 动态权重管理
+    try:
+        from lib.dynamic_weight_manager import DynamicWeightManager
+        from lib.strategy_regime_mapper import get_strategy_allocation, apply_strategy_weights_to_candidates
+        _weight_mgr = DynamicWeightManager()
+        dyn_weights = _weight_mgr.compute_weights(regime=regime)
+        allocation = get_strategy_allocation(regime)
+        logger.info(
+            f"【V6策略分配】{regime}: "
+            f"active={allocation.active}, skipped={allocation.skipped}, "
+            f"source={dyn_weights.source}"
+        )
+        # 跳过低于阈值的策略
+        strategies = {k: v for k, v in strategies.items() if k in allocation.active}
+    except Exception as e:
+        # 回退到 V4 二元过滤
+        logger.warning(f"V6 动态权重加载失败，回退 V4: {e}")
+        allocation = None
+        dyn_weights = None
+        if regime == "MEAN_REVERSION":
+            allowed = {"热门板块", "龙虎榜"}
+            strategies = {k: v for k, v in strategies.items() if k in allowed}
+        elif regime == "HIGH_VOLATILITY":
+            allowed = {"龙虎榜"}
+            strategies = {k: v for k, v in strategies.items() if k in allowed}
     for name, func in strategies.items():
         # 降频机制：连续失效 3 次的策略跳过
         if _failure_tracker.should_skip(name):
@@ -671,6 +711,17 @@ def run_all_strategies(
                 if symbols:
                     df = df[df["代码"].isin(symbols)] if "代码" in df.columns else df
                 if not df.empty:
+                    # V6: 应用策略权重到候选股评分
+                    try:
+                        if allocation is not None:
+                            weight = allocation.weights.get(name, 0.5)
+                            if weight < 1.0:
+                                records = df.to_dict(orient="records")
+                                adjusted = apply_strategy_weights_to_candidates(records, name, weight)
+                                if adjusted:
+                                    df = pd.DataFrame(adjusted)
+                    except Exception:
+                        pass  # 权重应用失败不影响主流程
                     results[name] = df
                     _failure_tracker.record_success(name)
                     logger.info(f"  -> {len(df)} 只候选股")

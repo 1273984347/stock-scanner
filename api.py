@@ -705,7 +705,7 @@ async def run_backtest(
     """运行回测"""
     async with _backtest_semaphore:
         try:
-            from backtest import run_factor_backtest
+            from backtest.core import run_factor_backtest
             sym_list = [_validate_stock_code(s.strip()) for s in symbols.split(",") if s.strip()]
             if len(sym_list) > 50:
                 raise HTTPException(status_code=400, detail="最多支持50只股票同时回测")
@@ -720,12 +720,33 @@ async def run_backtest(
             )
             if not result:
                 return {"error": "回测无结果"}
+            # 提取净值曲线数据用于图表
+            perf_df = result.get("perf_df")
+            equity_curve = []
+            if perf_df is not None and hasattr(perf_df, 'empty') and not perf_df.empty:
+                # 计算归一化净值
+                if "total_value" in perf_df.columns:
+                    tv = perf_df["total_value"].astype(float)
+                    base = tv.iloc[0] if tv.iloc[0] > 0 else 1.0
+                    nav_series = tv / base
+                else:
+                    nav_series = pd.Series([1.0] * len(perf_df))
+
+                for i, (_, row) in enumerate(perf_df.iterrows()):
+                    equity_curve.append({
+                        "date": str(row.get("trade_date", row.get("date", row.name))),
+                        "nav": round(float(nav_series.iloc[i]), 4),
+                        "benchmark": 1.0,  # 基准需要单独计算
+                    })
+
             return {
                 "metrics": result.get("metrics"),
                 "benchmark": result.get("benchmark"),
                 "trade_count": result.get("trade_count"),
                 "exit_reasons": result.get("exit_reasons"),
                 "cost_summary": result.get("cost_summary"),
+                "equity_curve": equity_curve,
+                "trades": result.get("trades", [])[:200],  # 限制交易记录数
             }
         except Exception as e:
             logger.error(f"回测失败: {e}")
@@ -744,7 +765,7 @@ async def run_walkforward(
     async with _wf_semaphore:
         try:
             from lib.walkforward import WalkForwardBacktest, WalkForwardConfig, summarize_rounds
-            from backtest import run_factor_backtest
+            from backtest.core import run_factor_backtest
 
             orchestrator = _get_orchestrator()
             sym_list = [_validate_stock_code(s.strip()) for s in symbols.split(",") if s.strip()]

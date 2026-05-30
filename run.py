@@ -44,6 +44,9 @@ def main():
     parser.add_argument("--earnings", action="store_true", help="财报日历")
     parser.add_argument("--anomaly", metavar="CODE", help="财报异常检测")
     parser.add_argument("--macro", action="store_true", help="宏观数据监控")
+    parser.add_argument("--rebalance", action="store_true", help="月频调仓模式（集成退出规则）")
+    parser.add_argument("--rebalance-status", action="store_true", help="查看调仓状态")
+    parser.add_argument("--stress", action="store_true", help="多窗口压力测试")
     parser.add_argument("--data-source", choices=["auto", "adata", "westock", "tushare", "akshare"],
                         default="auto", help="数据源选择（auto=自动选最快）")
     args = parser.parse_args()
@@ -91,6 +94,21 @@ def main():
     # 异常检测
     if args.anomaly:
         run_anomaly_mode(args.anomaly)
+        return
+
+    # 调仓状态查看
+    if args.rebalance_status:
+        run_rebalance_status()
+        return
+
+    # 月频调仓模式
+    if args.rebalance:
+        run_rebalance_mode(args.preset, args.no_push)
+        return
+
+    # 压力测试模式
+    if args.stress:
+        run_stress_test_mode(args.symbols)
         return
 
     # 运行策略
@@ -647,7 +665,7 @@ def _to_float(val):
 
 def run_backtest_mode(symbols, days, walk_forward):
     """回测模式"""
-    from backtest import run_factor_backtest, run_walk_forward
+    from backtest.core import run_factor_backtest, run_walk_forward
 
     if walk_forward:
         logger.info(f"Walk-forward 验证: {symbols}")
@@ -861,6 +879,90 @@ def _load_ic_stats() -> Dict:
         factor: data["stats"]
         for factor, data in history.get("factors", {}).items()
     }
+
+
+def run_rebalance_mode(preset: str, no_push: bool):
+    """月频调仓模式 —— 集成退出规则"""
+    from lib.rebalance_scheduler import RebalanceScheduler, RebalanceConfig
+    from scanner import run_all_strategies
+    from config import get_config
+
+    config = get_config(preset)
+    scheduler = RebalanceScheduler(RebalanceConfig(
+        rebalance_period=20,
+        rolling_sharpe_threshold=1.0,
+        max_drawdown_threshold=0.25,
+        consecutive_sharpe_months=3,
+    ))
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    status = scheduler.get_status()
+
+    logger.info(f"调仓状态: {status}")
+
+    # 检查是否应该调仓
+    if not scheduler.should_rebalance(today):
+        logger.info(f"今日无需调仓（上次调仓: {status['last_rebalance']}）")
+        return
+
+    # 检查退出条件
+    if status["is_stopped"]:
+        logger.warning(f"调仓已停止: {status['stop_reason']}")
+        logger.warning("请手动评估后决定是否重启（scheduler.reset()）")
+        return
+
+    # 执行调仓扫描
+    logger.info(f"执行月频调仓扫描 - {today}")
+    results = run_all_strategies(preset)
+
+    if not results:
+        logger.info("调仓扫描: 无候选股")
+        scheduler.mark_rebalanced(today)
+        return
+
+    # 输出结果
+    print_results(results, preset)
+
+    # 飞书推送
+    if not no_push:
+        try:
+            send_feishu_message(results, preset)
+        except Exception as e:
+            logger.warning(f"飞书推送失败: {e}")
+
+    # 标记调仓完成
+    scheduler.mark_rebalanced(today)
+    logger.info(f"调仓完成，下次调仓约 20 个交易日后")
+
+
+def run_rebalance_status():
+    """查看调仓状态"""
+    from lib.rebalance_scheduler import RebalanceScheduler
+
+    scheduler = RebalanceScheduler()
+    status = scheduler.get_status()
+
+    print("=" * 50)
+    print("  月频调仓状态")
+    print("=" * 50)
+    print(f"  上次调仓: {status['last_rebalance'] or '从未'}")
+    print(f"  是否停止: {'是' if status['is_stopped'] else '否'}")
+    if status['stop_reason']:
+        print(f"  停止原因: {status['stop_reason']}")
+    print(f"  滚动夏普: {status['rolling_sharpe'] if status['rolling_sharpe'] is not None else '数据不足'}")
+    print(f"  当前回撤: {status['current_drawdown']:.2%}")
+    print(f"  距上次调仓: {status['trade_days_since_rebalance']} 交易日")
+    print(f"  总交易日: {status['total_trade_days']}")
+    print("=" * 50)
+
+
+def run_stress_test_mode(symbols: list):
+    """压力测试模式"""
+    from backtest.stress import run_stress_test, format_stress_report
+
+    logger.info(f"开始压力测试 - 标的: {symbols}")
+    report = run_stress_test(symbols)
+    print(format_stress_report(report))
 
 
 if __name__ == "__main__":

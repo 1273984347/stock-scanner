@@ -563,15 +563,16 @@ STRATEGY_WEIGHTS = {
 # IC 加权因子权重（基于 2026-05-30 IC 评价，30 只股票 × 500 天）
 # IC: volume_ratio(0.152) > adx(0.092) > williams_r(0.070) > cci(0.065) > rsi(0.061)
 IC_FACTOR_WEIGHTS = {
-    "volume_ratio": 0.25,
-    "adx": 0.15,
-    "williams_r": 0.12,
-    "cci": 0.10,
-    "rsi_14": 0.10,
-    "trend_strength": 0.09,
-    "kdj_j": 0.09,
-    "momentum_20": 0.08,
-    "volatility_20": 0.02,  # IC 存在但方向需确认
+    "volume_ratio": 0.22,
+    "adx": 0.14,
+    "williams_r": 0.11,
+    "cci": 0.09,
+    "rsi_14": 0.09,
+    "trend_strength": 0.08,
+    "kdj_j": 0.08,
+    "kdj_resonance_score": 0.08,  # 多周期 KDJ 共振（Module 1）
+    "momentum_20": 0.07,
+    "volatility_20": 0.04,
 }
 
 
@@ -638,6 +639,13 @@ def adjust_score_by_data_factors(base_score: float, data_factors: Dict) -> float
     # 板块过多（>80）减分
     blk = data_factors.get("block", {})
     if blk.get("block_count", 0) > 80:
+        adj -= 0.10
+
+    # 板块评分：>=70 加分, <30 减分
+    sector_score = data_factors.get("sector_score", 50)
+    if sector_score >= 70:
+        adj += 0.10
+    elif sector_score < 30:
         adj -= 0.10
 
     return round(max(-1, min(1, base_score + adj)), 4)
@@ -1057,18 +1065,29 @@ def get_northbound_top_stocks(top_n: int = 20, days: int = 20) -> List[Dict]:
     return results[:top_n]
 
 
+_sector_perf_cache: Dict = {}
+_sector_perf_cache_ts: float = 0
+
+
 def get_sector_performance(top_n: int = 10, days: int = 20) -> List[Dict]:
     """板块轮动：计算各板块近 N 天的平均收益率，返回热门板块
 
     扫描 infoharbor_block 的板块映射，对每个板块内的股票
     计算平均收益率，按收益排序返回 Top N 板块。
+    结果缓存 10 分钟，避免重复扫描。
 
     Returns:
         List[dict] with keys: block, stock_count, avg_return, top_stocks
     """
     import struct
+    import time as _time
     from pathlib import Path
     from lib.data_layer import get_all_blocks
+
+    # 缓存检查（10 分钟 TTL）
+    cache_key = f"{top_n}_{days}"
+    if cache_key in _sector_perf_cache and _time.time() - _sector_perf_cache_ts < 600:
+        return _sector_perf_cache[cache_key]
 
     blocks = get_all_blocks()
     if not blocks:
@@ -1117,7 +1136,12 @@ def get_sector_performance(top_n: int = 10, days: int = 20) -> List[Dict]:
         })
 
     block_perf.sort(key=lambda x: x["avg_return"], reverse=True)
-    return block_perf[:top_n]
+    result = block_perf[:top_n]
+
+    # 更新缓存
+    _sector_perf_cache[cache_key] = result
+    _sector_perf_cache_ts = _time.time()
+    return result
 
 
 # ========== 财务估值因子（来自 CW/gpcw）==========
@@ -1514,6 +1538,13 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
         low = hist_df["low"]
         kdj = calc_kdj(high, low, close)
         factors["kdj_j"] = kdj["J"]
+        # 多周期 KDJ 共振
+        from lib.multi_period_kdj import compute_multi_period_kdj
+        mp_kdj = compute_multi_period_kdj(high, low, close)
+        factors["kdj_resonance_score"] = mp_kdj.resonance_score
+        factors["kdj_fast_j"] = mp_kdj.fast.j
+        factors["kdj_medium_j"] = mp_kdj.medium.j
+        factors["kdj_slow_j"] = mp_kdj.slow.j
         factors["adx"] = calc_adx(high, low, close)
         factors["cci"] = calc_cci(high, low, close)
         factors["williams_r"] = calc_williams_r(high, low, close)
@@ -1569,6 +1600,9 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
                     "block_count": len(blocks),
                     "blocks": blocks[:10],  # top 10 板块
                 }
+            # 统一板块评分（0-100）
+            from lib.sector_score import get_sector_score_for_stock
+            data_factors["sector_score"] = get_sector_score_for_stock(code)
 
         # 估值因子（PE/PB/市值）
         if _use('use_valuation', default=True):

@@ -1,5 +1,7 @@
 # CLAUDE.md — Stock Scanner (个人量化选股系统)
 
+> 最后更新：2026-05-30 | 本次更新：新增 21 个模块 + V6 自适应交易系统（多周期KDJ/统一板块评分/动态权重管理/策略-状态映射），60 个测试全部通过
+
 ## 工作流
 
 **开发流程**: `需求 → 验证 → 实现 → 回测 → 记录`
@@ -38,50 +40,76 @@
 
 ```
 stock-scanner/
-├── config.py              # 全局配置 (策略/风控/LLM/ML/组合)
-├── factors.py             # 因子库 (技术指标/市场体制/宏观门控)
-├── scanner.py             # 选股策略主模块 (legacy, 建议迁移至 lib/strategies.py)
-├── backtest.py            # 回测引擎
 ├── api.py                 # FastAPI 端点
-├── run.py                 # CLI 入口
+├── config.py              # 全局配置 (策略/风控/LLM/ML/组合)
+├── dashboard.py           # Streamlit Dashboard
+├── factors.py             # 因子库 (技术指标/市场体制/宏观门控)
 ├── notifier.py            # 飞书推送
-├── lib/                   # 核心业务模块
+├── paper_trading.py       # 纸带交易
+├── run.py                 # CLI 入口
+├── run_v2.py              # V2 策略实时扫描
+├── scanner.py             # 选股策略主模块
+├── trading_journal.py     # 交易日志
+│
+├── backtest/              # 回测模块（包）
+│   ├── __init__.py        # 兼容旧 import（from backtest import ... 仍可用）
+│   ├── core.py            # 主回测引擎 (run_factor_backtest, get_stock_data)
+│   ├── engine.py          # 单股信号测试 (run_backtest, BacktestConfig)
+│   ├── full.py            # 全市场并行回测 (run_full_backtest)
+│   ├── rebalance.py       # 月频调仓回测 (run_rebalance_backtest)
+│   └── stress.py          # 压力测试 (run_stress_test)
+│
+├── lib/                   # 核心业务模块 (87 个)
 │   ├── data_layer.py      # 多源数据获取/缓存/限流
 │   ├── data_source_registry.py  # 数据源注册与标准化路由
-│   ├── data_tdx.py        # TDX 本地文件数据源 (含北交所支持)
-│   ├── data_baostock.py   # Baostock 数据源
-│   ├── data_akshare.py    # Akshare 数据源
-│   ├── data_tushare.py    # Tushare 数据源
+│   ├── data_tdx.py        # TDX 本地文件数据源
+│   ├── data_margin.py     # 融资融券数据 [NEW]
+│   ├── data_fund_enhanced.py  # 基金持仓补全+机构增持信号 [NEW]
+│   ├── data_level2.py     # Level-2 接口框架 [NEW]
+│   ├── data_northbound_rt.py  # 北向实时监控接口 [NEW]
+│   ├── sentiment.py       # 新闻情绪分析 [NEW]
+│   ├── tdx_batch.py       # TDX 批量读取优化 [NEW]
+│   ├── factor_optimizer.py    # GA+贝叶斯因子权重优化器 [NEW]
+│   ├── dynamic_exit.py    # 动态退出规则 [NEW]
+│   ├── sector_rotation.py # 板块轮动增强 [NEW]
+│   ├── stock_pool.py      # 股票池扩展 [NEW]
+│   ├── investor_agents.py # 4种风格评委团 [NEW]
+│   ├── signal_tracker.py  # 信号追踪+事后回测 [NEW]
+│   ├── paper_trading_runner.py  # 实盘模拟运行器 [NEW]
+│   ├── backtest_unified.py    # 统一回测接口 [NEW]
+│   ├── multi_market_validator.py  # 多市场周期验证 [NEW]
+│   ├── multi_period_kdj.py    # 多周期 KDJ 共振 [NEW]
+│   ├── sector_score.py        # 统一板块评分 0-100 [NEW]
+│   ├── dynamic_weight_manager.py  # 动态权重管理 [NEW]
+│   ├── strategy_regime_mapper.py  # 策略-状态映射 [NEW]
 │   ├── strategies.py      # 5大选股策略 + 四维评分
 │   ├── pipeline.py        # 策略编排/组合优化/ML集成
 │   ├── broker_data/       # broker 拆分模块
-│   │   ├── __init__.py
-│   │   ├── cache.py       # LRUCache
-│   │   ├── datatypes.py   # Order/Trade/Holding
-│   │   ├── market_impact.py  # 冲击成本模型
-│   │   └── trading_constraints.py  # 交易约束
-│   ├── broker_core.py     # A股券商核心 (整手取整/T+1)
-│   ├── live_broker.py     # 实盘券商 (Paper/TDX)
 │   ├── risk_manager.py    # 风控 (止损/回撤)
 │   ├── position_size.py   # 仓位管理
 │   ├── analyzer.py        # 性能分析
 │   ├── scorecard.py       # 评分卡 (四层评委团)
-│   ├── judge_panel.py     # 评委团机制
-│   ├── evaluator.py       # 因子评价 (IC/单调性)
 │   ├── ml_predictor.py    # ML 预测
 │   ├── ml_trainer.py      # ML 训练
-│   ├── portfolio.py       # 组合管理
-│   ├── portfolio_optimizer.py  # 组合优化
 │   ├── walkforward.py     # Walk-forward 验证
-│   ├── llm_utils/         # LLM 工具
-│   └── cache.py           # 通用缓存工具
-├── tests/                 # 测试套件 (208 tests, 网络隔离)
+│   └── llm_utils/         # LLM 工具
+│
+├── scripts/               # 工具脚本 (12 个)
+│   ├── backtest_charts.py # matplotlib 回测图表 [NEW]
+│   ├── daily_scan.py      # 每日扫描脚本 [NEW]
+│   ├── update_tdx_data.py # TDX 数据更新
+│   ├── backfill_ic.py     # IC 历史回填
+│   └── ...                # 其他工具脚本
+│
+├── tests/                 # 测试套件 (38 个文件)
+│   └── test_new_modules.py    # 新模块测试 (32 tests) [NEW]
+│
+├── reporter/              # 报告生成
+├── static/                # 前端 Dashboard (HTML/JS/CSS)
+├── config/                # 配置文件
+├── docs/                  # 文档
 ├── cache/                 # 数据缓存
-│   ├── *.parquet          # 行情/指数缓存
-│   ├── audit.db           # 审计日志
-│   ├── models/            # ML 模型
-│   └── backtest_results/  # 回测结果
-└── .env                   # 敏感配置 (飞书AppID/Secret/Tushare Token)
+└── .env                   # 敏感配置 (禁止 commit)
 ```
 
 ---
@@ -179,13 +207,48 @@ Tushare (主) → AkShare → WeStock → 通达信 → Baostock → 东方财�
 
 ---
 
-## Skill 速查
+## 可用 Skill 与插件映射
 
-| 需求 | Skill |
-|:-----|:------|
-| 系统化调试 | `/systematic-debugging` |
-| 代码审查 | `/code-review` |
-| 完成前验证 | `/verification-before-completion` |
+### 项目专用
+
+| Skill | 用途 | 触发场景 |
+|:---|:---|:---|
+| `stock-analysis-helper` | A 股量化分析速查 | TDX 数据/股票扫描/因子计算 |
+| `quant-auditor` | 量化系统五维审计 | 代码质量/安全/性能审查 |
+| `python-design-patterns` | Python 设计模式 | 代码重构/架构优化 |
+| `dignified-python` | 生产级 Python 标准 | 代码规范/类型标注 |
+| `fastapi` | FastAPI 最佳实践 | API 端点开发 |
+| `database-admin` | 数据库管理 | SQLite/Parquet 优化 |
+| `performance-engineer` | 性能工程 | CPU 密集型计算优化 |
+
+### 流程工具
+
+| Skill | 用途 | 触发场景 |
+|:---|:---|:---|
+| `brainstorming` | 需求→设计方案 | 新策略/因子设计 |
+| `writing-plans` | 任务拆分 | 多步骤实施 |
+| `code-review` | 代码审查 | 完成功能后 |
+| `verification-before-completion` | 完成前验证 | 声称"完成"前 |
+| `systematic-debugging` | 根因排查 | 调试>10min |
+| `fix-verify-loop` | 批量修复验证 | P0/P1≥3个 |
+| `experience-capture` | 经验捕获 | 新发现/重复踩坑 |
+| `reflection-retriever` | 经验检索 | 工作开始前 |
+| `codex` | OpenAI Codex 第二意见 | 策略逻辑审查 |
+| `ship` | 部署+PR | GitHub 部署 |
+| `cso` | 安全审计 | .env/API 安全检查 |
+
+### 通用工具
+
+| Skill | 用途 | 触发场景 |
+|:---|:---|:---|
+| `audit` | 多项目并行审计 | 安全/质量/性能扫描 |
+| `health` | 项目健康检查 | DEEP 任务完成后 |
+| `parallel-scan` | 多 Agent 并行扫描 | 多维度快速检查 |
+| `session-report` | session 用量报告 | token 消耗分析 |
+
+### 完整目录
+
+所有可用 Skill 详见：`~/.claude/projects/C--Users-12739/memory/skills/skills-catalog.md`
 
 ## Task 驱动工作流
 
@@ -336,20 +399,20 @@ export TDX_DATA_PATH="D:/TDX/vipdoc"
 
 | 包名 | 内容 | 路径 | 文件数 |
 |:-----|:-----|:-----|-------:|
-| `shlday` | 上证所有证券日线(TCKV4=0) | `sh/lday/` | ~20,620 |
-| `szlday` | 深证所有证券日线(TCKV4=0) | `sz/lday/` | ~19,326 |
-| `bjlday` | 北证所有证券日线 | `bj/lday/` | 580 |
+| `shlday` | 上证所有证券日线(TCKV4=0) | `sh/lday/` | 20,686 |
+| `szlday` | 深证所有证券日线(TCKV4=0) | `sz/lday/` | 19,383 |
+| `bjlday` | 北证所有证券日线 | `bj/lday/` | 582 |
 | `shzsday` | 上证指数日线 | `sh/zs/` | 339 |
 | `szzsday` | 深证指数日线 | `sz/zs/` | 463 |
 | `tdxzs_day` | 通达信板块指数日线 | `tdx/zs/` | 1,317 |
-| `shlday_4` | 上证所有证券日线(TCKV4=1 前复权) | `sh/lday_4/` | ~20,620 |
-| `szlday_4` | 深证所有证券日线(TCKV4=1 前复权) | `sz/lday_4/` | ~19,679 |
-| `shqqday` | 上海股票期权日线 | `sh/option/` | 11,656 |
-| `szqqday` | 深圳股票期权日线 | `sz/option/` | 7,536 |
-| `xsbday` | 股转系统日线 | `xsb/lday/` | 11,150 |
+| `shlday_4` | 上证所有证券日线(TCKV4=1 前复权) | `sh/lday_4/` | 20,686 |
+| `szlday_4` | 深证所有证券日线(TCKV4=1 前复权) | `sz/lday_4/` | 19,736 |
+| `shqqday` | 上海股票期权日线 | `sh/option/` | 11,680 |
+| `szqqday` | 深圳股票期权日线 | `sz/option/` | 7,544 |
+| `xsbday` | 股转系统日线 | `xsb/lday/` | 11,163 |
 | `62day` | 中证指数日线 | `csi/zs/` | 3,010 |
-| `ggtday` | 港股通日线 | `ggt/lday/` | 3,464 |
-| `33day` | 开放式基金日线 | `fund/open/` | 29,728 |
+| `ggtday` | 港股通日线 | `ggt/lday/` | 3,467 |
+| `33day` | 开放式基金日线 | `fund/open/` | 29,773 |
 | `34day` | 货币型基金日线 | `fund/money/` | 1,207 |
 | `38day` | 宏观指标日线 | `macro/lday/` | 219 |
 
@@ -370,3 +433,73 @@ export TDX_DATA_PATH="D:/TDX/vipdoc"
 - `lib/pipeline.py` 是策略编排核心，修改后运行回测验证
 - 数据源适配器在 `lib/data_*.py`，新增数据源时参考现有模式
 - ML 模型存储在 `cache/models/`，更新后重新验证 Walk-forward
+
+---
+
+## 新模块工作流（2026-05-30）
+
+### 因子权重优化
+```bash
+# 评估当前权重
+python -m lib.factor_optimizer --eval-only --symbols 600519 000858
+
+# 运行 GA 优化（50代×30种群）
+python -m lib.factor_optimizer --symbols 600519 000858 --generations 50 --population 30
+
+# 结果保存到 cache/optimizer/optimal_weights_latest.json
+# 应用：替换 factors.py IC_FACTOR_WEIGHTS
+```
+
+### 统一回测
+```python
+from lib.backtest_unified import BacktestRunner, BacktestRequest
+
+runner = BacktestRunner()
+result = runner.run(mode="rebalance", symbols=["600519", "000858"], days=300)
+# mode: simple(单股) / full(全市场) / rebalance(调仓) / factor(因子)
+
+# 直接调用（推荐）
+from backtest.core import run_factor_backtest
+from backtest.rebalance import run_rebalance_backtest
+
+# 兼容旧写法（仍可用）
+from backtest import run_factor_backtest
+```
+
+### 投资者风格评委团
+```python
+from lib.investor_agents import AgentPanel
+panel = AgentPanel()
+votes = panel.vote(hist_df, code="600519", data_factors={...})
+# votes["signal"]: bullish/bearish/neutral
+# votes["consensus"]: 全票看多/多数看多/分歧/...
+```
+
+### 每日扫描
+```bash
+python scripts/daily_scan.py           # 单次运行
+python scripts/daily_scan.py --no-push # 不推送飞书
+```
+
+### 回测图表
+```bash
+python scripts/backtest_charts.py --symbols 600519,000858 --days 500
+# 输出到 cache/charts/equity_curve.png, trade_heatmap.png, factor_contribution.png
+```
+
+### 信号追踪
+```python
+from lib.signal_tracker import SignalTracker
+tracker = SignalTracker()
+tracker.record_signal("600519", "bullish", 0.8, source="ic_score")
+tracker.update_actual_returns()  # 事后更新实际收益
+report = tracker.evaluate_signals(days=30)
+# report["accuracy"], report["profit_loss_ratio"], ...
+```
+
+### 数据源优先级
+```
+本地 TDX 文件（D:/TDX/vipdoc/）→ akshare API → 其他数据源
+融资融券：SSE/SZSE 接口（非交易日自动回退到上一个交易日）
+情绪分析：akshare 新闻接口
+```
