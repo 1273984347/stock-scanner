@@ -37,7 +37,7 @@ def run_daily_scan(push_feishu: bool = True, extra_symbols: list = None):
     print(f"\n{'='*50}")
     print(f"模拟盘日报 {report.date}")
     print(f"{'='*50}")
-    print(f"总资产: ¥{report.total_value:,.0f}")
+    print(f"总资产: {report.total_value:,.0f}")
     print(f"累计收益: {report.cumulative_return:.2%}")
     print(f"最大回撤: {report.max_drawdown:.2%}")
     print(f"胜率: {report.win_rate:.1%}")
