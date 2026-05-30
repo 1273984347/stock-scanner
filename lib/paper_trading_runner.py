@@ -368,12 +368,13 @@ class PaperTradingRunner:
     def _push_report(self, report: DailyReport):
         """推送日报到飞书"""
         try:
-            from reporter.feishu_pusher import FeishuPusher
-            pusher = FeishuPusher()
-
+            from reporter.feishu_pusher import push_report
             msg = self._format_report_text(report)
-            pusher.send_text(msg)
-            logger.info("日报已推送到飞书")
+            success = push_report(text=msg, chart_paths=[])
+            if success:
+                logger.info("日报已推送到飞书")
+            else:
+                logger.warning("飞书推送失败")
         except Exception as e:
             logger.debug(f"飞书推送失败: {e}")
 
