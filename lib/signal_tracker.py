@@ -72,7 +72,10 @@ class SignalTracker:
                       date: str = None, source: str = "ic_score", ic_score: float = 0):
         """记录一条信号"""
         if date is None:
-            date = datetime.now().strftime("%Y-%m-%d")
+            dt = datetime.now()
+            while dt.weekday() >= 5:
+                dt -= timedelta(days=1)
+            date = dt.strftime("%Y-%m-%d")
 
         record = SignalRecord(
             date=date,

@@ -21,6 +21,15 @@ from dataclasses import dataclass, field, asdict
 import numpy as np
 import pandas as pd
 
+
+def _last_trading_day() -> str:
+    """获取最近的交易日（跳过周末）"""
+    dt = datetime.now()
+    # 周六=5, 周日=6
+    while dt.weekday() >= 5:
+        dt -= timedelta(days=1)
+    return dt.strftime("%Y-%m-%d")
+
 logger = logging.getLogger(__name__)
 
 TRADE_LOG_DIR = Path("cache/paper_trading")
@@ -67,7 +76,7 @@ class PaperTradingRunner:
         self.trade_history: List[TradeRecord] = []
         self.daily_reports: List[DailyReport] = []
         self._broker = None
-        self._start_date = datetime.now().strftime("%Y-%m-%d")
+        self._start_date = _last_trading_day()
         self._peak_value = initial_cash
 
     def _init_broker(self):
@@ -247,7 +256,7 @@ class PaperTradingRunner:
                 direction="BUY",
                 price=price,
                 shares=shares,
-                date=datetime.now().strftime("%Y-%m-%d"),
+                date=_last_trading_day(),
             )
 
             t0 = time.time()
@@ -256,7 +265,7 @@ class PaperTradingRunner:
 
             if trade:
                 record = TradeRecord(
-                    date=datetime.now().strftime("%Y-%m-%d"),
+                    date=_last_trading_day(),
                     code=code,
                     direction="BUY",
                     price=trade.price,
@@ -290,7 +299,7 @@ class PaperTradingRunner:
                 direction="SELL",
                 price=signal["price"],
                 shares=holding.shares,
-                date=datetime.now().strftime("%Y-%m-%d"),
+                date=_last_trading_day(),
             )
 
             t0 = time.time()
@@ -299,7 +308,7 @@ class PaperTradingRunner:
 
             if trade:
                 record = TradeRecord(
-                    date=datetime.now().strftime("%Y-%m-%d"),
+                    date=_last_trading_day(),
                     code=code,
                     direction="SELL",
                     price=trade.price,
@@ -351,7 +360,7 @@ class PaperTradingRunner:
                 })
 
         return DailyReport(
-            date=datetime.now().strftime("%Y-%m-%d"),
+            date=_last_trading_day(),
             total_value=round(total_value, 2),
             cash=round(cash, 2),
             market_value=round(market_value, 2),
@@ -405,7 +414,7 @@ class PaperTradingRunner:
     def _save_report(self, report: DailyReport):
         """保存日报"""
         TRADE_LOG_DIR.mkdir(parents=True, exist_ok=True)
-        date_str = datetime.now().strftime("%Y%m%d")
+        date_str = _last_trading_day().replace("-", "")
         report_file = TRADE_LOG_DIR / f"report_{date_str}.json"
 
         data = asdict(report)
