@@ -256,7 +256,8 @@ def run_rebalance_backtest(
 
             mkt = "sz" if sym.startswith(("0", "3")) else "sh"
             result = compute_all_signals(hist, code=sym, market=mkt,
-                                         factor_config=factor_config)
+                                         factor_config=factor_config,
+                                         fast_mode=True)
             if not result:
                 continue
             if result.get("combined", {}).get("macro_blocked"):

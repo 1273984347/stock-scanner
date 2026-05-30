@@ -100,12 +100,23 @@ def _score_leader(leader_ret: float, all_returns: List[float]) -> float:
     return round(pct * 25, 1)
 
 
+# 缓存（10 分钟 TTL）
+_sector_scores_cache: Dict = {}
+_sector_scores_ts: float = 0
+
+
 def compute_sector_scores(top_n: int = 20) -> List[SectorScoreDetail]:
-    """计算所有板块的统一评分（0-100）
+    """计算所有板块的统一评分（0-100），缓存 10 分钟
 
     Returns:
         按 total_score 降序排列的前 top_n 个板块
     """
+    import time as _time
+    global _sector_scores_cache, _sector_scores_ts
+    cache_key = f"top_{top_n}"
+    if cache_key in _sector_scores_cache and _time.time() - _sector_scores_ts < 600:
+        return _sector_scores_cache[cache_key]
+
     from lib.data_layer import get_all_blocks
     blocks = get_all_blocks()
     if not blocks:
@@ -194,11 +205,17 @@ def compute_sector_scores(top_n: int = 20) -> List[SectorScoreDetail]:
         ))
 
     scored.sort(key=lambda x: x.total_score, reverse=True)
-    return scored[:top_n]
+    result = scored[:top_n]
+
+    # 更新缓存
+    _sector_scores_cache[cache_key] = result
+    _sector_scores_ts = _time.time()
+
+    return result
 
 
 def get_sector_score_for_stock(code: str) -> float:
-    """获取个股所属板块的最高评分
+    """获取个股所属板块的最高评分（结果被 compute_sector_scores 缓存）
 
     Returns:
         float 0-100，未知时返回 50.0
@@ -210,6 +227,7 @@ def get_sector_score_for_stock(code: str) -> float:
             return 50.0
 
         scores = compute_sector_scores(top_n=50)
+        # 用 dict comprehension 一次构建，后续调用命中缓存
         score_map = {s.block: s.total_score for s in scores}
 
         block_scores = [score_map.get(b, 0) for b in stock_blocks if b in score_map]

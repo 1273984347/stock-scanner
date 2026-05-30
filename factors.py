@@ -1443,7 +1443,8 @@ def get_index_enhancement_factor(code: str, market: str = "sh") -> Dict:
 # ========== 综合计算 ==========
 
 def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
-                        factor_config=None, code: str = None, market: str = "sh") -> Dict:
+                        factor_config=None, code: str = None, market: str = "sh",
+                        fast_mode: bool = False) -> Dict:
     """计算所有策略信号
 
     Args:
@@ -1538,13 +1539,14 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
         low = hist_df["low"]
         kdj = calc_kdj(high, low, close)
         factors["kdj_j"] = kdj["J"]
-        # 多周期 KDJ 共振
-        from lib.multi_period_kdj import compute_multi_period_kdj
-        mp_kdj = compute_multi_period_kdj(high, low, close)
-        factors["kdj_resonance_score"] = mp_kdj.resonance_score
-        factors["kdj_fast_j"] = mp_kdj.fast.j
-        factors["kdj_medium_j"] = mp_kdj.medium.j
-        factors["kdj_slow_j"] = mp_kdj.slow.j
+        # 多周期 KDJ 共振（fast_mode 时跳过以节省计算）
+        if not fast_mode:
+            from lib.multi_period_kdj import compute_multi_period_kdj
+            mp_kdj = compute_multi_period_kdj(high, low, close)
+            factors["kdj_resonance_score"] = mp_kdj.resonance_score
+            factors["kdj_fast_j"] = mp_kdj.fast.j
+            factors["kdj_medium_j"] = mp_kdj.medium.j
+            factors["kdj_slow_j"] = mp_kdj.slow.j
         factors["adx"] = calc_adx(high, low, close)
         factors["cci"] = calc_cci(high, low, close)
         factors["williams_r"] = calc_williams_r(high, low, close)
@@ -1600,9 +1602,10 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
                     "block_count": len(blocks),
                     "blocks": blocks[:10],  # top 10 板块
                 }
-            # 统一板块评分（0-100）
-            from lib.sector_score import get_sector_score_for_stock
-            data_factors["sector_score"] = get_sector_score_for_stock(code)
+            # 统一板块评分（0-100，fast_mode 时跳过）
+            if not fast_mode:
+                from lib.sector_score import get_sector_score_for_stock
+                data_factors["sector_score"] = get_sector_score_for_stock(code)
 
         # 估值因子（PE/PB/市值）
         if _use('use_valuation', default=True):
