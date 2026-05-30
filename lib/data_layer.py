@@ -902,7 +902,8 @@ def _load_tdxstat():
     from pathlib import Path
     stats = {}
 
-    # tdxstat.cfg: [0]=market [1]=code [2]=div_yield [3]=PE [9]=PE_ttm [10]=PB [11]=total_mv(万元)
+    # tdxstat.cfg: [0]=market [1]=code [2]=div_yield [3]=PE [9]=PE_ttm [10]=PB [11]=total_mv
+    # 市值单位：raw/100=亿元；股息率：raw/10=元/股
     stat_file = Path("D:/TDX/vipdoc/ref/tdxstat.cfg")
     if stat_file.exists():
         with open(stat_file, "r", encoding="gbk", errors="replace") as f:
@@ -914,12 +915,13 @@ def _load_tdxstat():
                 try:
                     pe = float(fields[3]) if fields[3] else None
                     pb = float(fields[10]) if fields[10] else None
-                    div_yield = float(fields[2]) if fields[2] else None
+                    div_yield = float(fields[2]) / 10 if fields[2] else None  # raw/10=元/股
                 except (ValueError, IndexError):
                     pe = pb = div_yield = None
                 stats[code] = {"pe": pe, "pb": pb, "div_yield": div_yield}
 
-    # tdxstat2.cfg: [0]=market [1]=code [2]=date [3]=total_mv [5]=circ_mv (万元)
+    # tdxstat2.cfg: [0]=market [1]=code [2]=date [3]=total_mv [5]=circ_mv
+    # 市值单位：raw/100=亿元
     stat2_file = Path("D:/TDX/vipdoc/ref/tdxstat2.cfg")
     if stat2_file.exists():
         with open(stat2_file, "r", encoding="gbk", errors="replace") as f:
@@ -929,12 +931,12 @@ def _load_tdxstat():
                     continue
                 code = fields[1]
                 try:
-                    total_mv = float(fields[3]) if fields[3] else None
-                    circ_mv = float(fields[5]) if fields[5] else None
+                    total_mv = float(fields[3]) / 100 if fields[3] else None  # raw/100=亿元
+                    circ_mv = float(fields[5]) / 100 if fields[5] else None
                 except (ValueError, IndexError):
                     total_mv = circ_mv = None
                 if code in stats:
-                    stats[code]["total_mv"] = total_mv  # 单位：亿元
+                    stats[code]["total_mv"] = total_mv
                     stats[code]["circ_mv"] = circ_mv
                 else:
                     stats[code] = {"total_mv": total_mv, "circ_mv": circ_mv}
@@ -1089,4 +1091,4 @@ def get_dividend_amount(code: str, year: int = 0) -> float:
         if events:
             latest_year = max(e["date"] for e in events) // 10000
             events = [e for e in events if e["date"] // 10000 == latest_year]
-    return sum(e["hongli"] for e in events)
+    return sum(e["hongli"] for e in events) / 10  # raw/10=元/股
