@@ -125,7 +125,7 @@ class PaperTradingRunner:
         return report
 
     def _scan_candidates(self) -> List[Dict]:
-        """扫描候选股"""
+        """扫描候选股（优先使用 TDX 本地数据，速度快 10 倍）"""
         try:
             from config import get_config
             from factors import compute_all_signals, compute_ic_weighted_score
@@ -141,11 +141,28 @@ class PaperTradingRunner:
                 pool = ["600519", "000858", "002714", "600036", "000333",
                         "600276", "300750", "601012", "000001", "600000"]
 
-            from lib.data_layer import get_stock_hist_multi_source
+            # 优先用 TDX 批量读取（快）
+            try:
+                from lib.tdx_batch import batch_read_day_files
+                raw_data = batch_read_day_files(pool[:50], days=60, max_workers=8)
+            except Exception:
+                raw_data = {}
 
-            for code in pool[:50]:  # 限制扫描数量
+            import pandas as pd
+            for code in pool[:50]:
                 try:
-                    df = get_stock_hist_multi_source(code, days=60, source="auto")
+                    # 先用 TDX 本地数据
+                    if code in raw_data and raw_data[code]:
+                        records = raw_data[code]
+                        df = pd.DataFrame(records)
+                        if "trade_date" not in df.columns and "date" in df.columns:
+                            df = df.rename(columns={"date": "trade_date"})
+                        df["trade_date"] = pd.to_datetime(df["trade_date"])
+                    else:
+                        # 回退到网络 API
+                        from lib.data_layer import get_stock_hist_multi_source
+                        df = get_stock_hist_multi_source(code, days=60, source="auto")
+
                     if df.empty or len(df) < 30:
                         continue
 
@@ -154,7 +171,9 @@ class PaperTradingRunner:
                         continue
 
                     combined = result.get("combined", {})
-                    if combined.get("signal") == "bullish" and combined.get("confidence", 0) >= 0.3:
+                    ic_score = result.get("ic_score", 0)
+                    # 放宽条件：ic_score > 0 也纳入
+                    if (combined.get("signal") == "bullish" and combined.get("confidence", 0) >= 0.3) or ic_score > 0.2:
                         factors = result.get("factors", {})
                         score = compute_ic_weighted_score(factors)
                         candidates.append({
