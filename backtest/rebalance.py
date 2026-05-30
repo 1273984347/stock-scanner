@@ -106,6 +106,9 @@ def run_rebalance_backtest(
     ))
     risk_mgr = RiskManager(RiskConfig(max_drawdown_stop=0.20))
     partial_exit = PartialExitManager()
+    # 动态退出管理器（根据市场状态调整出场天数）
+    from lib.dynamic_exit import DynamicExitManager
+    dynamic_exit = DynamicExitManager()
     if disable_loss_breaker:
         # No-op loss breaker for factor comparison
         class _NoOpBreaker:
@@ -138,6 +141,26 @@ def run_rebalance_backtest(
         # 推进冷却期计数
         if hasattr(loss_breaker, 'advance_day'):
             loss_breaker.advance_day()
+
+        # 检测市场状态（每 5 天更新一次，避免频繁计算）
+        if i % 5 == 0:
+            try:
+                from lib.market_regime import detect_market_regime_from_hs300
+                regime_result = detect_market_regime_from_hs300(days=60)
+                current_regime = regime_result.get("regime", "MEAN_REVERSION")
+                atr_ratio = regime_result.get("atr_ratio", 1.0)
+                annualized_vol = atr_ratio * 0.25  # 粗略估算
+                dynamic_exit.update_market_state(current_regime, annualized_vol)
+            except Exception:
+                current_regime = "MEAN_REVERSION"
+        else:
+            current_regime = getattr(dynamic_exit, '_current_regime', 'MEAN_REVERSION')
+
+        # 动态出场天数
+        current_max_hold = dynamic_exit.get_exit_days()
+        if current_max_hold <= 0:
+            # RISK_OFF: 不开新仓，但已有持仓继续管理
+            current_max_hold = max_hold_days  # 回退到默认
 
         # 更新市场价格
         broker.update_market_prices(market_data, date_str)
@@ -216,9 +239,9 @@ def run_rebalance_backtest(
                 stop_prices.pop(code, None)
                 continue
 
-            # 最大持仓天数
+            # 最大持仓天数（动态调整）
             hold_days = (date - pd.Timestamp(buy_dates.get(code, date))).days
-            if hold_days >= max_hold_days:
+            if hold_days >= current_max_hold:
                 order = Order(code=code, direction="SELL", price=current_price,
                               shares=holding.shares, date=date_str, reason="超时")
                 trade = broker.submit_order(order, market_data, date_str)
