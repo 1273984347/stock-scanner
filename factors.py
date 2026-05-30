@@ -607,6 +607,42 @@ def compute_ic_weighted_score(factors: Dict[str, float]) -> float:
     return float(weighted_sum / total_weight)
 
 
+def adjust_score_by_data_factors(base_score: float, data_factors: Dict) -> float:
+    """基于 data_factors 调整综合评分
+
+    调整规则（每项 ±0.05，总范围 ±0.20）：
+    - 高股息 → +0.05（防御性收益）
+    - 基金重仓 → +0.05（机构认可）
+    - 低 PE → +0.05（估值合理）
+    - 板块过多 → -0.05（过度分散，可能跟风）
+    """
+    adj = 0.0
+
+    # 股息率：>2% 加分
+    div = data_factors.get("dividend", {})
+    if div.get("per_share", 0) > 2.0:
+        adj += 0.05
+
+    # 基金持仓：权重>20% 加分
+    fh = data_factors.get("fund_holdings", {})
+    if fh.get("total_weight", 0) > 20:
+        adj += 0.05
+
+    # 估值：PE<20 且 PB<5 加分
+    val = data_factors.get("valuation", {})
+    pe = val.get("pe")
+    pb = val.get("pb")
+    if pe is not None and pb is not None and 0 < pe < 20 and 0 < pb < 5:
+        adj += 0.05
+
+    # 板块过多（>50）减分
+    blk = data_factors.get("block", {})
+    if blk.get("block_count", 0) > 50:
+        adj -= 0.05
+
+    return round(max(-1, min(1, base_score + adj)), 4)
+
+
 def weighted_signal_combination(signals: Dict[str, Dict], weights: Dict[str, float] = None) -> Dict:
     weights = weights or STRATEGY_WEIGHTS
 
@@ -1563,6 +1599,10 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
 
     # 8b. IC 加权因子评分（替代策略信号组合）
     ic_score = compute_ic_weighted_score(factors)
+
+    # 8c. 基于 data_factors 调整评分
+    if data_factors:
+        ic_score = adjust_score_by_data_factors(ic_score, data_factors)
 
     return {
         "signals": signals,

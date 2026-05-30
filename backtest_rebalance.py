@@ -18,6 +18,7 @@ import logging
 
 from lib.broker import ABroker, Order
 from lib.broker_data import Holding
+from config import get_config
 from lib.position_size import RiskSizedPosition, PositionSizeConfig
 from lib.risk_manager import RiskManager, RiskConfig
 from lib.partial_exit import PartialExitManager, ConsecutiveLossBreaker
@@ -36,6 +37,8 @@ def run_rebalance_backtest(
     take_profit_atr_mult: float = 4.0,
     max_hold_days: int = 10,
     confidence_threshold: float = 0.3,
+    disable_loss_breaker: bool = False,
+    factor_config=None,
 ) -> Optional[Dict]:
     """月频调仓回测
 
@@ -44,8 +47,13 @@ def run_rebalance_backtest(
         days: 回测天数
         initial_cash: 初始资金
         rebalance_period: 调仓周期（交易日）
+        disable_loss_breaker: 禁用连亏熔断（用于因子对比测试）
+        factor_config: FactorConfig 实例，控制因子开关
     """
     from backtest import get_stock_data, _compute_atr_for_position
+
+    if factor_config is None:
+        factor_config = get_config("balanced").factor
 
     # 获取数据
     market_data: Dict[str, pd.DataFrame] = {}
@@ -73,12 +81,21 @@ def run_rebalance_backtest(
     ))
     risk_mgr = RiskManager(RiskConfig(max_drawdown_stop=0.20))
     partial_exit = PartialExitManager()
-    loss_breaker = ConsecutiveLossBreaker(reduce_threshold=2, stop_threshold=3)
+    if disable_loss_breaker:
+        # No-op loss breaker for factor comparison
+        class _NoOpBreaker:
+            def record_trade(self, *a, **kw): pass
+            def is_stopped(self): return False
+            def get_position_multiplier(self): return 1.0
+            def get_status(self): return {"is_stopped": False, "consecutive_losses": 0}
+        loss_breaker = _NoOpBreaker()
+    else:
+        loss_breaker = ConsecutiveLossBreaker(reduce_threshold=2, stop_threshold=3)
     scheduler = RebalanceScheduler(RebalanceConfig(
         rebalance_period=rebalance_period,
-        rolling_sharpe_threshold=1.0,
-        max_drawdown_threshold=0.25,
-        consecutive_sharpe_months=3,
+        rolling_sharpe_threshold=0.0 if disable_loss_breaker else 1.0,
+        max_drawdown_threshold=0.50 if disable_loss_breaker else 0.25,
+        consecutive_sharpe_months=999 if disable_loss_breaker else 3,
     ))
     scheduler.reset()  # 回测必须重置，避免加载之前的持久化状态
 
@@ -208,7 +225,9 @@ def run_rebalance_backtest(
             if len(hist) < 60:
                 continue
 
-            result = compute_all_signals(hist)
+            mkt = "sz" if sym.startswith(("0", "3")) else "sh"
+            result = compute_all_signals(hist, code=sym, market=mkt,
+                                         factor_config=factor_config)
             if not result:
                 continue
             if result.get("combined", {}).get("macro_blocked"):

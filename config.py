@@ -38,6 +38,12 @@ class FactorConfig:
     use_trend: bool = True
     use_rsi: bool = True
 
+    # 数据因子开关（2026-05-30 新增）
+    use_block: bool = True
+    use_valuation: bool = True
+    use_fund_hold: bool = True
+    use_dividend: bool = True
+
     # 因子参数
     momentum_periods: List[int] = field(default_factory=lambda: [5, 10, 20])
     reversal_period: int = 5
@@ -48,16 +54,19 @@ class FactorConfig:
     trend_long: int = 20
     rsi_period: int = 14
 
-    # Alpha 合成权重
+    # Alpha 合成权重（基于 IC 评价 2026-05-30）
+    # IC: volume_ratio(0.152) > adx(0.092) > williams_r(0.070) > cci(0.065) > rsi(0.061)
     factor_weights: Dict[str, float] = field(default_factory=lambda: {
-        "momentum_5": 0.15,
-        "momentum_10": 0.10,
-        "momentum_20": 0.10,
-        "reversal_5": 0.05,
-        "volatility_20": -0.10,  # 低波动更好
-        "volume_ratio": 0.10,
-        "trend_strength": 0.15,
-        "rsi_14": 0.05,
+        "volume_ratio": 0.25,     # IC=0.152, 最强因子
+        "momentum_5": 0.05,       # IC=0.031
+        "momentum_20": 0.10,      # IC=0.052
+        "reversal_5": 0.00,       # 无 IC 数据
+        "volatility_20": 0.08,    # IC=0.048
+        "trend_strength": 0.09,   # IC=0.055
+        "rsi_14": 0.10,           # IC=0.061
+        "adx": 0.15,              # IC=0.092
+        "williams_r": 0.12,       # IC=0.070
+        "cci": 0.06,              # IC=0.065
     })
 
 
@@ -242,11 +251,20 @@ PRESETS = {
 
 
 def get_config(preset: str = "balanced") -> SystemConfig:
-    """获取配置"""
+    """获取配置（带权重和验证）"""
+    import logging
+    logger = logging.getLogger(__name__)
     if preset not in PRESETS:
-        import logging
-        logging.getLogger(__name__).warning(f"未知preset: {preset}, 使用balanced")
-    return PRESETS.get(preset, PRESETS["balanced"])
+        logger.warning(f"未知preset: {preset}, 使用balanced")
+    config = PRESETS.get(preset, PRESETS["balanced"])
+
+    # 验证因子权重和
+    total = sum(config.factor.factor_weights.values())
+    if abs(total - 1.0) > 0.01:
+        logger.warning(f"preset '{preset}' 因子权重和 = {total:.4f}（应为 1.0），自动归一化")
+        config.factor.factor_weights = {k: v / total for k, v in config.factor.factor_weights.items()}
+
+    return config
 
 
 # ============================================================================
@@ -267,7 +285,7 @@ TURNOVER_PENALTY = 0.005
 COMMISSION_RATE = 0.00025
 STAMP_DUTY_RATE = 0.0005
 MIN_COMMISSION = 5.0
-SLIPPAGE_RATE = 0.001
+SLIPPAGE_RATE = 0.002  # 0.2% 滑点（A股小盘股实际可达0.3%-0.5%，取保守值）
 
 # 市值分组阈值
 MARKET_CAP_LARGE = 5e10   # > 500亿
@@ -275,6 +293,10 @@ MARKET_CAP_MEDIUM = 1e10  # > 100亿
 
 # 打分卡权重
 LAYER_WEIGHTS = {"L1": 0.25, "L2": 0.25, "L3": 0.20, "L4": 0.30}
+
+# 宏观门控阈值（SHIBOR）
+SHIBOR_TIGHT_THRESHOLD = 3.5    # 紧缩：禁止开仓
+SHIBOR_CAUTION_THRESHOLD = 2.5  # 警戒：仓位减半
 
 # IC 冗余阈值
 IC_REDUNDANCY_THRESHOLD = 0.70
