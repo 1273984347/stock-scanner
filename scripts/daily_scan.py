@@ -26,8 +26,43 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 
+def _is_trading_day() -> bool:
+    """检查今天是否是交易日（通过 TDX 数据验证）"""
+    import struct
+    from pathlib import Path
+    from datetime import datetime
+
+    dt = datetime.now()
+    # 周末直接跳过
+    if dt.weekday() >= 5:
+        return False
+
+    # 检查 TDX 数据
+    tdx_path = Path("D:/TDX/vipdoc/sh/lday_4/sh600000.day")
+    if tdx_path.exists():
+        date_int = int(dt.strftime("%Y%m%d"))
+        try:
+            with open(tdx_path, "rb") as f:
+                raw = f.read()
+                for i in range(0, len(raw), 32):
+                    if struct.unpack_from("<I", raw, i)[0] == date_int:
+                        return True
+        except Exception:
+            pass
+        return False  # TDX 中没有今天数据 = 非交易日
+
+    # 无 TDX 文件时仅跳过周末
+    return True
+
+
 def run_daily_scan(push_feishu: bool = True, extra_symbols: list = None):
     """执行每日扫描"""
+    # 非交易日跳过
+    if not _is_trading_day():
+        from datetime import datetime
+        print(f"{datetime.now().strftime('%Y-%m-%d')} 非交易日，跳过扫描")
+        return None
+
     from lib.paper_trading_runner import PaperTradingRunner, TRADE_LOG_DIR
 
     runner = PaperTradingRunner(initial_cash=1_000_000, preset="balanced")
