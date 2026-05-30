@@ -5,7 +5,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import requests
 
