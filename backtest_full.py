@@ -167,13 +167,44 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
 # ============================================================
 
 def check_entry(df: pd.DataFrame, i: int) -> bool:
+    """入场信号检查（多信号 OR 逻辑）
+
+    信号1: EMA5/EMA21 金叉 + 价格>EMA5（原有）
+    信号2: RSI 超卖反弹（RSI<30 后回升到 35）
+    信号3: 成交量突破（5日均量/20日均量 > 1.5）
+    信号4: MACD 金叉（MACD 线上穿信号线）
+    """
     if i < 20:
         return False
     row = df.iloc[i]
     prev = df.iloc[i - 1]
+
+    # 信号1: EMA 金叉
     ma5_cross = (row['EMA5'] > row['EMA21']) and (prev['EMA5'] <= prev['EMA21'])
     price_ok = row['close'] > row['EMA5']
-    return bool(ma5_cross and price_ok)
+    if ma5_cross and price_ok:
+        return True
+
+    # 信号2: RSI 超卖反弹
+    if 'rsi' in row.index and 'rsi' in prev.index:
+        if prev.get('rsi', 50) < 30 and row.get('rsi', 50) >= 35:
+            return True
+
+    # 信号3: 成交量突破
+    if 'volume' in df.columns:
+        vol5 = df['volume'].iloc[max(0, i-5):i].mean()
+        vol20 = df['volume'].iloc[max(0, i-20):i].mean()
+        if vol20 > 0 and vol5 / vol20 > 1.5:
+            if row['close'] > row.get('EMA21', row['close']):
+                return True
+
+    # 信号4: MACD 金叉
+    if 'macd' in row.index and 'macd_signal' in row.index:
+        if (row.get('macd', 0) > row.get('macd_signal', 0) and
+            prev.get('macd', 0) <= prev.get('macd_signal', 0)):
+            return True
+
+    return False
 
 
 def check_exit_v2(df: pd.DataFrame, entry_i: int, hs300_vol_ratio: float = 1.0) -> Tuple[str, float, int]:

@@ -610,35 +610,35 @@ def compute_ic_weighted_score(factors: Dict[str, float]) -> float:
 def adjust_score_by_data_factors(base_score: float, data_factors: Dict) -> float:
     """基于 data_factors 调整综合评分
 
-    调整规则（每项 ±0.05，总范围 ±0.20）：
-    - 高股息 → +0.05（防御性收益）
-    - 基金重仓 → +0.05（机构认可）
-    - 低 PE → +0.05（估值合理）
-    - 板块过多 → -0.05（过度分散，可能跟风）
+    调整规则（每项 ±0.10，总范围 ±0.30）：
+    - 高股息 → +0.10（防御性收益）
+    - 基金重仓 → +0.10（机构认可）
+    - 低 PE → +0.10（估值合理）
+    - 板块过多 → -0.10（过度分散，可能跟风）
     """
     adj = 0.0
 
-    # 股息率：>0.2元/股 加分（已修正单位：raw/10=元）
+    # 股息率：>1.0元/股 加分（高分红股）
     div = data_factors.get("dividend", {})
-    if div.get("per_share", 0) > 0.2:
-        adj += 0.05
+    if div.get("per_share", 0) > 1.0:
+        adj += 0.10
 
     # 基金持仓：权重>20% 加分
     fh = data_factors.get("fund_holdings", {})
     if fh.get("total_weight", 0) > 20:
-        adj += 0.05
+        adj += 0.10
 
-    # 估值：PE<20 且 PB<5 加分
+    # 估值：PE<30 且 PB<8 加分（覆盖成长股）
     val = data_factors.get("valuation", {})
     pe = val.get("pe")
     pb = val.get("pb")
-    if pe is not None and pb is not None and 0 < pe < 20 and 0 < pb < 5:
-        adj += 0.05
+    if pe is not None and pb is not None and 0 < pe < 30 and 0 < pb < 8:
+        adj += 0.10
 
-    # 板块过多（>50）减分
+    # 板块过多（>80）减分
     blk = data_factors.get("block", {})
-    if blk.get("block_count", 0) > 50:
-        adj -= 0.05
+    if blk.get("block_count", 0) > 80:
+        adj -= 0.10
 
     return round(max(-1, min(1, base_score + adj)), 4)
 

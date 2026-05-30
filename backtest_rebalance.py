@@ -90,12 +90,12 @@ def run_rebalance_backtest(
             def get_status(self): return {"is_stopped": False, "consecutive_losses": 0}
         loss_breaker = _NoOpBreaker()
     else:
-        loss_breaker = ConsecutiveLossBreaker(reduce_threshold=2, stop_threshold=3)
+        loss_breaker = ConsecutiveLossBreaker(reduce_threshold=3, stop_threshold=5, cooldown_days=20)
     scheduler = RebalanceScheduler(RebalanceConfig(
         rebalance_period=rebalance_period,
-        rolling_sharpe_threshold=0.0 if disable_loss_breaker else 1.0,
+        rolling_sharpe_threshold=0.0,  # 禁用夏普退出（由 loss breaker 控制）
         max_drawdown_threshold=0.50 if disable_loss_breaker else 0.25,
-        consecutive_sharpe_months=999 if disable_loss_breaker else 3,
+        consecutive_sharpe_months=999,  # 禁用夏普退出
     ))
     scheduler.reset()  # 回测必须重置，避免加载之前的持久化状态
 
@@ -109,6 +109,10 @@ def run_rebalance_backtest(
 
     for i, date in enumerate(trade_dates):
         date_str = str(date.date()) if hasattr(date, 'date') else str(date)
+
+        # 推进冷却期计数
+        if hasattr(loss_breaker, 'advance_day'):
+            loss_breaker.advance_day()
 
         # 更新市场价格
         broker.update_market_prices(market_data, date_str)
