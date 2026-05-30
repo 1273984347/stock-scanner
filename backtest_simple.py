@@ -231,3 +231,12 @@ if __name__ == "__main__":
 
     print(f"\n月度统计:")
     print(r['monthly'].to_string())
+
+    # 保存结果
+    from lib.backtest_saver import save_backtest_result
+    trades_list = r.get('trades', [])
+    if hasattr(trades_list, 'to_dict'):
+        trades_list = trades_list.to_dict('records')
+    save_backtest_result("simple", np.array(r.get('nav', [1.0])),
+                         trades=trades_list,
+                         args={"stocks": len(TEST_STOCKS), "start": "2024-01-01", "end": "2026-05-22"})

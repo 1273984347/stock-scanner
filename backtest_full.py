@@ -796,3 +796,40 @@ if __name__ == "__main__":
 
     print(f"\n{'='*60}")
     print("全部配置回测完成")
+
+    # 保存结果
+    from lib.backtest_saver import save_backtest_result, RESULTS_DIR
+    import json as _json
+    from datetime import datetime as _dt
+    ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+    out_path = RESULTS_DIR / f"full_{ts}.json"
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 收集所有场景的指标
+    scenarios = []
+    for label, cfg in [("A_baseline", {"sector_top_n": 0}),
+                       ("C_top5", {"sector_top_n": 5}),
+                       ("C_top8", {"sector_top_n": 8}),
+                       ("A_RS1pct", {"rel_strength_threshold": 1.0}),
+                       ("D_sentiment", {"use_sentiment_filter": True}),
+                       ("A+C+D", {"sector_top_n": 5, "use_sentiment_filter": True})]:
+        try:
+            r = run_full_backtest(stocks, start_date, end_date, **cfg)
+            scenarios.append({
+                "label": label, "config": cfg,
+                "total_trades": r.get('total_trades', 0),
+                "win_rate": r.get('win_rate', 0),
+                "avg_pnl": r.get('avg_pnl', 0),
+                "profit_factor": r.get('profit_factor', 0),
+                "max_drawdown": r.get('max_drawdown', 0),
+                "total_return": r.get('total_return', 0),
+            })
+        except Exception as e:
+            scenarios.append({"label": label, "error": str(e)})
+
+    out_path.write_text(_json.dumps({
+        "timestamp": ts, "script": "full",
+        "stocks": len(stocks), "start": start_date, "end": end_date,
+        "scenarios": scenarios,
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\n结果已保存: {out_path}")

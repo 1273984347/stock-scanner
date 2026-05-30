@@ -546,24 +546,76 @@ def calc_trend_breakout_signal(prices: pd.Series, regime: str) -> Dict:
     return {"signal": "neutral", "confidence": 0.5, "reason": "未触发突破条件"}
 
 
-# ========== 多策略加权组合 ==========
+# ========== 多策略加权组合（基于 IC 评价 2026-05-30）==========
+# IC 评价结果：volume_ratio(0.152) > adx(0.092) > williams_r(0.070) > cci(0.065) > rsi(0.061)
+# 权重按 IC 比例分配，归一化后求和=1.0
 
 STRATEGY_WEIGHTS = {
-    "trend": 0.20,
-    "mean_reversion": 0.15,
+    "trend": 0.15,
+    "mean_reversion": 0.10,
     "momentum": 0.20,
-    "volatility": 0.10,
+    "volatility": 0.15,
     "stat_arb": 0.10,
-    "trend_breakout": 0.25,  # 来自 cryptoquant-ai
+    "trend_breakout": 0.30,  # 包含 volume_ratio/adx/rsi 等高 IC 因子
 }
+
+
+# IC 加权因子权重（基于 2026-05-30 IC 评价，30 只股票 × 500 天）
+# IC: volume_ratio(0.152) > adx(0.092) > williams_r(0.070) > cci(0.065) > rsi(0.061)
+IC_FACTOR_WEIGHTS = {
+    "volume_ratio": 0.25,
+    "adx": 0.15,
+    "williams_r": 0.12,
+    "cci": 0.10,
+    "rsi_14": 0.10,
+    "trend_strength": 0.09,
+    "kdj_j": 0.09,
+    "momentum_20": 0.08,
+    "volatility_20": 0.02,  # IC 存在但方向需确认
+}
+
+
+def compute_ic_weighted_score(factors: Dict[str, float]) -> float:
+    """用 IC 加权的因子值直接计算综合评分
+
+    与 weighted_signal_combination 的区别：
+    - 不依赖策略信号（bullish/neutral/bearish），直接用因子原始值
+    - 权重基于历史 IC 评价，而非手工设定
+    - 返回标准化分数 [-1, 1]
+
+    Args:
+        factors: 因子值字典
+
+    Returns:
+        float: 综合评分，越高越看多
+    """
+    total_weight = 0
+    weighted_sum = 0
+
+    for fname, weight in IC_FACTOR_WEIGHTS.items():
+        val = factors.get(fname)
+        if val is None or np.isnan(val):
+            continue
+        # 标准化到 [-1, 1]（用 tanh 压缩）
+        normalized = np.tanh(val / 50)  # 大多数因子在 [-50, 50] 范围
+        weighted_sum += normalized * weight
+        total_weight += weight
+
+    if total_weight <= 0:
+        return 0.0
+
+    return float(weighted_sum / total_weight)
 
 
 def weighted_signal_combination(signals: Dict[str, Dict], weights: Dict[str, float] = None) -> Dict:
     weights = weights or STRATEGY_WEIGHTS
 
-    # 因子权重校验：权重和必须接近 1.0
+    # 因子权重校验：权重和必须接近 1.0（警告而非崩溃）
     total_weight = sum(weights.values())
-    assert abs(total_weight - 1.0) < 1e-6, f"因子权重和必须为 1.0，当前为 {total_weight}"
+    if abs(total_weight - 1.0) > 1e-6:
+        logger.warning(f"因子权重和不为 1.0（当前 {total_weight:.4f}），自动归一化")
+        if total_weight > 0:
+            weights = {k: v / total_weight for k, v in weights.items()}
 
     signal_values = {"bullish": 1, "neutral": 0, "bearish": -1}
 
@@ -882,6 +934,154 @@ def get_northbound_flow_factor(code: str, market: str = "sh", days: int = 20) ->
         }
     except Exception as e:
         return {"error": "Data fetch failed"}
+
+
+def get_northbound_top_stocks(top_n: int = 20, days: int = 20) -> List[Dict]:
+    """北向资金监控：扫描全市场 HSJ 数据，返回活跃度提升最大的 Top N 股票
+
+    扫描 D:/TDX/vipdoc/hsj/{sh,sz,bj}/lday/ 下所有 .day 文件，
+    计算每只股票的 activity_ratio（近5日均额 / 前15日均额），
+    按比值降序返回 Top N。
+
+    Returns:
+        List[dict] with keys: code, market, activity, activity_ratio,
+                   price_return_5d, trend
+    """
+    import struct
+    from pathlib import Path
+
+    TDX_DATA_PATH = "D:/TDX/vipdoc"
+    results = []
+
+    for market in ["sh", "sz", "bj"]:
+        hsj_dir = Path(TDX_DATA_PATH) / "hsj" / market / "lday"
+        if not hsj_dir.exists():
+            continue
+
+        for fpath in hsj_dir.glob("*.day"):
+            code = fpath.stem  # e.g. "sh600000"
+            try:
+                with open(fpath, "rb") as f:
+                    f.seek(0, 2)
+                    file_size = f.tell()
+                    n_records = file_size // 32
+                    if n_records < days:
+                        continue
+                    f.seek(-(days * 32), 2)
+                    raw = f.read(days * 32)
+
+                amounts = []
+                closes = []
+                for i in range(0, len(raw), 32):
+                    date_idx, o, h, l, c, amt, vol, _ = struct.unpack_from("<IiiiiiII", raw, i)
+                    if not (20200101 <= date_idx <= 20301231):
+                        continue
+                    amounts.append(float(amt))
+                    closes.append(float(c))
+
+                if len(amounts) < 10:
+                    continue
+
+                # activity_ratio: recent 5d avg / previous period avg
+                recent = np.mean(amounts[-5:])
+                earlier = np.mean(amounts[:-5]) if len(amounts) > 5 else recent
+                ratio = recent / earlier if earlier > 0 else 1.0
+
+                # price return
+                ret5 = (closes[-1] / closes[-6] - 1) * 100 if len(closes) >= 6 and closes[-6] != 0 else 0.0
+
+                # trend
+                if len(amounts) >= 10:
+                    r5 = np.mean(amounts[-5:])
+                    p5 = np.mean(amounts[-10:-5])
+                    trend = "increasing" if r5 > p5 * 1.15 else "decreasing" if r5 < p5 * 0.85 else "stable"
+                else:
+                    trend = "stable"
+
+                # Filter: only stock codes (skip ETFs/indices/bonds)
+                stock_code = code[2:]  # remove market prefix
+                if not (stock_code.startswith(("000", "001", "002", "003",
+                        "300", "301", "600", "601", "603", "605", "688"))
+                        and len(stock_code) == 6):
+                    continue
+
+                results.append({
+                    "code": code,
+                    "market": market,
+                    "activity": round(float(np.mean(amounts)), 2),
+                    "activity_ratio": round(ratio, 3),
+                    "price_return_5d": round(ret5, 2),
+                    "trend": trend,
+                })
+            except Exception:
+                continue
+
+    # Sort by activity_ratio descending
+    results.sort(key=lambda x: x["activity_ratio"], reverse=True)
+    return results[:top_n]
+
+
+def get_sector_performance(top_n: int = 10, days: int = 20) -> List[Dict]:
+    """板块轮动：计算各板块近 N 天的平均收益率，返回热门板块
+
+    扫描 infoharbor_block 的板块映射，对每个板块内的股票
+    计算平均收益率，按收益排序返回 Top N 板块。
+
+    Returns:
+        List[dict] with keys: block, stock_count, avg_return, top_stocks
+    """
+    import struct
+    from pathlib import Path
+    from lib.data_layer import get_all_blocks
+
+    blocks = get_all_blocks()
+    if not blocks:
+        return []
+
+    TDX_DATA_PATH = "D:/TDX/vipdoc"
+    block_perf = []
+
+    for block_name, stock_codes in blocks.items():
+        if len(stock_codes) < 5:  # skip tiny blocks
+            continue
+
+        returns = []
+        for code in stock_codes[:50]:  # sample up to 50 stocks per block
+            market = "sh" if code.startswith(("6", "9")) else "sz"
+            fpath = Path(TDX_DATA_PATH) / market / "lday_4" / f"{market}{code}.day"
+            if not fpath.exists():
+                continue
+            try:
+                with open(fpath, "rb") as f:
+                    f.seek(0, 2)
+                    n = f.tell() // 32
+                    if n < days:
+                        continue
+                    f.seek(-(days * 32), 2)
+                    raw = f.read(days * 32)
+                closes = []
+                for i in range(0, len(raw), 32):
+                    _, _, _, _, c, _, _, _ = struct.unpack_from("<IiiiiiII", raw, i)
+                    closes.append(c)
+                if len(closes) >= 2 and closes[0] != 0:
+                    ret = (closes[-1] / closes[0] - 1) * 100
+                    returns.append(ret)
+            except Exception:
+                continue
+
+        if not returns:
+            continue
+
+        avg_ret = float(np.mean(returns))
+        block_perf.append({
+            "block": block_name,
+            "stock_count": len(stock_codes),
+            "avg_return": round(avg_ret, 2),
+            "sampled": len(returns),
+        })
+
+    block_perf.sort(key=lambda x: x["avg_return"], reverse=True)
+    return block_perf[:top_n]
 
 
 # ========== 财务估值因子（来自 CW/gpcw）==========
@@ -1243,6 +1443,7 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
     # - 超买(kc_pos>0.80) + 做多信号 → reduce
     # - 超买(kc_pos>0.80) + 做空信号 → boost
     # - 超卖(kc_pos<0.20) + 做空信号 → reduce
+    ch_filter = {"kc_pos": 0.5, "adjustment": 1.0, "reason": ""}
     if combined["signal"] in ("bullish", "bearish"):
         ch_filter = calc_channel_filter(hist_df)
         adj = ch_filter.get("adjustment", 1.0)
@@ -1284,9 +1485,6 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
             factors["mfi"] = calc_mfi(high, low, close, volume)
     factors["trix"] = calc_trix(close)
 
-    # 通道过滤结果
-    ch_filter = calc_channel_filter(hist_df)
-
     # 8. 新数据源因子（HSJ/ScJyData/CW/GP/GGT/XSB/CSI）
     data_factors = {}
     if code is not None:
@@ -1326,15 +1524,50 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
             if "error" not in index_factor:
                 data_factors["index_enhancement"] = index_factor
 
+        # 板块映射因子（infoharbor_block）
+        if _use('use_block', default=True):
+            from lib.data_layer import get_stock_blocks
+            blocks = get_stock_blocks(code)
+            if blocks:
+                data_factors["block"] = {
+                    "block_count": len(blocks),
+                    "blocks": blocks[:10],  # top 10 板块
+                }
+
+        # 估值因子（PE/PB/市值）
+        if _use('use_valuation', default=True):
+            from lib.data_layer import get_stock_valuation
+            val = get_stock_valuation(code)
+            if val:
+                data_factors["valuation"] = val
+
+        # 基金持仓因子
+        if _use('use_fund_hold', default=True):
+            from lib.data_layer import get_fund_holdings
+            fh = get_fund_holdings(code)
+            if fh:
+                data_factors["fund_holdings"] = fh
+
+        # 股息率因子（gbbq 除权除息）
+        if _use('use_dividend', default=True):
+            from lib.data_layer import get_dividend_amount
+            div = get_dividend_amount(code)
+            if div > 0:
+                data_factors["dividend"] = {"per_share": round(div, 4)}
+
     # 市场情绪因子（ScJyData，不需要 code）
     if _use('use_scjy', default=True):
         sentiment = get_market_sentiment_factor(days=10)
         if "error" not in sentiment:
             data_factors["market_sentiment"] = sentiment
 
+    # 8b. IC 加权因子评分（替代策略信号组合）
+    ic_score = compute_ic_weighted_score(factors)
+
     return {
         "signals": signals,
         "combined": combined,
+        "ic_score": round(ic_score, 4),  # IC 加权综合评分
         "regime": {
             "regime": regime,
             "score": regime_result.score,

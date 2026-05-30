@@ -341,3 +341,17 @@ if __name__ == "__main__":
     print("运行 V2 系统诊断...")
     df = run_analysis(TEST_STOCKS, '2024-01-01', '2026-05-22')
     print_diagnostic_report(df)
+
+    # 保存结果
+    from lib.backtest_saver import save_backtest_result, RESULTS_DIR
+    import json as _json
+    from datetime import datetime
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_path = RESULTS_DIR / f"regime_{ts}.json"
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(_json.dumps({
+        "timestamp": ts, "script": "regime_analysis",
+        "stocks": len(TEST_STOCKS),
+        "data": df.to_dict('records') if df is not None and not df.empty else []
+    }, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    print(f"\n结果已保存: {out_path}")

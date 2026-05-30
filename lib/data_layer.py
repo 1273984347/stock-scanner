@@ -247,10 +247,12 @@ def _get_financial_data(code: str) -> Optional[pd.Series]:
 # ========== 日线数据获取 ==========
 
 def _fetch_from_tdx_local(code: str, days: int) -> pd.DataFrame:
-    """从本地 TDX .day 文件读取日线（优先前复权，不复权兜底）
+    """从本地 TDX .day 文件读取日线（前复权优先，不复权兜底，取最新）
 
     前复权文件：sh/lday_4/, sz/lday_4/
     不复权文件：sh/lday/, sz/lday/
+
+    当前复权数据过期时，自动 fallback 到不复权数据（取更新更晚的那个）。
     """
     try:
         from pytdx.reader import TdxDailyBarReader
@@ -266,33 +268,11 @@ def _fetch_from_tdx_local(code: str, days: int) -> pd.DataFrame:
         return pd.DataFrame()
 
     tdx_path = os.environ.get("TDX_DATA_PATH", "D:/TDX/vipdoc")
+    reader = TdxDailyBarReader()
 
-    # 1. 优先前复权文件（sh/lday_4/, sz/lday_4/）
-    qfq_path = Path(tdx_path) / market_str / "lday_4" / f"{market_str}{code}.day"
-    if qfq_path.exists():
-        try:
-            reader = TdxDailyBarReader()
-            df = reader.get_df(str(qfq_path))
-            if not df.empty:
-                df = df.reset_index()
-                col_map = {"open": "open", "high": "high", "low": "low", "close": "close", "volume": "volume"}
-                df = df.rename(columns=col_map)
-                for c in ["open", "high", "low", "close", "volume"]:
-                    if c in df.columns:
-                        df[c] = pd.to_numeric(df[c], errors="coerce")
-                if len(df) > days:
-                    df = df.tail(days)
-                return df[["date", "open", "high", "low", "close", "volume"]].copy()
-        except Exception as e:
-            logger.debug(f"[data_layer] TDX 前复权文件读取失败 [{code}]: {e}")
-
-    # 2. Fallback 到不复权文件（sh/lday/, sz/lday/）
-    file_path = Path(tdx_path) / market_str / "lday" / f"{market_str}{code}.day"
-    if not file_path.exists():
-        return pd.DataFrame()
-    try:
-        reader = TdxDailyBarReader()
-        df = reader.get_df(str(file_path))
+    def _read_tdx_file(file_path: str) -> pd.DataFrame:
+        """读取单个 .day 文件并标准化"""
+        df = reader.get_df(file_path)
         if df.empty:
             return pd.DataFrame()
         df = df.reset_index()
@@ -301,12 +281,49 @@ def _fetch_from_tdx_local(code: str, days: int) -> pd.DataFrame:
         for c in ["open", "high", "low", "close", "volume"]:
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c], errors="coerce")
-        if len(df) > days:
-            df = df.tail(days)
         return df[["date", "open", "high", "low", "close", "volume"]].copy()
-    except Exception as e:
-        logger.debug(f"[data_layer] TDX 不复权文件读取失败 [{code}]: {e}")
+
+    # 读取两个数据源
+    qfq_path = Path(tdx_path) / market_str / "lday_4" / f"{market_str}{code}.day"
+    hfq_path = Path(tdx_path) / market_str / "lday" / f"{market_str}{code}.day"
+
+    df_qfq = pd.DataFrame()
+    df_hfq = pd.DataFrame()
+
+    if qfq_path.exists():
+        try:
+            df_qfq = _read_tdx_file(str(qfq_path))
+        except Exception as e:
+            logger.debug(f"[data_layer] TDX 前复权文件读取失败 [{code}]: {e}")
+
+    if hfq_path.exists():
+        try:
+            df_hfq = _read_tdx_file(str(hfq_path))
+        except Exception as e:
+            logger.debug(f"[data_layer] TDX 不复权文件读取失败 [{code}]: {e}")
+
+    # 选择更新更晚的数据源（前复权优先，但不复权更新更快时 fallback）
+    if df_qfq.empty and df_hfq.empty:
         return pd.DataFrame()
+
+    if df_qfq.empty:
+        df = df_hfq
+    elif df_hfq.empty:
+        df = df_qfq
+    else:
+        qfq_date = df_qfq["date"].max()
+        hfq_date = df_hfq["date"].max()
+        # 前复权数据足够新（>= 不复权）时优先使用前复权
+        if qfq_date >= hfq_date:
+            df = df_qfq
+        else:
+            # 不复权数据更新，fallback
+            logger.info(f"[data_layer] TDX 前复权过期 [{code}]: qfq={qfq_date} < hfq={hfq_date}，使用不复权数据")
+            df = df_hfq
+
+    if len(df) > days:
+        df = df.tail(days)
+    return df
 
 
 def get_stock_hist(code: str, days: int = 180) -> pd.DataFrame:
@@ -807,3 +824,269 @@ def get_financial_file_info() -> dict:
     from lib.data_tdx_fin import GpcwReader
     reader = GpcwReader()
     return reader.get_file_info()
+
+
+# ========== 板块映射（infoharbor_block）==========
+
+_block_cache = None
+_stock_to_blocks_cache = None
+
+
+def _load_block_mapping():
+    """加载 infoharbor_block.dat 板块映射"""
+    global _block_cache, _stock_to_blocks_cache
+    if _block_cache is not None:
+        return
+
+    from pathlib import Path
+    block_file = Path("D:/TDX/vipdoc/ref/infoharbor_block.dat")
+    if not block_file.exists():
+        _block_cache = {}
+        _stock_to_blocks_cache = {}
+        return
+
+    blocks = {}
+    stock_to_blocks = {}
+    current_block = None
+
+    with open(block_file, "r", encoding="gbk", errors="replace") as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith("#"):
+                parts = line.split(",")
+                current_block = parts[0][1:]  # remove #
+                blocks[current_block] = []
+            elif current_block and line:
+                for item in line.split(","):
+                    item = item.strip()
+                    if "#" in item:
+                        code = item.split("#")[1]
+                        blocks[current_block].append(code)
+                        if code not in stock_to_blocks:
+                            stock_to_blocks[code] = []
+                        stock_to_blocks[code].append(current_block)
+
+    _block_cache = blocks
+    _stock_to_blocks_cache = stock_to_blocks
+
+
+def get_stock_blocks(code: str) -> List[str]:
+    """获取股票所属板块列表"""
+    _load_block_mapping()
+    return _stock_to_blocks_cache.get(code, [])
+
+
+def get_block_stocks(block_name: str) -> List[str]:
+    """获取板块内所有股票代码"""
+    _load_block_mapping()
+    return _block_cache.get(block_name, [])
+
+
+def get_all_blocks() -> Dict[str, List[str]]:
+    """获取所有板块映射"""
+    _load_block_mapping()
+    return _block_cache
+
+
+# ========== PE/PB/市值数据（tdxstat.cfg）==========
+
+_tdxstat_cache = None
+
+
+def _load_tdxstat():
+    """加载 tdxstat.cfg + tdxstat2.cfg PE/PB/市值数据"""
+    global _tdxstat_cache
+    if _tdxstat_cache is not None:
+        return
+
+    from pathlib import Path
+    stats = {}
+
+    # tdxstat.cfg: [0]=market [1]=code [2]=div_yield [3]=PE [9]=PE_ttm [10]=PB [11]=total_mv(万元)
+    stat_file = Path("D:/TDX/vipdoc/ref/tdxstat.cfg")
+    if stat_file.exists():
+        with open(stat_file, "r", encoding="gbk", errors="replace") as f:
+            for line in f:
+                fields = line.strip().split("|")
+                if len(fields) < 12:
+                    continue
+                code = fields[1]
+                try:
+                    pe = float(fields[3]) if fields[3] else None
+                    pb = float(fields[10]) if fields[10] else None
+                    div_yield = float(fields[2]) if fields[2] else None
+                except (ValueError, IndexError):
+                    pe = pb = div_yield = None
+                stats[code] = {"pe": pe, "pb": pb, "div_yield": div_yield}
+
+    # tdxstat2.cfg: [0]=market [1]=code [2]=date [3]=total_mv [5]=circ_mv (万元)
+    stat2_file = Path("D:/TDX/vipdoc/ref/tdxstat2.cfg")
+    if stat2_file.exists():
+        with open(stat2_file, "r", encoding="gbk", errors="replace") as f:
+            for line in f:
+                fields = line.strip().split("|")
+                if len(fields) < 6:
+                    continue
+                code = fields[1]
+                try:
+                    total_mv = float(fields[3]) if fields[3] else None
+                    circ_mv = float(fields[5]) if fields[5] else None
+                except (ValueError, IndexError):
+                    total_mv = circ_mv = None
+                if code in stats:
+                    stats[code]["total_mv"] = total_mv  # 单位：亿元
+                    stats[code]["circ_mv"] = circ_mv
+                else:
+                    stats[code] = {"total_mv": total_mv, "circ_mv": circ_mv}
+
+    _tdxstat_cache = stats
+
+
+def get_stock_valuation(code: str) -> Dict:
+    """获取股票估值数据（PE/PB/市值）"""
+    _load_tdxstat()
+    return _tdxstat_cache.get(code, {})
+
+
+# ========== 基金持仓数据（fundstk.dat）==========
+
+_fundstk_cache = None
+
+
+def _load_fundstk():
+    """加载 fundstk.dat 基金持仓明细"""
+    global _fundstk_cache
+    if _fundstk_cache is not None:
+        return
+
+    from pathlib import Path
+    stk_file = Path("D:/TDX/vipdoc/ref/fundstk.dat")
+    if not stk_file.exists():
+        _fundstk_cache = {}
+        return
+
+    holdings = {}  # code -> {fund_count, total_weight, total_value, date}
+    with open(stk_file, "r", encoding="gbk", errors="replace") as f:
+        for line in f:
+            parts = line.strip().split("|")
+            if len(parts) < 4:
+                continue
+            code = parts[0]
+            date = parts[1]
+            fund_count = 0
+            total_weight = 0.0
+            total_value = 0.0
+            for p in parts[3:]:
+                if not p.strip():
+                    continue
+                fields = p.split(",")
+                if len(fields) >= 7:
+                    fund_count += 1
+                    try:
+                        total_value += float(fields[4]) if fields[4] else 0
+                        total_weight += float(fields[6]) if fields[6] else 0
+                    except ValueError:
+                        pass
+            if fund_count > 0:
+                holdings[code] = {
+                    "fund_count": fund_count,
+                    "total_weight": round(total_weight, 2),
+                    "total_value": round(total_value, 2),
+                    "date": date,
+                }
+
+    _fundstk_cache = holdings
+
+
+def get_fund_holdings(code: str) -> Dict:
+    """获取股票的基金持仓数据"""
+    _load_fundstk()
+    return _fundstk_cache.get(code, {})
+
+
+def get_fund_holdings_all() -> Dict[str, Dict]:
+    """获取所有股票的基金持仓数据"""
+    _load_fundstk()
+    return _fundstk_cache
+
+
+# ========== 除权除息数据（gbbq，pytdx 解密）==========
+
+_gbbq_cache = None
+
+
+def _load_gbbq():
+    """加载 gbbq 除权除息数据（使用 pytdx GbbqReader 解密）"""
+    global _gbbq_cache
+    if _gbbq_cache is not None:
+        return
+
+    from pathlib import Path
+    gbbq_file = Path("D:/TDX/vipdoc/ref/gbbq")
+    if not gbbq_file.exists():
+        _gbbq_cache = {}
+        return
+
+    try:
+        from pytdx.reader import GbbqReader
+        reader = GbbqReader()
+        df = reader.get_df(str(gbbq_file))
+        # Group by (market, code) → sorted list of events
+        _gbbq_cache = {}
+        for _, row in df.iterrows():
+            code = row["code"]
+            if code not in _gbbq_cache:
+                _gbbq_cache[code] = []
+            _gbbq_cache[code].append({
+                "date": int(row["datetime"]),
+                "category": int(row["category"]),
+                "hongli": float(row["hongli_panqianliutong"]),
+                "peigujia": float(row["peigujia_qianzongguben"]),
+                "songzhuangu": float(row["songgu_qianzongguben"]),
+                "peigu_hou": float(row["peigu_houzongguben"]),
+            })
+        # Sort each stock's events by date
+        for code in _gbbq_cache:
+            _gbbq_cache[code].sort(key=lambda x: x["date"])
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"gbbq 加载失败: {e}")
+        _gbbq_cache = {}
+
+
+def get_exright_events(code: str, start_date: int = 0) -> List[Dict]:
+    """获取股票的除权除息事件列表
+
+    Args:
+        code: 股票代码（如 "600519"）
+        start_date: 起始日期（如 20200101），0 表示全部
+
+    Returns:
+        list of dicts with keys: date, category, hongli, songzhuangu, etc.
+    """
+    _load_gbbq()
+    events = _gbbq_cache.get(code, [])
+    if start_date > 0:
+        events = [e for e in events if e["date"] >= start_date]
+    return events
+
+
+def get_dividend_amount(code: str, year: int = 0) -> float:
+    """获取股票的年度每股分红总额
+
+    Args:
+        code: 股票代码
+        year: 年份（如 2025），0 表示最近一年
+
+    Returns:
+        每股分红总额（元）
+    """
+    _load_gbbq()
+    events = _gbbq_cache.get(code, [])
+    if year > 0:
+        events = [e for e in events if e["date"] // 10000 == year and e["category"] == 1]
+    else:
+        events = [e for e in events if e["category"] == 1]
+        if events:
+            latest_year = max(e["date"] for e in events) // 10000
+            events = [e for e in events if e["date"] // 10000 == latest_year]
+    return sum(e["hongli"] for e in events)
