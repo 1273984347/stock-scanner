@@ -618,9 +618,9 @@ def adjust_score_by_data_factors(base_score: float, data_factors: Dict) -> float
     """
     adj = 0.0
 
-    # 股息率：>2% 加分
+    # 股息率：>0.2元/股 加分（已修正单位：raw/10=元）
     div = data_factors.get("dividend", {})
-    if div.get("per_share", 0) > 2.0:
+    if div.get("per_share", 0) > 0.2:
         adj += 0.05
 
     # 基金持仓：权重>20% 加分
