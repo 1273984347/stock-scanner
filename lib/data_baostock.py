@@ -6,10 +6,30 @@
 """
 import pandas as pd
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _retry_baostock(func, *args, max_retries=3, **kwargs):
+    """重试 baostock 调用（指数退避）
+
+    只重试瞬态错误（网络超时、连接断开），
+    不重试永久错误（无效代码等）。
+    """
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            return func(*args, **kwargs)
+        except (ConnectionError, TimeoutError, OSError) as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                wait = 2 ** (attempt + 1)
+                logger.debug(f"baostock retry {attempt+1}/{max_retries} after {wait}s: {e}")
+                time.sleep(wait)
+    raise last_error
 
 
 def get_kline(code: str, days: int = 180, period: str = "daily") -> pd.DataFrame:
@@ -40,24 +60,27 @@ def get_kline(code: str, days: int = 180, period: str = "daily") -> pd.DataFrame
         return pd.DataFrame()
 
     try:
-        rs = bs.query_history_k_data_plus(
-            bs_code,
-            fields="date,open,high,low,close,preclose,volume,amount,adjustflag,turn,tradestatus,pctChg",
-            start_date=start.strftime("%Y-%m-%d"),
-            end_date=end.strftime("%Y-%m-%d"),
-            frequency=frequency,
-            adjustflag=adjust_flag,
-        )
+        def _query():
+            rs = bs.query_history_k_data_plus(
+                bs_code,
+                fields="date,open,high,low,close,preclose,volume,amount,adjustflag,turn,tradestatus,pctChg",
+                start_date=start.strftime("%Y-%m-%d"),
+                end_date=end.strftime("%Y-%m-%d"),
+                frequency=frequency,
+                adjustflag=adjust_flag,
+            )
 
-        if rs.error_code != "0":
-            logger.error(f"BaoStock 查询失败: {rs.error_msg}")
-            return pd.DataFrame()
+            if rs.error_code != "0":
+                raise ConnectionError(f"BaoStock 查询失败: {rs.error_msg}")
 
-        data = []
-        while (rs.error_code == "0") and rs.next():
-            row = rs.get_row_data()
-            if row[10] == "1":  # tradestatus == 1 (正常交易)
-                data.append(row)
+            data = []
+            while (rs.error_code == "0") and rs.next():
+                row = rs.get_row_data()
+                if row[10] == "1":  # tradestatus == 1 (正常交易)
+                    data.append(row)
+            return data
+
+        data = _retry_baostock(_query)
 
         if not data:
             return pd.DataFrame()
