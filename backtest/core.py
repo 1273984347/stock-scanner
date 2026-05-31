@@ -16,6 +16,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+from pathlib import Path
+import time
 import logging
 
 from lib.broker import ABroker, Order, TradingConstraints
@@ -27,6 +29,8 @@ from lib.partial_exit import PartialExitManager, ConsecutiveLossBreaker
 from factors import compute_all_signals, calc_atr
 
 logger = logging.getLogger(__name__)
+
+_BACKTEST_CACHE_DIR = Path("cache/backtest_data")
 
 
 def _validate_ohlcv(df: pd.DataFrame, symbol: str = "") -> pd.DataFrame:
@@ -87,8 +91,8 @@ class AllDataSourcesUnavailableError(Exception):
 
 _survivorship_warned = False
 
-def get_stock_data(symbol: str, days: int = 250) -> pd.DataFrame:
-    """获取股票历史数据（统一数据层，多数据源自动切换）
+def get_stock_data(symbol: str, days: int = 250, use_cache: bool = True) -> pd.DataFrame:
+    """获取股票历史数据（带 parquet 缓存，24小时有效期）
 
     注意：当前数据源只包含仍在交易的股票，已退市股票无法获取。
     这会导致回测存在幸存者偏差（Survivorship Bias）：
@@ -96,9 +100,43 @@ def get_stock_data(symbol: str, days: int = 250) -> pd.DataFrame:
     - 风险指标可能被低估
     - 建议在实盘前用包含退市股票的数据集重新验证
 
+    Args:
+        symbol: 股票代码
+        days: 历史天数
+        use_cache: 是否使用 parquet 缓存（默认 True）
+
     Raises:
         AllDataSourcesUnavailableError: 所有数据源失败时抛出，不返回空 DataFrame
     """
+    _BACKTEST_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_file = _BACKTEST_CACHE_DIR / f"{symbol}_{days}.parquet"
+
+    # 检查缓存（24小时内有效）
+    if use_cache and cache_file.exists():
+        age_hours = (time.time() - cache_file.stat().st_mtime) / 3600
+        if age_hours < 24:
+            try:
+                df = pd.read_parquet(cache_file)
+                if not df.empty and len(df) >= 60:
+                    return df
+            except Exception:
+                pass  # 缓存损坏，重新获取
+
+    # 原始数据获取逻辑
+    df = _fetch_stock_data_impl(symbol, days)
+
+    # 写入缓存
+    if use_cache and not df.empty:
+        try:
+            df.to_parquet(cache_file, index=False)
+        except Exception:
+            pass  # 缓存写入失败不影响主流程
+
+    return df
+
+
+def _fetch_stock_data_impl(symbol: str, days: int) -> pd.DataFrame:
+    """实际的数据获取逻辑（从原 get_stock_data 移入）"""
     global _survivorship_warned
     if not _survivorship_warned:
         logger.warning(
