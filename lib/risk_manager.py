@@ -152,6 +152,12 @@ class RiskManager:
                 action="STOP",
                 description=f"周亏损超过 {self.config.weekly_loss_limit:.0%} 暂停交易"
             ),
+            RiskRule(
+                name="liquidity",
+                check_fn=self._check_liquidity,
+                action="WARN",
+                description="日均成交额 < 50M 的股票限制仓位"
+            ),
         ]
 
     def add_rule(self, rule: RiskRule):
@@ -161,7 +167,8 @@ class RiskManager:
 
     def check_all(self, portfolio_value: float, positions: Dict,
                   daily_return: float = 0, industry_map: Dict[str, str] = None,
-                  max_drawdown: float = 0) -> Tuple[List[RiskAlert], List[RiskAction]]:
+                  max_drawdown: float = 0,
+                  market_data: Dict[str, pd.DataFrame] = None) -> Tuple[List[RiskAlert], List[RiskAction]]:
         """执行所有风控检查，返回 (alerts, actions)"""
         self.alerts = []
         self.actions = []
@@ -171,6 +178,7 @@ class RiskManager:
             "daily_return": daily_return,
             "industry_map": industry_map or {},
             "max_drawdown": max_drawdown,
+            "market_data": market_data or {},
         }
 
         for rule in self.rules:
@@ -307,6 +315,36 @@ class RiskManager:
                 details={"weekly_return": weekly_cum, "threshold": -self.config.weekly_loss_limit}
             )
         return None
+
+    def _check_liquidity(self, ctx: dict, min_turnover: float = 50_000_000) -> List[RiskAlert]:
+        """流动性风控：日均成交额 < min_turnover 的股票限制仓位"""
+        market_data = ctx.get("market_data", {})
+        if not market_data:
+            return []
+
+        alerts = []
+        for code, pos in ctx["positions"].items():
+            weight = pos.get("weight", 0)
+            df = market_data.get(code)
+            if df is None or df.empty or len(df) < 5:
+                continue
+
+            recent = df.tail(20)
+            if "volume" in recent.columns and "close" in recent.columns:
+                avg_turnover = float((recent["volume"] * recent["close"]).mean())
+
+                if avg_turnover < min_turnover:
+                    max_weight = min(0.05, avg_turnover / min_turnover * 0.05)
+                    if weight > max_weight:
+                        alerts.append(RiskAlert(
+                            timestamp=datetime.now().isoformat(),
+                            rule_name="liquidity",
+                            level="WARNING",
+                            message=f"{code} 日均成交额 {avg_turnover/1e6:.0f}M < {min_turnover/1e6:.0f}M，建议仓位 ≤{max_weight:.1%}",
+                            details={"code": code, "current_weight": weight, "suggested_weight": max_weight, "avg_turnover": avg_turnover},
+                        ))
+
+        return alerts
 
     def get_active_alerts(self, min_level: str = "WARNING") -> List[RiskAlert]:
         """获取活跃预警"""
