@@ -17,6 +17,17 @@ from typing import Dict, List, Optional, Tuple, Callable
 from dataclasses import dataclass, field
 import numpy as np
 
+# 市场状态与策略名称（与 dynamic_weight_manager / dynamic_exit 对齐）
+REGIME_NAMES = [
+    "TREND_UP", "MEAN_REVERSION", "HIGH_VOLATILITY",
+    "LOW_VOLATILITY", "TREND_DOWN", "RISK_OFF",
+]
+
+STRATEGY_NAMES = [
+    "trend", "mean_reversion", "momentum",
+    "volatility", "stat_arb", "trend_breakout",
+]
+
 logger = logging.getLogger(__name__)
 
 # 因子名称列表（与 factors.py IC_FACTOR_WEIGHTS 对应）
@@ -65,11 +76,21 @@ class OptimizerConfig:
     # 输出
     output_dir: str = "cache/optimizer"
 
+    # Exit days optimization
+    optimize_exit_days: bool = False
+    exit_days_bounds: Tuple[int, int] = (0, 20)  # min/max days per regime (0=RISK_OFF)
+
+    # Regime strategy weights optimization
+    optimize_regime_weights: bool = False
+    regime_weight_bounds: Tuple[float, float] = (0.0, 1.0)
+
 
 @dataclass
 class Individual:
-    """个体（一组因子权重）"""
+    """个体（一组因子权重 + 可选的出场天数/策略权重）"""
     weights: Dict[str, float]
+    exit_days_map: Optional[Dict[str, int]] = None
+    regime_strategy_presets: Optional[Dict[str, Dict[str, float]]] = None
     fitness: float = 0.0
     sharpe: float = 0.0
     max_dd: float = 0.0
@@ -114,8 +135,22 @@ def evaluate_fitness(
     sharpe_weight: float = 0.6,
     maxdd_weight: float = 0.3,
     calmar_weight: float = 0.1,
+    exit_days_map: Optional[Dict[str, int]] = None,
+    regime_strategy_presets: Optional[Dict[str, Dict[str, float]]] = None,
 ) -> Tuple[float, Dict]:
     """评估一组因子权重的适应度
+
+    Args:
+        weights: IC 因子权重
+        symbols: 股票代码列表
+        days: 回测天数
+        n_stocks: 评估股票数
+        disable_loss_breaker: 禁用连亏熔断
+        sharpe_weight: Sharpe 权重
+        maxdd_weight: 最大回撤权重
+        calmar_weight: Calmar 权重
+        exit_days_map: 每个 regime 的出场天数（可选）
+        regime_strategy_presets: 每个 regime 的策略权重预设（可选）
 
     Returns:
         (fitness_score, metrics_dict)
@@ -143,6 +178,7 @@ def evaluate_fitness(
             symbols=selected,
             days=days,
             disable_loss_breaker=disable_loss_breaker,
+            exit_days_map=exit_days_map,
         )
 
         if result is None:
@@ -187,11 +223,110 @@ def evaluate_fitness(
 
 
 # ============================================================
+# 染色体编解码（扩展搜索空间）
+# ============================================================
+
+def _chromosome_dim(config: 'OptimizerConfig') -> int:
+    """染色体总维度"""
+    dim = len(FACTOR_NAMES)  # 9 因子权重
+    if config.optimize_exit_days:
+        dim += len(REGIME_NAMES)  # 6 出场天数
+    if config.optimize_regime_weights:
+        dim += len(REGIME_NAMES) * len(STRATEGY_NAMES)  # 36 策略权重
+    return dim
+
+
+def _encode_chromosome(
+    weights: Dict[str, float],
+    exit_days_map: Optional[Dict[str, int]],
+    regime_strategy_presets: Optional[Dict[str, Dict[str, float]]],
+    config: 'OptimizerConfig',
+) -> np.ndarray:
+    """将个体参数编码为一维染色体数组"""
+    parts = [np.array([weights[k] for k in FACTOR_NAMES])]
+
+    if config.optimize_exit_days:
+        edm = exit_days_map or {}
+        parts.append(np.array([edm.get(r, 10) for r in REGIME_NAMES], dtype=float))
+
+    if config.optimize_regime_weights:
+        rsp = regime_strategy_presets or {}
+        w_flat = []
+        for r in REGIME_NAMES:
+            preset = rsp.get(r, {})
+            for s in STRATEGY_NAMES:
+                w_flat.append(preset.get(s, 1.0 / len(STRATEGY_NAMES)))
+        parts.append(np.array(w_flat))
+
+    return np.concatenate(parts)
+
+
+def _decode_chromosome(
+    chromosome: np.ndarray,
+    config: 'OptimizerConfig',
+) -> Tuple[Dict[str, float], Optional[Dict[str, int]], Optional[Dict[str, Dict[str, float]]]]:
+    """将一维染色体数组解码为个体参数"""
+    idx = 0
+
+    # 因子权重
+    weights = dict(zip(FACTOR_NAMES, chromosome[idx:idx + len(FACTOR_NAMES)]))
+    weights = _normalize_weights(_clamp_weights(weights))
+    idx += len(FACTOR_NAMES)
+
+    # 出场天数
+    exit_days_map = None
+    if config.optimize_exit_days:
+        lo, hi = config.exit_days_bounds
+        raw = chromosome[idx:idx + len(REGIME_NAMES)]
+        exit_days_map = {r: int(np.clip(round(v), lo, hi)) for r, v in zip(REGIME_NAMES, raw)}
+        idx += len(REGIME_NAMES)
+
+    # 策略权重（按 regime 归一化）
+    regime_strategy_presets = None
+    if config.optimize_regime_weights:
+        lo, hi = config.regime_weight_bounds
+        regime_strategy_presets = {}
+        for r in REGIME_NAMES:
+            raw = chromosome[idx:idx + len(STRATEGY_NAMES)]
+            clipped = np.clip(raw, lo, hi)
+            total = clipped.sum()
+            if total > 1e-8:
+                normalized = clipped / total
+            else:
+                normalized = np.ones(len(STRATEGY_NAMES)) / len(STRATEGY_NAMES)
+            regime_strategy_presets[r] = dict(zip(STRATEGY_NAMES, normalized.tolist()))
+            idx += len(STRATEGY_NAMES)
+
+    return weights, exit_days_map, regime_strategy_presets
+
+
+def _random_chromosome(rng: np.random.Generator, config: 'OptimizerConfig') -> np.ndarray:
+    """生成随机染色体"""
+    parts = [rng.uniform(WEIGHT_MIN, WEIGHT_MAX, len(FACTOR_NAMES))]
+
+    if config.optimize_exit_days:
+        lo, hi = config.exit_days_bounds
+        parts.append(rng.uniform(lo, hi, len(REGIME_NAMES)))
+
+    if config.optimize_regime_weights:
+        lo, hi = config.regime_weight_bounds
+        parts.append(rng.uniform(lo, hi, len(REGIME_NAMES) * len(STRATEGY_NAMES)))
+
+    return np.concatenate(parts)
+
+
+def _chromosome_hash(chromosome: np.ndarray) -> str:
+    """染色体的哈希值，用于缓存"""
+    s = json.dumps(chromosome.tolist(), default=float)
+    return hashlib.md5(s.encode()).hexdigest()[:12]
+
+
+# ============================================================
 # 遗传算法
 # ============================================================
 
 class GeneticOptimizer:
-    """遗传算法因子权重优化器"""
+    """遗传算法因子权重优化器（支持扩展搜索空间）"""
 
     def __init__(self, config: OptimizerConfig, symbols: List[str]):
         self.config = config
@@ -202,10 +337,39 @@ class GeneticOptimizer:
         self.generation = 0
         self.history: List[Dict] = []
         self._fitness_cache: Dict[str, Tuple[float, Dict]] = {}
+        self._dim = _chromosome_dim(config)
+
+        # 扩展维度时自动增大种群和代数
+        if config.optimize_exit_days or config.optimize_regime_weights:
+            if config.population_size < 100:
+                config.population_size = 100
+            if config.generations < 50:
+                config.generations = 50
+            logger.info(
+                f"扩展搜索空间: dim={self._dim}, "
+                f"population={config.population_size}, generations={config.generations}"
+            )
+
+    def _make_individual(self, chromosome: np.ndarray) -> Individual:
+        """从染色体创建个体"""
+        weights, exit_days_map, regime_strategy_presets = _decode_chromosome(
+            chromosome, self.config
+        )
+        return Individual(
+            weights=weights,
+            exit_days_map=exit_days_map,
+            regime_strategy_presets=regime_strategy_presets,
+        )
+
+    def _get_chromosome(self, ind: Individual) -> np.ndarray:
+        """从个体提取染色体"""
+        return _encode_chromosome(
+            ind.weights, ind.exit_days_map, ind.regime_strategy_presets, self.config
+        )
 
     def _evaluate(self, ind: Individual) -> float:
         """评估个体，带缓存"""
-        h = _weights_hash(ind.weights)
+        h = _chromosome_hash(self._get_chromosome(ind))
         if h in self._fitness_cache:
             fitness, metrics = self._fitness_cache[h]
         else:
@@ -219,6 +383,8 @@ class GeneticOptimizer:
                 self.config.sharpe_weight,
                 self.config.maxdd_weight,
                 self.config.calmar_weight,
+                exit_days_map=ind.exit_days_map,
+                regime_strategy_presets=ind.regime_strategy_presets,
             )
             ind.eval_time = time.time() - t0
             self._fitness_cache[h] = (fitness, metrics)
@@ -248,7 +414,8 @@ class GeneticOptimizer:
 
         # 随机初始化剩余
         while len(self.population) < self.config.population_size:
-            ind = Individual(weights=_random_weights(self.rng))
+            chromosome = _random_chromosome(self.rng, self.config)
+            ind = self._make_individual(chromosome)
             self._evaluate(ind)
             self.population.append(ind)
 
@@ -266,22 +433,56 @@ class GeneticOptimizer:
         return self.population[best_idx]
 
     def _crossover(self, p1: Individual, p2: Individual) -> Individual:
-        """算术交叉"""
+        """算术交叉（在染色体层面操作）"""
+        c1 = self._get_chromosome(p1)
+        c2 = self._get_chromosome(p2)
         alpha = self.rng.uniform(0.3, 0.7)
-        child_weights = {}
-        for k in FACTOR_NAMES:
-            child_weights[k] = alpha * p1.weights[k] + (1 - alpha) * p2.weights[k]
-        return Individual(weights=_normalize_weights(_clamp_weights(child_weights)))
+        child_chromosome = alpha * c1 + (1 - alpha) * c2
+
+        # 对因子权重部分做归一化
+        child_chromosome[:len(FACTOR_NAMES)] = _normalize_weights(
+            _clamp_weights(dict(zip(FACTOR_NAMES, child_chromosome[:len(FACTOR_NAMES)])))
+        )
+        # 重新编码归一化后的权重
+        weights, exit_days_map, regime_strategy_presets = _decode_chromosome(
+            child_chromosome, self.config
+        )
+        return Individual(
+            weights=weights,
+            exit_days_map=exit_days_map,
+            regime_strategy_presets=regime_strategy_presets,
+        )
 
     def _mutate(self, ind: Individual) -> Individual:
-        """高斯变异"""
-        new_weights = dict(ind.weights)
-        for k in FACTOR_NAMES:
+        """高斯变异（在染色体层面操作）"""
+        chromosome = self._get_chromosome(ind)
+
+        for i in range(len(chromosome)):
             if self.rng.random() < self.config.mutation_rate:
-                noise = self.rng.normal(0, self.config.mutation_strength)
-                new_weights[k] = new_weights[k] + noise
-        new_weights = _normalize_weights(_clamp_weights(new_weights))
-        return Individual(weights=new_weights)
+                if i < len(FACTOR_NAMES):
+                    # 因子权重用 mutation_strength
+                    chromosome[i] += self.rng.normal(0, self.config.mutation_strength)
+                elif i < len(FACTOR_NAMES) + (len(REGIME_NAMES) if self.config.optimize_exit_days else 0):
+                    # 出场天数用 ±1 的变异
+                    chromosome[i] += self.rng.normal(0, 1.0)
+                else:
+                    # 策略权重用 0.05 的变异
+                    chromosome[i] += self.rng.normal(0, 0.05)
+
+        # 对因子权重部分做归一化
+        raw_weights = dict(zip(FACTOR_NAMES, chromosome[:len(FACTOR_NAMES)]))
+        normalized = _normalize_weights(_clamp_weights(raw_weights))
+        for i, k in enumerate(FACTOR_NAMES):
+            chromosome[i] = normalized[k]
+
+        weights, exit_days_map, regime_strategy_presets = _decode_chromosome(
+            chromosome, self.config
+        )
+        return Individual(
+            weights=weights,
+            exit_days_map=exit_days_map,
+            regime_strategy_presets=regime_strategy_presets,
+        )
 
     def _step(self):
         """进化一代"""
@@ -299,7 +500,7 @@ class GeneticOptimizer:
             if self.rng.random() < self.config.crossover_rate:
                 child = self._crossover(p1, p2)
             else:
-                child = Individual(weights=dict(p1.weights))
+                child = self._make_individual(self._get_chromosome(p1))
 
             child = self._mutate(child)
             self._evaluate(child)
@@ -332,7 +533,10 @@ class GeneticOptimizer:
 
     def run(self) -> Individual:
         """运行遗传算法"""
-        logger.info(f"GA 开始: pop={self.config.population_size} gen={self.config.generations}")
+        logger.info(
+            f"GA 开始: pop={self.config.population_size} gen={self.config.generations} "
+            f"dim={self._dim}"
+        )
         t0 = time.time()
 
         self._init_population()
@@ -526,6 +730,8 @@ def run_optimization(
             "win_rate": best.win_rate,
             "n_trades": best.n_trades,
         },
+        "optimal_exit_days": best.exit_days_map,
+        "optimal_regime_strategy_presets": best.regime_strategy_presets,
         "baseline_weights": dict(GeneticOptimizer(config, symbols).population[0].weights) if False else {},
         "ga_history": ga.history[-5:],  # 最后 5 代
         "walk_forward": wf_result,
@@ -598,6 +804,8 @@ if __name__ == "__main__":
     parser.add_argument("--eval-only", action="store_true", help="只评估当前权重")
     parser.add_argument("--skip-bayesian", action="store_true", help="跳过贝叶斯精调")
     parser.add_argument("--skip-walkforward", action="store_true", help="跳过 walk-forward")
+    parser.add_argument("--optimize-exit-days", action="store_true", help="同时优化出场天数")
+    parser.add_argument("--optimize-regime-weights", action="store_true", help="同时优化 regime 策略权重")
     args = parser.parse_args()
 
     # 默认股票池
@@ -621,6 +829,8 @@ if __name__ == "__main__":
         generations=args.generations,
         backtest_days=args.backtest_days,
         backtest_n_stocks=args.n_stocks,
+        optimize_exit_days=args.optimize_exit_days,
+        optimize_regime_weights=args.optimize_regime_weights,
     )
 
     result = run_optimization(
@@ -641,6 +851,18 @@ if __name__ == "__main__":
     print("\n最优权重:")
     for k, v in result["optimal_weights"].items():
         print(f"  {k}: {v:.4f}")
+
+    if result.get("optimal_exit_days"):
+        print("\n最优出场天数:")
+        for k, v in result["optimal_exit_days"].items():
+            print(f"  {k}: {v}")
+
+    if result.get("optimal_regime_strategy_presets"):
+        print("\n最优 Regime 策略权重:")
+        for regime, weights in result["optimal_regime_strategy_presets"].items():
+            print(f"  {regime}:")
+            for strategy, w in weights.items():
+                print(f"    {strategy}: {w:.4f}")
 
     if result.get("walk_forward"):
         wf = result["walk_forward"]

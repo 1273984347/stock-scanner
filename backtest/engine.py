@@ -953,6 +953,7 @@ def run_rebalance_backtest(
     disable_loss_breaker: bool = False,
     factor_config=None,
     max_workers: int = 8,
+    exit_days_map: dict = None,
 ) -> Optional[Dict]:
     """月频调仓回测（从 rebalance.py 迁入）
 
@@ -1030,7 +1031,7 @@ def run_rebalance_backtest(
     partial_exit = PartialExitManager()
     # 动态退出管理器（根据市场状态调整出场天数）
     from lib.dynamic_exit import DynamicExitManager
-    dynamic_exit = DynamicExitManager()
+    dynamic_exit = DynamicExitManager(exit_days_map=exit_days_map)
     if disable_loss_breaker:
         # No-op loss breaker for factor comparison
         class _NoOpBreaker:
