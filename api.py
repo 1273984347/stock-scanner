@@ -21,6 +21,8 @@
 - GET /api/kline/{code}  K线数据（OHLCV）
 - GET /api/trade-history 交易历史（支持按时间/股票/盈亏筛选排序）
 - GET /api/attribution 收益归因分解（按信号来源瀑布图）
+- GET /api/settings  用户设置
+- POST /api/settings 保存用户设置
 """
 
 from fastapi import FastAPI, HTTPException, Query, Security, Request
@@ -2026,6 +2028,65 @@ async def factor_contribution(days: int = Query(default=30, ge=1, le=365)):
     except Exception as e:
         logger.error(f"因子贡献度分析失败: {e}")
         return {"contributions": {}}
+
+
+# ========== 用户设置 ==========
+
+SETTINGS_FILE = Path(__file__).parent / "cache" / "user_settings.json"
+
+
+def _default_settings() -> dict:
+    """默认用户设置"""
+    return {
+        "default_preset": "balanced",
+        "default_days": 250,
+        "default_symbols": "",
+        "notifications": {
+            "signals": True,
+            "trades": True,
+            "alerts": True,
+            "daily_report": True,
+        },
+        "theme": "dark",
+        "language": "zh",
+    }
+
+
+@app.get("/api/settings", dependencies=[Security(verify_api_key)])
+async def get_settings():
+    """获取用户设置"""
+    try:
+        if SETTINGS_FILE.exists():
+            return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        return _default_settings()
+    except Exception as e:
+        logger.error(f"读取设置失败: {e}")
+        return _default_settings()
+
+
+@app.post("/api/settings")
+async def save_settings(request: Request, _=Security(verify_api_key)):
+    """保存用户设置"""
+    try:
+        data = await request.json()
+
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=400, detail="设置必须是 JSON 对象")
+
+        # Merge with defaults
+        settings = _default_settings()
+        settings.update(data)
+
+        SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SETTINGS_FILE.write_text(
+            json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+        return {"status": "ok", "settings": settings}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 from fastapi import WebSocket, WebSocketDisconnect
