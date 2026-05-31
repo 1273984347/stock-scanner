@@ -42,6 +42,7 @@
     <div class="nav-tab" data-panel="audit">决策审计</div>
     <div class="nav-tab" data-panel="backtest">策略回测</div>
     <div class="nav-tab" data-panel="reports">历史报告</div>
+    <div class="nav-tab" data-panel="signals">信号追踪</div>
   </div>
 
   <!-- 组合优化面板 -->
@@ -199,6 +200,36 @@
           </table>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- 信号追踪面板 -->
+  <div class="panel" id="panel-signals">
+    <div class="portfolio-grid">
+      <div class="portfolio-card">
+        <div class="metric-label">总信号数</div>
+        <div class="metric-value" id="sigTotal">--</div>
+      </div>
+      <div class="portfolio-card">
+        <div class="metric-label">准确率</div>
+        <div class="metric-value" id="sigAccuracy">--</div>
+      </div>
+      <div class="portfolio-card">
+        <div class="metric-label">平均 5 日收益</div>
+        <div class="metric-value" id="sigAvgReturn">--</div>
+      </div>
+      <div class="portfolio-card">
+        <div class="metric-label">盈亏比</div>
+        <div class="metric-value" id="sigPLRatio">--</div>
+      </div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div class="metric-label">最近信号</div>
+      <div class="table-wrap"><table id="signalTable"><thead><tr><th>日期</th><th>代码</th><th>信号</th><th>置信度</th><th>IC分数</th><th>5日收益</th><th>结果</th></tr></thead><tbody id="signalBody"></tbody></table></div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px">
+      <div class="metric-label">按来源分组</div>
+      <canvas id="signalSourceChart"></canvas>
     </div>
   </div>
 </div>

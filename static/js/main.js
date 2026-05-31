@@ -11,6 +11,7 @@ import { ExposuresRenderer } from './renderers/exposures.js';
 import { AuditRenderer } from './renderers/audit.js';
 import { BacktestRenderer } from './renderers/backtest.js';
 import { EvalRenderer } from './renderers/eval.js';
+import { SignalsRenderer } from './renderers/signals.js';
 
 const renderers = {};
 
@@ -31,9 +32,11 @@ async function init() {
   renderers.audit = new AuditRenderer();
   renderers.backtest = new BacktestRenderer();
   renderers.eval = new EvalRenderer();
+  renderers.signals = new SignalsRenderer();
 
   Object.values(renderers).forEach(r => r.mount?.());
   renderers.backtest.init();
+  renderers.signals.fetch();
 
   wsManager.onStatusChange((status) => {
     updateWsIndicator(status);
@@ -51,16 +54,18 @@ async function init() {
     document.body.classList.add('loading-active');
     const preset = document.getElementById('presetSelect')?.value || 'balanced';
     try {
-      const [dashRes, scanRes, riskRes, auditRes] = await apiClient.all([
+      const [dashRes, scanRes, riskRes, auditRes, sigRes] = await apiClient.all([
         ['/api/dashboard', { preset }],
         ['/api/scan', { preset }],
         ['/api/risk', {}],
         ['/api/audit', { limit: 15 }],
+        ['/api/signals', { days: 30 }],
       ]);
       if (dashRes) stateManager.updateAll({ dashboard: dashRes });
       if (scanRes) stateManager.updateAll({ scan: scanRes });
       if (riskRes) stateManager.updateAll({ risk: riskRes });
       if (auditRes) stateManager.updateAll({ audit: auditRes });
+      if (sigRes) stateManager.updateAll({ signals: sigRes });
     } catch (e) {
       console.error('[刷新] 加载失败:', e);
       alert('数据加载失败，请稍后重试');

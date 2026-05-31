@@ -10,6 +10,7 @@
 - GET /api/risk      完整风控评估
 - GET /api/exposures 因子暴露追踪
 - GET /api/dashboard 仪表盘汇总数据
+- GET /api/signals   信号准确率追踪
 - GET /api/audit     审计日志
 - GET /api/audit/{id} 审计详情
 - POST /api/backtest 回测
@@ -663,6 +664,46 @@ async def dashboard(preset: str = Query("balanced", description="策略预设"))
     except Exception as e:
         logger.error(f"仪表盘数据失败: {e}")
         raise HTTPException(status_code=500, detail="内部服务器错误")
+
+
+@app.get("/api/signals", dependencies=[Security(verify_api_key)])
+async def signal_accuracy(days: int = Query(default=30, ge=1, le=365)):
+    """信号准确率追踪"""
+    cached = _cache_get("signals", max_age=1800)
+    if cached is not None:
+        return cached
+
+    try:
+        from lib.signal_tracker import SignalTracker
+        tracker = SignalTracker()
+        tracker.update_actual_returns()
+        summary = tracker.evaluate_signals(days=days)
+        recent = tracker.get_recent_signals(days=7)
+
+        # 按 source 分组统计
+        by_source = {}
+        for s in recent:
+            src = s.get("source", "unknown")
+            if src not in by_source:
+                by_source[src] = {"count": 0, "correct": 0}
+            by_source[src]["count"] += 1
+            if s.get("is_correct"):
+                by_source[src]["correct"] += 1
+        for src in by_source:
+            cnt = by_source[src]["count"]
+            by_source[src]["accuracy"] = round(by_source[src]["correct"] / cnt, 4) if cnt > 0 else 0
+
+        result = {
+            "summary": summary,
+            "recent": recent,
+            "by_source": by_source,
+            "timestamp": datetime.now().isoformat(),
+        }
+        _cache_set("signals", result)
+        return result
+    except Exception as e:
+        logger.error(f"信号准确率查询失败: {e}")
+        return {"summary": {}, "recent": [], "by_source": {}}
 
 
 @app.get("/api/audit", dependencies=[Security(verify_api_key)])
