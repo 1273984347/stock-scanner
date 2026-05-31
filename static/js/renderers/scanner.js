@@ -1,8 +1,9 @@
 import { stateManager } from '../state.js';
+import { KlineRenderer } from './kline.js';
 
 /**
  * ScannerRenderer — 选股结果面板渲染器
- * 负责策略 Tab 切换 + 表格 + 信号分布 + 评分图表
+ * 负责策略 Tab 切换 + 表格 + 信号分布 + 评分图表 + K线图
  */
 class ScannerRenderer {
   constructor() {
@@ -12,6 +13,8 @@ class ScannerRenderer {
     this._signalChart = null;
     this._factorChart = null;
     this._heatmapChart = null;
+    this._kline = new KlineRenderer();
+    this._currentKlineCode = '';
     this._unsubscribers = [];
   }
 
@@ -32,6 +35,18 @@ class ScannerRenderer {
       })
     );
     this._loadSectorHeatmap();
+    this._setupKlineDays();
+  }
+
+  _setupKlineDays() {
+    const sel = document.getElementById('klineDays');
+    if (sel) {
+      sel.addEventListener('change', () => {
+        if (this._currentKlineCode) {
+          this._kline.loadKline(this._currentKlineCode, parseInt(sel.value, 10));
+        }
+      });
+    }
   }
 
   async _loadSectorHeatmap() {
@@ -154,11 +169,26 @@ class ScannerRenderer {
       head.appendChild(headRow);
       data.forEach(row => {
         const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
         cols.forEach(c => {
           const td = document.createElement('td');
           const val = row[c];
           td.textContent = val == null ? '--' : typeof val === 'number' ? (Number.isInteger(val) ? String(val) : val.toFixed(2)) : String(val);
           tr.appendChild(td);
+        });
+        // Click row to load K-line chart
+        tr.addEventListener('click', () => {
+          const code = row['代码'] || row['code'] || '';
+          if (code) {
+            this._currentKlineCode = String(code);
+            const title = document.getElementById('klineTitle');
+            const name = row['名称'] || row['name'] || '';
+            if (title) title.textContent = name ? `${name} (${code})` : code;
+            const section = document.getElementById('klineSection');
+            if (section) section.style.display = '';
+            const days = parseInt(document.getElementById('klineDays')?.value || '120', 10);
+            this._kline.loadKline(this._currentKlineCode, days);
+          }
         });
         body.appendChild(tr);
       });
@@ -232,6 +262,7 @@ class ScannerRenderer {
     this._signalChart?.destroy();
     this._factorChart?.destroy();
     this._heatmapChart?.destroy();
+    this._kline?.destroy();
   }
 }
 

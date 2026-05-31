@@ -86,6 +86,19 @@
       <div class="metric-label">板块热力图（Top 30）</div>
       <canvas id="sectorHeatmapChart" style="max-height:400px"></canvas>
     </div>
+    <div class="portfolio-card" id="klineSection" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div class="metric-label" style="margin:0">K线图 — <span id="klineTitle">--</span></div>
+        <select id="klineDays" style="padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:12px">
+          <option value="60">60日</option>
+          <option value="120" selected>120日</option>
+          <option value="250">250日</option>
+        </select>
+      </div>
+      <div style="position:relative;height:300px">
+        <canvas id="klineChart"></canvas>
+      </div>
+    </div>
     <div class="portfolio-grid">
       <div class="portfolio-card"><div class="metric-label">技术信号分布</div><canvas id="signalChart"></canvas></div>
       <div class="portfolio-card"><div class="metric-label">综合评分对比</div><canvas id="factorChart"></canvas></div>

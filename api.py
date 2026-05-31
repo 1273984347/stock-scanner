@@ -18,6 +18,7 @@
 - POST /api/backtest 回测
 - POST /api/backtest/compare 多策略对比回测
 - GET /api/factor-contribution 因子贡献度分析
+- GET /api/kline/{code}  K线数据（OHLCV）
 - GET /api/trade-history 交易历史（支持按时间/股票/盈亏筛选排序）
 """
 
@@ -1489,6 +1490,34 @@ async def sector_heatmap(top_n: int = Query(default=50, ge=10, le=200)):
     except Exception as e:
         logger.error(f"板块热力图数据失败: {e}")
         return {"sectors": []}
+
+
+@app.get("/api/kline/{code}", dependencies=[Security(verify_api_key)])
+async def kline_data(code: str, days: int = Query(default=120, ge=30, le=500)):
+    """K线数据"""
+    code = _validate_stock_code(code)
+    try:
+        from lib.data_layer import get_stock_hist
+        df = get_stock_hist(code, days=days)
+
+        if df.empty:
+            return {"data": [], "code": code}
+
+        kline = []
+        for _, row in df.iterrows():
+            kline.append({
+                "date": str(row.get("date", "")),
+                "open": float(row.get("open", 0)),
+                "high": float(row.get("high", 0)),
+                "low": float(row.get("low", 0)),
+                "close": float(row.get("close", 0)),
+                "volume": float(row.get("volume", 0)),
+            })
+
+        return {"data": kline, "code": code}
+    except Exception as e:
+        logger.error(f"K线数据获取失败 {code}: {e}")
+        return {"data": [], "code": code}
 
 
 @app.get("/api/trade-history", dependencies=[Security(verify_api_key)])
