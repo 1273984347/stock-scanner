@@ -322,3 +322,21 @@ class TestMarginData:
         _MARGIN_CACHE["test"] = "value"
         clear_cache()
         assert len(_MARGIN_CACHE) == 0
+
+
+# ========== backtest deprecation ==========
+
+class TestBacktestDeprecation:
+    def test_rebalance_deprecation_warning(self):
+        """rebalance.run_rebalance_backtest should emit DeprecationWarning"""
+        import warnings
+        from backtest.rebalance import run_rebalance_backtest
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            try:
+                run_rebalance_backtest(symbols=["000001"], days=60)
+            except Exception:
+                pass  # May fail due to missing data, we just want the warning
+            deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+            assert len(deprecation_warnings) > 0
+            assert "deprecated" in str(deprecation_warnings[0].message).lower()
