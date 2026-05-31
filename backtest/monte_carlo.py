@@ -219,3 +219,80 @@ def format_bootstrap(result: BootstrapResult) -> str:
 | 夏普比率 | {result.sharpe_mean:.3f} | {result.sharpe_ci_lower:.3f} | {result.sharpe_ci_upper:.3f} |
 | 胜率 | {result.win_rate_mean:.1%} | {result.win_rate_ci_lower:.1%} | {result.win_rate_ci_upper:.1%} |
 """
+
+
+@dataclass
+class CostSensitivityResult:
+    """成本敏感性分析结果"""
+    scenarios: List[Dict]
+    # 每个场景: {"label": str, "commission": float, "slippage": float, "total_return": float, "sharpe": float}
+
+
+def run_cost_sensitivity(
+    trades: List[Dict],
+    base_commission: float = 0.00025,
+    base_slippage: float = 0.002,
+) -> CostSensitivityResult:
+    """交易成本敏感性分析
+
+    Args:
+        trades: 交易记录列表
+        base_commission: 基础佣金率
+        base_slippage: 基础滑点率
+
+    Returns:
+        CostSensitivityResult
+    """
+    if not trades:
+        return CostSensitivityResult(scenarios=[])
+
+    # 定义成本场景
+    scenarios_def = [
+        ("零成本", 0, 0),
+        ("低成本", base_commission * 0.5, base_slippage * 0.5),
+        ("基准", base_commission, base_slippage),
+        ("高成本", base_commission * 2, base_slippage * 2),
+        ("极高成本", base_commission * 5, base_slippage * 5),
+    ]
+
+    scenarios = []
+    for label, comm, slip in scenarios_def:
+        # 调整每笔交易的收益
+        adjusted_pnls = []
+        for t in trades:
+            pnl = t.get("pnl_pct", 0)
+            # 每笔交易扣除佣金和滑点（买卖各一次）
+            cost = comm * 2 + slip * 2
+            adjusted_pnls.append(pnl - cost)
+
+        total_return = float(np.sum(adjusted_pnls))
+        sharpe = _calc_sharpe(np.array(adjusted_pnls))
+
+        scenarios.append({
+            "label": label,
+            "commission": comm,
+            "slippage": slip,
+            "cost_per_trade": round((comm * 2 + slip * 2) * 100, 3),
+            "total_return": round(total_return, 4),
+            "sharpe": round(sharpe, 3),
+        })
+
+    return CostSensitivityResult(scenarios=scenarios)
+
+
+def format_cost_sensitivity(result: CostSensitivityResult) -> str:
+    """格式化成本敏感性结果"""
+    lines = [
+        "## 交易成本敏感性分析",
+        "",
+        "| 场景 | 佣金 | 滑点 | 单笔成本 | 总收益 | 夏普 |",
+        "|------|------|------|----------|--------|------|",
+    ]
+
+    for s in result.scenarios:
+        lines.append(
+            f"| {s['label']} | {s['commission']:.4%} | {s['slippage']:.3%} | "
+            f"{s['cost_per_trade']:.3f}% | {s['total_return']:.2%} | {s['sharpe']:.3f} |"
+        )
+
+    return "\n".join(lines)
