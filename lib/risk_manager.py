@@ -137,8 +137,8 @@ class RiskManager:
             RiskRule(
                 name="industry_concentration",
                 check_fn=self._check_industry_concentration,
-                action="WARN",
-                description=f"行业集中度超过 {self.config.max_industry_exposure:.0%} 预警"
+                action="BLOCK",
+                description=f"行业集中度 >25% 预警，>{self.config.max_industry_exposure:.0%} 禁止新开仓"
             ),
             RiskRule(
                 name="daily_loss_limit",
@@ -201,12 +201,21 @@ class RiskManager:
         # Generate actions from alerts
         for alert in self.alerts:
             if alert.level == "CRITICAL":
-                action = RiskAction(
-                    action_type="STOP_TRADING" if alert.rule_name in ("max_drawdown", "weekly_loss_limit") else "REDUCE_POSITION",
-                    target="ALL",
-                    reason=alert.message,
-                    severity="CRITICAL"
-                )
+                if alert.rule_name == "industry_concentration":
+                    # 行业集中度超限：禁止该行业新开仓
+                    action = RiskAction(
+                        action_type="BLOCK_NEW_POSITIONS",
+                        target=alert.details.get("industry", "unknown"),
+                        reason=alert.message,
+                        severity="CRITICAL"
+                    )
+                else:
+                    action = RiskAction(
+                        action_type="STOP_TRADING" if alert.rule_name in ("max_drawdown", "weekly_loss_limit") else "REDUCE_POSITION",
+                        target="ALL",
+                        reason=alert.message,
+                        severity="CRITICAL"
+                    )
                 self.actions.append(action)
                 self.executor.execute(action)
             elif alert.level == "WARNING" and alert.rule_name == "single_stock_loss":
@@ -262,6 +271,7 @@ class RiskManager:
         return alerts
 
     def _check_industry_concentration(self, ctx: dict) -> List[RiskAlert]:
+        """行业集中度检查：>25% WARNING，>30% BLOCK"""
         industry_map = ctx.get("industry_map", {})
         if not industry_map:
             return []
@@ -277,9 +287,17 @@ class RiskManager:
                 alerts.append(RiskAlert(
                     timestamp=datetime.now().isoformat(),
                     rule_name="industry_concentration",
+                    level="CRITICAL",
+                    message=f"行业 {ind} 占比 {w:.1%} 超过 {self.config.max_industry_exposure:.0%} 限制，禁止新开仓",
+                    details={"industry": ind, "weight": w, "action": "BLOCK"},
+                ))
+            elif w > 0.25:
+                alerts.append(RiskAlert(
+                    timestamp=datetime.now().isoformat(),
+                    rule_name="industry_concentration",
                     level="WARNING",
-                    message=f"行业 {ind} 集中度 {w:.2%} 超过 {self.config.max_industry_exposure:.0%}",
-                    details={"industry": ind, "weight": w}
+                    message=f"行业 {ind} 占比 {w:.1%} 接近 {self.config.max_industry_exposure:.0%} 限制",
+                    details={"industry": ind, "weight": w},
                 ))
         return alerts
 
