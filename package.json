@@ -1,8 +1,19 @@
 {
   "name": "stock-scanner",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "stock-scanner with HTTP server for static files",
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "serve": "npx serve static -p 8080"
+  },
+  "type": "module",
+  "dependencies": {
+    "zustand": "^4.5.0",
+    "lightweight-charts": "^4.1.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
   }
 }
