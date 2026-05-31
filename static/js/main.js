@@ -114,6 +114,7 @@ async function init() {
   });
 
   setupTabSwitching();
+  initKeyboardShortcuts();
 
   document.getElementById('presetSelect')?.addEventListener('change', () => {
     document.getElementById('refreshBtn')?.click();
@@ -350,6 +351,79 @@ function renderStockFactors(r) {
   panel.appendChild(container);
 }
 
+// Keyboard shortcuts
+function initKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+      if (e.key === 'Escape') { e.target.blur(); }
+      return;
+    }
+    switch (e.key) {
+      case 'j': e.preventDefault(); navigateTab(1); break;
+      case 'k': e.preventDefault(); navigateTab(-1); break;
+      case '/': e.preventDefault(); document.querySelector('input[type="search"], #globalSearch')?.focus(); break;
+      case 'Escape':
+        e.preventDefault();
+        document.querySelectorAll('details[open]').forEach(d => d.removeAttribute('open'));
+        document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+        document.querySelectorAll('.modal.active').forEach(m => m.classList.remove('active'));
+        break;
+      case 'r':
+        if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); document.getElementById('refreshBtn')?.click(); }
+        break;
+      case '?': e.preventDefault(); showShortcutsHelp(); break;
+    }
+  });
+}
+
+function navigateTab(direction) {
+  const tabs = [...document.querySelectorAll('.nav-tab')];
+  const activeIdx = tabs.findIndex(t => t.classList.contains('active'));
+  const nextIdx = Math.max(0, Math.min(tabs.length - 1, activeIdx + direction));
+  if (nextIdx !== activeIdx) tabs[nextIdx]?.click();
+}
+
+function showShortcutsHelp() {
+  const existing = document.getElementById('shortcutsHelp');
+  if (existing) { existing.style.display = existing.style.display === 'none' ? 'block' : 'none'; return; }
+
+  const shortcuts = [
+    ['j', '下一个 tab'], ['k', '上一个 tab'], ['/', '聚焦搜索'],
+    ['Esc', '关闭弹窗'], ['r', '刷新数据'], ['?', '显示此帮助'],
+  ];
+  const div = document.createElement('div');
+  div.id = 'shortcutsHelp';
+  div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;z-index:1000;min-width:300px;box-shadow:0 8px 32px rgba(0,0,0,0.3)';
+  const title = document.createElement('h3');
+  title.style.cssText = 'margin:0 0 12px';
+  title.textContent = '键盘快捷键';
+  div.appendChild(title);
+  const table = document.createElement('table');
+  table.style.cssText = 'width:100%;font-size:13px';
+  shortcuts.forEach(([key, desc]) => {
+    const tr = document.createElement('tr');
+    const tdKey = document.createElement('td');
+    const kbd = document.createElement('kbd');
+    kbd.textContent = key;
+    tdKey.appendChild(kbd);
+    const tdDesc = document.createElement('td');
+    tdDesc.textContent = desc;
+    tr.appendChild(tdKey);
+    tr.appendChild(tdDesc);
+    table.appendChild(tr);
+  });
+  div.appendChild(table);
+  const footer = document.createElement('div');
+  footer.style.cssText = 'text-align:right;margin-top:12px';
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '关闭';
+  closeBtn.style.cssText = 'padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer';
+  closeBtn.addEventListener('click', () => div.remove());
+  footer.appendChild(closeBtn);
+  div.appendChild(footer);
+  document.body.appendChild(div);
+}
+
 window.openAuditDetail = async function(id) {
   document.getElementById('auditModal').classList.add('active');
   document.getElementById('auditModalTitle').textContent = '扫描审计 #' + id;
@@ -413,14 +487,6 @@ document.addEventListener('DOMContentLoaded', () => {
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) overlay.classList.remove('active');
     });
-  });
-  // ESC 键关闭弹窗
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      document.querySelectorAll('.modal-overlay.active').forEach(modal => {
-        modal.classList.remove('active');
-      });
-    }
   });
   init();
 });
