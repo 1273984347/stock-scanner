@@ -1,4 +1,5 @@
 import { stateManager } from './state.js';
+import { sendBrowserNotification } from './notifications.js';
 
 /**
  * WebSocketManager — WebSocket 连接管理 + 心跳 + 断线重连
@@ -94,6 +95,18 @@ class WebSocketManager {
           // 单独分发 position_pnl 以确保订阅者收到实时更新
           if (msg.data?.position_pnl) {
             stateManager.set('position_pnl', msg.data.position_pnl);
+            // 盈亏告警通知
+            try {
+              Object.entries(msg.data.position_pnl).forEach(([code, pnl]) => {
+                if (pnl.pnl_pct < -0.05) {
+                  sendBrowserNotification(`${code} 亏损告警`, `当前亏损 ${(pnl.pnl_pct * 100).toFixed(1)}%`, `alert-${code}`);
+                }
+              });
+            } catch (_) { /* ignore notification errors */ }
+          }
+          // 新信号通知
+          if (msg.data?.signal_summary?.total_signals > 0) {
+            sendBrowserNotification('新信号', `${msg.data.signal_summary.total_signals} 条新信号`, 'signals');
           }
           break;
         case 'ping':

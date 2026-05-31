@@ -3,6 +3,7 @@ import { stateManager } from './state.js';
 import { apiClient } from './api.js';
 import { pollingController } from './polling.js';
 import { getThemeColor } from './theme.js';
+import { initNotifications } from './notifications.js';
 import { MetricsRenderer } from './renderers/metrics.js';
 import { PortfolioRenderer } from './renderers/portfolio.js';
 import { ScannerRenderer } from './renderers/scanner.js';
@@ -116,6 +117,7 @@ async function init() {
   setupTabSwitching();
   initKeyboardShortcuts();
   initExportButtons();
+  initNotifications();
 
   document.getElementById('presetSelect')?.addEventListener('change', () => {
     document.getElementById('refreshBtn')?.click();
