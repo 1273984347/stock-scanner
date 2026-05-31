@@ -292,6 +292,10 @@ input:focus { outline: none; border-color: var(--accent); }
   .topbar select, .topbar button { padding: 5px 10px; font-size: 12px; }
 }
 
+/* Tooltip 增强 */
+[title] { cursor: help; }
+.metric-card[title]:hover { border-color: var(--accent); }
+
 /* 工具类 */
 .text-up { color: var(--up); }
 .text-down { color: var(--down); }

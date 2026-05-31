@@ -18,38 +18,38 @@
       <option value="aggressive">激进策略</option>
       <option value="conservative">保守策略</option>
     </select>
-    <button id="themeToggle" class="secondary" title="切换主题">🌙</button>
-    <button id="enableNotifications" class="secondary" style="display:none" title="开启通知">🔔</button>
+    <button id="themeToggle" class="secondary" title="切换暗色/亮色主题">🌙</button>
+    <button id="enableNotifications" class="secondary" style="display:none" title="开启浏览器推送通知">🔔</button>
     <button id="exportConfigBtn" class="secondary" title="导出配置">导出</button>
     <button id="importConfigBtn" class="secondary" title="导入配置">导入</button>
     <input type="file" id="configFileInput" accept=".json" style="display:none">
-    <button id="refreshBtn" class="primary">刷新数据</button>
+    <button id="refreshBtn" class="primary" title="刷新所有数据 (快捷键: r)">刷新数据</button>
   </div>
 
   <!-- 6 个核心指标 -->
   <div class="metrics">
-    <div class="metric-card"><div class="metric-label">市场情绪</div><div class="metric-value" id="sentiment">--</div><div class="metric-sub" id="sentimentLabel">加载中</div></div>
-    <div class="metric-card"><div class="metric-label">宏观门控</div><div class="metric-value" id="macroState">--</div><div class="metric-sub" id="macroLabel">加载中</div></div>
-    <div class="metric-card"><div class="metric-label">建议仓位</div><div class="metric-value" id="exposure">--</div><div class="metric-sub" id="exposureLabel">加载中</div></div>
-    <div class="metric-card"><div class="metric-label">组合夏普</div><div class="metric-value" id="sharpe">--</div><div class="metric-sub">预期夏普比</div></div>
-    <div class="metric-card"><div class="metric-label">持仓数</div><div class="metric-value" id="nPositions">--</div><div class="metric-sub">优化组合</div></div>
-    <div class="metric-card"><div class="metric-label">候选股</div><div class="metric-value" id="totalCand">--</div><div class="metric-sub" id="candLabel">全部策略</div></div>
+    <div class="metric-card" title="市场情绪指数：基于量价、资金流、北向资金综合计算，范围 -1 到 1"><div class="metric-label">市场情绪</div><div class="metric-value" id="sentiment">--</div><div class="metric-sub" id="sentimentLabel">加载中</div></div>
+    <div class="metric-card" title="宏观门控：根据市场状态决定仓位上限。BULL=85%, BEAR=40%, VOLATILE=50%"><div class="metric-label">宏观门控</div><div class="metric-value" id="macroState">--</div><div class="metric-sub" id="macroLabel">加载中</div></div>
+    <div class="metric-card" title="建议仓位：基于宏观门控和风险预算计算的总仓位比例"><div class="metric-label">建议仓位</div><div class="metric-value" id="exposure">--</div><div class="metric-sub" id="exposureLabel">加载中</div></div>
+    <div class="metric-card" title="组合夏普：优化组合的预期夏普比率，>1.0 为良好"><div class="metric-label">组合夏普</div><div class="metric-value" id="sharpe">--</div><div class="metric-sub">预期夏普比</div></div>
+    <div class="metric-card" title="持仓数：当前优化组合中的股票数量"><div class="metric-label">持仓数</div><div class="metric-value" id="nPositions">--</div><div class="metric-sub">优化组合</div></div>
+    <div class="metric-card" title="候选股：所有策略扫描出的候选股票总数"><div class="metric-label">候选股</div><div class="metric-value" id="totalCand">--</div><div class="metric-sub" id="candLabel">全部策略</div></div>
   </div>
 
   <!-- Tab 导航 -->
   <div class="nav-tabs">
-    <div class="nav-tab active" data-panel="portfolio">组合优化</div>
-    <div class="nav-tab" data-panel="scanner">选股结果</div>
-    <div class="nav-tab" data-panel="risk">风控中心</div>
-    <div class="nav-tab" data-panel="positions">持仓概况</div>
-    <div class="nav-tab" data-panel="exposures">因子暴露</div>
-    <div class="nav-tab" data-panel="eval">因子评估</div>
-    <div class="nav-tab" data-panel="audit">决策审计</div>
-    <div class="nav-tab" data-panel="backtest">策略回测</div>
-    <div class="nav-tab" data-panel="reports">历史报告</div>
-    <div class="nav-tab" data-panel="signals">信号追踪</div>
-    <div class="nav-tab" data-panel="trades">交易历史</div>
-    <div class="nav-tab" data-panel="settings">设置</div>
+    <div class="nav-tab active" data-panel="portfolio" title="显示优化后的持仓配置和行业暴露">组合优化</div>
+    <div class="nav-tab" data-panel="scanner" title="各策略的选股结果，点击股票查看K线">选股结果</div>
+    <div class="nav-tab" data-panel="risk" title="风控评估：VaR、相关性、行业集中度、压力测试">风控中心</div>
+    <div class="nav-tab" data-panel="positions" title="持仓详情、盈亏分布、交易历史">持仓概况</div>
+    <div class="nav-tab" data-panel="exposures" title="因子暴露追踪：各因子的权重分布">因子暴露</div>
+    <div class="nav-tab" data-panel="eval" title="因子评估：IC值、相关性、权重雷达图、散点图">因子评估</div>
+    <div class="nav-tab" data-panel="audit" title="决策审计：每次扫描的详细决策记录">决策审计</div>
+    <div class="nav-tab" data-panel="backtest" title="策略回测：净值曲线、交易标记、成本敏感性、蒙特卡洛">策略回测</div>
+    <div class="nav-tab" data-panel="reports" title="历史报告和推送日志">历史报告</div>
+    <div class="nav-tab" data-panel="signals" title="信号追踪：准确率、盈亏比、最近信号列表">信号追踪</div>
+    <div class="nav-tab" data-panel="trades" title="交易历史：按时间/股票/盈亏筛选排序">交易历史</div>
+    <div class="nav-tab" data-panel="settings" title="用户设置：默认参数、通知偏好、主题切换">设置</div>
   </div>
 
   <!-- 组合优化面板 -->
