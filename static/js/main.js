@@ -4,6 +4,7 @@ import { apiClient } from './api.js';
 import { pollingController } from './polling.js';
 import { getThemeColor } from './theme.js';
 import { initNotifications } from './notifications.js';
+import { initErrorTracker } from './error_tracker.js';
 import { Onboarding } from './onboarding.js';
 import { MetricsRenderer } from './renderers/metrics.js';
 import { PortfolioRenderer } from './renderers/portfolio.js';
@@ -60,6 +61,7 @@ function updateWsIndicator(status) {
 async function init() {
   console.log('[App] 初始化...');
 
+  initErrorTracker();
   initTheme();
   document.getElementById('themeToggle')?.addEventListener('click', toggleTheme);
 

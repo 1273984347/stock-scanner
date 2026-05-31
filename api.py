@@ -2089,6 +2089,25 @@ async def save_settings(request: Request, _=Security(verify_api_key)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/errors")
+async def report_frontend_error(request: Request):
+    """接收前端错误上报"""
+    try:
+        data = await request.json()
+        logger.warning(f"Frontend error: {data.get('type')} - {data.get('message')} at {data.get('filename')}")
+
+        # 保存到文件
+        error_file = Path("cache/frontend_errors.jsonl")
+        error_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(error_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(data, ensure_ascii=False) + "\n")
+
+        return {"status": "ok"}
+    except Exception:
+        return {"status": "ok"}  # 不要让错误上报失败
+
+
 from fastapi import WebSocket, WebSocketDisconnect
 import asyncio
 
