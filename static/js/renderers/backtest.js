@@ -14,6 +14,7 @@ class BacktestRenderer {
       cmpBtn.addEventListener('click', () => this._runCompare());
     }
     this._loadFactorContribution();
+    this._loadAttribution();
   }
 
   async _runBacktest() {
@@ -480,6 +481,63 @@ class BacktestRenderer {
         plugins: { legend: { display: false } },
         scales: {
           x: { title: { display: true, text: '总贡献(%)' } },
+        },
+      },
+    });
+  }
+
+  async _loadAttribution() {
+    try {
+      const res = await fetch('/api/attribution?days=30', {
+        headers: { 'X-API-Key': sessionStorage.getItem('api_key') || 'dev' },
+      }).then(r => r.json());
+      if (res && res.attribution) this._renderWaterfall(res);
+    } catch (e) {
+      console.error('[Backtest] attribution failed:', e);
+    }
+  }
+
+  _renderWaterfall(data) {
+    const canvas = document.getElementById('attributionChart');
+    if (!canvas) return;
+    if (this._charts.waterfall) this._charts.waterfall.destroy();
+
+    const items = data.attribution || [];
+    if (items.length === 0) return;
+
+    const labels = items.map(i => i.label);
+    const values = items.map(i => i.value);
+    const colors = values.map(v => v >= 0 ? 'rgba(80,200,120,0.8)' : 'rgba(220,80,80,0.8)');
+
+    // Add total bar
+    labels.push('总计');
+    values.push(data.total_return || 0);
+    colors.push('rgba(79,140,255,0.8)');
+
+    this._charts.waterfall = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: '贡献(%)',
+          data: values,
+          backgroundColor: colors,
+          borderWidth: 0,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ctx.parsed.y.toFixed(2) + '%',
+            },
+          },
+        },
+        scales: {
+          x: { ticks: { font: { size: 11 } } },
+          y: { title: { display: true, text: '收益贡献(%)' } },
         },
       },
     });

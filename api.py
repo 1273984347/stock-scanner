@@ -20,6 +20,7 @@
 - GET /api/factor-contribution 因子贡献度分析
 - GET /api/kline/{code}  K线数据（OHLCV）
 - GET /api/trade-history 交易历史（支持按时间/股票/盈亏筛选排序）
+- GET /api/attribution 收益归因分解（按信号来源瀑布图）
 """
 
 from fastapi import FastAPI, HTTPException, Query, Security, Request
@@ -1657,6 +1658,53 @@ async def export_trades(days: int = Query(default=30, ge=1, le=365)):
     except Exception as e:
         logger.error(f"导出交易 CSV 失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/attribution", dependencies=[Security(verify_api_key)])
+async def return_attribution(days: int = Query(default=30, ge=1, le=365)):
+    """收益归因分解（按信号来源瀑布图）"""
+    cached = _cache_get("attribution", max_age=3600)
+    if cached is not None:
+        return cached
+
+    try:
+        from lib.trade_logger import TradeLogger
+        import numpy as np
+
+        tl = TradeLogger()
+        trades = tl.get_recent_trades(days=days)
+
+        if not trades:
+            return {"attribution": [], "total_return": 0}
+
+        # 按信号来源分组计算贡献
+        by_source = {}
+        for t in trades:
+            src = t.get("signal_source", "") or t.get("source", "unknown")
+            pnl = t.get("pnl_pct", 0)
+            if src not in by_source:
+                by_source[src] = 0
+            by_source[src] += pnl
+
+        # 构建瀑布图数据（按贡献绝对值排序）
+        total = sum(by_source.values())
+        attribution = []
+        for src, contribution in sorted(by_source.items(), key=lambda x: -abs(x[1])):
+            attribution.append({
+                "label": src,
+                "value": round(contribution * 100, 2),
+                "type": "factor",
+            })
+
+        result = {
+            "attribution": attribution,
+            "total_return": round(total * 100, 2),
+        }
+        _cache_set("attribution", result)
+        return result
+    except Exception as e:
+        logger.error(f"收益归因失败: {e}")
+        return {"attribution": [], "total_return": 0}
 
 
 @app.get("/api/factor-contribution", dependencies=[Security(verify_api_key)])
