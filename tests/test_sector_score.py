@@ -48,3 +48,83 @@ class TestSectorScore:
         if len(scores) >= 2:
             for i in range(len(scores) - 1):
                 assert scores[i].total_score >= scores[i + 1].total_score
+
+
+class TestScorePureFunctions:
+    """_score_* 纯函数单元测试"""
+
+    def test_score_return_median(self):
+        """中位数收益应约 12.5 分（50th 百分位 × 25）"""
+        from lib.sector_score import _score_return
+        all_returns = [0.01, 0.02, 0.03, 0.04, 0.05]
+        score = _score_return(0.03, all_returns)
+        assert 10 <= score <= 15
+
+    def test_score_return_best(self):
+        """最高收益应约 25 分"""
+        from lib.sector_score import _score_return
+        all_returns = [0.01, 0.02, 0.03, 0.04, 0.05]
+        score = _score_return(0.05, all_returns)
+        assert score == 25.0
+
+    def test_score_return_worst(self):
+        """最低收益应约 5 分"""
+        from lib.sector_score import _score_return
+        all_returns = [0.01, 0.02, 0.03, 0.04, 0.05]
+        score = _score_return(0.01, all_returns)
+        assert score == 5.0
+
+    def test_score_return_empty_list(self):
+        """空列表返回 12.5（默认中位）"""
+        from lib.sector_score import _score_return
+        score = _score_return(0.03, [])
+        assert score == 12.5
+
+    def test_score_volume_high(self):
+        """量比 2.0 应满分 25"""
+        from lib.sector_score import _score_volume
+        score = _score_volume(2.0)
+        assert score == 25.0
+
+    def test_score_volume_zero(self):
+        """量比 0 应 0 分"""
+        from lib.sector_score import _score_volume
+        score = _score_volume(0.0)
+        assert score == 0.0
+
+    def test_score_volume_baseline(self):
+        """量比 0.5 是公式零点，应得 0 分"""
+        from lib.sector_score import _score_volume
+        score = _score_volume(0.5)
+        assert score == 0.0
+
+    def test_score_limit_up_proportional(self):
+        """涨停占比线性评分"""
+        from lib.sector_score import _score_limit_up
+        score = _score_limit_up(5, 100)
+        assert score == 12.5
+
+    def test_score_limit_up_capped(self):
+        """涨停评分上限 25"""
+        from lib.sector_score import _score_limit_up
+        score = _score_limit_up(20, 50)
+        assert score == 25.0
+
+    def test_score_limit_up_zero_block(self):
+        """板块大小为 0 返回 0"""
+        from lib.sector_score import _score_limit_up
+        score = _score_limit_up(5, 0)
+        assert score == 0
+
+    def test_score_leader_percentile(self):
+        """龙头强度按百分位评分"""
+        from lib.sector_score import _score_leader
+        all_returns = [0.01, 0.02, 0.03, 0.04, 0.05]
+        score = _score_leader(0.05, all_returns)
+        assert score == 25.0
+
+    def test_score_leader_empty_list(self):
+        """龙头强度空列表返回 12.5"""
+        from lib.sector_score import _score_leader
+        score = _score_leader(0.03, [])
+        assert score == 12.5
