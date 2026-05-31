@@ -9,6 +9,10 @@ class BacktestRenderer {
     if (btn) {
       btn.addEventListener('click', () => this._runBacktest());
     }
+    const cmpBtn = document.getElementById('btCompareBtn');
+    if (cmpBtn) {
+      cmpBtn.addEventListener('click', () => this._runCompare());
+    }
   }
 
   async _runBacktest() {
@@ -50,6 +54,122 @@ class BacktestRenderer {
     } finally {
       btn.disabled = false; btn.textContent = '运行回测';
     }
+  }
+
+  async _runCompare() {
+    const btn = document.getElementById('btCompareBtn');
+    const symbols = document.getElementById('btSymbols').value.trim();
+    const days = document.getElementById('btDays').value;
+
+    if (!symbols) {
+      document.getElementById('btResult').textContent = '请输入股票代码';
+      return;
+    }
+
+    btn.disabled = true; btn.textContent = '对比中...';
+    document.getElementById('btResult').textContent = '正在运行多策略对比回测，请稍候...';
+
+    try {
+      const res = await fetch(`/api/backtest/compare?symbols=${encodeURIComponent(symbols)}&days=${days}`, {
+        method: 'POST',
+        headers: { 'X-API-Key': sessionStorage.getItem('api_key') || 'dev' },
+        signal: AbortSignal.timeout(180000)
+      }).then(r => r.json());
+
+      if (res.error) {
+        document.getElementById('btResult').textContent = res.error;
+        return;
+      }
+
+      if (res.results && Object.keys(res.results).length > 0) {
+        this._renderCompareMetrics(res.results);
+        this._renderCompareChart(res.results);
+        document.getElementById('btCompareSection').style.display = 'block';
+      } else {
+        document.getElementById('btResult').textContent = '无对比结果';
+      }
+    } catch (e) {
+      document.getElementById('btResult').textContent = '对比出错: ' + e.message;
+    } finally {
+      btn.disabled = false; btn.textContent = '策略对比';
+    }
+  }
+
+  _renderCompareMetrics(results) {
+    const presetLabels = { balanced: '均衡', aggressive: '激进', conservative: '保守' };
+    const container = document.getElementById('btResult');
+    container.textContent = '';
+
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'font-size:13px;line-height:1.8';
+
+    const title = document.createElement('b');
+    title.textContent = '多策略对比';
+    wrapper.appendChild(title);
+    wrapper.appendChild(document.createElement('br'));
+
+    for (const [name, data] of Object.entries(results)) {
+      const m = data.metrics || {};
+      const row = document.createElement('div');
+      const ret = ((m.total_return || 0) * 100).toFixed(2);
+      const dd = (-(m.max_drawdown || 0) * 100).toFixed(2);
+      const sharpe = (m.sharpe || 0).toFixed(2);
+      const wr = ((m.win_rate || 0) * 100).toFixed(1);
+      const nameEl = document.createElement('b');
+      nameEl.textContent = (presetLabels[name] || name) + ': ';
+      const detailText = document.createTextNode(
+        '收益 ' + ret + '% | 回撤 ' + dd + '% | 夏普 ' + sharpe + ' | 胜率 ' + wr + '% | 交易 ' + (data.trade_count || 0) + '次'
+      );
+      row.appendChild(nameEl);
+      row.appendChild(detailText);
+      wrapper.appendChild(row);
+    }
+
+    container.appendChild(wrapper);
+  }
+
+  _renderCompareChart(results) {
+    const canvas = document.getElementById('btCompareChart');
+    if (!canvas) return;
+    if (this._charts.compare) this._charts.compare.destroy();
+
+    const colors = { balanced: '#4f8cff', aggressive: '#ff6b6b', conservative: '#50c878' };
+    const presetLabels = { balanced: '均衡', aggressive: '激进', conservative: '保守' };
+
+    const datasets = [];
+    for (const [name, data] of Object.entries(results)) {
+      if (data.equity_curve && data.equity_curve.length > 0) {
+        datasets.push({
+          label: presetLabels[name] || name,
+          data: data.equity_curve.map(p => p.nav || 1.0),
+          borderColor: colors[name] || '#999',
+          fill: false,
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 2,
+        });
+      }
+    }
+
+    if (datasets.length === 0) return;
+
+    const firstCurve = Object.values(results)[0]?.equity_curve || [];
+    this._charts.compare = new Chart(canvas, {
+      type: 'line',
+      data: { labels: firstCurve.map(p => p.date), datasets },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'top', labels: { font: { size: 11 } } },
+          tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(4) } },
+        },
+        scales: {
+          x: { ticks: { maxTicksLimit: 10, font: { size: 10 } } },
+          y: { title: { display: true, text: '净值' } },
+        },
+      },
+    });
   }
 
   _renderMetrics(res) {

@@ -14,6 +14,7 @@
 - GET /api/audit     审计日志
 - GET /api/audit/{id} 审计详情
 - POST /api/backtest 回测
+- POST /api/backtest/compare 多策略对比回测
 """
 
 from fastapi import FastAPI, HTTPException, Query, Security, Request
@@ -761,24 +762,7 @@ async def run_backtest(
             )
             if not result:
                 return {"error": "回测无结果"}
-            # 提取净值曲线数据用于图表
-            perf_df = result.get("perf_df")
-            equity_curve = []
-            if perf_df is not None and hasattr(perf_df, 'empty') and not perf_df.empty:
-                # 计算归一化净值
-                if "total_value" in perf_df.columns:
-                    tv = perf_df["total_value"].astype(float)
-                    base = tv.iloc[0] if tv.iloc[0] > 0 else 1.0
-                    nav_series = tv / base
-                else:
-                    nav_series = pd.Series([1.0] * len(perf_df))
-
-                for i, (_, row) in enumerate(perf_df.iterrows()):
-                    equity_curve.append({
-                        "date": str(row.get("trade_date", row.get("date", row.name))),
-                        "nav": round(float(nav_series.iloc[i]), 4),
-                        "benchmark": 1.0,  # 基准需要单独计算
-                    })
+            equity_curve = _extract_equity_curve(result)
 
             return {
                 "metrics": result.get("metrics"),
@@ -791,6 +775,62 @@ async def run_backtest(
             }
         except Exception as e:
             logger.error(f"回测失败: {e}")
+            raise HTTPException(status_code=500, detail="内部服务器错误")
+
+
+def _extract_equity_curve(result: dict) -> list:
+    """从回测结果中提取净值曲线数据"""
+    import pandas as pd
+    perf_df = result.get("perf_df")
+    equity_curve = []
+    if perf_df is not None and hasattr(perf_df, 'empty') and not perf_df.empty:
+        if "total_value" in perf_df.columns:
+            tv = perf_df["total_value"].astype(float)
+            base = tv.iloc[0] if tv.iloc[0] > 0 else 1.0
+            nav_series = tv / base
+        else:
+            nav_series = pd.Series([1.0] * len(perf_df))
+
+        for i, (_, row) in enumerate(perf_df.iterrows()):
+            equity_curve.append({
+                "date": str(row.get("trade_date", row.get("date", row.name))),
+                "nav": round(float(nav_series.iloc[i]), 4),
+                "benchmark": 1.0,
+            })
+    return equity_curve
+
+
+@app.post("/api/backtest/compare")
+async def compare_strategies(
+    symbols: str = Query(default="000001,600519"),
+    days: int = Query(default=250, ge=60, le=1000),
+    _=Security(verify_api_key),
+):
+    """多策略对比回测"""
+    async with _backtest_semaphore:
+        try:
+            from backtest.core import run_factor_backtest
+            sym_list = [_validate_stock_code(s.strip()) for s in symbols.split(",") if s.strip()]
+            if len(sym_list) > 20:
+                raise HTTPException(status_code=400, detail="最多支持20只股票")
+
+            presets = ["balanced", "aggressive", "conservative"]
+            results = {}
+            for preset in presets:
+                try:
+                    result = run_factor_backtest(sym_list, days=days, preset=preset)
+                    if result:
+                        results[preset] = {
+                            "metrics": result.get("metrics", {}),
+                            "equity_curve": _extract_equity_curve(result),
+                            "trade_count": result.get("trade_count", 0),
+                        }
+                except Exception as e:
+                    logger.warning(f"策略 {preset} 回测失败: {e}")
+
+            return {"results": results, "symbols": sym_list, "days": days}
+        except Exception as e:
+            logger.error(f"多策略对比回测失败: {e}")
             raise HTTPException(status_code=500, detail="内部服务器错误")
 
 
