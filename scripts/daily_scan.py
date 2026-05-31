@@ -64,9 +64,22 @@ def run_daily_scan(push_feishu: bool = True, extra_symbols: list = None):
         return None
 
     from lib.paper_trading_runner import PaperTradingRunner, TRADE_LOG_DIR
+    from lib.signal_tracker import SignalTracker
 
     runner = PaperTradingRunner(initial_cash=1_000_000, preset="balanced")
     report = runner.run_once()
+
+    # 记录信号到追踪器
+    if report.signals:
+        tracker = SignalTracker()
+        tracker.record_batch(report.signals)
+        tracker.update_actual_returns()
+        eval_result = tracker.evaluate_signals(days=30)
+        logger.info(
+            f"信号追踪: 记录{len(report.signals)}条, "
+            f"历史准确率{eval_result['accuracy']:.1%}, "
+            f"盈亏比{eval_result['profit_loss_ratio']:.2f}"
+        )
 
     # 输出日报
     print(f"\n{'='*50}")
