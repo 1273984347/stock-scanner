@@ -1,17 +1,11 @@
 """
-backtest_full.py - 全量回测：3206只A股 × V2策略 × 多配置对比
+backtest_full.py - [DEPRECATED] 全量回测
 
-用法：
-    python backtest_full.py                    # 全量（3206只）
-    python backtest_full.py --limit 500       # 快速测试（500只）
-
-覆盖：
-    A: 全量回测基准（3206只）
-    C: 板块轮动过滤（TOP5/TOP8 板块强度，注：需真实行业分类数据）
-    D: 情绪过滤（高波动时禁用 EMA21 退出）
+本文件已废弃。请使用 backtest.engine.run_backtest(parallel=True) 替代。
+保留辅助函数（_get_stock_local, _scan_local_stocks 等）供兼容使用。
 """
 
-import os, sys, time
+import os, sys
 from pathlib import Path
 sys.path.insert(0, '.')
 os.environ['NO_VERIFY_TDX'] = '1'
@@ -473,249 +467,21 @@ def _process_single_stock(args):
     return trades
 
 
-def run_full_backtest(
-    stock_codes: List[str],
-    start_date: str,
-    end_date: str,
-    sector_filter_top_n: int = 0,
-    rel_strength_threshold: float = 0.0,
-    use_sentiment_filter: bool = False,
-    parallel: bool = True,
-    max_workers: int = None,
-) -> Dict:
-    """全量回测（支持多进程并行）"""
-
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    import os
-
-    # 根据 start_date 计算需要加载的数据天数
-    from datetime import datetime, timedelta
-    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-    today = datetime.now()
-    delta_days = (today - start_dt).days + 365  # 多取1年作为指标计算缓冲
-    data_days = max(delta_days, 500)  # 至少500天
-
-    print(f"  预计算 HS300 序列 (data_days={data_days})...")
-    hs300 = build_hs300_series(days=data_days)
-    hs300_dates = set(hs300['date_str'])
-    hs300_closes = dict(zip(hs300['date_str'], hs300['close']))
-    hs300_emas = dict(zip(hs300['date_str'], hs300['EMA21']))
-    hs300_regime_dict = dict(zip(hs300['date_str'], hs300['regime']))
-    hs300_pvem_dict = dict(zip(hs300['date_str'], hs300['pvem']))
-    hs300_ret5_dict = dict(zip(hs300['date_str'], hs300['ret5']))
-    hs300_vol_dict = dict(zip(hs300['date_str'], hs300['vol_ratio']))
-    hs300_trend_dict = dict(zip(hs300['date_str'], hs300['trend_score']))
-
-    # 板块过滤和相对强度过滤需要预计算
-    stock_rets = {}
-    if sector_filter_top_n > 0 or rel_strength_threshold > 0:
-        print(f"  预计算股票收益率 ({len(stock_codes)} 只)...")
-        stock_rets = build_stock_returns(stock_codes, days=data_days)
-
-    all_trades = []
-    t0 = time.time()
-
-    if parallel and len(stock_codes) > 100:
-        # 多进程并行
-        workers = max_workers or min(os.cpu_count() or 4, 8)
-        print(f"  并行回测 ({len(stock_codes)} 只股票, {workers} 进程)...")
-
-        # 预计算板块排名（避免内层循环重复计算）
-        precomputed_sectors = {}
-        if sector_filter_top_n > 0 and stock_rets:
-            print(f"  预计算板块排名...")
-            precomputed_sectors = precompute_top_sectors(stock_rets, top_n=sector_filter_top_n)
-
-        # 构造每只股票的参数
-        task_args = [
-            (code, start_date, data_days, hs300_dates, hs300_closes, hs300_emas,
-             hs300_regime_dict, hs300_pvem_dict, hs300_ret5_dict, hs300_vol_dict,
-             hs300_trend_dict,
-             SECTOR_MAP, sector_filter_top_n, rel_strength_threshold,
-             use_sentiment_filter,
-             precomputed_sectors
-            )
-            for code in stock_codes
-        ]
-
-        completed = 0
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {executor.submit(_process_single_stock, args): args[0] for args in task_args}
-            for future in as_completed(futures):
-                completed += 1
-                try:
-                    trades = future.result()
-                    all_trades.extend(trades)
-                except Exception:
-                    pass
-                if completed % 500 == 0:
-                    elapsed = time.time() - t0
-                    print(f"    进度: {completed}/{len(stock_codes)}, 耗时: {elapsed:.1f}s, 交易: {len(all_trades)}")
-    else:
-        # 单进程
-        # 预计算板块排名
-        precomputed_sectors = {}
-        if sector_filter_top_n > 0 and stock_rets:
-            print(f"  预计算板块排名...")
-            precomputed_sectors = precompute_top_sectors(stock_rets, top_n=sector_filter_top_n)
-
-        print(f"  串行回测 ({len(stock_codes)} 只股票)...")
-        processed = 0
-        for code_idx, code in enumerate(stock_codes):
-            try:
-                df = get_stock_hist_multi_source(code, days=data_days, source="tdx_local_qfq")
-                if df is None or len(df) < 60:
-                    continue
-                df = add_indicators(df)
-                df = df[df['date'] >= start_date]
-                if len(df) < 30:
-                    continue
-
-                df['date_str'] = df['date'].apply(lambda d: str(d.date()) if hasattr(d, 'date') else str(d))
-                df['stock_ret5'] = df['close'].pct_change(5) * 100
-
-                for i in range(30, len(df) - 1):
-                    row = df.iloc[i]
-                    entry_date_str = row['date_str']
-
-                    hs_match = hs300[hs300['date_str'] <= entry_date_str]
-                    if hs_match.empty:
-                        continue
-                    hs_latest = hs_match.iloc[-1]
-                    if not (hs_latest['close'] > hs_latest['EMA21']):
-                        continue
-
-                    regime = hs300_regime_dict.get(entry_date_str, "MEAN_REVERSION")
-                    pvem = hs300_pvem_dict.get(entry_date_str, 0.0)
-                    if regime == "MEAN_REVERSION" and pvem <= 3.0:
-                        continue
-
-                    if rel_strength_threshold > 0:
-                        stock_ret = row.get('stock_ret5')
-                        hs_ret = hs300_ret5_dict.get(entry_date_str)
-                        if stock_ret is None or hs_ret is None:
-                            continue
-                        if (stock_ret - hs_ret) < rel_strength_threshold:
-                            continue
-
-                    if sector_filter_top_n > 0 and precomputed_sectors:
-                        top_sectors = precomputed_sectors.get(entry_date_str, set())
-                        stock_sector = SECTOR_MAP.get(code)
-                        if top_sectors and stock_sector not in top_sectors:
-                            continue
-
-                    if not check_entry(df, i):
-                        continue
-
-                    # 入场（次日开盘价）
-                    if i + 1 >= len(df):
-                        continue
-                    entry_row = df.iloc[i + 1]
-                    entry_price = float(entry_row['open'])
-                    entry_i = i + 1
-
-                    # 退出
-                    exit_reason, exit_price = check_exit_v2_trend(df, entry_i)
-
-                    pnl_pct = (exit_price / entry_price - 1) * 100
-
-                    all_trades.append({
-                        'entry_date': entry_date_str,
-                        'code': code,
-                        'pnl_pct': round(pnl_pct, 2),
-                        'exit_reason': exit_reason,
-                        'regime': regime,
-                    })
-
-            except Exception:
-                continue
-
-        processed += 1
-        if processed % 500 == 0:
-            elapsed = time.time() - t0
-            print(f"    进度: {processed}/{len(stock_codes)}, 耗时: {elapsed:.1f}s, 当前交易: {len(all_trades)}")
-
-    elapsed_total = time.time() - t0
-    print(f"  回测完成: {len(all_trades)} 笔交易, 耗时: {elapsed_total:.1f}s")
-
-    if not all_trades:
-        return _empty_metrics()
-
-    # 计算指标
-    df_t = pd.DataFrame(all_trades)
-    df_t = df_t.sort_values('entry_date')
-
-    pnl_list = df_t['pnl_pct'].tolist()
-    wins = [p for p in pnl_list if p > 0]
-    losses = [p for p in pnl_list if p <= 0]
-
-    total_trades = len(pnl_list)
-    win_rate = len(wins) / total_trades if total_trades > 0 else 0
-    avg_pnl = np.mean(pnl_list) if pnl_list else 0
-    avg_win = np.mean(wins) if wins else 0
-    avg_loss = abs(np.mean(losses)) if losses else 0
-    pf = abs(sum(wins) / sum(losses)) if losses and sum(losses) != 0 else 0
-
-    # 组合级回撤（月度收益法）
-    # 按月分组计算平均收益，假设每月持 max_positions 只票
-    df_t['entry_month'] = df_t['entry_date'].str[:7]  # YYYY-MM
-    monthly = df_t.groupby('entry_month')['pnl_pct'].agg(['mean', 'count'])
-    max_positions = 10  # 假设同时持有最多10只
-    position_pct = 0.10  # 每只10%仓位
-
-    # 月度组合收益 = 该月每只票平均收益 × 同时持仓数 × 仓位比例
-    monthly['portfolio_ret'] = monthly['mean'] * np.minimum(monthly['count'], max_positions) * position_pct
-
-    equity = 1_000_000
-    equity_curve = [equity]
-    for _, row in monthly.iterrows():
-        equity *= (1 + row['portfolio_ret'] / 100)
-        equity_curve.append(equity)
-    eq_series = pd.Series(equity_curve)
-    rolling_max = eq_series.cummax()
-    drawdown = (eq_series - rolling_max) / rolling_max * 100
-    max_drawdown = drawdown.min()
-
-    # 总收益
-    total_return = (equity / 1_000_000 - 1) * 100
-
-    # 年化收益
-    n_years = len(monthly) / 12 if len(monthly) > 0 else 1
-    annual_return = ((equity / 1_000_000) ** (1 / max(n_years, 0.5)) - 1) * 100
-
-    # 夏普比率（假设无风险利率3%）
-    monthly_returns = monthly['portfolio_ret'].tolist()
-    if monthly_returns and np.std(monthly_returns) > 0:
-        sharpe = (np.mean(monthly_returns) - 0.25) / np.std(monthly_returns) * np.sqrt(12)
-    else:
-        sharpe = 0
-
-    # 按退出原因
-    by_reason = df_t.groupby('exit_reason')['pnl_pct'].agg(['count', 'mean'])
-    by_reason.columns = ['count', 'avg_pnl']
-
-    # 按板块（仅 C 配置）
-    by_sector = None
-    if sector_filter_top_n > 0:
-        by_sector = df_t.groupby('sector')['pnl_pct'].agg(['count', 'mean', 'std']).round(2)
-        by_sector.columns = ['count', 'avg_pnl', 'std']
-
-    return {
-        'total_trades': total_trades,
-        'win_rate': round(win_rate * 100, 1),
-        'avg_pnl': round(avg_pnl, 2),
-        'avg_win': round(avg_win, 2),
-        'avg_loss': round(avg_loss, 2),
-        'profit_factor': round(pf, 2),
-        'max_drawdown': round(max_drawdown, 2),
-        'total_return': round(total_return, 1),
-        'annual_return': round(annual_return, 1),
-        'sharpe': round(sharpe, 2),
-        'final_capital': round(equity, 0),
-        'by_reason': by_reason,
-        'by_sector': by_sector,
-        'elapsed_seconds': round(elapsed_total, 1),
-    }
+def run_full_backtest(symbols=None, days=500, max_workers=4, **kwargs):
+    """[DEPRECATED] 请使用 backtest.engine.run_backtest(parallel=True)"""
+    import warnings
+    warnings.warn(
+        "run_full_backtest is deprecated, use backtest.engine.run_backtest(parallel=True)",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from backtest.engine import run_backtest
+    return run_backtest(
+        symbols=symbols, days=days,
+        parallel=True, max_workers=max_workers,
+        multi_signal_entry=True, sentiment_filter=True,
+        **kwargs,
+    )
 
 
 def _empty_metrics():
@@ -750,92 +516,11 @@ if __name__ == "__main__":
 
     # === A: 全量基准 ===
     print("\n【A】全量基准（无过滤）")
-    r = run_full_backtest(stocks, start_date, end_date, sector_filter_top_n=0)
-    m = r
+    from backtest.engine import run_backtest as _run_bt
+    r = _run_bt(stocks, start_date, end_date, parallel=True, multi_signal_entry=True, sentiment_filter=True)
+    m = r['metrics']
     print(f"  交易={m['total_trades']}, 胜率={m['win_rate']}%, 均值={m['avg_pnl']}%, "
-          f"PF={m['profit_factor']}, DD={m['max_drawdown']}%, 收益={m['total_return']}%, "
-          f"耗时={m['elapsed_seconds']}s")
-    if not m['by_reason'].empty:
-        for reason, row in m['by_reason'].iterrows():
-            print(f"    {reason}: {int(row['count'])}笔, 均={row['avg_pnl']:+.2f}%")
-
-    # === C: 板块轮动 ===
-    for top_n in [5, 8]:
-        print(f"\n【C-{top_n}】板块轮动 TOP{top_n}")
-        r = run_full_backtest(stocks, start_date, end_date, sector_filter_top_n=top_n)
-        m = r
-        print(f"  交易={m['total_trades']}, 胜率={m['win_rate']}%, 均值={m['avg_pnl']}%, "
-              f"PF={m['profit_factor']}, DD={m['max_drawdown']}%, 收益={m['total_return']}%")
-        if not m['by_reason'].empty:
-            for reason, row in m['by_reason'].iterrows():
-                print(f"    {reason}: {int(row['count'])}笔, 均={row['avg_pnl']:+.2f}%")
-
-    # === A+C: 全量 + 相对强度 ===
-    print(f"\n【A+RS1%】全量 + 相对强度阈值 1%")
-    r = run_full_backtest(stocks, start_date, end_date, rel_strength_threshold=1.0)
-    m = r
-    print(f"  交易={m['total_trades']}, 胜率={m['win_rate']}%, 均值={m['avg_pnl']}%, "
-          f"PF={m['profit_factor']}, DD={m['max_drawdown']}%, 收益={m['total_return']}%")
-    if not m['by_reason'].empty:
-        for reason, row in m['by_reason'].iterrows():
-            print(f"    {reason}: {int(row['count'])}笔, 均={row['avg_pnl']:+.2f}%")
-
-    # === D: 情绪过滤（高波动时禁用 EMA21 退出）===
-    print(f"\n【D】情绪过滤（高波动禁用 EMA21）")
-    r = run_full_backtest(stocks, start_date, end_date, use_sentiment_filter=True)
-    m = r
-    print(f"  交易={m['total_trades']}, 胜率={m['win_rate']}%, 均值={m['avg_pnl']}%, "
-          f"PF={m['profit_factor']}, DD={m['max_drawdown']}%, 收益={m['total_return']}%")
-    if not m['by_reason'].empty:
-        for reason, row in m['by_reason'].iterrows():
-            print(f"    {reason}: {int(row['count'])}笔, 均={row['avg_pnl']:+.2f}%")
-
-    # === A+C+D: 全量 + 板块轮动 TOP5 + 情绪过滤 ===
-    print(f"\n【A+C+D】全量 + TOP5板块 + 情绪过滤")
-    r = run_full_backtest(stocks, start_date, end_date, sector_filter_top_n=5, use_sentiment_filter=True)
-    m = r
-    print(f"  交易={m['total_trades']}, 胜率={m['win_rate']}%, 均值={m['avg_pnl']}%, "
-          f"PF={m['profit_factor']}, DD={m['max_drawdown']}%, 收益={m['total_return']}%")
-    if not m['by_reason'].empty:
-        for reason, row in m['by_reason'].iterrows():
-            print(f"    {reason}: {int(row['count'])}笔, 均={row['avg_pnl']:+.2f}%")
+          f"PF={m['profit_factor']}, DD={m['max_drawdown']}%, 收益={m['total_return_pct']}%")
 
     print(f"\n{'='*60}")
     print("全部配置回测完成")
-
-    # 保存结果
-    from lib.backtest_saver import save_backtest_result, RESULTS_DIR
-    import json as _json
-    from datetime import datetime as _dt
-    ts = _dt.now().strftime("%Y%m%d_%H%M%S")
-    out_path = RESULTS_DIR / f"full_{ts}.json"
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-
-    # 收集所有场景的指标
-    scenarios = []
-    for label, cfg in [("A_baseline", {"sector_top_n": 0}),
-                       ("C_top5", {"sector_top_n": 5}),
-                       ("C_top8", {"sector_top_n": 8}),
-                       ("A_RS1pct", {"rel_strength_threshold": 1.0}),
-                       ("D_sentiment", {"use_sentiment_filter": True}),
-                       ("A+C+D", {"sector_top_n": 5, "use_sentiment_filter": True})]:
-        try:
-            r = run_full_backtest(stocks, start_date, end_date, **cfg)
-            scenarios.append({
-                "label": label, "config": cfg,
-                "total_trades": r.get('total_trades', 0),
-                "win_rate": r.get('win_rate', 0),
-                "avg_pnl": r.get('avg_pnl', 0),
-                "profit_factor": r.get('profit_factor', 0),
-                "max_drawdown": r.get('max_drawdown', 0),
-                "total_return": r.get('total_return', 0),
-            })
-        except Exception as e:
-            scenarios.append({"label": label, "error": str(e)})
-
-    out_path.write_text(_json.dumps({
-        "timestamp": ts, "script": "full",
-        "stocks": len(stocks), "start": start_date, "end": end_date,
-        "scenarios": scenarios,
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\n结果已保存: {out_path}")

@@ -10,10 +10,12 @@ backtest_engine.py - 干净的回测引擎
    - 无重复计入
 """
 
+import time
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from lib.technical_signals import ema
 from lib.data_layer import get_index_hist
 from lib.data_source_registry import get_stock_hist_multi_source
@@ -91,6 +93,38 @@ def check_entry(df: pd.DataFrame, i: int) -> Tuple[bool, str]:
         return False, ""
 
     return True, "donchian_breakout"
+
+
+def check_entry_multi_signal(df: pd.DataFrame, i: int) -> Tuple[bool, str]:
+    """多信号 OR 入场（EMA 金叉 / RSI 超卖 / 成交量突破 / MACD 金叉）"""
+    if i < 55:
+        return False, ""
+
+    row = df.iloc[i]
+    prev = df.iloc[i - 1]
+    signals = []
+
+    # 1. EMA 金叉
+    if prev['EMA5'] <= prev['EMA21'] and row['EMA5'] > row['EMA21']:
+        signals.append("ema_cross")
+
+    # 2. RSI 超卖反弹
+    if 'rsi' in df.columns:
+        if prev.get('rsi', 50) < 30 and row.get('rsi', 50) > 30:
+            signals.append("rsi_oversold")
+
+    # 3. 成交量突破
+    if row['volume'] > row['vol_ma20'] * 1.5:
+        signals.append("vol_breakout")
+
+    # 4. MACD 金叉
+    if 'macd' in df.columns and 'macd_signal' in df.columns:
+        if prev.get('macd', 0) <= prev.get('macd_signal', 0) and row.get('macd', 0) > row.get('macd_signal', 0):
+            signals.append("macd_cross")
+
+    if signals:
+        return True, "+".join(signals)
+    return False, ""
 
 
 # ============================================================
@@ -220,16 +254,305 @@ def check_exit_v3_hybrid(df: pd.DataFrame, entry_i: int) -> Tuple[str, float]:
     return "timeout", exit_price
 
 
+def _check_sentiment_filter() -> bool:
+    """情绪过滤：HS300 ATR ratio > 1.2% 时返回 True（高波动）"""
+    try:
+        hs300 = get_index_hist("000300", days=60)
+        if hs300.empty or len(hs300) < 30:
+            return False
+        atr = compute_atr(hs300)
+        atr_ratio = float(atr.iloc[-1] / hs300['close'].iloc[-1])
+        return atr_ratio > 0.012
+    except Exception:
+        return False
+
+
+# ============================================================
+# 并行处理辅助
+# ============================================================
+
+def _process_single_stock_engine(args):
+    """处理单只股票的回测（用于并行执行）
+
+    Args:
+        args: tuple(code, start_date, data_days, exit_fn_name, hs300_regime_dict,
+                    hs300_pvem_dict, hs300_ret_dict, config_dict, multi_signal_entry)
+    Returns:
+        list of Trade objects
+    """
+    code, start_date, data_days, exit_fn_name, hs300_regime_dict, \
+        hs300_pvem_dict, hs300_ret_dict, config_dict, multi_signal_entry = args
+
+    from lib.data_source_registry import get_stock_hist_multi_source as _get_hist
+    from backtest.utils import add_indicators as _add_ind
+
+    trades = []
+    try:
+        df = _get_hist(code, days=data_days, source="tdx_local_qfq")
+        if df is None or len(df) < 60:
+            return trades
+        df = _add_ind(df)
+        df = df[df['date'] >= start_date]
+        if len(df) < 30:
+            return trades
+
+        df['date_str'] = df['date'].apply(lambda d: str(d.date()) if hasattr(d, 'date') else str(d))
+        df['stock_ret5'] = df['close'].pct_change(5) * 100
+
+        entry_fn = check_entry_multi_signal if multi_signal_entry else check_entry
+
+        exit_fn_map = {
+            "v1_atr": check_exit_v1_atr,
+            "v2_trend": check_exit_v2_trend,
+            "v3_hybrid": check_exit_v3_hybrid,
+        }
+        exit_fn = exit_fn_map.get(exit_fn_name, check_exit_v1_atr)
+
+        for i in range(30, len(df) - 1):
+            row = df.iloc[i]
+            entry_date_str = row['date_str']
+
+            # 市场过滤
+            regime = hs300_regime_dict.get(entry_date_str, "MEAN_REVERSION")
+            if regime in (TREND_DOWN, RISK_OFF):
+                continue
+
+            pvem = hs300_pvem_dict.get(entry_date_str, 0.0)
+            if regime == "MEAN_REVERSION" and pvem <= 3.0:
+                continue
+
+            # 相对强度过滤
+            if config_dict.get('relative_strength_threshold', 0) > 0:
+                stock_ret = row.get('stock_ret5')
+                hs_ret = hs300_ret_dict.get(entry_date_str)
+                if stock_ret is None or hs_ret is None:
+                    continue
+                if (stock_ret - hs_ret) < config_dict['relative_strength_threshold']:
+                    continue
+
+            # 入场信号
+            entered, sig_type = entry_fn(df, i)
+            if not entered:
+                continue
+
+            # 次日入场
+            if i + 1 >= len(df):
+                continue
+            entry_row = df.iloc[i + 1]
+            entry_price = float(entry_row['open'])
+            entry_i = i + 1
+
+            # 退出
+            exit_reason, exit_price = exit_fn(df, entry_i)
+
+            buy_cost = config_dict['commission_rate'] + config_dict['slippage_rate']
+            sell_cost = config_dict['commission_rate'] + config_dict['stamp_duty_rate'] + config_dict['slippage_rate']
+            total_cost = buy_cost + sell_cost
+            pnl_pct = (exit_price / entry_price - 1 - total_cost) * 100
+
+            atr_pct = float(entry_row['atr_pct']) if not pd.isna(entry_row['atr_pct']) else 0.0
+            actual_entry_date = entry_row['date'].date() if hasattr(entry_row['date'], 'date') else entry_row['date']
+
+            trade = Trade(
+                entry_date=str(actual_entry_date),
+                entry_price=entry_price,
+                exit_date=str(df.iloc[min(entry_i + 20, len(df) - 1)]['date'].date()
+                              if hasattr(df.iloc[min(entry_i + 20, len(df) - 1)]['date'], 'date')
+                              else df.iloc[min(entry_i + 20, len(df) - 1)]['date']),
+                exit_price=float(exit_price),
+                pnl_pct=round(pnl_pct, 2),
+                hold_days=min(20, len(df) - 1 - entry_i),
+                exit_reason=exit_reason,
+                code=code,
+                atr_pct=round(atr_pct, 3),
+            )
+            trades.append(trade)
+
+    except Exception:
+        pass
+
+    return trades
+
+
+def _run_backtest_parallel(
+    stock_codes: List[str],
+    start_date: str,
+    end_date: str,
+    exit_version: str,
+    config: BacktestConfig,
+    max_workers: int,
+    multi_signal_entry: bool,
+    sentiment_filter: bool,
+    days: int,
+) -> Dict:
+    """并行回测入口（当 parallel=True 且 stock_codes > 100 时调用）"""
+    import os
+    from datetime import datetime, timedelta
+
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d") if start_date else datetime.now() - timedelta(days=365)
+    today = datetime.now()
+    delta_days = (today - start_dt).days + 365
+    data_days = max(delta_days, days)
+
+    # 预计算 HS300
+    hs300 = get_index_hist('000300', days=data_days)
+    if hs300.empty:
+        return {
+            "trades": [], "equity_curve": [], "metrics": {
+                "total_trades": 0, "win_rate": 0, "avg_pnl": 0,
+                "profit_factor": 0, "max_drawdown": 0,
+            }
+        }
+
+    hs300['EMA21'] = ema(hs300['close'], 21)
+    hs300['date_str'] = hs300['date'].apply(
+        lambda d: str(d.date()) if hasattr(d, 'date') else str(d)
+    )
+    hs300['pvem'] = (hs300['close'] / hs300['EMA21'] - 1) * 100
+
+    hs300_regime_dict = {}
+    for j in range(len(hs300)):
+        row = hs300.iloc[j]
+        date_str = row['date_str']
+        if j >= 29:
+            slice_df = hs300.iloc[:j + 1]
+            regime_result = detect_market_regime(slice_df)
+            hs300_regime_dict[date_str] = regime_result["regime"]
+        else:
+            hs300_regime_dict[date_str] = "MEAN_REVERSION"
+
+    hs300_pvem_dict = dict(zip(hs300['date_str'], hs300['pvem']))
+
+    hs300[f'ret{config.relative_strength_lookback}'] = hs300['close'].pct_change(config.relative_strength_lookback) * 100
+    hs300_ret_dict = dict(zip(hs300['date_str'], hs300[f'ret{config.relative_strength_lookback}']))
+
+    config_dict = {
+        'commission_rate': config.commission_rate,
+        'stamp_duty_rate': config.stamp_duty_rate,
+        'slippage_rate': config.slippage_rate,
+        'relative_strength_threshold': config.relative_strength_threshold,
+    }
+
+    workers = max_workers or min(os.cpu_count() or 4, 8)
+
+    task_args = [
+        (code, start_date, data_days, exit_version,
+         hs300_regime_dict, hs300_pvem_dict, hs300_ret_dict,
+         config_dict, multi_signal_entry)
+        for code in stock_codes
+    ]
+
+    all_trades = []
+    t0 = time.time()
+    completed = 0
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(_process_single_stock_engine, args): args[0] for args in task_args}
+        for future in as_completed(futures):
+            completed += 1
+            try:
+                trades = future.result()
+                all_trades.extend(trades)
+            except Exception:
+                pass
+            if completed % 500 == 0:
+                elapsed = time.time() - t0
+                print(f"  并行回测进度: {completed}/{len(stock_codes)}, "
+                      f"耗时: {elapsed:.1f}s, 交易: {len(all_trades)}")
+
+    elapsed_total = time.time() - t0
+
+    # ====== 情绪过滤（入场级）======
+    if sentiment_filter:
+        high_vol = _check_sentiment_filter()
+        if high_vol:
+            all_trades = [t for t in all_trades if t.exit_reason != "timeout"]
+
+    # ====== 汇总指标 ======
+    if not all_trades:
+        return {
+            "trades": [], "equity_curve": [], "metrics": {
+                "total_trades": 0, "win_rate": 0, "avg_pnl": 0,
+                "profit_factor": 0, "max_drawdown": 0,
+            }
+        }
+
+    pnl_list = [t.pnl_pct for t in all_trades]
+    wins = [p for p in pnl_list if p > 0]
+    losses = [p for p in pnl_list if p <= 0]
+
+    total_trades = len(pnl_list)
+    win_rate = len(wins) / total_trades if total_trades > 0 else 0
+    avg_pnl = np.mean(pnl_list) if pnl_list else 0
+    avg_win = np.mean(wins) if wins else 0
+    avg_loss = abs(np.mean(losses)) if losses else 0
+    profit_factor = abs(sum(wins) / sum(losses)) if losses and sum(losses) != 0 else 0
+
+    # 资金曲线（单利）
+    equity = config.initial_capital
+    equity_curve = [(start_date, equity)]
+    trade_amount = config.initial_capital * config.position_size_pct
+    sorted_trades = sorted(all_trades, key=lambda t: t.exit_date)
+    for t in sorted_trades:
+        pnl = trade_amount * t.pnl_pct / 100
+        equity += pnl
+        equity_curve.append((t.exit_date, equity))
+
+    eq_dates, eq_values = zip(*equity_curve)
+    eq_series = pd.Series(eq_values)
+    rolling_max = eq_series.cummax()
+    drawdown = (eq_series - rolling_max) / rolling_max * 100
+    max_drawdown = drawdown.min()
+
+    trades_df = pd.DataFrame([{
+        'entry_date': t.entry_date, 'exit_date': t.exit_date,
+        'pnl_pct': t.pnl_pct, 'hold_days': t.hold_days,
+        'exit_reason': t.exit_reason, 'code': t.code,
+    } for t in all_trades])
+    trades_df['period'] = pd.to_datetime(trades_df['exit_date']).dt.to_period('M')
+
+    by_reason = trades_df.groupby('exit_reason').agg(
+        count=('pnl_pct', 'count'),
+        avg_pnl=('pnl_pct', 'mean'),
+        win_rate=('pnl_pct', lambda x: (x > 0).mean() * 100),
+    ).round(2)
+
+    print(f"  并行回测完成: {total_trades} 笔交易, 耗时: {elapsed_total:.1f}s")
+
+    return {
+        "trades": trades_df,
+        "equity_curve": equity_curve,
+        "metrics": {
+            "total_trades": total_trades,
+            "win_rate": round(win_rate * 100, 1),
+            "avg_pnl": round(float(avg_pnl), 2),
+            "avg_win": round(float(avg_win), 2),
+            "avg_loss": round(float(avg_loss), 2),
+            "profit_factor": round(float(profit_factor), 2),
+            "max_drawdown": round(float(max_drawdown), 2),
+            "total_return_pct": round((equity - config.initial_capital) / config.initial_capital * 100, 2),
+            "final_capital": round(equity, 2),
+        },
+        "by_reason": by_reason,
+    }
+
+
 # ============================================================
 # 核心回测函数
 # ============================================================
 
 def run_backtest(
     stock_codes: List[str],
-    start_date: str,
-    end_date: str,
+    start_date: str = "",
+    end_date: str = "",
     exit_version: str = "v1_atr",
     config: BacktestConfig = None,
+    parallel: bool = False,
+    max_workers: int = 4,
+    multi_signal_entry: bool = False,
+    sentiment_filter: bool = False,
+    symbols: List[str] = None,
+    days: int = 500,
 ) -> Dict:
     """
     干净的回测
@@ -249,13 +572,36 @@ def run_backtest(
     if config is None:
         config = BacktestConfig()
 
+    # symbols alias for backward compatibility
+    if symbols is not None:
+        stock_codes = symbols
+
+    # days fallback: if start_date not provided, compute from days
+    if not start_date and days:
+        from datetime import datetime, timedelta
+        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    # ====== 并行执行路径 ======
+    if parallel and len(stock_codes) > 100:
+        return _run_backtest_parallel(
+            stock_codes=stock_codes,
+            start_date=start_date,
+            end_date=end_date,
+            exit_version=exit_version,
+            config=config,
+            max_workers=max_workers,
+            multi_signal_entry=multi_signal_entry,
+            sentiment_filter=sentiment_filter,
+            days=days,
+        )
+
     all_trades: List[Trade] = []
     equity = config.initial_capital
     equity_curve = [(start_date, equity)]
 
     # 加载 HS300 做市场过滤（只用收盘>EMA21判断趋势）
     from lib.data_layer import get_index_hist
-    hs300 = get_index_hist('000300', days=500)
+    hs300 = get_index_hist('000300', days=days)
     hs300['EMA21'] = ema(hs300['close'], 21)
     hs300['date_str'] = hs300['date'].apply(
         lambda d: str(d.date()) if hasattr(d, 'date') else str(d)
@@ -297,7 +643,7 @@ def run_backtest(
     # 预计算：每只股票每天的5日收益率（用于板块强度代理）
     stock_returns: Dict[str, pd.DataFrame] = {}
     for code in stock_codes:
-        df_s = get_stock_hist_multi_source(code, days=500, source="tdx_local_qfq")
+        df_s = get_stock_hist_multi_source(code, days=days, source="tdx_local_qfq")
         if df_s is None or len(df_s) < 10:
             continue
         df_s = df_s.copy()
@@ -337,7 +683,7 @@ def run_backtest(
 
     for code in stock_codes:
         try:
-            df = get_stock_hist_multi_source(code, days=500, source="tdx_local_qfq")
+            df = get_stock_hist_multi_source(code, days=days, source="tdx_local_qfq")
             if df is None or len(df) < 60:
                 continue
             df = add_indicators(df)
