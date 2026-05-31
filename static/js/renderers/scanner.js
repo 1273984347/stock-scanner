@@ -11,6 +11,7 @@ class ScannerRenderer {
     this._sortDir = 1;
     this._signalChart = null;
     this._factorChart = null;
+    this._heatmapChart = null;
     this._unsubscribers = [];
   }
 
@@ -30,6 +31,78 @@ class ScannerRenderer {
         }
       })
     );
+    this._loadSectorHeatmap();
+  }
+
+  async _loadSectorHeatmap() {
+    try {
+      const { apiClient } = await import('../api.js');
+      const data = await apiClient.get('/api/sector-heatmap', { top_n: 50 });
+      if (data && data.sectors) this._renderSectorHeatmap(data.sectors);
+    } catch (e) {
+      console.error('[Scanner] sector heatmap failed:', e);
+    }
+  }
+
+  _renderSectorHeatmap(sectors) {
+    const canvas = document.getElementById('sectorHeatmapChart');
+    if (!canvas || !sectors.length) return;
+    if (this._heatmapChart) this._heatmapChart.destroy();
+
+    // Sort by score descending, take top 30
+    const sorted = sectors.sort((a, b) => b.score - a.score).slice(0, 30);
+
+    const colors = sorted.map(s => {
+      if (s.score >= 70) return 'rgba(63, 185, 80, 0.8)';
+      if (s.score >= 50) return 'rgba(255, 165, 0, 0.8)';
+      if (s.score >= 30) return 'rgba(255, 107, 107, 0.6)';
+      return 'rgba(220, 80, 80, 0.8)';
+    });
+
+    this._heatmapChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: sorted.map(s => s.name),
+        datasets: [{
+          label: '板块评分',
+          data: sorted.map(s => s.score),
+          backgroundColor: colors,
+          borderWidth: 0,
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              afterLabel: ctx => {
+                const s = sorted[ctx.dataIndex];
+                return [
+                  `涨跌: ${s.return_pct?.toFixed(2)}%`,
+                  `量比: ${s.volume_ratio?.toFixed(2)}`,
+                  `涨停: ${s.limit_up_count}`,
+                  `龙头: ${s.leader_code} (${s.leader_return?.toFixed(2)}%)`,
+                ].join(' | ');
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            min: 0, max: 100,
+            title: { display: true, text: '评分', color: '#7D8590' },
+            ticks: { color: '#7D8590' },
+            grid: { color: '#21262D' },
+          },
+          y: {
+            ticks: { color: '#7D8590', font: { size: 10 } },
+            grid: { display: false },
+          },
+        },
+      },
+    });
   }
 
   _renderStrategyTabs(results) {
@@ -158,6 +231,7 @@ class ScannerRenderer {
     this._unsubscribers.forEach(unsub => unsub());
     this._signalChart?.destroy();
     this._factorChart?.destroy();
+    this._heatmapChart?.destroy();
   }
 }
 

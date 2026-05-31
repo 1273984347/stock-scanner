@@ -1267,6 +1267,47 @@ async def regime_history(days: int = Query(default=60, ge=10, le=365)):
         return {"regimes": []}
 
 
+@app.get("/api/sector-heatmap", dependencies=[Security(verify_api_key)])
+async def sector_heatmap(top_n: int = Query(default=50, ge=10, le=200)):
+    """板块热力图数据"""
+    cached = _cache_get("sector_heatmap", max_age=1800)
+    if cached is not None:
+        return cached
+
+    try:
+        from lib.sector_score import compute_sector_scores
+
+        scores = compute_sector_scores(top_n=top_n)
+
+        sectors = []
+        for s in scores:
+            sectors.append({
+                "name": s.block,
+                "score": s.total_score,
+                "return_pct": s.avg_return_5d,
+                "volume_ratio": s.volume_ratio,
+                "limit_up_count": s.limit_up_count,
+                "leader_return": s.leader_return,
+                "leader_code": s.leader_code,
+                "stock_count": s.stock_count,
+                "score_return": s.score_return,
+                "score_volume": s.score_volume,
+                "score_limit_up": s.score_limit_up,
+                "score_leader": s.score_leader,
+            })
+
+        result = {
+            "sectors": sectors,
+            "total": len(sectors),
+            "timestamp": datetime.now().isoformat(),
+        }
+        _cache_set("sector_heatmap", result)
+        return result
+    except Exception as e:
+        logger.error(f"板块热力图数据失败: {e}")
+        return {"sectors": []}
+
+
 @app.get("/api/factor-contribution", dependencies=[Security(verify_api_key)])
 async def factor_contribution(days: int = Query(default=30, ge=1, le=365)):
     """因子贡献度分析"""
