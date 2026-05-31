@@ -143,8 +143,8 @@ body, html {
 }
 
 .right-panel {
-  width: var(--right-panel-width);
-  min-width: var(--right-panel-width);
+  width: 220px;
+  min-width: 220px;
   flex-shrink: 0;
   background: var(--bg);
   border-left: 1px solid var(--border);
@@ -238,7 +238,7 @@ body, html {
 /* Metrics bar */
 .metrics-bar {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 8px;
   padding: 12px;
   background: var(--card);
@@ -249,25 +249,36 @@ body, html {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 10px;
+  padding: 8px 10px;
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .metric-label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-sub);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .metric-value {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text);
+  line-height: 1.2;
 }
 
 .metric-sub {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-sub);
   margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Panels container */
