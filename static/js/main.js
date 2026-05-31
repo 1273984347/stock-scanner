@@ -18,6 +18,10 @@ import { EvalRenderer } from './renderers/eval.js';
 import { SignalsRenderer } from './renderers/signals.js';
 import { TradesRenderer } from './renderers/trades.js';
 import { SettingsRenderer } from './renderers/settings.js';
+import { AppLayout } from './layouts/AppLayout.js';
+import { Sidebar } from './components/Sidebar.js';
+import { Toolbar } from './components/Toolbar.js';
+import { StatusBar } from './components/StatusBar.js';
 
 const renderers = {};
 
@@ -60,6 +64,18 @@ function updateWsIndicator(status) {
 }
 async function init() {
   console.log('[App] 初始化...');
+
+  // Initialize new TradingView-style layout
+  const app = document.getElementById('app') || document.body;
+  const layout = new AppLayout(app);
+  const sidebar = new Sidebar(document.getElementById('sidebar'), (panel) => {
+    console.log('[Nav] Switching to:', panel);
+    // Wire sidebar to existing tab system
+    const tab = document.querySelector(`.nav-tab[data-panel="${panel}"]`);
+    if (tab) tab.click();
+  });
+  const toolbar = new Toolbar(document.getElementById('toolbar'));
+  const statusbar = new StatusBar(document.getElementById('statusbar'));
 
   initErrorTracker();
   initTheme();
