@@ -742,6 +742,74 @@ async def risk_assessment(_=Security(verify_api_key)):
         raise HTTPException(status_code=500, detail="内部服务器错误")
 
 
+@app.get("/api/risk-exposure", dependencies=[Security(verify_api_key)])
+async def risk_exposure():
+    """风险暴露仪表盘 — VaR/CVaR/相关性矩阵/分散化评分"""
+    cached = _cache_get("risk_exposure", max_age=1800)
+    if cached is not None:
+        return cached
+
+    try:
+        from lib.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
+        from lib.position_manager import PositionManager
+
+        pm = PositionManager()
+        positions = pm.positions
+
+        if not positions:
+            result = {"message": "暂无持仓", "var": {}, "correlation": {}, "n_positions": 0}
+            _cache_set("risk_exposure", result)
+            return result
+
+        # 获取市场数据（最多 15 只，避免超时）
+        codes = list(positions.keys())[:15]
+        market_data = _batch_get_stock_hist(codes, days=120)
+
+        if not market_data:
+            result = {"message": "暂无市场数据", "var": {}, "correlation": {}, "n_positions": len(positions)}
+            _cache_set("risk_exposure", result)
+            return result
+
+        risk_mgr = VolCorrRiskManager(VolCorrRiskConfig())
+
+        # 构建权重和总市值
+        tickers = list(market_data.keys())
+        weights = {}
+        total_value = 0
+        for code in tickers:
+            pos = positions.get(code)
+            if pos:
+                weight = getattr(pos, 'weight', 1 / len(codes))
+                weights[code] = weight if weight else 1 / len(codes)
+                total_value += getattr(pos, 'shares', 0) * getattr(pos, 'buy_price', 0)
+            else:
+                weights[code] = 1 / len(codes)
+        if total_value == 0:
+            total_value = 1_000_000
+
+        # VaR/CVaR
+        var_result = risk_mgr.compute_var_cvar(market_data, tickers, weights, total_value)
+
+        # 相关性矩阵
+        corr_result = risk_mgr.compute_correlation_matrix(market_data, tickers)
+
+        result = {
+            "var": var_result,
+            "correlation": {
+                "avg_correlation": corr_result.get("avg_correlation", 0),
+                "diversification_score": corr_result.get("diversification_score", 0),
+                "high_corr_pairs": corr_result.get("high_corr_pairs", [])[:5],
+            },
+            "n_positions": len(positions),
+            "timestamp": datetime.now().isoformat(),
+        }
+        _cache_set("risk_exposure", result)
+        return result
+    except Exception as e:
+        logger.error(f"风险暴露查询失败: {e}", exc_info=True)
+        return {"var": {}, "correlation": {}, "n_positions": 0}
+
+
 @app.get("/api/exposures", dependencies=[Security(verify_api_key)])
 async def factor_exposures(preset: str = Query("balanced", description="策略预设")):
     if preset not in ALLOWED_PRESETS:

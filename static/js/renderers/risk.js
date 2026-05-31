@@ -12,7 +12,7 @@ function esc(s) {
 
 /**
  * RiskRenderer — 风控中心面板渲染器
- * 负责宏观门控 + VaR/CVaR + 压力测试 + 风控建议
+ * 负责宏观门控 + VaR/CVaR + 压力测试 + 风控建议 + 风险暴露仪表盘
  */
 class RiskRenderer {
   constructor() {
@@ -23,6 +23,7 @@ class RiskRenderer {
     this._unsubscribers.push(
       stateManager.subscribe('risk', (r) => this.render(r))
     );
+    this._loadRiskExposure();
   }
 
   render(r) {
@@ -122,6 +123,69 @@ class RiskRenderer {
       recEl.innerHTML = '<span class="tag tag-up">风控通过</span> 可正常交易，注意组合分散化';
       recEl.style.color = 'var(--up)';
     }
+  }
+
+  // ---- 风险暴露仪表盘 ----
+
+  async _loadRiskExposure() {
+    try {
+      const data = await apiClient.get('/api/risk-exposure');
+      if (data) this._renderRiskExposure(data);
+    } catch (e) {
+      console.error('[Risk] exposure load failed:', e);
+    }
+  }
+
+  _renderRiskExposure(data) {
+    const container = document.getElementById('riskExposureSection');
+    if (!container) return;
+
+    const var95 = data.var?.var_95_pct || 0;
+    const cvar95 = data.var?.cvar_95_pct || 0;
+    const avgCorr = data.correlation?.avg_correlation || 0;
+    const divScore = data.correlation?.diversification_score || 0;
+    const nPos = data.n_positions || 0;
+    const pairs = data.correlation?.high_corr_pairs || [];
+
+    const metricsData = [
+      { label: 'VaR(95%)', value: (var95 * 100).toFixed(2) + '%' },
+      { label: 'CVaR(95%)', value: (cvar95 * 100).toFixed(2) + '%' },
+      { label: '平均相关性', value: avgCorr.toFixed(3) },
+      { label: '分散化评分', value: divScore.toFixed(1) },
+    ];
+
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px';
+
+    metricsData.forEach(m => {
+      const card = document.createElement('div');
+      card.className = 'portfolio-card';
+      const label = document.createElement('div');
+      label.className = 'metric-label';
+      label.textContent = m.label;
+      const value = document.createElement('div');
+      value.className = 'metric-value';
+      value.textContent = m.value;
+      card.appendChild(label);
+      card.appendChild(value);
+      grid.appendChild(card);
+    });
+
+    container.innerHTML = '';
+    container.appendChild(grid);
+
+    const info = document.createElement('div');
+    info.style.cssText = 'font-size:12px;color:var(--text-dim)';
+    const breachedVar = data.var?.var_breached ? '是' : '否';
+    const breachedCvar = data.var?.cvar_breached ? '是' : '否';
+    let infoText = `持仓数: ${nPos} | VaR breached: ${breachedVar} | CVaR breached: ${breachedCvar}`;
+    if (pairs.length) {
+      infoText += ' | 高相关对: ' + pairs.map(p => `${p[0]}/${p[1]} (${(p[2] || 0).toFixed(2)})`).join(', ');
+    }
+    info.textContent = infoText;
+    container.appendChild(info);
+
+    container.style.display = 'block';
   }
 
   unmount() {
