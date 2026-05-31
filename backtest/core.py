@@ -5,7 +5,12 @@
 2. 接入 RiskManager 做回测期间风控
 3. 波动率自适应止损替代硬编码百分比
 4. 支持 judge_panel 评委团评分（可选）
+
+.. deprecated:: 使用 backtest.engine 替代
 """
+
+import warnings
+warnings.warn("backtest.core is deprecated, use backtest.engine", DeprecationWarning, stacklevel=2)
 
 import pandas as pd
 import numpy as np

@@ -16,6 +16,8 @@ import logging
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 
+from backtest.types import BacktestResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,7 +44,7 @@ class BacktestRequest:
 class BacktestRunner:
     """统一回测运行器"""
 
-    def run(self, request: BacktestRequest = None, **kwargs) -> Optional[Dict]:
+    def run(self, request: BacktestRequest = None, **kwargs) -> Optional[BacktestResult]:
         """运行回测
 
         Args:
@@ -79,7 +81,7 @@ class BacktestRunner:
             logger.error(f"未知回测模式: {mode}")
             return None
 
-    def _run_simple(self, req: BacktestRequest) -> Optional[Dict]:
+    def _run_simple(self, req: BacktestRequest) -> Optional[BacktestResult]:
         """单股信号测试"""
         from backtest.engine import run_backtest
         result = run_backtest(
@@ -88,7 +90,7 @@ class BacktestRunner:
         )
         return self._normalize_result(result, "simple")
 
-    def _run_full(self, req: BacktestRequest) -> Optional[Dict]:
+    def _run_full(self, req: BacktestRequest) -> Optional[BacktestResult]:
         """全市场并行回测"""
         from backtest.full import run_full_backtest
         result = run_full_backtest(
@@ -98,7 +100,7 @@ class BacktestRunner:
         )
         return self._normalize_result(result, "full")
 
-    def _run_rebalance(self, req: BacktestRequest) -> Optional[Dict]:
+    def _run_rebalance(self, req: BacktestRequest) -> Optional[BacktestResult]:
         """月频调仓回测"""
         from backtest.rebalance import run_rebalance_backtest
         result = run_rebalance_backtest(
@@ -112,7 +114,7 @@ class BacktestRunner:
         )
         return self._normalize_result(result, "rebalance")
 
-    def _run_factor(self, req: BacktestRequest) -> Optional[Dict]:
+    def _run_factor(self, req: BacktestRequest) -> Optional[BacktestResult]:
         """因子回测"""
         from backtest.core import run_factor_backtest
         result = run_factor_backtest(
@@ -125,7 +127,7 @@ class BacktestRunner:
         )
         return self._normalize_result(result, "factor")
 
-    def _normalize_result(self, result: Optional[Dict], mode: str) -> Optional[Dict]:
+    def _normalize_result(self, result: Optional[Dict], mode: str) -> Optional[BacktestResult]:
         """标准化结果格式"""
         if result is None:
             return None
@@ -151,13 +153,13 @@ class BacktestRunner:
                 "win_rate": result.get("win_rate", 0),
             }
 
-        return {
-            "mode": mode,
-            "metrics": metrics,
-            "trade_count": result.get("trade_count", result.get("trade_count", 0)),
-            "trades": result.get("trades", result.get("trade_log", [])),
-            "exit_reasons": result.get("exit_reasons", {}),
-            "equity_curve": result.get("equity_curve", []),
-            "benchmark": result.get("benchmark", {}),
-            "report": result.get("report", ""),
-        }
+        return BacktestResult(
+            mode=mode,
+            metrics=metrics,
+            trade_count=result.get("trade_count", 0),
+            trades=result.get("trades", result.get("trade_log", [])),
+            exit_reasons=result.get("exit_reasons", {}),
+            equity_curve=result.get("equity_curve", []),
+            benchmark=result.get("benchmark", {}),
+            config=result.get("config", {}),
+        )
