@@ -158,6 +158,12 @@ class RiskManager:
                 action="WARN",
                 description="日均成交额 < 50M 的股票限制仓位"
             ),
+            RiskRule(
+                name="var_breach",
+                check_fn=self._check_var_breach,
+                action="ALERT",
+                description="VaR95 突破 5% 阈值",
+            ),
         ]
 
     def add_rule(self, rule: RiskRule):
@@ -345,6 +351,43 @@ class RiskManager:
                         ))
 
         return alerts
+
+    def _check_var_breach(self, ctx: dict) -> List[RiskAlert]:
+        """VaR 突破检查：VaR95 > 5% 时告警
+
+        仅在 VolCorrRiskManager 子类上生效（需要 compute_var_cvar）。
+        """
+        if not hasattr(self, "compute_var_cvar"):
+            return []
+
+        market_data = ctx.get("market_data", {})
+        positions = ctx.get("positions", {})
+        if not market_data or not positions:
+            return []
+
+        tickers = list(positions.keys())
+        weights = {code: pos.get("weight", 0) for code, pos in positions.items()}
+        total_value = ctx.get("portfolio_value", 0)
+
+        if not tickers or total_value <= 0:
+            return []
+
+        try:
+            var_result = self.compute_var_cvar(market_data, tickers, weights, total_value)
+            var95_pct = var_result.get("var_95_pct", 0)
+
+            if var95_pct > 0.05:  # VaR > 5%
+                return [RiskAlert(
+                    timestamp=datetime.now().isoformat(),
+                    rule_name="var_breach",
+                    level="CRITICAL",
+                    message=f"VaR95 = {var95_pct:.1%} 突破 5% 阈值，建议减仓",
+                    details=var_result,
+                )]
+        except Exception as e:
+            logger.debug(f"VaR 检查失败: {e}")
+
+        return []
 
     def get_active_alerts(self, min_level: str = "WARNING") -> List[RiskAlert]:
         """获取活跃预警"""
