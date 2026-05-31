@@ -1357,7 +1357,8 @@ async def factor_evaluation(
                         "rank_ic": round(ic["rank_ic"], 4),
                         "pvalue": round(ic.get("rank_ic_pvalue", 1), 4),
                     }
-            except Exception:
+            except Exception as ic_err:
+                logger.debug(f"IC computation failed for {col}: {ic_err}")
                 continue
 
         # 因子相关性
