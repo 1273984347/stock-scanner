@@ -1634,7 +1634,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 async def _get_ws_data():
-    """获取 WebSocket 推送数据（只读缓存，不触发计算）"""
+    """获取 WebSocket 推送数据（增强版：含持仓盈亏、板块评分、信号追踪）"""
     try:
         # 只从缓存读取，不触发任何计算
         dashboard = _cache_get("dashboard", max_age=600) or {}
@@ -1642,11 +1642,50 @@ async def _get_ws_data():
         risk = _cache_get("risk", max_age=600) or {}
         exposures = _cache_get("exposures", max_age=3600) or {}
 
+        # 持仓盈亏（从 PositionManager 读取）
+        position_pnl = {}
+        try:
+            from lib.position_manager import PositionManager
+            pm = PositionManager()
+            if pm.positions:
+                # 获取实时行情
+                orchestrator = _get_orchestrator()
+                quotes = orchestrator.get_realtime_quotes()
+                prices = {}
+                if not quotes.empty:
+                    for _, row in quotes.iterrows():
+                        code = str(row.get("代码", ""))
+                        price = row.get("最新价")
+                        if code and price:
+                            prices[code] = float(price)
+
+                for code, pos in pm.positions.items():
+                    current = prices.get(code, 0)
+                    if pos.buy_price > 0 and current > 0:
+                        pnl_pct = (current - pos.buy_price) / pos.buy_price
+                        position_pnl[code] = {
+                            "cost": pos.buy_price,
+                            "current": current,
+                            "pnl_pct": round(pnl_pct, 4),
+                            "shares": pos.shares,
+                        }
+        except Exception:
+            pass
+
+        # 板块评分（从缓存读取）
+        sector_heatmap = _cache_get("sector_heatmap", max_age=1800) or {}
+
+        # 信号追踪
+        signals = _cache_get("signals", max_age=1800) or {}
+
         return {
             "dashboard": dashboard,
             "scan": scan,
             "risk": risk,
             "exposures": exposures,
+            "position_pnl": position_pnl,
+            "sector_heatmap": sector_heatmap.get("sectors", [])[:10],
+            "signal_summary": signals.get("summary", {}),
         }
     except Exception as e:
         logger.error(f"WebSocket data fetch error: {e}")
