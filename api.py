@@ -1221,6 +1221,52 @@ async def factor_weights(preset: str = Query("balanced")):
         return {"ic_weights": {}, "strategy_weights": {}}
 
 
+@app.get("/api/regime-history", dependencies=[Security(verify_api_key)])
+async def regime_history(days: int = Query(default=60, ge=10, le=365)):
+    """市场状态历史（regime 切换时间线）"""
+    cached = _cache_get("regime_history", max_age=3600)
+    if cached is not None:
+        return cached
+
+    try:
+        from lib.data_layer import get_index_hist
+        from lib.market_regime import detect_market_regime
+
+        hs300 = get_index_hist("000300", days=days)
+        if hs300.empty:
+            return {"regimes": [], "message": "暂无数据"}
+
+        # 滑动窗口检测 regime
+        regimes = []
+        window = 20
+        for i in range(window, len(hs300)):
+            window_data = hs300.iloc[i - window:i]
+            try:
+                result = detect_market_regime(window_data)
+                regime = result.get("regime", "UNKNOWN") if isinstance(result, dict) else str(result)
+                date_val = hs300.iloc[i].get("date", "") if hasattr(hs300.iloc[i], 'get') else ""
+                if not date_val and "date" in hs300.columns:
+                    date_val = str(hs300.iloc[i]["date"])
+                regimes.append({"date": str(date_val), "regime": regime})
+            except Exception:
+                continue
+
+        # 合并连续相同 regime
+        merged = []
+        for r in regimes:
+            if merged and merged[-1]["regime"] == r["regime"]:
+                merged[-1]["end_date"] = r["date"]
+            else:
+                merged.append({**r, "start_date": r["date"], "end_date": r["date"]})
+
+        result = {"regimes": merged[-30:], "total": len(merged)}
+        _cache_set("regime_history", result)
+        return result
+    except Exception as e:
+        logger.error(f"regime 历史查询失败: {e}")
+        return {"regimes": []}
+
+
 @app.get("/api/factor-contribution", dependencies=[Security(verify_api_key)])
 async def factor_contribution(days: int = Query(default=30, ge=1, le=365)):
     """因子贡献度分析"""

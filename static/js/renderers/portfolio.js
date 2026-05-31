@@ -1,14 +1,15 @@
 import { stateManager } from '../state.js';
+import { apiClient } from '../api.js';
 
 /**
  * PortfolioRenderer — 组合优化面板渲染器
- * 负责组合表格 + 行业饼图 + 收益波动柱状图
+ * 负责组合表格 + 行业饼图 + 收益波动柱状图 + 市场状态时间线
  */
 class PortfolioRenderer {
   constructor() {
-    this._sectorChart = null;
-    this._returnVolChart = null;
+    this._charts = { sector: null, returnVol: null, regime: null };
     this._unsubscribers = [];
+    this._regimeLoaded = false;
   }
 
   mount() {
@@ -24,6 +25,8 @@ class PortfolioRenderer {
         window.openStockDetail(code, name);
       }
     });
+    // 首次挂载时加载 regime 时间线
+    this._loadRegimeTimeline();
   }
 
   render(p) {
@@ -73,11 +76,11 @@ class PortfolioRenderer {
   _renderSectorChart(sectors) {
     const ctx = document.getElementById('sectorChart')?.getContext('2d');
     if (!ctx) return;
-    this._sectorChart?.destroy();
+    this._charts.sector?.destroy();
     const labels = Object.keys(sectors);
     const values = labels.map(k => Number(sectors[k]) * 100);
     if (!labels.length) return;
-    this._sectorChart = new Chart(ctx, {
+    this._charts.sector = new Chart(ctx, {
       type: 'doughnut',
       data: {
         labels,
@@ -90,8 +93,8 @@ class PortfolioRenderer {
   _renderReturnVolChart(p) {
     const ctx = document.getElementById('returnVolChart')?.getContext('2d');
     if (!ctx) return;
-    this._returnVolChart?.destroy();
-    this._returnVolChart = new Chart(ctx, {
+    this._charts.returnVol?.destroy();
+    this._charts.returnVol = new Chart(ctx, {
       type: 'bar',
       data: {
         labels: ['预期收益', '预期波动'],
@@ -119,10 +122,77 @@ class PortfolioRenderer {
     stats.textContent = lines.join('\n');
   }
 
+  async _loadRegimeTimeline() {
+    if (this._regimeLoaded) return;
+    this._regimeLoaded = true;
+    try {
+      const data = await apiClient.get('/api/regime-history', { days: 60 });
+      if (data && data.regimes) this._renderRegimeTimeline(data.regimes);
+    } catch (e) {
+      console.error('[Portfolio] regime timeline failed:', e);
+    }
+  }
+
+  _renderRegimeTimeline(regimes) {
+    const canvas = document.getElementById('regimeTimelineChart');
+    if (!canvas || !regimes.length) return;
+    this._charts.regime?.destroy();
+
+    const colors = {
+      'TREND_UP': '#50c878', 'BULL': '#50c878',
+      'TREND_DOWN': '#dc5050', 'BEAR': '#dc5050',
+      'SIDEWAYS': '#ffa500', 'MEAN_REVERSION': '#ffa500',
+      'VOLATILE': '#ff6b6b', 'HIGH_VOLATILITY': '#ff6b6b',
+      'LOW_VOLATILITY': '#87ceeb',
+      'RISK_OFF': '#dc5050', 'RECOVERY': '#50c878',
+    };
+    const regimeLabels = {
+      'TREND_UP': '上升趋势', 'TREND_DOWN': '下跌趋势',
+      'MEAN_REVERSION': '均值回归', 'HIGH_VOLATILITY': '高波动',
+      'LOW_VOLATILITY': '低波动', 'RISK_OFF': '极端风险',
+    };
+
+    this._charts.regime = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: regimes.map(r => r.start_date),
+        datasets: [{
+          label: '市场状态',
+          data: regimes.map(() => 1),
+          backgroundColor: regimes.map(r => colors[r.regime] || '#999'),
+          barPercentage: 0.9,
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: ctx => {
+                const r = regimes[ctx[0].dataIndex];
+                return (regimeLabels[r.regime] || r.regime);
+              },
+              label: ctx => {
+                const r = regimes[ctx.dataIndex];
+                return `${r.start_date} ~ ${r.end_date}`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { display: false },
+          y: { ticks: { font: { size: 10 }, color: '#7D8590' } },
+        },
+      },
+    });
+  }
+
   unmount() {
     this._unsubscribers.forEach(unsub => unsub());
-    this._sectorChart?.destroy();
-    this._returnVolChart?.destroy();
+    Object.values(this._charts).forEach(c => c?.destroy());
   }
 }
 
