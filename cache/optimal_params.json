@@ -1,0 +1,78 @@
+{
+  "factor_weights": {
+    "volume_ratio": 0.30032846998308105,
+    "adx": 0.0652660001243171,
+    "williams_r": 0.30032846998308105,
+    "cci": -0.004271007374790212,
+    "rsi_14": 0.015403205177862513,
+    "trend_strength": 0.2327720963729005,
+    "kdj_j": 0.015338223970345274,
+    "momentum_20": 0.08454832426451171,
+    "volatility_20": -0.009713782501308972
+  },
+  "exit_days_map": {
+    "TREND_UP": 13,
+    "MEAN_REVERSION": 11,
+    "HIGH_VOLATILITY": 17,
+    "LOW_VOLATILITY": 7,
+    "TREND_DOWN": 10,
+    "RISK_OFF": 15
+  },
+  "regime_strategy_presets": {
+    "TREND_UP": {
+      "trend": 0.10013694454506206,
+      "mean_reversion": 0.12165319384760635,
+      "momentum": 0.12105141060126158,
+      "volatility": 0.22074127553905962,
+      "stat_arb": 0.25093447510764805,
+      "trend_breakout": 0.18548270035936223
+    },
+    "MEAN_REVERSION": {
+      "trend": 0.33089172834712294,
+      "mean_reversion": 0.1805744718157535,
+      "momentum": 0.15623302998992616,
+      "volatility": 0.20598132810897973,
+      "stat_arb": 0.00975571626482016,
+      "trend_breakout": 0.1165637254733974
+    },
+    "HIGH_VOLATILITY": {
+      "trend": 0.06394539170859283,
+      "mean_reversion": 0.1597578094677897,
+      "momentum": 0.18819459596042343,
+      "volatility": 0.233923214438706,
+      "stat_arb": 0.296460231752422,
+      "trend_breakout": 0.05771875667206618
+    },
+    "LOW_VOLATILITY": {
+      "trend": 0.2294153848658628,
+      "mean_reversion": 0.08692878609665311,
+      "momentum": 0.10781436155029692,
+      "volatility": 0.2429918034840785,
+      "stat_arb": 0.24217125377622123,
+      "trend_breakout": 0.09067841022688744
+    },
+    "TREND_DOWN": {
+      "trend": 0.1657172403879981,
+      "mean_reversion": 0.1967046280621926,
+      "momentum": 0.17451539608163127,
+      "volatility": 0.1829834916543729,
+      "stat_arb": 0.1255762197225262,
+      "trend_breakout": 0.1545030240912789
+    },
+    "RISK_OFF": {
+      "trend": 0.20308446150119797,
+      "mean_reversion": 0.2110043483129427,
+      "momentum": 0.19308248338605308,
+      "volatility": 0.21069945742597118,
+      "stat_arb": 0.0627980885534724,
+      "trend_breakout": 0.1193311608203627
+    }
+  },
+  "fitness": 1.037429,
+  "walk_forward": {
+    "mean_sharpe": -1.6666,
+    "std_sharpe": 0.0,
+    "is_stable": "True",
+    "min_sharpe": -1.6666
+  }
+}

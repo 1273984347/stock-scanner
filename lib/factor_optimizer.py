@@ -440,9 +440,11 @@ class GeneticOptimizer:
         child_chromosome = alpha * c1 + (1 - alpha) * c2
 
         # 对因子权重部分做归一化
-        child_chromosome[:len(FACTOR_NAMES)] = _normalize_weights(
+        normalized = _normalize_weights(
             _clamp_weights(dict(zip(FACTOR_NAMES, child_chromosome[:len(FACTOR_NAMES)])))
         )
+        for i, k in enumerate(FACTOR_NAMES):
+            child_chromosome[i] = normalized[k]
         # 重新编码归一化后的权重
         weights, exit_days_map, regime_strategy_presets = _decode_chromosome(
             child_chromosome, self.config
