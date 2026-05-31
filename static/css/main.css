@@ -43,8 +43,8 @@
 /* Light mode */
 [data-theme="light"] {
   --bg: #ffffff;
-  --card: #f6f8fa;
-  --card-hover: #eaeef2;
+  --card: #ffffff;
+  --card-hover: #f6f8fa;
   --border: #d0d7de;
   --text: #24292f;
   --text-sub: #656d76;
@@ -299,3 +299,4 @@ body.loading-active::after {
 /* 打印样式 */
 @media print {
   body { background: #fff; color: #000; }
+}

@@ -6,6 +6,8 @@ export class Toolbar {
     const saved = localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     this.theme = saved || (prefersDark ? 'dark' : 'light');
+    // Ensure DOM attribute matches (in case initTheme hasn't run yet)
+    document.documentElement.setAttribute('data-theme', this.theme);
     this.timeframe = '1D';
     this.render();
     this.bindEvents();
