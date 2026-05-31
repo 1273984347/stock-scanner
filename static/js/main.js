@@ -104,6 +104,7 @@ async function init() {
 
   wsManager.onStatusChange((status) => {
     updateWsIndicator(status);
+    statusbar.setWsStatus(status);
     if (status === 'connected') {
       pollingController.stop();
     } else if (status === 'disconnected' || status === 'error') {
