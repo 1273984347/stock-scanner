@@ -115,6 +115,7 @@ async function init() {
 
   setupTabSwitching();
   initKeyboardShortcuts();
+  initExportButtons();
 
   document.getElementById('presetSelect')?.addEventListener('change', () => {
     document.getElementById('refreshBtn')?.click();
@@ -352,6 +353,31 @@ function renderStockFactors(r) {
 }
 
 // Keyboard shortcuts
+function initExportButtons() {
+  async function downloadCsv(url, filename) {
+    try {
+      const apiKey = sessionStorage.getItem('api_key') || 'dev';
+      const res = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      console.error('[Export] 下载失败:', e);
+      alert('导出失败，请稍后重试');
+    }
+  }
+  document.getElementById('exportPositionsBtn')?.addEventListener('click', () => {
+    downloadCsv('/api/export/positions', 'positions.csv');
+  });
+  document.getElementById('exportTradesBtn')?.addEventListener('click', () => {
+    downloadCsv('/api/export/trades', 'trades.csv');
+  });
+}
+
 function initKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {

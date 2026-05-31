@@ -24,10 +24,12 @@
 
 from fastapi import FastAPI, HTTPException, Query, Security, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 from pathlib import Path
 from datetime import datetime
+import csv
+import io
 import json
 import logging
 import re
@@ -1577,6 +1579,84 @@ async def trade_history(
     except Exception as e:
         logger.error(f"交易历史查询失败: {e}")
         return {"trades": [], "total": 0}
+
+
+@app.get("/api/export/positions", dependencies=[Security(verify_api_key)])
+async def export_positions():
+    """导出持仓为 CSV"""
+    try:
+        from lib.position_manager import PositionManager
+        pm = PositionManager()
+        positions = pm.positions
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["代码", "名称", "股数", "成本", "止损", "止盈", "入场日期", "持有天数", "备注"])
+
+        from datetime import datetime as _dt
+        for code, pos in positions.items():
+            hold_days = 0
+            try:
+                buy_dt = _dt.strptime(pos.buy_date, "%Y-%m-%d")
+                hold_days = (_dt.now() - buy_dt).days
+            except Exception:
+                pass
+            writer.writerow([
+                code,
+                pos.name,
+                pos.shares,
+                pos.buy_price,
+                pos.stop_loss,
+                pos.take_profit,
+                pos.buy_date,
+                hold_days,
+                pos.notes,
+            ])
+
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=positions.csv"}
+        )
+    except Exception as e:
+        logger.error(f"导出持仓 CSV 失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/export/trades", dependencies=[Security(verify_api_key)])
+async def export_trades(days: int = Query(default=30, ge=1, le=365)):
+    """导出交易历史为 CSV"""
+    try:
+        from lib.trade_logger import TradeLogger
+        tl = TradeLogger()
+        trades = tl.get_recent_trades(days=days)
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["时间", "代码", "操作", "价格", "股数", "盈亏%", "持有天数", "原因"])
+
+        for t in trades:
+            writer.writerow([
+                t.get("timestamp", ""),
+                t.get("code", ""),
+                t.get("action", ""),
+                t.get("price", 0),
+                t.get("shares", 0),
+                round(t.get("pnl_pct", 0) * 100, 2),
+                t.get("hold_days", 0),
+                t.get("exit_reason", ""),
+            ])
+
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=trades_{days}d.csv"}
+        )
+    except Exception as e:
+        logger.error(f"导出交易 CSV 失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/factor-contribution", dependencies=[Security(verify_api_key)])
