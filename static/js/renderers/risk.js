@@ -1,4 +1,5 @@
 import { stateManager } from '../state.js';
+import { apiClient } from '../api.js';
 
 // Escape HTML special characters to prevent XSS
 function esc(s) {
