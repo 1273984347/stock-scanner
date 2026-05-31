@@ -40,7 +40,7 @@ class BacktestRenderer {
       }
 
       this._renderMetrics(res);
-      this._renderEquityChart(res.equity_curve || []);
+      this._renderEquityChart(res.equity_curve || [], res.trades || []);
       this._renderExitChart(res.exit_reasons || {});
       this._renderTradeTable(res.trades || []);
 
@@ -106,7 +106,7 @@ class BacktestRenderer {
     document.getElementById('btResult').appendChild(c);
   }
 
-  _renderEquityChart(curve) {
+  _renderEquityChart(curve, trades) {
     const canvas = document.getElementById('btReturnChart');
     if (!canvas || curve.length === 0) return;
 
@@ -120,6 +120,29 @@ class BacktestRenderer {
     const drawdown = nav.map(v => {
       peak = Math.max(peak, v);
       return ((v - peak) / peak) * 100;
+    });
+
+    // Build buy/sell marker arrays
+    const buyDates = new Set();
+    const sellDates = new Set();
+    const buyPoints = [];
+    const sellPoints = [];
+
+    (trades || []).forEach(t => {
+      if (t.entry_date && !buyDates.has(t.entry_date)) {
+        buyDates.add(t.entry_date);
+        const idx = curve.findIndex(p => p.date === t.entry_date);
+        if (idx >= 0) {
+          buyPoints.push({ x: t.entry_date, y: curve[idx].nav || 1.0 });
+        }
+      }
+      if (t.exit_date && !sellDates.has(t.exit_date)) {
+        sellDates.add(t.exit_date);
+        const idx = curve.findIndex(p => p.date === t.exit_date);
+        if (idx >= 0) {
+          sellPoints.push({ x: t.exit_date, y: curve[idx].nav || 1.0 });
+        }
+      }
     });
 
     this._charts.equity = new Chart(canvas, {
@@ -157,6 +180,27 @@ class BacktestRenderer {
             pointRadius: 0,
             borderWidth: 1,
             yAxisID: 'dd',
+          },
+          {
+            label: '买入',
+            data: buyPoints,
+            type: 'scatter',
+            pointStyle: 'triangle',
+            pointRadius: 6,
+            pointBackgroundColor: '#50c878',
+            pointBorderColor: '#50c878',
+            showLine: false,
+          },
+          {
+            label: '卖出',
+            data: sellPoints,
+            type: 'scatter',
+            pointStyle: 'triangle',
+            pointRadius: 6,
+            pointBackgroundColor: '#dc5050',
+            pointBorderColor: '#dc5050',
+            pointRotation: 180,
+            showLine: false,
           },
         ],
       },
