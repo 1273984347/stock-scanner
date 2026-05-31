@@ -1202,6 +1202,25 @@ async def factor_evaluation(
 
 
 
+@app.get("/api/factor-weights", dependencies=[Security(verify_api_key)])
+async def factor_weights(preset: str = Query("balanced")):
+    """因子权重分布"""
+    try:
+        from config import get_config
+        from factors import IC_FACTOR_WEIGHTS, STRATEGY_WEIGHTS
+
+        cfg = get_config(preset)
+
+        return {
+            "ic_weights": dict(IC_FACTOR_WEIGHTS),
+            "strategy_weights": dict(STRATEGY_WEIGHTS),
+            "preset": preset,
+        }
+    except Exception as e:
+        logger.error(f"因子权重查询失败: {e}")
+        return {"ic_weights": {}, "strategy_weights": {}}
+
+
 @app.get("/api/factor-contribution", dependencies=[Security(verify_api_key)])
 async def factor_contribution(days: int = Query(default=30, ge=1, le=365)):
     """因子贡献度分析"""

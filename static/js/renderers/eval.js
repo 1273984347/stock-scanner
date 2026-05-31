@@ -11,12 +11,15 @@ function esc(s) {
 }
 
 class EvalRenderer {
-  constructor() { this._unsubscribers = []; this._loaded = false; }
+  constructor() { this._unsubscribers = []; this._loaded = false; this._charts = {}; }
   mount() {
     // 懒加载：只有用户切换到 eval tab 时才请求数据
     const evalTab = document.querySelector('[data-panel="eval"]');
     if (evalTab) {
-      evalTab.addEventListener('click', () => { if (!this._loaded) this._load(); });
+      evalTab.addEventListener('click', () => {
+        if (!this._loaded) this._load();
+        this._loadFactorWeights();
+      });
     }
   }
   async _load() {
@@ -75,6 +78,53 @@ class EvalRenderer {
       tr.appendChild(td); icBody.appendChild(tr);
     }
   }
+  async _loadFactorWeights() {
+    try {
+      const data = await apiClient.get('/api/factor-weights');
+      if (data) this._renderWeightRadar(data);
+    } catch (e) {
+      console.error('[Eval] factor weights failed:', e);
+    }
+  }
+
+  _renderWeightRadar(data) {
+    const canvas = document.getElementById('weightRadarChart');
+    if (!canvas || !data.ic_weights) return;
+    if (this._charts.radar) this._charts.radar.destroy();
+
+    const labels = Object.keys(data.ic_weights);
+    const values = Object.values(data.ic_weights);
+
+    this._charts.radar = new Chart(canvas.getContext('2d'), {
+      type: 'radar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'IC 因子权重',
+          data: values,
+          backgroundColor: 'rgba(79, 140, 255, 0.2)',
+          borderColor: '#4f8cff',
+          borderWidth: 2,
+          pointRadius: 4,
+          pointBackgroundColor: '#4f8cff',
+        }],
+      },
+      options: {
+        responsive: true,
+        scales: {
+          r: {
+            beginAtZero: true,
+            ticks: { font: { size: 10 } },
+            pointLabels: { font: { size: 11 } },
+          },
+        },
+        plugins: {
+          legend: { position: 'top' },
+        },
+      },
+    });
+  }
+
   unmount() { this._unsubscribers.forEach(u => u()); }
 }
 export { EvalRenderer };
