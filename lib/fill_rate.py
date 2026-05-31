@@ -92,3 +92,34 @@ def estimate_fill_time(
         return 120  # 2 小时
     else:
         return -1  # 难以成交
+
+
+def get_optimal_execution_time() -> dict:
+    """获取最优下单时间推荐
+
+    基于 A 股历史统计：
+    - 开盘30分钟：高波动，滑点大，但流动性好
+    - 上午10:00-11:00：最佳执行窗口（流动性好+波动适中）
+    - 午盘：流动性差，不推荐大单
+    - 下午14:00-14:30：次佳窗口
+    - 尾盘30分钟：波动大，适合小单
+
+    Returns:
+        dict with time slots and recommendations
+    """
+    return {
+        "best_windows": [
+            {"time": "10:00-11:00", "score": 90, "reason": "流动性好，波动适中"},
+            {"time": "14:00-14:30", "score": 80, "reason": "下午最佳窗口"},
+        ],
+        "avoid_windows": [
+            {"time": "9:30-10:00", "score": 40, "reason": "开盘高波动，滑点大"},
+            {"time": "11:30-13:00", "score": 30, "reason": "午盘流动性差"},
+            {"time": "14:30-15:00", "score": 50, "reason": "尾盘波动大"},
+        ],
+        "recommendations": {
+            "small_order": "任意时段均可，优先 10:00-11:00",
+            "medium_order": "使用 TWAP 拆分，覆盖 10:00-11:00 窗口",
+            "large_order": "使用 TWAP 拆分，避免开盘和尾盘",
+        },
+    }
