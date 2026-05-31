@@ -49,6 +49,7 @@
     <div class="nav-tab" data-panel="reports">历史报告</div>
     <div class="nav-tab" data-panel="signals">信号追踪</div>
     <div class="nav-tab" data-panel="trades">交易历史</div>
+    <div class="nav-tab" data-panel="settings">设置</div>
   </div>
 
   <!-- 组合优化面板 -->
@@ -310,6 +311,46 @@
         <thead><tr><th>时间</th><th>代码</th><th>操作</th><th>价格</th><th>股数</th><th>盈亏</th><th>持有天数</th><th>原因</th></tr></thead>
         <tbody id="tradeHistoryBody"></tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- 设置面板 -->
+  <div class="panel" id="panel-settings">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
+      <h3 style="margin:0 0 12px">默认参数</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px">
+        <div>
+          <label>默认策略</label>
+          <select id="settingPreset" style="width:100%;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text)">
+            <option value="balanced">均衡</option>
+            <option value="aggressive">激进</option>
+            <option value="conservative">保守</option>
+          </select>
+        </div>
+        <div>
+          <label>默认回测天数</label>
+          <input type="number" id="settingDays" value="250" min="30" max="1000" style="width:100%;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text)">
+        </div>
+        <div>
+          <label>默认股票池</label>
+          <input type="text" id="settingSymbols" placeholder="留空使用默认" style="width:100%;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text)">
+        </div>
+      </div>
+    </div>
+
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
+      <h3 style="margin:0 0 12px">通知偏好</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
+        <label><input type="checkbox" id="settingNotifySignals" checked> 信号通知</label>
+        <label><input type="checkbox" id="settingNotifyTrades" checked> 交易通知</label>
+        <label><input type="checkbox" id="settingNotifyAlerts" checked> 告警通知</label>
+        <label><input type="checkbox" id="settingNotifyDaily" checked> 每日报告</label>
+      </div>
+    </div>
+
+    <div style="text-align:right">
+      <button id="saveSettingsBtn" class="primary">保存设置</button>
+      <span id="settingsStatus" style="margin-left:8px;font-size:12px;color:var(--text-sub)"></span>
     </div>
   </div>
 </div>

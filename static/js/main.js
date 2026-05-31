@@ -15,6 +15,7 @@ import { BacktestRenderer } from './renderers/backtest.js';
 import { EvalRenderer } from './renderers/eval.js';
 import { SignalsRenderer } from './renderers/signals.js';
 import { TradesRenderer } from './renderers/trades.js';
+import { SettingsRenderer } from './renderers/settings.js';
 
 const renderers = {};
 
@@ -72,6 +73,7 @@ async function init() {
   renderers.eval = new EvalRenderer();
   renderers.signals = new SignalsRenderer();
   renderers.trades = new TradesRenderer();
+  renderers.settings = new SettingsRenderer();
 
   Object.values(renderers).forEach(r => r.mount?.());
   renderers.backtest.init();
