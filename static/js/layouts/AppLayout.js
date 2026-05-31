@@ -70,9 +70,7 @@ export class AppLayout {
           <option value="250">250日</option>
         </select>
       </div>
-      <div style="position:relative;height:300px">
-        <canvas id="klineChart"></canvas>
-      </div>
+      <div id="klineChart" style="height:300px"></div>
     </div>
     <div class="portfolio-grid">
       <div class="portfolio-card"><div class="metric-label">技术信号分布</div><canvas id="signalChart"></canvas></div>

@@ -1,5 +1,6 @@
 import { stateManager } from '../state.js';
-import { KlineRenderer } from './kline.js';
+import { apiClient } from '../api.js';
+import { ChartPanel } from '../components/ChartPanel.js';
 import { getThemeColor } from '../theme.js';
 
 /**
@@ -14,7 +15,7 @@ class ScannerRenderer {
     this._signalChart = null;
     this._factorChart = null;
     this._heatmapChart = null;
-    this._kline = new KlineRenderer();
+    this._chartPanel = null;
     this._currentKlineCode = '';
     this._unsubscribers = [];
   }
@@ -44,9 +45,33 @@ class ScannerRenderer {
     if (sel) {
       sel.addEventListener('change', () => {
         if (this._currentKlineCode) {
-          this._kline.loadKline(this._currentKlineCode, parseInt(sel.value, 10));
+          this._loadKline(this._currentKlineCode, parseInt(sel.value, 10));
         }
       });
+    }
+  }
+
+  async _loadKline(code, days = 120) {
+    try {
+      const data = await apiClient.get(`/api/kline/${code}`, { days });
+      if (data && data.data && data.data.length > 0) {
+        if (!this._chartPanel) {
+          const container = document.getElementById('klineChart');
+          if (!container) return;
+          this._chartPanel = new ChartPanel(container);
+        }
+        const chartData = data.data.map(d => ({
+          time: d.date,
+          open: d.open,
+          high: d.high,
+          low: d.low,
+          close: d.close,
+          volume: d.volume,
+        }));
+        this._chartPanel.setData(chartData);
+      }
+    } catch (e) {
+      console.error('[Scanner] K线加载失败:', e);
     }
   }
 
@@ -188,7 +213,7 @@ class ScannerRenderer {
             const section = document.getElementById('klineSection');
             if (section) section.style.display = '';
             const days = parseInt(document.getElementById('klineDays')?.value || '120', 10);
-            this._kline.loadKline(this._currentKlineCode, days);
+            this._loadKline(this._currentKlineCode, days);
           }
         });
         body.appendChild(tr);
@@ -263,7 +288,7 @@ class ScannerRenderer {
     this._signalChart?.destroy();
     this._factorChart?.destroy();
     this._heatmapChart?.destroy();
-    this._kline?.destroy();
+    this._chartPanel?.destroy();
   }
 }
 
