@@ -81,6 +81,34 @@ def run_daily_scan(push_feishu: bool = True, extra_symbols: list = None):
             f"盈亏比{eval_result['profit_loss_ratio']:.2f}"
         )
 
+    # 财报预警：持仓股财报前3天推送
+    try:
+        from lib.data_earnings import get_upcoming_earnings
+        upcoming = get_upcoming_earnings(days=3)
+        if not upcoming.empty and report.positions:
+            held_codes = {p['code'] for p in report.positions}
+            earnings_alerts = [
+                row for _, row in upcoming.iterrows()
+                if row.get("股票代码") in held_codes
+            ]
+            if earnings_alerts:
+                alert_lines = ["## ⚠️ 财报预警（持仓股）", ""]
+                for row in earnings_alerts:
+                    alert_lines.append(
+                        f"- {row.get('股票代码', '?')} {row.get('名称', '?')}: "
+                        f"{row.get('预计披露日期', '?')} 发布财报"
+                    )
+                logger.warning(f"持仓股财报预警: {len(earnings_alerts)} 只")
+                # 推送飞书
+                if push_feishu:
+                    try:
+                        from reporter.feishu_pusher import push_report
+                        push_report("\n".join(alert_lines), [])
+                    except Exception:
+                        pass
+    except Exception as e:
+        logger.debug(f"财报预警检查失败: {e}")
+
     # 输出日报
     print(f"\n{'='*50}")
     print(f"模拟盘日报 {report.date}")
