@@ -26,7 +26,15 @@
   --down: #F85149;
   --warn: #D29922;
 
+  /* 图表/侧边栏背景（比 --bg 更深） */
+  --bg-chart: #0D1117;
+
   /* 布局 */
+  --sidebar-width: 52px;
+  --sidebar-expanded: 200px;
+  --toolbar-height: 48px;
+  --statusbar-height: 28px;
+  --right-panel-width: 240px;
   --radius: 8px;
   --gap: 12px;
   --card-pad: 14px;
@@ -46,6 +54,7 @@
   --up: #1a7f37;
   --down: #cf222e;
   --warn: #9a6700;
+  --bg-chart: #f0f2f5;
 }
 
 /* Reset */
@@ -57,6 +66,7 @@ body {
   color: var(--text);
   min-height: 100dvh;
   line-height: 1.5;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
 .topbar h1 { font-size: 18px; font-weight: 700; flex: 1; color: var(--text); }

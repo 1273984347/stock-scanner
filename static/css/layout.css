@@ -26,7 +26,7 @@ body, html {
   display: flex;
   flex-direction: column;
   padding: 8px 0;
-  transition: width 0.2s;
+  transition: width 0.2s, background 0.2s ease;
 }
 
 .sidebar:hover {
@@ -87,6 +87,7 @@ body, html {
   align-items: center;
   padding: 0 16px;
   gap: 12px;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 .toolbar-brand {
@@ -138,6 +139,7 @@ body, html {
   min-width: 0;
   background: var(--bg-chart);
   overflow-y: auto;
+  transition: background 0.2s ease;
 }
 
 .right-panel {
@@ -148,6 +150,7 @@ body, html {
   border-left: 1px solid var(--border);
   padding: 12px;
   overflow-y: auto;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 /* Bottom status bar */
@@ -159,6 +162,7 @@ body, html {
   color: var(--text-sub);
   display: flex;
   align-items: center;
+  transition: background 0.2s ease;
   padding: 0 16px;
   font-size: 11px;
   gap: 16px;
@@ -344,18 +348,12 @@ body, html {
 
 /* Responsive */
 @media (max-width: 1200px) {
-  .metrics-bar {
-    grid-template-columns: repeat(3, 1fr);
-  }
   .portfolio-grid {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 768px) {
-  .metrics-bar {
-    grid-template-columns: repeat(2, 1fr);
-  }
   .right-panel {
     display: none;
   }

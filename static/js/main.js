@@ -37,24 +37,7 @@ function initTheme() {
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const theme = saved || (prefersDark ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', theme);
-    updateThemeButton(theme);
     applyChartDefaults();
-}
-
-function toggleTheme() {
-    const current = document.documentElement.getAttribute('data-theme');
-    const next = current === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('theme', next);
-    updateThemeButton(next);
-    applyChartDefaults();
-    // Re-render charts to pick up new theme colors
-    Object.values(renderers).forEach(r => r.update?.());
-}
-
-function updateThemeButton(theme) {
-    const btn = document.getElementById('themeToggle');
-    if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
 }
 
 function updateWsIndicator(status) {
@@ -71,19 +54,25 @@ async function init() {
 
   // Panel switching function
   function switchPanel(panelId) {
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.panels-container .panel').forEach(p => p.classList.remove('active'));
     const panel = document.getElementById('panel-' + panelId);
     if (panel) panel.classList.add('active');
-    sidebar.setActive(panelId);
+    // Sidebar handles its own active state via render() in bindEvents
+    // Lazy-load data for panels that need it
+    if (panelId === 'reports') loadReportsTab();
+    if (panelId === 'trades') renderers.trades?.fetch();
+    if (panelId === 'signals') renderers.signals?.fetch();
   }
 
   const sidebar = new Sidebar(document.getElementById('sidebar'), switchPanel);
-  const toolbar = new Toolbar(document.getElementById('toolbar'));
+  const toolbar = new Toolbar(document.getElementById('toolbar'), (theme) => {
+    applyChartDefaults();
+    Object.values(renderers).forEach(r => r.update?.());
+  });
   const statusbar = new StatusBar(document.getElementById('statusbar'));
 
   initErrorTracker();
   initTheme();
-  document.getElementById('themeToggle')?.addEventListener('click', toggleTheme);
 
   renderers.metrics = new MetricsRenderer();
   renderers.portfolio = new PortfolioRenderer();
@@ -140,7 +129,6 @@ async function init() {
     }
   });
 
-  setupTabSwitching();
   initKeyboardShortcuts();
   initExportButtons();
   initNotifications();
@@ -185,22 +173,7 @@ async function init() {
 }
 
 function setupTabSwitching() {
-  const navTabs = document.querySelectorAll('.nav-tab');
-  const panels = document.querySelectorAll('.panel');
-  navTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      navTabs.forEach(t => t.classList.remove('active'));
-      panels.forEach(p => p.classList.remove('active'));
-      tab.classList.add('active');
-      document.getElementById('panel-' + tab.dataset.panel)?.classList.add('active');
-      if (tab.dataset.panel === 'reports') {
-        loadReportsTab();
-      }
-      if (tab.dataset.panel === 'trades') {
-        renderers.trades?.fetch();
-      }
-    });
-  });
+  // Legacy: tab switching now handled by Sidebar + switchPanel
 }
 
 let _reportsLoaded = false;
@@ -477,7 +450,7 @@ function initKeyboardShortcuts() {
 }
 
 function navigateTab(direction) {
-  const tabs = [...document.querySelectorAll('.nav-tab')];
+  const tabs = [...document.querySelectorAll('.nav-item')];
   const activeIdx = tabs.findIndex(t => t.classList.contains('active'));
   const nextIdx = Math.max(0, Math.min(tabs.length - 1, activeIdx + direction));
   if (nextIdx !== activeIdx) tabs[nextIdx]?.click();

@@ -37,7 +37,7 @@ const TOUR_STEPS = [
     position: 'top',
   },
   {
-    target: '#themeToggle',
+    target: '.theme-toggle',
     title: '主题切换',
     content: '点击切换暗色/亮色主题。支持跟随系统偏好。',
     position: 'bottom',

@@ -1,7 +1,11 @@
 export class Toolbar {
-  constructor(container) {
+  constructor(container, onThemeChange) {
     this.container = container;
-    this.theme = 'light';
+    this.onThemeChange = onThemeChange || null;
+    // Read from localStorage, fallback to system preference, then 'dark'
+    const saved = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    this.theme = saved || (prefersDark ? 'dark' : 'light');
     this.timeframe = '1D';
     this.render();
     this.bindEvents();
@@ -38,7 +42,9 @@ export class Toolbar {
       if (e.target.matches('.theme-toggle')) {
         this.theme = this.theme === 'light' ? 'dark' : 'light';
         document.documentElement.setAttribute('data-theme', this.theme);
+        localStorage.setItem('theme', this.theme);
         this.render();
+        if (this.onThemeChange) this.onThemeChange(this.theme);
       }
     });
   }
