@@ -384,6 +384,42 @@ function initExportButtons() {
   document.getElementById('exportTradesExcelBtn')?.addEventListener('click', () => {
     downloadCsv('/api/export/trades/excel', 'trades.xlsx');
   });
+
+  // Config JSON export/import
+  document.getElementById('exportConfigBtn')?.addEventListener('click', async () => {
+    const preset = document.getElementById('presetSelect')?.value || 'balanced';
+    downloadCsv(`/api/export/config?preset=${preset}`, `config_${preset}.json`);
+  });
+
+  document.getElementById('importConfigBtn')?.addEventListener('click', () => {
+    document.getElementById('configFileInput')?.click();
+  });
+
+  document.getElementById('configFileInput')?.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const apiKey = sessionStorage.getItem('api_key') || 'dev';
+      const resp = await fetch('/api/import/config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
+        },
+        body: JSON.stringify(data),
+      });
+      const result = await resp.json();
+      if (!resp.ok) throw new Error(result.detail || '导入失败');
+      alert(result.message || '导入成功');
+    } catch (err) {
+      console.error('[Config Import] 失败:', err);
+      alert('导入失败: ' + err.message);
+    }
+    // Reset file input so the same file can be re-imported
+    e.target.value = '';
+  });
 }
 
 function initKeyboardShortcuts() {

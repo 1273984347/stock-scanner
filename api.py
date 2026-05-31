@@ -1871,6 +1871,65 @@ async def export_trades_excel(days: int = Query(default=30, ge=1, le=365)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/export/config", dependencies=[Security(verify_api_key)])
+async def export_config(preset: str = Query("balanced")):
+    """导出当前配置为 JSON"""
+    if preset not in ALLOWED_PRESETS:
+        raise HTTPException(status_code=400, detail=f"无效的preset: {preset}")
+    try:
+        import dataclasses
+        from config import get_config
+
+        cfg = get_config(preset)
+
+        def to_dict(obj):
+            if dataclasses.is_dataclass(obj):
+                return {k: to_dict(v) for k, v in dataclasses.asdict(obj).items()}
+            elif isinstance(obj, (list, tuple)):
+                return [to_dict(item) for item in obj]
+            elif isinstance(obj, dict):
+                return {k: to_dict(v) for k, v in obj.items()}
+            return obj
+
+        config_dict = to_dict(cfg)
+        config_dict["_preset"] = preset
+        config_dict["_exported_at"] = datetime.now().isoformat()
+
+        return JSONResponse(
+            content=config_dict,
+            headers={"Content-Disposition": f"attachment; filename=config_{preset}.json"}
+        )
+    except Exception as e:
+        logger.error(f"配置导出失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/import/config")
+async def import_config(request: Request, _=Security(verify_api_key)):
+    """导入配置 JSON（写入 config.json 触发热更新）"""
+    try:
+        data = await request.json()
+
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=400, detail="配置必须是 JSON 对象")
+
+        # 移除导出时附加的元数据字段
+        for meta_key in ("_preset", "_exported_at"):
+            data.pop(meta_key, None)
+
+        config_file = Path("config.json")
+        config_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        return {"status": "ok", "message": "配置已导入，将在下次请求时生效"}
+    except HTTPException:
+        raise
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="无效的 JSON 格式")
+    except Exception as e:
+        logger.error(f"配置导入失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/attribution", dependencies=[Security(verify_api_key)])
 async def return_attribution(days: int = Query(default=30, ge=1, le=365)):
     """收益归因分解（按信号来源瀑布图）"""
