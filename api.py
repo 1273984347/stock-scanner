@@ -101,6 +101,58 @@ def verify_ws_token(token: str) -> bool:
 
 
 @app.middleware("http")
+async def track_performance(request: Request, call_next):
+    """请求性能追踪"""
+    start = time.time()
+    response = await call_next(request)
+    duration = time.time() - start
+    if request.url.path.startswith("/api/"):
+        _record_metric(request.url.path, duration, response.status_code)
+    return response
+
+
+_perf_metrics: list = []
+_perf_file = Path(__file__).parent / "cache" / "perf_baseline.json"
+
+
+def _record_metric(path: str, duration: float, status: int):
+    """记录性能指标（内存中，定期写入）"""
+    _perf_metrics.append({
+        "path": path,
+        "duration_ms": round(duration * 1000, 1),
+        "status": status,
+        "timestamp": datetime.now().isoformat(),
+    })
+    if len(_perf_metrics) >= 50:
+        _flush_metrics()
+
+
+def _flush_metrics():
+    """将指标写入文件"""
+    if not _perf_metrics:
+        return
+    try:
+        existing = []
+        if _perf_file.exists():
+            existing = json.loads(_perf_file.read_text(encoding="utf-8"))
+        all_metrics = existing + _perf_metrics
+        all_metrics = all_metrics[-1000:]
+        _perf_file.parent.mkdir(parents=True, exist_ok=True)
+        _perf_file.write_text(
+            json.dumps(all_metrics, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        _perf_metrics.clear()
+    except Exception as e:
+        logger.debug(f"性能指标写入失败: {e}")
+
+
+@app.on_event("shutdown")
+def _flush_perf_on_shutdown():
+    """关闭时刷新性能指标"""
+    _flush_metrics()
+
+
+@app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     """添加安全响应头"""
     response = await call_next(request)
