@@ -91,8 +91,19 @@ def _fetch_from_source(code: str, days: int, source: str) -> pd.DataFrame:
             })
             return df
         if source == "akshare":
-            from lib.data_layer import get_stock_hist
-            return breaker.call(get_stock_hist, code, days)
+            import akshare as ak
+            end = datetime.now().strftime("%Y%m%d")
+            start = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+            df = breaker.call(ak.stock_zh_a_hist, symbol=code, period="daily",
+                              start_date=start, end_date=end, adjust="qfq")
+            if df.empty:
+                return pd.DataFrame()
+            df = df.rename(columns={
+                "日期": "date", "开盘": "open", "收盘": "close",
+                "最高": "high", "最低": "low", "成交量": "volume",
+                "成交额": "amount", "换手率": "turnover", "涨跌幅": "pct_chg"
+            })
+            return df
     except CircuitOpenError:
         logger.warning(f"[{source}] 熔断器开启，跳过该数据源")
         return pd.DataFrame()

@@ -327,35 +327,27 @@ def _fetch_from_tdx_local(code: str, days: int) -> pd.DataFrame:
 
 
 def get_stock_hist(code: str, days: int = 180) -> pd.DataFrame:
-    """获取个股日线：本地TDX优先，网络akshare兜底（带缓存）"""
+    """获取个股日线（多源自动切换，带缓存）
+
+    委托 data_source_registry.get_stock_hist_multi_source() 实现多源切换：
+    tdx_local_qfq → baostock → akshare → tdx_local → tdx → adata → westock → tushare
+    每个数据源有独立熔断器，失败自动切换下一个。
+    """
     cache_key = f"hist/{code}/{days}"
     cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
     if not cached.empty:
         return cached
 
-    # 1. 优先本地 TDX 文件
-    df = _fetch_from_tdx_local(code, days)
-    if not df.empty and len(df) >= min(days, 5):
-        _save_cache(cache_key, df)
-        return df
-
-    # 2. 网络兜底
     try:
-        end = datetime.now().strftime("%Y%m%d")
-        start = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
-        df = _retry_api_call(ak.stock_zh_a_hist, symbol=code, period="daily",
-                             start_date=start, end_date=end, adjust="qfq")
-        if df.empty:
-            return pd.DataFrame()
-        df = df.rename(columns={
-            "日期": "date", "开盘": "open", "收盘": "close",
-            "最高": "high", "最低": "low", "成交量": "volume",
-            "成交额": "amount", "换手率": "turnover", "涨跌幅": "pct_chg"
-        })
-        _save_cache(cache_key, df)
+        df = get_stock_hist_multi_source(code, days=days, source="auto")
+        if not df.empty:
+            _save_cache(cache_key, df)
         return df
+    except AllDataSourcesFailedError as e:
+        logger.warning(f"get_stock_hist({code}) 所有数据源失败: {e}")
+        return pd.DataFrame()
     except Exception as e:
-        logger.error(f"获取 {code} 数据失败: {e}")
+        logger.debug(f"get_stock_hist({code}) 多源失败: {e}")
         return pd.DataFrame()
 
 
