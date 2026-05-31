@@ -1494,14 +1494,32 @@ async def sector_heatmap(top_n: int = Query(default=50, ge=10, le=200)):
 
 @app.get("/api/kline/{code}", dependencies=[Security(verify_api_key)])
 async def kline_data(code: str, days: int = Query(default=120, ge=30, le=500)):
-    """K线数据"""
+    """K线数据（含技术指标）"""
     code = _validate_stock_code(code)
     try:
+        import pandas as pd
         from lib.data_layer import get_stock_hist
-        df = get_stock_hist(code, days=days)
+        from lib.technical_signals import ema
+        from backtest.utils import compute_atr
 
+        df = get_stock_hist(code, days=days)
         if df.empty:
             return {"data": [], "code": code}
+
+        # 计算技术指标
+        close = df["close"]
+        df["ema5"] = ema(close, 5)
+        df["ema21"] = ema(close, 21)
+        df["ema50"] = ema(close, 50)
+
+        # Keltner Channel (EMA21 ± 1.5 * ATR)
+        atr = compute_atr(df)
+        df["keltner_upper"] = df["ema21"] + 1.5 * atr
+        df["keltner_lower"] = df["ema21"] - 1.5 * atr
+
+        # Donchian Channel (20-day high/low)
+        df["donchian_high"] = df["high"].rolling(20).max()
+        df["donchian_low"] = df["low"].rolling(20).min()
 
         kline = []
         for _, row in df.iterrows():
@@ -1512,6 +1530,13 @@ async def kline_data(code: str, days: int = Query(default=120, ge=30, le=500)):
                 "low": float(row.get("low", 0)),
                 "close": float(row.get("close", 0)),
                 "volume": float(row.get("volume", 0)),
+                "ema5": float(row["ema5"]) if pd.notna(row.get("ema5")) else None,
+                "ema21": float(row["ema21"]) if pd.notna(row.get("ema21")) else None,
+                "ema50": float(row["ema50"]) if pd.notna(row.get("ema50")) else None,
+                "keltner_upper": float(row["keltner_upper"]) if pd.notna(row.get("keltner_upper")) else None,
+                "keltner_lower": float(row["keltner_lower"]) if pd.notna(row.get("keltner_lower")) else None,
+                "donchian_high": float(row["donchian_high"]) if pd.notna(row.get("donchian_high")) else None,
+                "donchian_low": float(row["donchian_low"]) if pd.notna(row.get("donchian_low")) else None,
             })
 
         return {"data": kline, "code": code}
