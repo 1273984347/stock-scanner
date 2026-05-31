@@ -62,6 +62,43 @@ class AlertMonitor:
             return True
         return False
 
+    def check_northbound_anomaly(self, daily_flows: list = None,
+                                 threshold_multiplier: float = 2.0) -> bool:
+        """检查北向资金异常流入/流出
+
+        Args:
+            daily_flows: 最近 N 天的净流入列表（单位：亿）
+            threshold_multiplier: 标准差倍数阈值（默认 2 倍）
+
+        Returns:
+            True if anomaly detected
+        """
+        if not daily_flows or len(daily_flows) < 5:
+            return False
+
+        import numpy as np
+        arr = np.array(daily_flows)
+        mean = float(arr.mean())
+        std = float(arr.std())
+
+        if std == 0:
+            return False
+
+        latest = float(arr[-1])
+        z_score = (latest - mean) / std
+
+        if abs(z_score) > threshold_multiplier:
+            direction = "大幅流入" if z_score > 0 else "大幅流出"
+            self.alerts.append({
+                "type": "northbound_anomaly",
+                "level": "WARNING",
+                "message": f"北向资金{direction}：今日 {latest:.1f}亿（均值 {mean:.1f}亿，标准差 {std:.1f}亿，Z={z_score:.1f}）",
+                "timestamp": datetime.now().isoformat(),
+            })
+            return True
+
+        return False
+
     def format_alert_message(self) -> str:
         """格式化告警消息"""
         if not self.alerts:
