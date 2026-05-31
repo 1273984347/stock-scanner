@@ -12,8 +12,80 @@ class PositionsRenderer {
         const code = tr.dataset.code;
         const name = tr.dataset.name || '';
         window.openStockDetail(code, name);
+        this._showPositionDetail(code);
       }
     });
+  }
+  async _showPositionDetail(code) {
+    try {
+      const data = await apiClient.get('/api/position/' + code);
+      if (data) this._renderPositionDetail(data);
+    } catch (e) {
+      console.error('[Positions] detail failed:', e);
+    }
+  }
+  _renderPositionDetail(data) {
+    const container = document.getElementById('positionDetail');
+    if (!container) return;
+    container.textContent = '';
+
+    const pnlColor = data.pnl_pct >= 0 ? 'var(--up)' : 'var(--down)';
+    const pnlSign = data.pnl_pct >= 0 ? '+' : '';
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:12px';
+
+    // Header row
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px';
+    const title = document.createElement('h3');
+    title.style.margin = '0';
+    title.textContent = (data.name || '') + ' (' + data.code + ') 持仓详情';
+    const closeBtn = document.createElement('span');
+    closeBtn.style.cssText = 'cursor:pointer;color:var(--text-dim);font-size:18px';
+    closeBtn.textContent = '×';
+    closeBtn.addEventListener('click', () => { container.style.display = 'none'; });
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+    wrap.appendChild(header);
+
+    // Grid
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:13px';
+
+    const addCell = (label, value, valueStyle) => {
+      const cell = document.createElement('div');
+      const lbl = document.createElement('span');
+      lbl.style.color = 'var(--text-dim)';
+      lbl.textContent = label + ': ';
+      cell.appendChild(lbl);
+      const val = document.createElement('b');
+      if (valueStyle) val.style.cssText = valueStyle;
+      val.textContent = value;
+      cell.appendChild(val);
+      grid.appendChild(cell);
+    };
+
+    addCell('成本', data.cost?.toFixed(2) || '--');
+    addCell('现价', data.current_price?.toFixed(2) || '--');
+    addCell('盈亏', pnlSign + (data.pnl_pct * 100).toFixed(2) + '%', 'color:' + pnlColor);
+    addCell('盈亏额', pnlSign + fmtMoney(data.pnl_amount), 'color:' + pnlColor);
+    addCell('股数', String(data.shares));
+    addCell('市值', fmtMoney(data.market_value));
+    addCell('止损', data.stop_loss ? (data.stop_loss * 100).toFixed(1) + '%' : '--');
+    addCell('止盈', data.take_profit ? (data.take_profit * 100).toFixed(1) + '%' : '--');
+    addCell('ATR止损价', data.atr_stop_price > 0 ? data.atr_stop_price.toFixed(2) : '--');
+    addCell('移动止盈价', data.trailing_stop_price > 0 ? data.trailing_stop_price.toFixed(2) : '--');
+    addCell('ATR止盈价', data.atr_take_profit_price > 0 ? data.atr_take_profit_price.toFixed(2) : '--');
+    addCell('入场日期', data.entry_date || '--');
+    addCell('持有天数', String(data.hold_days));
+    addCell('ATR', data.atr > 0 ? data.atr.toFixed(4) + ' (x' + data.atr_mult + ')' : '--');
+    addCell('最高价', data.peak_price > 0 ? data.peak_price.toFixed(2) : '--');
+    addCell('备注', data.notes || '--');
+
+    wrap.appendChild(grid);
+    container.appendChild(wrap);
+    container.style.display = 'block';
   }
   render(r) {
     const body = document.getElementById('posBody');
