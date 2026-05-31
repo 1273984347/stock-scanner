@@ -232,10 +232,11 @@ class DynamicExitManager:
     集成动态 Loss Breaker + 波动率仓位 + 动态止盈
     """
 
-    def __init__(self):
+    def __init__(self, exit_days_map: dict = None):
         self.loss_breaker = DynamicLossBreaker()
         self.position_sizer = VolatilityPositionSizer()
         self.take_profit = DynamicTakeProfit()
+        self._exit_days_map = exit_days_map
 
     def update_market_state(self, regime: str, annualized_vol: float):
         """更新市场状态"""
@@ -282,7 +283,7 @@ class DynamicExitManager:
         - RISK_OFF: 0天（不进场）
         """
         regime = self.loss_breaker.current_regime
-        exit_days_map = {
+        exit_days_map = self._exit_days_map if self._exit_days_map is not None else {
             "TREND_UP": 10,
             "MEAN_REVERSION": 5,
             "HIGH_VOLATILITY": 5,

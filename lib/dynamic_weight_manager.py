@@ -96,8 +96,9 @@ class DynamicWeightManager:
         result = manager.compute_weights(regime="TREND_UP")
     """
 
-    def __init__(self, bayesian_updater=None):
+    def __init__(self, bayesian_updater=None, regime_strategy_presets: dict = None):
         self._bayesian = bayesian_updater
+        self._regime_strategy_presets = regime_strategy_presets
 
     def compute_weights(
         self,
@@ -124,7 +125,8 @@ class DynamicWeightManager:
             base_ic_weights = dict(IC_FACTOR_WEIGHTS)
 
         # 1. Regime 预设
-        regime_preset = REGIME_STRATEGY_PRESETS.get(regime, base_strategy_weights)
+        regime_presets = self._regime_strategy_presets if self._regime_strategy_presets is not None else REGIME_STRATEGY_PRESETS
+        regime_preset = regime_presets.get(regime, base_strategy_weights)
 
         # 2. 混合基准 + 预设
         blended = {}
