@@ -68,12 +68,16 @@ async function init() {
   // Initialize new TradingView-style layout
   const app = document.getElementById('app') || document.body;
   const layout = new AppLayout(app);
-  const sidebar = new Sidebar(document.getElementById('sidebar'), (panel) => {
-    console.log('[Nav] Switching to:', panel);
-    // Wire sidebar to existing tab system
-    const tab = document.querySelector(`.nav-tab[data-panel="${panel}"]`);
-    if (tab) tab.click();
-  });
+
+  // Panel switching function
+  function switchPanel(panelId) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    const panel = document.getElementById('panel-' + panelId);
+    if (panel) panel.classList.add('active');
+    sidebar.setActive(panelId);
+  }
+
+  const sidebar = new Sidebar(document.getElementById('sidebar'), switchPanel);
   const toolbar = new Toolbar(document.getElementById('toolbar'));
   const statusbar = new StatusBar(document.getElementById('statusbar'));
 
