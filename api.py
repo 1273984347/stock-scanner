@@ -968,7 +968,7 @@ async def signal_accuracy(days: int = Query(default=30, ge=1, le=365)):
         tracker = SignalTracker()
         tracker.update_actual_returns()
         summary = tracker.evaluate_signals(days=days)
-        recent = tracker.get_recent_signals(days=7)
+        recent = tracker.get_recent_signals(days=days)
 
         # 按 source 分组统计
         by_source = {}
