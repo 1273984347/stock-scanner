@@ -18,6 +18,7 @@ from lib.technical_signals import ema
 from lib.data_layer import get_index_hist
 from lib.data_source_registry import get_stock_hist_multi_source
 from lib.market_regime import detect_market_regime, TREND_DOWN, RISK_OFF
+from backtest.utils import compute_atr, add_indicators
 
 
 # ============================================================
@@ -55,39 +56,6 @@ class BacktestConfig:
     commission_rate: float = field(default_factory=lambda: __import__('config').COMMISSION_RATE)
     stamp_duty_rate: float = field(default_factory=lambda: __import__('config').STAMP_DUTY_RATE)
     slippage_rate: float = field(default_factory=lambda: __import__('config').SLIPPAGE_RATE)
-
-
-# ============================================================
-# 指标计算
-# ============================================================
-
-def compute_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    """计算 ATR"""
-    high = df['high']
-    low = df['low']
-    prev_close = df['close'].shift(1)
-
-    tr1 = high - low
-    tr2 = (high - prev_close).abs()
-    tr3 = (low - prev_close).abs()
-
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = tr.rolling(period).mean()
-    return atr
-
-
-def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """给数据添加必要指标"""
-    df = df.copy()
-    df['EMA5'] = ema(df['close'], 5)
-    df['EMA21'] = ema(df['close'], 21)
-    df['vol_ma20'] = df['volume'].rolling(20).mean()
-    df['atr'] = compute_atr(df)
-    df['atr_pct'] = df['atr'] / df['close'] * 100  # ATR占价格的百分比
-    df['low_10'] = df['low'].rolling(10).min()
-    df['high_20'] = df['high'].rolling(20).max()
-    df['sma50'] = df['close'].rolling(50).mean()
-    return df
 
 
 # ============================================================

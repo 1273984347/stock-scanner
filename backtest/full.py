@@ -21,6 +21,7 @@ import numpy as np
 from typing import List, Dict, Tuple
 
 from lib.technical_signals import ema
+from backtest.utils import compute_atr, add_indicators
 
 # 本地文件直接读取（避免网络回退）
 def _get_stock_local(code: str, days: int = 500) -> pd.DataFrame:
@@ -134,32 +135,6 @@ def _scan_local_stocks():
 def get_all_stocks() -> List[str]:
     _scan_local_stocks()
     return FULL_STOCKS
-
-
-# ============================================================
-# 指标计算
-# ============================================================
-
-def compute_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    high = df['high']
-    low = df['low']
-    prev_close = df['close'].shift(1)
-    tr1 = high - low
-    tr2 = (high - prev_close).abs()
-    tr3 = (low - prev_close).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    return tr.rolling(period).mean()
-
-
-def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df['EMA5'] = ema(df['close'], 5)
-    df['EMA21'] = ema(df['close'], 21)
-    df['vol_ma20'] = df['volume'].rolling(20).mean()
-    df['atr'] = compute_atr(df)
-    df['atr_pct'] = df['atr'] / df['close'] * 100
-    df['low_10'] = df['low'].rolling(10).min()
-    return df
 
 
 # ============================================================
