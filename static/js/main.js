@@ -4,6 +4,7 @@ import { apiClient } from './api.js';
 import { pollingController } from './polling.js';
 import { getThemeColor } from './theme.js';
 import { initNotifications } from './notifications.js';
+import { Onboarding } from './onboarding.js';
 import { MetricsRenderer } from './renderers/metrics.js';
 import { PortfolioRenderer } from './renderers/portfolio.js';
 import { ScannerRenderer } from './renderers/scanner.js';
@@ -152,6 +153,10 @@ async function init() {
       console.error('[App] 初始数据拉取失败:', e);
     }
   })();
+
+  // 首次使用引导
+  const onboarding = new Onboarding();
+  onboarding.start();
 
   console.log('[App] 初始化完成');
 }
