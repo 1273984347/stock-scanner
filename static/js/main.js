@@ -12,6 +12,7 @@ import { AuditRenderer } from './renderers/audit.js';
 import { BacktestRenderer } from './renderers/backtest.js';
 import { EvalRenderer } from './renderers/eval.js';
 import { SignalsRenderer } from './renderers/signals.js';
+import { TradesRenderer } from './renderers/trades.js';
 
 const renderers = {};
 
@@ -33,6 +34,7 @@ async function init() {
   renderers.backtest = new BacktestRenderer();
   renderers.eval = new EvalRenderer();
   renderers.signals = new SignalsRenderer();
+  renderers.trades = new TradesRenderer();
 
   Object.values(renderers).forEach(r => r.mount?.());
   renderers.backtest.init();
@@ -123,6 +125,9 @@ function setupTabSwitching() {
       document.getElementById('panel-' + tab.dataset.panel)?.classList.add('active');
       if (tab.dataset.panel === 'reports') {
         loadReportsTab();
+      }
+      if (tab.dataset.panel === 'trades') {
+        renderers.trades?.fetch();
       }
     });
   });

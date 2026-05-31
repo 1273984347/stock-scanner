@@ -43,6 +43,7 @@
     <div class="nav-tab" data-panel="backtest">策略回测</div>
     <div class="nav-tab" data-panel="reports">历史报告</div>
     <div class="nav-tab" data-panel="signals">信号追踪</div>
+    <div class="nav-tab" data-panel="trades">交易历史</div>
   </div>
 
   <!-- 组合优化面板 -->
@@ -254,6 +255,23 @@
     <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px">
       <div class="metric-label">按来源分组</div>
       <canvas id="signalSourceChart"></canvas>
+    </div>
+  </div>
+
+  <!-- 交易历史面板 -->
+  <div class="panel" id="panel-trades">
+    <div style="margin-bottom:12px">
+      <select id="tradeSortSelect" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px">
+        <option value="date">按时间</option>
+        <option value="pnl">按收益（高→低）</option>
+        <option value="pnl_asc">按收益（低→高）</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table id="tradeHistoryTable">
+        <thead><tr><th>时间</th><th>代码</th><th>操作</th><th>价格</th><th>股数</th><th>盈亏</th><th>持有天数</th><th>原因</th></tr></thead>
+        <tbody id="tradeHistoryBody"></tbody>
+      </table>
     </div>
   </div>
 </div>

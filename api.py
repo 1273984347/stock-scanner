@@ -17,6 +17,7 @@
 - POST /api/backtest 回测
 - POST /api/backtest/compare 多策略对比回测
 - GET /api/factor-contribution 因子贡献度分析
+- GET /api/trade-history 交易历史（支持按时间/股票/盈亏筛选排序）
 """
 
 from fastapi import FastAPI, HTTPException, Query, Security, Request
@@ -1376,6 +1377,40 @@ async def sector_heatmap(top_n: int = Query(default=50, ge=10, le=200)):
     except Exception as e:
         logger.error(f"板块热力图数据失败: {e}")
         return {"sectors": []}
+
+
+@app.get("/api/trade-history", dependencies=[Security(verify_api_key)])
+async def trade_history(
+    days: int = Query(default=30, ge=1, le=365),
+    code: str = Query(default=""),
+    sort_by: str = Query(default="date"),
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    """交易历史"""
+    try:
+        from lib.trade_logger import TradeLogger
+        tl = TradeLogger()
+        trades = tl.get_recent_trades(days=days)
+
+        # 按股票代码筛选
+        if code:
+            trades = [t for t in trades if t.get("code") == code]
+
+        # 排序
+        if sort_by == "pnl":
+            trades.sort(key=lambda t: t.get("pnl_pct", 0), reverse=True)
+        elif sort_by == "pnl_asc":
+            trades.sort(key=lambda t: t.get("pnl_pct", 0))
+        else:
+            trades.sort(key=lambda t: t.get("timestamp", ""), reverse=True)
+
+        return {
+            "trades": trades[:limit],
+            "total": len(trades),
+        }
+    except Exception as e:
+        logger.error(f"交易历史查询失败: {e}")
+        return {"trades": [], "total": 0}
 
 
 @app.get("/api/factor-contribution", dependencies=[Security(verify_api_key)])
