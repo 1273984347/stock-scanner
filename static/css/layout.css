@@ -165,3 +165,57 @@ body {
 .status-dot.disconnected { background: var(--color-down); }
 
 .status-spacer { flex: 1; }
+
+/* Color scheme select */
+.color-scheme-select {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* Context menu styles */
+.context-menu {
+  position: fixed;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 1000;
+  min-width: 160px;
+}
+
+.context-item {
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.context-item:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.context-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+/* Drag styles */
+.dragging {
+  opacity: 0.5;
+}
+
+[draggable="true"] {
+  cursor: grab;
+}
+
+[draggable="true"]:active {
+  cursor: grabbing;
+}
