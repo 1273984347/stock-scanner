@@ -59,17 +59,6 @@ body {
   line-height: 1.5;
 }
 
-.container { max-width: 1600px; margin: 0 auto; padding: 12px 16px; }
-
-/* 顶栏 */
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 12px;
-}
 .topbar h1 { font-size: 18px; font-weight: 700; flex: 1; color: var(--text); }
 .topbar .version { font-size: 11px; color: var(--text-dim); }
 
@@ -106,26 +95,6 @@ body {
 .metric-sub { font-size: 11px; color: var(--text-sub); margin-top: 3px; }
 
 /* Tab 导航 */
-.nav-tabs {
-  display: flex;
-  gap: 2px;
-  margin-bottom: var(--gap);
-  background: var(--card);
-  border-radius: var(--radius);
-  padding: 3px;
-  border: 1px solid var(--border);
-}
-.nav-tab {
-  flex: 1;
-  text-align: center;
-  padding: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  border-radius: calc(var(--radius) - 2px);
-  cursor: pointer;
-  color: var(--text-sub);
-  transition: all 0.15s;
-}
 .nav-tab.active { background: var(--accent); color: #fff; }
 .nav-tab:hover:not(.active) { color: var(--text); background: var(--card-hover); }
 
@@ -274,23 +243,8 @@ input:focus { outline: none; border-color: var(--accent); }
 
 /* 响应式 */
 @media (max-width: 1200px) {
-  .metrics { grid-template-columns: repeat(3, 1fr); }
-  .portfolio-grid { grid-template-columns: 1fr; }
-  .risk-grid { grid-template-columns: 1fr 1fr; }
-  .stress-grid { grid-template-columns: 1fr; }
-}
 @media (max-width: 768px) {
-  .metrics { grid-template-columns: repeat(2, 1fr); }
-  .risk-grid { grid-template-columns: 1fr; }
-}
 @media (max-width: 480px) {
-  .metrics { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .metric-value { font-size: 18px; }
-  .nav-tabs { flex-wrap: wrap; }
-  .nav-tab { font-size: 12px; padding: 6px; }
-  .topbar h1 { font-size: 14px; }
-  .topbar select, .topbar button { padding: 5px 10px; font-size: 12px; }
-}
 
 /* Tooltip 增强 */
 [title] { cursor: help; }
@@ -335,10 +289,3 @@ body.loading-active::after {
 /* 打印样式 */
 @media print {
   body { background: #fff; color: #000; }
-  .topbar { border-bottom: 1px solid #ccc; }
-  .nav-tabs, .ws-indicator, .loading-active::after { display: none; }
-  .panel { display: block; }
-  .metric-card, .portfolio-card, .risk-alert { border: 1px solid #ccc; break-inside: avoid; }
-  table { font-size: 11px; }
-  th, td { border: 1px solid #ccc; }
-}
