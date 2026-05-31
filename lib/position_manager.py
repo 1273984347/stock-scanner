@@ -310,8 +310,9 @@ class PositionManager:
         if pos.partial_exits_done >= len(cfg.partial_exit_levels):
             return None
 
-        target_pnl = cfg.partial_exit_levels[pos.partial_exits_done]
-        exit_ratio = cfg.partial_exit_ratios[pos.partial_exits_done]
+        level = cfg.partial_exit_levels[pos.partial_exits_done]
+        target_pnl = level["profit_threshold"]
+        exit_ratio = level["sell_ratio"]
 
         if pnl_pct >= target_pnl:
             pos.partial_exits_done += 1

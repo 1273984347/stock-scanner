@@ -12,8 +12,10 @@ def pm_with_partial(tmp_path):
     """PositionManager with partial exit enabled (default config)"""
     cfg = RiskConfig(
         partial_exit_enabled=True,
-        partial_exit_levels=[0.10, 0.20],
-        partial_exit_ratios=[0.33, 0.33],
+        partial_exit_levels=[
+            {"profit_threshold": 0.10, "sell_ratio": 0.33, "description": "第一档：+10% 减 1/3"},
+            {"profit_threshold": 0.20, "sell_ratio": 0.33, "description": "第二档：+20% 减 1/3"},
+        ],
         use_fixed_take_profit=False,
     )
     return PositionManager(positions_file=str(tmp_path / "positions.json"), risk_config=cfg)
@@ -140,8 +142,10 @@ class TestPartialExit:
         """Partial exit state survives save/load cycle"""
         cfg = RiskConfig(
             partial_exit_enabled=True,
-            partial_exit_levels=[0.10, 0.20],
-            partial_exit_ratios=[0.33, 0.33],
+            partial_exit_levels=[
+                {"profit_threshold": 0.10, "sell_ratio": 0.33, "description": "第一档：+10% 减 1/3"},
+                {"profit_threshold": 0.20, "sell_ratio": 0.33, "description": "第二档：+20% 减 1/3"},
+            ],
         )
         f = str(tmp_path / "positions.json")
         pm = PositionManager(positions_file=f, risk_config=cfg)
@@ -160,8 +164,11 @@ class TestPartialExit:
         """Custom partial exit levels and ratios work correctly"""
         cfg = RiskConfig(
             partial_exit_enabled=True,
-            partial_exit_levels=[0.05, 0.15, 0.30],
-            partial_exit_ratios=[0.25, 0.25, 0.50],
+            partial_exit_levels=[
+                {"profit_threshold": 0.05, "sell_ratio": 0.25, "description": "第一档：+5% 减 25%"},
+                {"profit_threshold": 0.15, "sell_ratio": 0.25, "description": "第二档：+15% 减 25%"},
+                {"profit_threshold": 0.30, "sell_ratio": 0.50, "description": "第三档：+30% 减 50%"},
+            ],
             use_fixed_take_profit=False,
         )
         pm = PositionManager(positions_file=str(tmp_path / "positions.json"), risk_config=cfg)

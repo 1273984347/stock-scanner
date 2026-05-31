@@ -122,10 +122,13 @@ class RiskConfig:
     trailing_pct: float = 3.0
     max_hold_days: int = 5
 
-    # 分批止盈
+    # 分仓止盈级别：(profit_threshold, sell_ratio, description)
     partial_exit_enabled: bool = True
-    partial_exit_levels: List[float] = field(default_factory=lambda: [0.10, 0.20])  # +10%, +20%
-    partial_exit_ratios: List[float] = field(default_factory=lambda: [0.33, 0.33])  # reduce 1/3 each
+    partial_exit_levels: list = field(default_factory=lambda: [
+        {"profit_threshold": 0.60, "sell_ratio": 0.33, "description": "第一档：+60% 减 1/3"},
+        {"profit_threshold": 0.30, "sell_ratio": 0.33, "description": "第二档：+30% 减 1/3（中线持有后）"},
+        {"profit_threshold": 0.00, "sell_ratio": 1.00, "description": "第三档：回到成本价 全部退出"},
+    ])
     use_fixed_take_profit: bool = False  # disable fixed take-profit by default
 
     # 风险预警阈值

@@ -15,6 +15,7 @@ import pandas as pd
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
+from config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +30,19 @@ class ExitLevel:
     description: str        # 描述
 
 
-# 默认止盈梯度
-DEFAULT_EXIT_LEVELS = [
-    ExitLevel(0.60, 0.33, "第一档：+60% 减 1/3"),
-    ExitLevel(0.30, 0.33, "第二档：+30% 减 1/3（中线持有后）"),
-    ExitLevel(0.00, 1.00, "第三档：回到成本价 全部退出"),
-]
+def _build_exit_levels():
+    """从 config 构建退出级别"""
+    cfg = get_config("balanced")
+    return [
+        ExitLevel(
+            trigger_pct=lv["profit_threshold"],
+            exit_ratio=lv["sell_ratio"],
+            description=lv["description"],
+        )
+        for lv in cfg.risk.partial_exit_levels
+    ]
+
+DEFAULT_EXIT_LEVELS = _build_exit_levels()
 
 
 class PartialExitManager:
