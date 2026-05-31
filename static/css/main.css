@@ -1,6 +1,8 @@
 /* ============================================
    CSS 变量系统 — 简洁现代风格
    ============================================ */
+
+/* Dark mode (default) */
 :root {
   /* 背景与卡片 */
   --bg: #0D1117;
@@ -28,6 +30,22 @@
   --radius: 8px;
   --gap: 12px;
   --card-pad: 14px;
+}
+
+/* Light mode */
+[data-theme="light"] {
+  --bg: #ffffff;
+  --card: #f6f8fa;
+  --card-hover: #eaeef2;
+  --border: #d0d7de;
+  --text: #24292f;
+  --text-sub: #656d76;
+  --text-dim: #8b949e;
+  --accent: #0969da;
+  --accent-hover: #0550ae;
+  --up: #1a7f37;
+  --down: #cf222e;
+  --warn: #9a6700;
 }
 
 /* Reset */

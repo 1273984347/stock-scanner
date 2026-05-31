@@ -1,4 +1,5 @@
 import { stateManager } from '../state.js';
+import { getThemeColor } from '../theme.js';
 
 function esc(s) {
   if (s == null) return '';
@@ -35,7 +36,7 @@ class ExposuresRenderer {
         labels: keys,
         datasets: [{ data: keys.map(k => Number(exposures[k]).toFixed(3)), backgroundColor: keys.map(k => Number(exposures[k]) > 0 ? 'rgba(63,185,80,0.6)' : 'rgba(248,81,73,0.6)'), borderRadius: 4 }]
       },
-      options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#7D8590' }, grid: { color: '#21262D' } }, y: { ticks: { color: '#7D8590', font: { size: 10 } }, grid: { display: false } } } }
+      options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { color: getThemeColor('--text-sub') }, grid: { color: getThemeColor('--border') } }, y: { ticks: { color: getThemeColor('--text-sub'), font: { size: 10 } }, grid: { display: false } } } }
     });
   }
   _renderTable(exposures) {
@@ -44,7 +45,7 @@ class ExposuresRenderer {
     Object.entries(exposures).forEach(([k, v]) => {
       const val = Number(v);
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${k}</td><td>${val.toFixed(4)}</td><td>${val > 0 ? '<span class="tag tag-up">偏多</span>' : val < 0 ? '<span class="tag tag-down">偏空</span>' : '<span class="tag" style="background:rgba(125,133,154,0.12);color:#7D8590">中性</span>'}</td>`;
+      tr.innerHTML = `<td>${k}</td><td>${val.toFixed(4)}</td><td>${val > 0 ? '<span class="tag tag-up">偏多</span>' : val < 0 ? '<span class="tag tag-down">偏空</span>' : '<span class="tag" style="background:rgba(125,133,154,0.12);color:var(--text-sub)">中性</span>'}</td>`;
       body.appendChild(tr);
     });
   }

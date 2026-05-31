@@ -1,5 +1,6 @@
 import { stateManager } from '../state.js';
 import { KlineRenderer } from './kline.js';
+import { getThemeColor } from '../theme.js';
 
 /**
  * ScannerRenderer — 选股结果面板渲染器
@@ -107,12 +108,12 @@ class ScannerRenderer {
         scales: {
           x: {
             min: 0, max: 100,
-            title: { display: true, text: '评分', color: '#7D8590' },
-            ticks: { color: '#7D8590' },
-            grid: { color: '#21262D' },
+            title: { display: true, text: '评分', color: getThemeColor('--text-sub') },
+            ticks: { color: getThemeColor('--text-sub') },
+            grid: { color: getThemeColor('--border') },
           },
           y: {
-            ticks: { color: '#7D8590', font: { size: 10 } },
+            ticks: { color: getThemeColor('--text-sub'), font: { size: 10 } },
             grid: { display: false },
           },
         },
@@ -232,7 +233,7 @@ class ScannerRenderer {
         labels: Object.keys(verdicts).map(v => labelMap[v] || v),
         datasets: [{ data: Object.values(verdicts), backgroundColor: ['#3FB950', '#F85149', '#7D8590'], borderWidth: 0 }]
       },
-      options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#7D8590', padding: 12 } } } }
+      options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: getThemeColor('--text-sub'), padding: 12 } } } }
     });
   }
 
@@ -253,7 +254,7 @@ class ScannerRenderer {
           borderRadius: 4
         }]
       },
-      options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#7D8590' }, grid: { color: '#21262D' } }, y: { ticks: { color: '#7D8590', font: { size: 11 } }, grid: { display: false } } } }
+      options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { color: getThemeColor('--text-sub') }, grid: { color: getThemeColor('--border') } }, y: { ticks: { color: getThemeColor('--text-sub'), font: { size: 11 } }, grid: { display: false } } } }
     });
   }
 

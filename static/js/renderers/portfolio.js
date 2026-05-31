@@ -1,5 +1,6 @@
 import { stateManager } from '../state.js';
 import { apiClient } from '../api.js';
+import { getThemeColor } from '../theme.js';
 
 /**
  * PortfolioRenderer — 组合优化面板渲染器
@@ -86,7 +87,7 @@ class PortfolioRenderer {
         labels,
         datasets: [{ data: values, backgroundColor: ['#58A6FF','#3FB950','#F85149','#D29922','#7D8590','#E6EDF3'], borderWidth: 0 }]
       },
-      options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: '#7D8590', padding: 10, font: { size: 11 } } } } }
+      options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: getThemeColor('--text-sub'), padding: 10, font: { size: 11 } } } } }
     });
   }
 
@@ -104,7 +105,7 @@ class PortfolioRenderer {
           borderRadius: 6,
         }]
       },
-      options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: '#7D8590', callback: v => v + '%' }, grid: { color: '#21262D' } }, x: { ticks: { color: '#7D8590' }, grid: { display: false } } } }
+      options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: getThemeColor('--text-sub'), callback: v => v + '%' }, grid: { color: getThemeColor('--border') } }, x: { ticks: { color: getThemeColor('--text-sub') }, grid: { display: false } } } }
     });
   }
 
@@ -184,7 +185,7 @@ class PortfolioRenderer {
         },
         scales: {
           x: { display: false },
-          y: { ticks: { font: { size: 10 }, color: '#7D8590' } },
+          y: { ticks: { font: { size: 10 }, color: getThemeColor('--text-sub') } },
         },
       },
     });

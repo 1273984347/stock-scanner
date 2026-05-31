@@ -2,6 +2,7 @@ import { wsManager } from './websocket.js';
 import { stateManager } from './state.js';
 import { apiClient } from './api.js';
 import { pollingController } from './polling.js';
+import { getThemeColor } from './theme.js';
 import { MetricsRenderer } from './renderers/metrics.js';
 import { PortfolioRenderer } from './renderers/portfolio.js';
 import { ScannerRenderer } from './renderers/scanner.js';
@@ -16,6 +17,38 @@ import { TradesRenderer } from './renderers/trades.js';
 
 const renderers = {};
 
+// Theme management
+function applyChartDefaults() {
+    if (typeof Chart === 'undefined') return;
+    Chart.defaults.color = getThemeColor('--text-sub');
+    Chart.defaults.borderColor = getThemeColor('--border');
+}
+
+function initTheme() {
+    const saved = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const theme = saved || (prefersDark ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+    updateThemeButton(theme);
+    applyChartDefaults();
+}
+
+function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme');
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    updateThemeButton(next);
+    applyChartDefaults();
+    // Re-render charts to pick up new theme colors
+    Object.values(renderers).forEach(r => r.update?.());
+}
+
+function updateThemeButton(theme) {
+    const btn = document.getElementById('themeToggle');
+    if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+}
+
 function updateWsIndicator(status) {
   const indicator = document.getElementById('wsIndicator');
   if (!indicator) return;
@@ -23,6 +56,9 @@ function updateWsIndicator(status) {
 }
 async function init() {
   console.log('[App] 初始化...');
+
+  initTheme();
+  document.getElementById('themeToggle')?.addEventListener('click', toggleTheme);
 
   renderers.metrics = new MetricsRenderer();
   renderers.portfolio = new PortfolioRenderer();

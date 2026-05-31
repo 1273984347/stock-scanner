@@ -1,4 +1,5 @@
 import { apiClient } from '../api.js';
+import { getThemeColor } from '../theme.js';
 
 /**
  * KlineRenderer — K线图渲染器
@@ -104,13 +105,13 @@ class KlineRenderer {
           legend: {
             display: true,
             position: 'top',
-            labels: { color: '#7D8590', font: { size: 11 }, padding: 12 },
+            labels: { color: getThemeColor('--text-sub'), font: { size: 11 }, padding: 12 },
           },
           tooltip: {
-            backgroundColor: '#161B22',
-            titleColor: '#E6EDF3',
-            bodyColor: '#7D8590',
-            borderColor: '#21262D',
+            backgroundColor: getThemeColor('--card'),
+            titleColor: getThemeColor('--text'),
+            bodyColor: getThemeColor('--text-sub'),
+            borderColor: getThemeColor('--border'),
             borderWidth: 1,
             callbacks: {
               title: (items) => items[0]?.label || '',
@@ -132,22 +133,22 @@ class KlineRenderer {
           x: {
             ticks: {
               maxTicksLimit: 10,
-              color: '#7D8590',
+              color: getThemeColor('--text-sub'),
               font: { size: 10 },
               maxRotation: 0,
             },
-            grid: { color: '#21262D' },
+            grid: { color: getThemeColor('--border') },
           },
           y: {
             position: 'left',
-            title: { display: true, text: '价格', color: '#7D8590' },
-            ticks: { color: '#7D8590' },
-            grid: { color: '#21262D' },
+            title: { display: true, text: '价格', color: getThemeColor('--text-sub') },
+            ticks: { color: getThemeColor('--text-sub') },
+            grid: { color: getThemeColor('--border') },
           },
           y1: {
             position: 'right',
-            title: { display: true, text: '成交量', color: '#7D8590' },
-            ticks: { color: '#7D8590' },
+            title: { display: true, text: '成交量', color: getThemeColor('--text-sub') },
+            ticks: { color: getThemeColor('--text-sub') },
             grid: { drawOnChartArea: false },
           },
         },
