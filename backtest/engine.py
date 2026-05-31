@@ -22,6 +22,7 @@ from lib.data_layer import get_index_hist
 from lib.data_source_registry import get_stock_hist_multi_source
 from lib.market_regime import detect_market_regime, TREND_DOWN, RISK_OFF
 from backtest.utils import compute_atr, add_indicators
+from config import COMMISSION_RATE, STAMP_DUTY_RATE, SLIPPAGE_RATE, MAX_POSITIONS
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class Trade:
 class BacktestConfig:
     initial_capital: float = 1_000_000.0
     position_size_pct: float = 0.10   # 单笔仓位（%本金）
-    max_positions: int = 5            # 最大同时持仓数
+    max_positions: int = field(default_factory=lambda: MAX_POSITIONS)  # 最大同时持仓数
     stop_loss_atr_mult: float = 2.0  # ATR倍数止损
     trailing_stop_atr_mult: float = 3.0  # ATR移动止损
     trend_exit_days: int = 20         # 趋势持有最大天数
@@ -58,9 +59,9 @@ class BacktestConfig:
     relative_strength_threshold: float = 0.0  # 股票必须相对HS300强势X%（0=禁用，正数如2.0要求 stock_ret > hs300_ret + 2%）
     relative_strength_lookback: int = 5       # 计算相对强度的回溯期（天）
     # 交易成本（统一从 config.py 读取）
-    commission_rate: float = field(default_factory=lambda: __import__('config').COMMISSION_RATE)
-    stamp_duty_rate: float = field(default_factory=lambda: __import__('config').STAMP_DUTY_RATE)
-    slippage_rate: float = field(default_factory=lambda: __import__('config').SLIPPAGE_RATE)
+    commission_rate: float = field(default_factory=lambda: COMMISSION_RATE)
+    stamp_duty_rate: float = field(default_factory=lambda: STAMP_DUTY_RATE)
+    slippage_rate: float = field(default_factory=lambda: SLIPPAGE_RATE)
 
 
 # ============================================================
