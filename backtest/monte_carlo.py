@@ -132,3 +132,90 @@ def format_monte_carlo(result: MonteCarloResult) -> str:
 - 正收益概率: **{result.prob_positive_return:.1%}**
 - 夏普>1概率: **{result.prob_sharpe_gt_1:.1%}**
 """
+
+
+@dataclass
+class BootstrapResult:
+    """Bootstrap 置信区间结果"""
+    n_bootstrap: int
+    # 收益置信区间
+    return_mean: float
+    return_ci_lower: float
+    return_ci_upper: float
+    # 夏普置信区间
+    sharpe_mean: float
+    sharpe_ci_lower: float
+    sharpe_ci_upper: float
+    # 胜率置信区间
+    win_rate_mean: float
+    win_rate_ci_lower: float
+    win_rate_ci_upper: float
+
+
+def run_bootstrap(
+    trades: List[Dict],
+    n_bootstrap: int = 1000,
+    confidence: float = 0.95,
+) -> BootstrapResult:
+    """Bootstrap 置信区间估计
+
+    Args:
+        trades: 交易记录列表
+        n_bootstrap: 重采样次数
+        confidence: 置信水平（默认 95%）
+
+    Returns:
+        BootstrapResult
+    """
+    if not trades or len(trades) < 5:
+        return BootstrapResult(
+            n_bootstrap=0, return_mean=0, return_ci_lower=0, return_ci_upper=0,
+            sharpe_mean=0, sharpe_ci_lower=0, sharpe_ci_upper=0,
+            win_rate_mean=0, win_rate_ci_lower=0, win_rate_ci_upper=0,
+        )
+
+    pnls = np.array([t.get("pnl_pct", 0) for t in trades])
+    n = len(pnls)
+
+    returns = []
+    sharpes = []
+    win_rates = []
+
+    for _ in range(n_bootstrap):
+        sample = np.random.choice(pnls, size=n, replace=True)
+        returns.append(float(np.sum(sample)))
+        sharpes.append(_calc_sharpe(sample))
+        win_rates.append(float(np.mean(sample > 0)))
+
+    returns = np.array(returns)
+    sharpes = np.array(sharpes)
+    win_rates = np.array(win_rates)
+
+    alpha = (1 - confidence) / 2
+    ci_lo = alpha * 100
+    ci_hi = (1 - alpha) * 100
+
+    return BootstrapResult(
+        n_bootstrap=n_bootstrap,
+        return_mean=round(float(np.mean(returns)), 4),
+        return_ci_lower=round(float(np.percentile(returns, ci_lo)), 4),
+        return_ci_upper=round(float(np.percentile(returns, ci_hi)), 4),
+        sharpe_mean=round(float(np.mean(sharpes)), 3),
+        sharpe_ci_lower=round(float(np.percentile(sharpes, ci_lo)), 3),
+        sharpe_ci_upper=round(float(np.percentile(sharpes, ci_hi)), 3),
+        win_rate_mean=round(float(np.mean(win_rates)), 3),
+        win_rate_ci_lower=round(float(np.percentile(win_rates, ci_lo)), 3),
+        win_rate_ci_upper=round(float(np.percentile(win_rates, ci_hi)), 3),
+    )
+
+
+def format_bootstrap(result: BootstrapResult) -> str:
+    """格式化 Bootstrap 结果"""
+    return f"""## Bootstrap 置信区间（{result.n_bootstrap} 次重采样，95% CI）
+
+| 指标 | 均值 | 下界 | 上界 |
+|------|------|------|------|
+| 总收益 | {result.return_mean:.2%} | {result.return_ci_lower:.2%} | {result.return_ci_upper:.2%} |
+| 夏普比率 | {result.sharpe_mean:.3f} | {result.sharpe_ci_lower:.3f} | {result.sharpe_ci_upper:.3f} |
+| 胜率 | {result.win_rate_mean:.1%} | {result.win_rate_ci_lower:.1%} | {result.win_rate_ci_upper:.1%} |
+"""
