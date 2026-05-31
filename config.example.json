@@ -1,0 +1,11 @@
+{
+    "factor": {
+        "strategy_weights": {
+            "trend": 0.15,
+            "momentum": 0.20
+        }
+    },
+    "risk": {
+        "max_positions": 8
+    }
+}

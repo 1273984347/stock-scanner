@@ -1,5 +1,7 @@
 """配置文件 —— 参考 quant-system 的配置架构"""
 
+import json
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -278,12 +280,16 @@ PRESETS = {
 
 
 def get_config(preset: str = "balanced") -> SystemConfig:
-    """获取配置（带权重和验证）"""
-    import logging
+    """获取配置（带权重和验证，支持 JSON 文件覆盖）"""
     logger = logging.getLogger(__name__)
     if preset not in PRESETS:
         logger.warning(f"未知preset: {preset}, 使用balanced")
     config = PRESETS.get(preset, PRESETS["balanced"])
+
+    # 应用 JSON 覆盖（热更新：文件变化时自动重新加载）
+    overrides = _load_json_overrides()
+    if overrides:
+        _apply_overrides(config, overrides)
 
     # 验证因子权重和
     total = sum(config.factor.factor_weights.values())
@@ -292,6 +298,50 @@ def get_config(preset: str = "balanced") -> SystemConfig:
         config.factor.factor_weights = {k: v / total for k, v in config.factor.factor_weights.items()}
 
     return config
+
+
+# ============================================================================
+# JSON 配置文件热更新
+# ============================================================================
+
+_CONFIG_FILE = Path("config.json")
+_config_mtime: float = 0
+_cached_overrides: dict = {}
+
+
+def _load_json_overrides() -> dict:
+    """从 config.json 加载配置覆盖（带 mtime 缓存）"""
+    global _config_mtime, _cached_overrides
+
+    if not _CONFIG_FILE.exists():
+        return {}
+
+    try:
+        mtime = _CONFIG_FILE.stat().st_mtime
+        if mtime == _config_mtime:
+            return _cached_overrides
+
+        with open(_CONFIG_FILE, "r", encoding="utf-8") as f:
+            _cached_overrides = json.load(f)
+        _config_mtime = mtime
+        logging.getLogger(__name__).info(f"已加载 config.json（{_CONFIG_FILE}）")
+        return _cached_overrides
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"加载 config.json 失败: {e}")
+        return {}
+
+
+def _apply_overrides(cfg: SystemConfig, overrides: dict) -> None:
+    """递归应用配置覆盖"""
+    for key, value in overrides.items():
+        if not hasattr(cfg, key):
+            logging.getLogger(__name__).warning(f"config.json 中的未知字段: {key}")
+            continue
+        attr = getattr(cfg, key)
+        if isinstance(value, dict) and hasattr(attr, '__dataclass_fields__'):
+            _apply_overrides(attr, value)
+        else:
+            setattr(cfg, key, value)
 
 
 # ============================================================================
