@@ -109,26 +109,58 @@ def run_daily_scan(push_feishu: bool = True, extra_symbols: list = None):
     except Exception as e:
         logger.debug(f"财报预警检查失败: {e}")
 
-    # 输出日报
-    print(f"\n{'='*50}")
-    print(f"模拟盘日报 {report.date}")
-    print(f"{'='*50}")
-    print(f"总资产: {report.total_value:,.0f}")
-    print(f"累计收益: {report.cumulative_return:.2%}")
-    print(f"最大回撤: {report.max_drawdown:.2%}")
-    print(f"胜率: {report.win_rate:.1%}")
-    print(f"今日交易: {report.trades_today} 笔")
-    print(f"平均滑点: {report.slippage_avg:.3%}")
+    # 使用富文本格式化报告
+    try:
+        from scripts.daily_report import format_daily_report
 
-    if report.positions:
-        print(f"\n持仓:")
-        for p in report.positions[:5]:
-            print(f"  {p['code']}: {p['shares']}股 成本{p['cost']:.2f}")
+        # 获取市场状态（从缓存）
+        market_state = None
+        try:
+            cache_file = ROOT / "cache" / "api_market.json"
+            if cache_file.exists():
+                market_state = json.loads(cache_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
 
-    if report.signals:
-        print(f"\n今日信号:")
-        for s in report.signals:
-            print(f"  {s['code']}: 置信度{s['confidence']:.2f}")
+        # 格式化报告
+        formatted_report = format_daily_report(
+            report=report,
+            eval_result=eval_result if 'eval_result' in dir() else None,
+            market_state=market_state,
+        )
+
+        print(formatted_report)
+
+        # 推送飞书
+        if push_feishu:
+            try:
+                from reporter.feishu_pusher import push_report
+                push_report(formatted_report, [])
+            except Exception as e:
+                logger.warning(f"飞书推送失败: {e}")
+
+    except Exception as e:
+        logger.warning(f"报告格式化失败，使用基础格式: {e}")
+        # 回退到基础格式
+        print(f"\n{'='*50}")
+        print(f"模拟盘日报 {report.date}")
+        print(f"{'='*50}")
+        print(f"总资产: {report.total_value:,.0f}")
+        print(f"累计收益: {report.cumulative_return:.2%}")
+        print(f"最大回撤: {report.max_drawdown:.2%}")
+        print(f"胜率: {report.win_rate:.1%}")
+        print(f"今日交易: {report.trades_today} 笔")
+        print(f"平均滑点: {report.slippage_avg:.3%}")
+
+        if report.positions:
+            print(f"\n持仓:")
+            for p in report.positions[:5]:
+                print(f"  {p['code']}: {p['shares']}股 成本{p['cost']:.2f}")
+
+        if report.signals:
+            print(f"\n今日信号:")
+            for s in report.signals:
+                print(f"  {s['code']}: 置信度{s['confidence']:.2f}")
 
     print(f"\n报告已保存: {TRADE_LOG_DIR}/report_{datetime.now().strftime('%Y%m%d')}.json")
 
