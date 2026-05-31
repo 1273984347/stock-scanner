@@ -327,7 +327,6 @@ export class AppLayout {
               <div class="panel-section"><div class="panel-title">观察列表</div><div id="watchList">加载中...</div></div>
             </aside>
           </div>
-        </div>
           <footer class="statusbar" id="statusbar"></footer>
         </div>
       </div>
