@@ -1,8 +1,9 @@
 import { stateManager } from '../state.js';
+import { apiClient } from '../api.js';
 import { fmtMoney } from './utils.js';
 
 class PositionsRenderer {
-  constructor() { this._unsubscribers = []; }
+  constructor() { this._unsubscribers = []; this._charts = {}; }
   mount() {
     this._unsubscribers.push(stateManager.subscribe('positions', (r) => this.render(r)));
     // 事件委托：使用 data 属性而非 inline onclick
@@ -15,6 +16,7 @@ class PositionsRenderer {
         this._showPositionDetail(code);
       }
     });
+    this._loadPositionDistribution();
   }
   async _showPositionDetail(code) {
     try {
@@ -148,6 +150,53 @@ class PositionsRenderer {
     document.getElementById('posSummary').textContent =
       `总持仓: ${summary.total_positions || 0} 只 | 总市值: ${fmtMoney(summary.total_market_value)} | 总盈亏: ${summary.total_pnl != null ? (summary.total_pnl > 0 ? '+' : '') + summary.total_pnl.toFixed(2) : '--'} | 仓位: ${summary.total_weight ? (summary.total_weight * 100).toFixed(1) + '%' : '--'}`;
   }
-  unmount() { this._unsubscribers.forEach(u => u()); }
+  async _loadPositionDistribution() {
+    try {
+      const data = await apiClient.get('/api/position-distribution');
+      if (data && data.by_sector) this._renderDistributionPie(data.by_sector);
+    } catch (e) {
+      console.error('[Positions] distribution failed:', e);
+    }
+  }
+  _renderDistributionPie(bySector) {
+    const canvas = document.getElementById('positionDistChart');
+    if (!canvas) return;
+    if (this._charts.dist) this._charts.dist.destroy();
+
+    const entries = Object.entries(bySector).sort((a, b) => b[1] - a[1]);
+    if (entries.length === 0) return;
+
+    const colors = [
+      '#4f8cff', '#50c878', '#ffa500', '#dc5050', '#9c27b0',
+      '#00bcd4', '#ff9800', '#795548', '#607d8b', '#e91e63',
+    ];
+
+    this._charts.dist = new Chart(canvas.getContext('2d'), {
+      type: 'pie',
+      data: {
+        labels: entries.map(([name]) => name),
+        datasets: [{
+          data: entries.map(([, v]) => (v * 100).toFixed(1)),
+          backgroundColor: colors.slice(0, entries.length),
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'right', labels: { font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              label: ctx => ctx.label + ': ' + ctx.parsed + '%',
+            },
+          },
+        },
+      },
+    });
+  }
+  unmount() {
+    this._unsubscribers.forEach(u => u());
+    Object.values(this._charts).forEach(c => c.destroy());
+    this._charts = {};
+  }
 }
 export { PositionsRenderer };
