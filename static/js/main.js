@@ -378,6 +378,12 @@ function initExportButtons() {
   document.getElementById('exportTradesBtn')?.addEventListener('click', () => {
     downloadCsv('/api/export/trades', 'trades.csv');
   });
+  document.getElementById('exportPositionsExcelBtn')?.addEventListener('click', () => {
+    downloadCsv('/api/export/positions/excel', 'positions.xlsx');
+  });
+  document.getElementById('exportTradesExcelBtn')?.addEventListener('click', () => {
+    downloadCsv('/api/export/trades/excel', 'trades.xlsx');
+  });
 }
 
 function initKeyboardShortcuts() {
