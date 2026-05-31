@@ -25,7 +25,104 @@ import { StatusBar } from '/js/components/StatusBar.js';
 
 const renderers = {};
 
-// Theme management
+// ─── Watchlist Manager ────────────────────────────────────────────────
+const WATCHLIST_KEY = 'stock_scanner_watchlist';
+
+function loadWatchlist() {
+  try {
+    const raw = localStorage.getItem(WATCHLIST_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveWatchlist(items) {
+  localStorage.setItem(WATCHLIST_KEY, JSON.stringify(items));
+}
+
+function addToWatchlist(code, name) {
+  const items = loadWatchlist();
+  if (items.some(i => i.code === code)) return false;
+  items.push({ code, name: name || code, addedAt: Date.now() });
+  saveWatchlist(items);
+  renderWatchlist();
+  return true;
+}
+
+function removeFromWatchlist(code) {
+  const items = loadWatchlist().filter(i => i.code !== code);
+  saveWatchlist(items);
+  renderWatchlist();
+}
+
+function isInWatchlist(code) {
+  return loadWatchlist().some(i => i.code === code);
+}
+
+function renderWatchlist() {
+  const container = document.getElementById('watchList');
+  if (!container) return;
+  const items = loadWatchlist();
+
+  // Clear existing content safely
+  while (container.firstChild) container.removeChild(container.firstChild);
+
+  if (items.length === 0) {
+    const hint = document.createElement('div');
+    hint.style.cssText = 'font-size:12px;color:var(--text-dim);padding:8px 0';
+    hint.textContent = '暂无观察标的';
+    const sub = document.createElement('div');
+    sub.style.cssText = 'font-size:11px;color:var(--text-dim)';
+    sub.textContent = '在选股结果中点击股票可添加';
+    hint.appendChild(sub);
+    container.appendChild(hint);
+    return;
+  }
+
+  items.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'watchlist-item';
+    row.dataset.code = item.code;
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer';
+
+    const info = document.createElement('div');
+    info.style.cssText = 'flex:1;min-width:0';
+    info.addEventListener('click', () => openStockDetail(item.code, item.name));
+
+    const nameEl = document.createElement('div');
+    nameEl.style.cssText = 'font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+    nameEl.textContent = item.name || item.code;
+    info.appendChild(nameEl);
+
+    const codeEl = document.createElement('div');
+    codeEl.style.cssText = 'font-size:11px;color:var(--text-dim)';
+    codeEl.textContent = item.code;
+    info.appendChild(codeEl);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'watchlist-remove';
+    removeBtn.dataset.code = item.code;
+    removeBtn.style.cssText = 'flex-shrink:0;width:20px;height:20px;border:none;background:none;color:var(--text-dim);cursor:pointer;font-size:14px;line-height:1;padding:0;opacity:0.5;transition:opacity 0.15s';
+    removeBtn.title = '移除';
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeFromWatchlist(removeBtn.dataset.code);
+    });
+    removeBtn.addEventListener('mouseenter', () => { removeBtn.style.opacity = '1'; removeBtn.style.color = 'var(--danger, #ff6b6b)'; });
+    removeBtn.addEventListener('mouseleave', () => { removeBtn.style.opacity = '0.5'; removeBtn.style.color = 'var(--text-dim)'; });
+
+    row.appendChild(info);
+    row.appendChild(removeBtn);
+    container.appendChild(row);
+  });
+}
+
+// Expose watchlist API globally for other renderers
+window.addToWatchlist = addToWatchlist;
+window.removeFromWatchlist = removeFromWatchlist;
+window.isInWatchlist = isInWatchlist;
+
+// ─── Theme management ─────────────────────────────────────────────────
 function applyChartDefaults() {
     if (typeof Chart === 'undefined') return;
     Chart.defaults.color = getThemeColor('--text-sub');
@@ -73,6 +170,7 @@ async function init() {
 
   initErrorTracker();
   initTheme();
+  renderWatchlist();
 
   renderers.metrics = new MetricsRenderer();
   renderers.portfolio = new PortfolioRenderer();
@@ -265,7 +363,35 @@ async function loadReportsTab() {
 window.openStockDetail = async function(code, name) {
   const modal = document.getElementById('stockModal');
   modal.classList.add('active');
-  document.getElementById('stockModalTitle').textContent = name ? name + ' (' + code + ')' : code;
+  const titleEl = document.getElementById('stockModalTitle');
+  titleEl.textContent = name ? name + ' (' + code + ')' : code;
+
+  // Add/Remove watchlist button
+  let wlBtn = document.getElementById('stockModalWatchlistBtn');
+  if (!wlBtn) {
+    wlBtn = document.createElement('button');
+    wlBtn.id = 'stockModalWatchlistBtn';
+    wlBtn.style.cssText = 'margin-left:8px;font-size:12px;padding:4px 10px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;vertical-align:middle';
+    titleEl.parentNode.insertBefore(wlBtn, titleEl.nextSibling);
+  }
+  const inList = isInWatchlist(code);
+  wlBtn.textContent = inList ? '★ 已关注' : '☆ 加入观察';
+  wlBtn.style.borderColor = inList ? 'var(--accent)' : 'var(--border)';
+  wlBtn.style.color = inList ? 'var(--accent)' : 'var(--text)';
+  wlBtn.onclick = () => {
+    if (isInWatchlist(code)) {
+      removeFromWatchlist(code);
+      wlBtn.textContent = '☆ 加入观察';
+      wlBtn.style.borderColor = 'var(--border)';
+      wlBtn.style.color = 'var(--text)';
+    } else {
+      addToWatchlist(code, name);
+      wlBtn.textContent = '★ 已关注';
+      wlBtn.style.borderColor = 'var(--accent)';
+      wlBtn.style.color = 'var(--accent)';
+    }
+  };
+
   ['stockScorePanel','stockFactorsPanel','stockJudgesPanel'].forEach(id => {
     document.getElementById(id).innerHTML = '<div class="loading"><span class="spinner"></span>加载中...</div>';
   });
