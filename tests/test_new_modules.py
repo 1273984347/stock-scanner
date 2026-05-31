@@ -146,6 +146,49 @@ class TestDynamicExit:
         assert "consecutive_losses" in status
         assert "position_multiplier" in status
 
+    def test_get_exit_days_trend_up(self):
+        """TREND_UP regime should give 10 days"""
+        from lib.dynamic_exit import DynamicExitManager
+        mgr = DynamicExitManager()
+        mgr.loss_breaker.update_regime("TREND_UP")
+        assert mgr.get_exit_days() == 10
+
+    def test_get_exit_days_mean_reversion(self):
+        """MEAN_REVERSION regime should give 5 days"""
+        from lib.dynamic_exit import DynamicExitManager
+        mgr = DynamicExitManager()
+        mgr.loss_breaker.update_regime("MEAN_REVERSION")
+        assert mgr.get_exit_days() == 5
+
+    def test_get_exit_days_trend_down(self):
+        """TREND_DOWN regime should give 3 days"""
+        from lib.dynamic_exit import DynamicExitManager
+        mgr = DynamicExitManager()
+        mgr.loss_breaker.update_regime("TREND_DOWN")
+        assert mgr.get_exit_days() == 3
+
+    def test_get_exit_days_risk_off(self):
+        """RISK_OFF regime should give 0 days (exit immediately)"""
+        from lib.dynamic_exit import DynamicExitManager
+        mgr = DynamicExitManager()
+        mgr.loss_breaker.update_regime("RISK_OFF")
+        assert mgr.get_exit_days() == 0
+
+    def test_get_exit_days_low_volatility(self):
+        """LOW_VOLATILITY regime should give 15 days"""
+        from lib.dynamic_exit import DynamicExitManager
+        mgr = DynamicExitManager()
+        mgr.loss_breaker.update_regime("LOW_VOLATILITY")
+        assert mgr.get_exit_days() == 15
+
+    def test_get_exit_days_unknown_regime(self):
+        """Unknown regime should use default (10 days)"""
+        from lib.dynamic_exit import DynamicExitManager
+        mgr = DynamicExitManager()
+        mgr.loss_breaker.update_regime("UNKNOWN_REGIME")
+        days = mgr.get_exit_days()
+        assert days == 10  # default fallback per actual implementation
+
 
 # ========== tdx_batch ==========
 
