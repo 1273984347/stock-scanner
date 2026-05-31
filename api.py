@@ -15,6 +15,7 @@
 - GET /api/audit/{id} 审计详情
 - POST /api/backtest 回测
 - POST /api/backtest/compare 多策略对比回测
+- GET /api/factor-contribution 因子贡献度分析
 """
 
 from fastapi import FastAPI, HTTPException, Query, Security, Request
@@ -1100,6 +1101,57 @@ async def factor_evaluation(
         logger.error(f"因子评估失败: {e}")
         raise HTTPException(status_code=500, detail="内部服务器错误")
 
+
+
+@app.get("/api/factor-contribution", dependencies=[Security(verify_api_key)])
+async def factor_contribution(days: int = Query(default=30, ge=1, le=365)):
+    """因子贡献度分析"""
+    cached = _cache_get("factor_contribution", max_age=3600)
+    if cached is not None:
+        return cached
+
+    try:
+        from lib.signal_tracker import SignalTracker
+        import numpy as np
+
+        tracker = SignalTracker()
+        tracker.update_actual_returns()
+        recent = tracker.get_recent_signals(days=days)
+
+        if not recent:
+            return {"contributions": {}, "message": "暂无信号数据"}
+
+        # Group by source (factor) and compute avg return
+        by_source = {}
+        for s in recent:
+            src = s.get("source", "unknown")
+            ret = s.get("actual_return_5d", 0)
+            if ret != 0:
+                if src not in by_source:
+                    by_source[src] = []
+                by_source[src].append(ret)
+
+        contributions = {}
+        for src, returns in by_source.items():
+            arr = np.array(returns)
+            contributions[src] = {
+                "count": len(returns),
+                "avg_return": round(float(arr.mean()) * 100, 2),
+                "win_rate": round(float((arr > 0).mean()) * 100, 1),
+                "total_contribution": round(float(arr.sum()) * 100, 2),
+            }
+
+        result = {
+            "contributions": contributions,
+            "total_signals": len(recent),
+            "period_days": days,
+            "timestamp": datetime.now().isoformat(),
+        }
+        _cache_set("factor_contribution", result)
+        return result
+    except Exception as e:
+        logger.error(f"因子贡献度分析失败: {e}")
+        return {"contributions": {}}
 
 
 from fastapi import WebSocket, WebSocketDisconnect

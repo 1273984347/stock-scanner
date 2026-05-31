@@ -13,6 +13,7 @@ class BacktestRenderer {
     if (cmpBtn) {
       cmpBtn.addEventListener('click', () => this._runCompare());
     }
+    this._loadFactorContribution();
   }
 
   async _runBacktest() {
@@ -433,6 +434,55 @@ class BacktestRenderer {
     tbl.appendChild(body);
     wrapper.appendChild(tbl);
     container.appendChild(wrapper);
+  }
+
+  async _loadFactorContribution() {
+    try {
+      const data = await fetch('/api/factor-contribution?days=30', {
+        headers: { 'X-API-Key': sessionStorage.getItem('api_key') || 'dev' },
+      }).then(r => r.json());
+
+      if (data.contributions && Object.keys(data.contributions).length > 0) {
+        this._renderContributionChart(data.contributions);
+      }
+    } catch (e) {
+      console.error('[Backtest] factor contribution failed:', e);
+    }
+  }
+
+  _renderContributionChart(contributions) {
+    const canvas = document.getElementById('btContribChart');
+    if (!canvas) return;
+    if (this._charts.contrib) this._charts.contrib.destroy();
+
+    const entries = Object.entries(contributions)
+      .sort((a, b) => Math.abs(b[1].total_contribution) - Math.abs(a[1].total_contribution));
+
+    if (entries.length === 0) return;
+
+    const labels = entries.map(([name]) => name);
+    const values = entries.map(([, v]) => v.total_contribution);
+    const colors = values.map(v => v >= 0 ? 'rgba(80,200,120,0.7)' : 'rgba(220,80,80,0.7)');
+
+    this._charts.contrib = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: '总贡献(%)',
+          data: values,
+          backgroundColor: colors,
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { title: { display: true, text: '总贡献(%)' } },
+        },
+      },
+    });
   }
 }
 export { BacktestRenderer };
