@@ -91,6 +91,10 @@ class WebSocketManager {
         case 'data_update':
           // 全量数据更新
           stateManager.updateAll(msg.data);
+          // 单独分发 position_pnl 以确保订阅者收到实时更新
+          if (msg.data?.position_pnl) {
+            stateManager.set('position_pnl', msg.data.position_pnl);
+          }
           break;
         case 'ping':
           this.send({ type: 'pong' });

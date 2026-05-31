@@ -6,6 +6,10 @@ class PositionsRenderer {
   constructor() { this._unsubscribers = []; this._charts = {}; }
   mount() {
     this._unsubscribers.push(stateManager.subscribe('positions', (r) => this.render(r)));
+    // 订阅 WebSocket 实时 P&L 更新
+    this._unsubscribers.push(stateManager.subscribe('position_pnl', (data) => {
+      if (data) this._updateRealtimePnL(data);
+    }));
     // 事件委托：使用 data 属性而非 inline onclick
     document.getElementById('posBody')?.addEventListener('click', (e) => {
       const tr = e.target.closest('tr[data-code]');
@@ -193,6 +197,34 @@ class PositionsRenderer {
       },
     });
   }
+  _updateRealtimePnL(positionPnl) {
+    const container = document.getElementById('realtimePnL');
+    if (!container) return;
+
+    const entries = Object.entries(positionPnl);
+    if (entries.length === 0) {
+      container.textContent = '暂无持仓';
+      return;
+    }
+
+    let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">';
+
+    entries.forEach(([code, data]) => {
+      const pnlPct = ((data.pnl_pct || 0) * 100).toFixed(2);
+      const pnlColor = (data.pnl_pct || 0) >= 0 ? 'var(--up)' : 'var(--down)';
+      const sign = (data.pnl_pct || 0) >= 0 ? '+' : '';
+
+      html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
+        <b>${code}</b>
+        <span style="color:${pnlColor}">${sign}${pnlPct}%</span>
+        <br><span style="color:var(--text-sub)">${data.current?.toFixed(2) || '-'}</span>
+      </div>`;
+    });
+
+    html += '</div>';
+    container.innerHTML = html;
+  }
+
   unmount() {
     this._unsubscribers.forEach(u => u());
     Object.values(this._charts).forEach(c => c.destroy());
