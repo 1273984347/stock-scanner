@@ -146,6 +146,8 @@ body {
 .statusbar {
   height: var(--statusbar-height);
   background: var(--bg-chart);
+  margin-top: auto;
+  flex-shrink: 0;
   color: var(--text-sub);
   display: flex;
   align-items: center;

@@ -323,11 +323,13 @@ export class AppLayout {
     </div>
   </div>
 </div>
+            </div>
             <aside class="right-panel" id="right-panel">
               <div class="panel-section"><div class="panel-title">快捷操作</div><button id="refreshBtn" class="refresh-btn">刷新数据</button><select id="presetSelect" class="preset-select"><option value="balanced">均衡策略</option><option value="aggressive">激进策略</option><option value="conservative">保守策略</option></select></div>
               <div class="panel-section"><div class="panel-title">观察列表</div><div id="watchList">加载中...</div></div>
             </aside>
           </div>
+        </div>
           <footer class="statusbar" id="statusbar"></footer>
         </div>
       </div>
