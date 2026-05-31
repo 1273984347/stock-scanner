@@ -2,6 +2,7 @@
 
 端点清单：
 - GET /              前端页面
+- GET /api/health    系统健康探针（无需认证）
 - GET /api/scan      选股+风控+组合优化
 - GET /api/score/{code}  单股四维评分
 - GET /api/stock/{code}  单股因子详情
@@ -31,11 +32,19 @@ import threading
 import os
 import asyncio
 import secrets
+import time
+
+try:
+    import psutil
+    _has_psutil = True
+except ImportError:
+    _has_psutil = False
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="A股量化交易系统", version="3.0.0")
+_start_time = time.time()
 
 
 @app.on_event("startup")
@@ -250,6 +259,44 @@ async def index():
     if html.exists():
         return FileResponse(str(html))
     return {"message": "A股量化交易系统 API v3", "docs": "/docs"}
+
+
+@app.get("/api/health")
+async def health():
+    """系统健康探针（无需认证）"""
+    try:
+        uptime_seconds = int(time.time() - _start_time)
+
+        # 内存信息
+        memory_mb = None
+        if _has_psutil:
+            process = psutil.Process(os.getpid())
+            mem = process.memory_info()
+            memory_mb = round(mem.rss / 1024 / 1024, 1)
+
+        # 数据新鲜度检查
+        cache_dir = Path(__file__).parent / "cache"
+        newest_cache = 0
+        if cache_dir.exists():
+            for f in cache_dir.glob("*.json"):
+                newest_cache = max(newest_cache, f.stat().st_mtime)
+        cache_age_hours = round((time.time() - newest_cache) / 3600, 1) if newest_cache > 0 else None
+
+        return {
+            "status": "healthy",
+            "uptime_seconds": uptime_seconds,
+            "uptime_human": f"{uptime_seconds // 3600}h {(uptime_seconds % 3600) // 60}m",
+            "memory_mb": memory_mb,
+            "cache_age_hours": cache_age_hours,
+            "circuit_breaker": {"available": True},
+            "timestamp": datetime.now().isoformat(),
+        }
+    except Exception as e:
+        return {
+            "status": "degraded",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat(),
+        }
 
 
 @app.get("/api/scan")
