@@ -10,6 +10,7 @@
 """
 
 import struct
+import mmap
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -29,48 +30,51 @@ _CACHE_MAX_SIZE = 5000
 
 
 def _read_day_file_raw(fpath: Path, days: int = 60) -> Optional[List[Dict]]:
-    """读取单个 TDX 日线文件"""
+    """用 mmap 读取单个 TDX 日线文件（零拷贝）"""
     if not fpath.exists():
         return None
     try:
         with open(fpath, "rb") as f:
-            f.seek(0, 2)
-            n = f.tell() // 32
-            if n < max(days, 10):
-                return None
-            f.seek(-(days * 32), 2)
-            raw = f.read(days * 32)
+            with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                file_size = mm.size()
+                n = file_size // 32
+                if n < max(days, 10):
+                    return None
 
-        records = []
-        for i in range(0, len(raw), 32):
-            date_int, o, h, l, c, amount, vol, _ = struct.unpack_from("<IiiiiiII", raw, i)
-            records.append({
-                "date": str(date_int),
-                "open": o / 100.0, "high": h / 100.0, "low": l / 100.0, "close": c / 100.0,
-                "amount": amount, "volume": vol,
-            })
-        return records
+                start_offset = max(0, (n - days) * 32)
+                records = []
+                for offset in range(start_offset, file_size, 32):
+                    if offset + 32 > file_size:
+                        break
+                    date_int, o, h, l, c, amount, vol, _ = struct.unpack_from("<IiiiiiII", mm, offset)
+                    records.append({
+                        "date": str(date_int),
+                        "open": o / 100.0, "high": h / 100.0, "low": l / 100.0, "close": c / 100.0,
+                        "amount": amount, "volume": vol,
+                    })
+                return records
     except Exception:
         return None
 
 
 def _read_closes_only(fpath: Path, days: int = 60) -> Optional[np.ndarray]:
-    """只读取收盘价（最快路径）"""
+    """用 mmap 只读取收盘价（零拷贝，最快路径）"""
     if not fpath.exists():
         return None
     try:
         with open(fpath, "rb") as f:
-            f.seek(0, 2)
-            n = f.tell() // 32
-            if n < max(days, 10):
-                return None
-            f.seek(-(days * 32), 2)
-            raw = f.read(days * 32)
+            with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                file_size = mm.size()
+                n = file_size // 32
+                if n < max(days, 10):
+                    return None
 
-        closes = np.zeros(len(raw) // 32)
-        for i in range(len(closes)):
-            closes[i] = struct.unpack_from("<i", raw, i * 32 + 16)[0] / 100.0
-        return closes
+                start_offset = max(0, (n - days) * 32)
+                count = (file_size - start_offset) // 32
+                closes = np.zeros(count)
+                for i in range(count):
+                    closes[i] = struct.unpack_from("<i", mm, start_offset + i * 32 + 16)[0] / 100.0
+                return closes
     except Exception:
         return None
 
