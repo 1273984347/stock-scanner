@@ -111,7 +111,11 @@ def batch_read_closes(codes: List[str], days: int = 60, max_workers: int = 8) ->
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(_fetch_one, code): code for code in to_fetch}
         for future in as_completed(futures):
-            code, closes = future.result()
+            try:
+                code, closes = future.result()
+            except Exception as e:
+                logger.debug(f"TDX batch read_closes failed for {futures[future]}: {e}")
+                continue
             if closes is not None:
                 result[code] = closes
                 # 更新缓存
@@ -144,7 +148,11 @@ def batch_read_day_files(codes: List[str], days: int = 60, max_workers: int = 8)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(_fetch_one, code): code for code in codes}
         for future in as_completed(futures):
-            code, records = future.result()
+            try:
+                code, records = future.result()
+            except Exception as e:
+                logger.debug(f"TDX batch read_day_files failed for {futures[future]}: {e}")
+                continue
             if records is not None:
                 result[code] = records
 
