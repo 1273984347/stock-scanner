@@ -18,6 +18,16 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# ========== 信号计算缓存 ==========
+_signals_cache: Dict[str, dict] = {}
+_signals_cache_maxsize = 500
+
+
+def clear_signals_cache():
+    """清空信号计算缓存（测试用）"""
+    _signals_cache.clear()
+
+
 # ========== 风控常量 ==========
 VOL_BASE_LIMIT = 0.20
 VOL_THRESHOLDS = (0.15, 0.30, 0.50)
@@ -1423,7 +1433,10 @@ def get_index_enhancement_factor(code: str, market: str = "sh") -> Dict:
 def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
                         factor_config=None, code: str = None, market: str = "sh",
                         fast_mode: bool = False) -> Dict:
-    """计算所有策略信号
+    """计算所有策略信号（带缓存）
+
+    缓存键：code + len(hist_df) + 最后日期
+    相同输入直接返回缓存结果，避免重复计算。
 
     Args:
         hist_df: 历史K线数据（必须包含 close 列）
@@ -1431,7 +1444,32 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
         factor_config: 可选 FactorConfig 实例，控制因子开关；None=全部计算
         code: 股票代码（6位，如 "600000"），用于获取新数据源因子
         market: 市场（sh/sz/bj），默认 sh
+        fast_mode: 快速模式（跳过多周期 KDJ 等耗时计算）
     """
+    # 构建缓存键（仅当 code 有值且数据非空时启用缓存）
+    cache_key = None
+    if code and len(hist_df) > 0:
+        try:
+            last_date = str(hist_df.index[-1])
+        except Exception:
+            last_date = str(len(hist_df))
+        cache_key = f"{code}_{len(hist_df)}_{last_date}_{fast_mode}"
+        if cache_key in _signals_cache:
+            return _signals_cache[cache_key]
+
+    result = _compute_all_signals_impl(hist_df, macro_score, factor_config, code, market, fast_mode)
+
+    # 存入缓存（bounded）
+    if cache_key is not None and len(_signals_cache) < _signals_cache_maxsize:
+        _signals_cache[cache_key] = result
+
+    return result
+
+
+def _compute_all_signals_impl(hist_df: pd.DataFrame, macro_score: float = 0,
+                              factor_config=None, code: str = None, market: str = "sh",
+                              fast_mode: bool = False) -> Dict:
+    """实际的信号计算逻辑（从原 compute_all_signals 移入）"""
     if hist_df.empty or len(hist_df) < 30:
         return {}
 
