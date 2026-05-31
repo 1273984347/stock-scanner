@@ -69,6 +69,30 @@ class FactorConfig:
         "cci": 0.06,              # IC=0.065
     })
 
+    # 多策略权重（基于 IC 评价 2026-05-30）
+    strategy_weights: Dict[str, float] = field(default_factory=lambda: {
+        "trend": 0.15,
+        "mean_reversion": 0.10,
+        "momentum": 0.20,
+        "volatility": 0.15,
+        "stat_arb": 0.10,
+        "trend_breakout": 0.30,
+    })
+
+    # IC 加权因子权重（基于 2026-05-30 IC 评价，30 只股票 × 500 天）
+    ic_factor_weights: Dict[str, float] = field(default_factory=lambda: {
+        "volume_ratio": 0.22,
+        "adx": 0.14,
+        "williams_r": 0.11,
+        "cci": 0.09,
+        "rsi_14": 0.09,
+        "trend_strength": 0.08,
+        "kdj_j": 0.08,
+        "kdj_resonance_score": 0.08,
+        "momentum_20": 0.07,
+        "volatility_20": 0.04,
+    })
+
 
 @dataclass
 class ScanConfig:

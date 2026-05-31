@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 import logging
 
 from lib.utils import _safe_float
+from config import get_config
 
 # KC通道常量（用于辅助过滤）
 try:
@@ -546,34 +547,11 @@ def calc_trend_breakout_signal(prices: pd.Series, regime: str) -> Dict:
     return {"signal": "neutral", "confidence": 0.5, "reason": "未触发突破条件"}
 
 
-# ========== 多策略加权组合（基于 IC 评价 2026-05-30）==========
-# IC 评价结果：volume_ratio(0.152) > adx(0.092) > williams_r(0.070) > cci(0.065) > rsi(0.061)
-# 权重按 IC 比例分配，归一化后求和=1.0
-
-STRATEGY_WEIGHTS = {
-    "trend": 0.15,
-    "mean_reversion": 0.10,
-    "momentum": 0.20,
-    "volatility": 0.15,
-    "stat_arb": 0.10,
-    "trend_breakout": 0.30,  # 包含 volume_ratio/adx/rsi 等高 IC 因子
-}
-
-
-# IC 加权因子权重（基于 2026-05-30 IC 评价，30 只股票 × 500 天）
-# IC: volume_ratio(0.152) > adx(0.092) > williams_r(0.070) > cci(0.065) > rsi(0.061)
-IC_FACTOR_WEIGHTS = {
-    "volume_ratio": 0.22,
-    "adx": 0.14,
-    "williams_r": 0.11,
-    "cci": 0.09,
-    "rsi_14": 0.09,
-    "trend_strength": 0.08,
-    "kdj_j": 0.08,
-    "kdj_resonance_score": 0.08,  # 多周期 KDJ 共振（Module 1）
-    "momentum_20": 0.07,
-    "volatility_20": 0.04,
-}
+# ========== 多策略加权组合（权重集中管理于 config.py FactorConfig）==========
+# 从 config 读取（支持运行时覆盖）
+_cfg = get_config("balanced")
+STRATEGY_WEIGHTS = _cfg.factor.strategy_weights
+IC_FACTOR_WEIGHTS = _cfg.factor.ic_factor_weights
 
 
 def compute_ic_weighted_score(factors: Dict[str, float]) -> float:
