@@ -1389,6 +1389,66 @@ async def factor_evaluation(
 
 
 
+@app.get("/api/factor-scatter", dependencies=[Security(verify_api_key)])
+async def factor_scatter(
+    x_factor: str = Query(default="volume_ratio"),
+    y_factor: str = Query(default="adx"),
+    n_stocks: int = Query(default=30, ge=5, le=100),
+):
+    """因子散点图数据"""
+    try:
+        from factors import compute_all_signals
+        from lib.data_layer import get_stock_hist
+        import numpy as np
+
+        orchestrator = _get_orchestrator()
+        quotes = orchestrator.get_realtime_quotes()
+        if quotes.empty:
+            return {"points": [], "x_factor": x_factor, "y_factor": y_factor}
+
+        if "成交额" in quotes.columns:
+            top = quotes.nlargest(n_stocks, "成交额")
+        else:
+            top = quotes.head(n_stocks)
+
+        points = []
+        for _, row in top.iterrows():
+            code = str(row.get("代码", ""))
+            if not code:
+                continue
+            try:
+                hist = get_stock_hist(code, days=120)
+                if hist.empty or len(hist) < 60:
+                    continue
+                result = compute_all_signals(hist)
+                if not result:
+                    continue
+                factors = result.get("factors", {})
+                x_val = factors.get(x_factor)
+                y_val = factors.get(y_factor)
+                ret = float(row.get("涨跌幅", 0)) / 100
+
+                if x_val is not None and y_val is not None:
+                    points.append({
+                        "code": code,
+                        "x": round(float(x_val), 4),
+                        "y": round(float(y_val), 4),
+                        "return": round(ret, 4),
+                    })
+            except Exception:
+                continue
+
+        return {
+            "points": points,
+            "x_factor": x_factor,
+            "y_factor": y_factor,
+            "n_stocks": len(points),
+        }
+    except Exception as e:
+        logger.error(f"因子散点图失败: {e}")
+        return {"points": [], "x_factor": x_factor, "y_factor": y_factor}
+
+
 @app.get("/api/factor-weights", dependencies=[Security(verify_api_key)])
 async def factor_weights(preset: str = Query("balanced")):
     """因子权重分布"""

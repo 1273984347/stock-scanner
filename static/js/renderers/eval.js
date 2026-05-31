@@ -19,6 +19,7 @@ class EvalRenderer {
       evalTab.addEventListener('click', () => {
         if (!this._loaded) this._load();
         this._loadFactorWeights();
+        this._loadFactorScatter();
       });
     }
   }
@@ -120,6 +121,50 @@ class EvalRenderer {
         },
         plugins: {
           legend: { position: 'top' },
+        },
+      },
+    });
+  }
+
+  async _loadFactorScatter() {
+    try {
+      const data = await apiClient.get('/api/factor-scatter', { x_factor: 'volume_ratio', y_factor: 'adx', n_stocks: 30 });
+      if (data && data.points) this._renderScatter(data);
+    } catch (e) {
+      console.error('[Eval] scatter failed:', e);
+    }
+  }
+
+  _renderScatter(data) {
+    const canvas = document.getElementById('factorScatterChart');
+    if (!canvas || !data.points.length) return;
+    if (this._charts.scatter) this._charts.scatter.destroy();
+
+    this._charts.scatter = new Chart(canvas.getContext('2d'), {
+      type: 'scatter',
+      data: {
+        datasets: [{
+          label: `${data.x_factor} vs ${data.y_factor}`,
+          data: data.points.map(p => ({ x: p.x, y: p.y })),
+          backgroundColor: data.points.map(p => p.return >= 0 ? 'rgba(80,200,120,0.6)' : 'rgba(220,80,80,0.6)'),
+          pointRadius: 6,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const p = data.points[ctx.dataIndex];
+                return `${p.code}: ${data.x_factor}=${p.x}, ${data.y_factor}=${p.y}, 收益=${(p.return*100).toFixed(1)}%`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { title: { display: true, text: data.x_factor } },
+          y: { title: { display: true, text: data.y_factor } },
         },
       },
     });
