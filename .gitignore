@@ -9,3 +9,4 @@ cache/
 .gstack/
 test-results/
 playwright-report/
+dist/

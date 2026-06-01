@@ -77,7 +77,6 @@ class ScannerRenderer {
 
   async _loadSectorHeatmap() {
     try {
-      const { apiClient } = await import('../api.js');
       const data = await apiClient.get('/api/sector-heatmap', { top_n: 50 });
       if (data && data.sectors) this._renderSectorHeatmap(data.sectors);
     } catch (e) {

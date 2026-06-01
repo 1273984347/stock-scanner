@@ -251,11 +251,6 @@ input[type="text"], input[type="number"] {
 }
 input:focus { outline: none; border-color: var(--accent); }
 
-/* 响应式 */
-@media (max-width: 1200px) {
-@media (max-width: 768px) {
-@media (max-width: 480px) {
-
 /* Tooltip 增强 */
 [title] { cursor: help; }
 .metric-card[title]:hover { border-color: var(--accent); }
