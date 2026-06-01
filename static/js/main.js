@@ -193,7 +193,7 @@ async function init() {
     updateWsIndicator(status);
     statusbar.setWsStatus(status);
     if (status === 'connected') {
-      pollingController.stop();
+      pollingController.slowDown();
     } else if (status === 'disconnected' || status === 'error') {
       pollingController.start();
     }
@@ -206,18 +206,20 @@ async function init() {
     document.body.classList.add('loading-active');
     const preset = document.getElementById('presetSelect')?.value || 'balanced';
     try {
-      const [dashRes, scanRes, riskRes, auditRes, sigRes] = await apiClient.all([
+      const [dashRes, scanRes, riskRes, auditRes, sigRes, expRes] = await apiClient.all([
         ['/api/dashboard', { preset }],
         ['/api/scan', { preset }],
         ['/api/risk', {}],
         ['/api/audit', { limit: 15 }],
         ['/api/signals', { days: 30 }],
+        ['/api/exposures', {}],
       ]);
       if (dashRes) stateManager.updateAll({ dashboard: dashRes });
       if (scanRes) stateManager.updateAll({ scan: scanRes });
       if (riskRes) stateManager.updateAll({ risk: riskRes });
       if (auditRes) stateManager.updateAll({ audit: auditRes });
       if (sigRes) stateManager.updateAll({ signals: sigRes });
+      if (expRes) stateManager.updateAll({ exposures: expRes });
     } catch (e) {
       console.error('[刷新] 加载失败:', e);
       alert('数据加载失败，请稍后重试');
@@ -242,15 +244,15 @@ async function init() {
   (async () => {
     console.log('[App] IIFE 执行...');
     try {
-      const [dashRes, riskRes, auditRes] = await Promise.allSettled([
+      const [dashRes, riskRes, auditRes, expRes] = await Promise.allSettled([
         apiClient.get('/api/dashboard'),
         apiClient.get('/api/risk'),
         apiClient.get('/api/audit', { limit: 15 }),
+        apiClient.get('/api/exposures'),
       ]);
-      console.log('[App] IIFE 结果:', dashRes?.status, riskRes?.status, auditRes?.status);
+      console.log('[App] IIFE 结果:', dashRes?.status, riskRes?.status, auditRes?.status, expRes?.status);
       if (dashRes.status === 'fulfilled' && dashRes.value) {
         stateManager.set('dashboard', dashRes.value);
-        console.log('[App] dashboard 已设置');
       }
       if (riskRes.status === 'fulfilled' && riskRes.value) {
         stateManager.set('risk', riskRes.value);
@@ -258,6 +260,13 @@ async function init() {
       if (auditRes.status === 'fulfilled' && auditRes.value) {
         stateManager.set('audit', auditRes.value);
       }
+      if (expRes.status === 'fulfilled' && expRes.value) {
+        stateManager.set('exposures', expRes.value);
+      }
+      // scan 单独触发（耗时较长，不阻塞初始加载）
+      apiClient.get('/api/scan').then(scanRes => {
+        if (scanRes) stateManager.set('scan', scanRes);
+      }).catch(() => {});
     } catch (e) {
       console.error('[App] 初始数据拉取失败:', e);
     }

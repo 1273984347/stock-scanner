@@ -25,31 +25,33 @@ class PollingController {
     this._isPolling = true;
     console.log('[Polling] 启动自动轮询降级');
 
-    // dashboard 数据
-    this._timers.set('dashboard', setInterval(() => {
-      this._fetchDashboard();
-    }, this._intervals.dashboard));
-
-    // scan 数据
-    this._timers.set('scan', setInterval(() => {
-      this._fetchScan();
-    }, this._intervals.scan));
-
-    // risk 数据
-    this._timers.set('risk', setInterval(() => {
-      this._fetchRisk();
-    }, this._intervals.risk));
-
-    // exposures 数据
-    this._timers.set('exposures', setInterval(() => {
-      this._fetchExposures();
-    }, this._intervals.exposures));
+    this._setupTimers();
 
     // 立即执行一次
     this._fetchDashboard();
     this._fetchScan();
     this._fetchRisk();
     this._fetchExposures();
+  }
+
+  // 降频运行（WebSocket 已连接时，降低频率而非完全停止）
+  slowDown() {
+    if (!this._isPolling) return;
+    console.log('[Polling] 降频运行（WS 已连接）');
+    this._timers.forEach(t => clearInterval(t));
+    this._timers.clear();
+    // 降频：scan/exposures 从 60s 降到 120s，dashboard/risk 保持 60s
+    this._timers.set('dashboard', setInterval(() => this._fetchDashboard(), 60_000));
+    this._timers.set('scan', setInterval(() => this._fetchScan(), 120_000));
+    this._timers.set('risk', setInterval(() => this._fetchRisk(), 60_000));
+    this._timers.set('exposures', setInterval(() => this._fetchExposures(), 120_000));
+  }
+
+  _setupTimers() {
+    this._timers.set('dashboard', setInterval(() => this._fetchDashboard(), this._intervals.dashboard));
+    this._timers.set('scan', setInterval(() => this._fetchScan(), this._intervals.scan));
+    this._timers.set('risk', setInterval(() => this._fetchRisk(), this._intervals.risk));
+    this._timers.set('exposures', setInterval(() => this._fetchExposures(), this._intervals.exposures));
   }
 
   // 停止轮询（WebSocket 可用时调用）

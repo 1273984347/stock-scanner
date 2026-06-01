@@ -19,7 +19,11 @@ class ExposuresRenderer {
     this._unsubscribers.push(stateManager.subscribe('exposures', (exp) => this.render(exp)));
   }
   render(exp) {
-    if (!exp) return;
+    if (!exp || !exp.exposures || !Object.keys(exp.exposures).length) {
+      const body = document.getElementById('exposureBody');
+      if (body) body.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text-dim)">暂无因子暴露数据</td></tr>';
+      return;
+    }
     const exposures = exp.exposures || {};
     this._renderChart(exposures);
     this._renderTable(exposures);

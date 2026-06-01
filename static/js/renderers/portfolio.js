@@ -31,7 +31,11 @@ class PortfolioRenderer {
   }
 
   render(p) {
-    if (!p) return;
+    if (!p || !p.details || !p.details.length) {
+      const body = document.getElementById('portfolioBody');
+      if (body) body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:20px">暂无组合数据，点击"刷新数据"开始扫描</td></tr>';
+      return;
+    }
     this._renderTable(p.details || []);
     this._renderSectorChart(p.sector_exposure || {});
     this._renderReturnVolChart(p);
