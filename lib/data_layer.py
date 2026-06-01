@@ -503,6 +503,51 @@ def get_realtime_quotes() -> pd.DataFrame:
     cached = _load_cache("realtime/realtime", max_age_hours=get_config().cache.realtime_max_age_minutes / 60)
     if not cached.empty:
         return cached
+
+    # 1. 优先 pytdx 本地连接（无网络依赖）
+    try:
+        from pytdx.hq import TdxHq_API
+        api = TdxHq_API()
+        servers = [("119.147.212.81", 7709), ("112.74.214.43", 7709)]
+        connected = False
+        for host, port in servers:
+            try:
+                api.connect(host, port, time_out=5)
+                connected = True
+                break
+            except Exception:
+                continue
+        if connected:
+            # 用 HS300 成分股 + 已知活跃股票作为样本（避免遍历全部 A 股）
+            sample_codes = [
+                (0, '600519'), (0, '601318'), (0, '600036'), (0, '600276'),
+                (0, '601166'), (0, '600030'), (0, '601398'), (0, '600900'),
+                (0, '601888'), (0, '600809'), (0, '601012'), (0, '600585'),
+                (1, '000858'), (1, '000333'), (1, '002714'), (1, '000651'),
+                (1, '000001'), (1, '002415'), (1, '300750'), (1, '002594'),
+                (0, '601899'), (0, '600050'), (0, '601668'), (0, '600000'),
+                (1, '000568'), (1, '002304'), (1, '300059'), (1, '002475'),
+            ]
+            quotes = api.get_security_quotes(sample_codes)
+            api.disconnect()
+            if quotes:
+                df = pd.DataFrame(quotes)
+                col_map = {"code": "代码", "name": "名称", "price": "最新价",
+                           "open": "开盘价", "high": "最高价", "low": "最低价",
+                           "vol": "成交量", "amount": "成交额"}
+                df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+                if "最新价" in df.columns and "开盘价" in df.columns:
+                    df["涨跌幅"] = df.apply(
+                        lambda r: ((r.get("最新价", 0) - r.get("开盘价", 0)) / r.get("开盘价", 1) * 100)
+                        if r.get("开盘价", 0) > 0 else 0, axis=1
+                    )
+                logger.info(f"[TDX] 实时行情获取成功: {len(df)} 只")
+                _save_cache("realtime/realtime", df)
+                return df
+    except Exception as e:
+        logger.debug(f"[TDX] 实时行情获取失败: {e}")
+
+    # 2. 回退 akshare（需要网络）
     try:
         df = _retry_api_call(ak.stock_zh_a_spot)
         if not df.empty:
