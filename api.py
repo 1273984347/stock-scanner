@@ -359,69 +359,84 @@ async def health():
         }
 
 
+# ========== 异步扫描任务管理 ==========
+
+import threading
+
+_scan_tasks: dict = {}  # preset -> {"status": "running"|"done"|"error", "started_at": float, "error": str}
+
+
+def _run_scan_background(preset: str):
+    """后台线程执行扫描"""
+    cache_key = f"scan_{preset}"
+    _scan_tasks[preset] = {"status": "running", "started_at": time.time(), "error": None}
+    try:
+        from lib.data_layer import get_realtime_quotes
+        get_realtime_quotes()
+
+        orchestrator = _get_orchestrator(preset)
+        scan_result = circuit_breaker.call("scan", orchestrator.run_all_strategies)
+
+        if not scan_result:
+            scan_result = {}
+        results = scan_result.get("results", {})
+        output = {}
+        for name, df in results.items():
+            if hasattr(df, 'to_dict'):
+                output[name] = df.to_dict(orient="records")
+            else:
+                output[name] = []
+
+        data = {
+            "preset": preset,
+            "results": output,
+            "total": sum(len(v) for v in output.values()),
+            "risk_check": scan_result.get("risk_check", {}),
+            "portfolio": scan_result.get("portfolio", {}),
+            "factor_health": scan_result.get("factor_health", {}),
+            "macro_filter": scan_result.get("macro_filter", {}),
+            "index_signal": scan_result.get("index_signal", {}),
+        }
+        _cache_set(cache_key, data)
+        _scan_tasks[preset]["status"] = "done"
+        logger.info(f"[Scan] {preset} 完成: {data['total']} 只候选股")
+    except Exception as e:
+        _scan_tasks[preset]["status"] = "error"
+        _scan_tasks[preset]["error"] = str(e)
+        logger.error(f"[Scan] {preset} 失败: {e}")
+
+
 @app.get("/api/scan")
 async def scan(preset: str = "balanced", _=Security(verify_api_key)):
-    """选股结果 + 风控 + 组合优化"""
+    """选股结果 — 立即返回缓存，无缓存时异步启动扫描"""
     if preset not in ALLOWED_PRESETS:
         raise HTTPException(status_code=400, detail=f"无效的preset: {preset}")
+
     cache_key = f"scan_{preset}"
     cached = _cache_get(cache_key, max_age=3600)
     if cached is not None:
         return cached
 
-    scan_result = None
-    try:
-        # 预取实时行情（写入长缓存，避免策略函数重复获取）
-        from lib.data_layer import get_realtime_quotes
-        get_realtime_quotes()  # 结果会缓存 30s，策略函数直接读缓存
+    # 无缓存：检查是否有扫描在运行
+    task = _scan_tasks.get(preset)
+    if task and task["status"] == "running":
+        elapsed = int(time.time() - task["started_at"])
+        return {"preset": preset, "results": {}, "total": 0, "scanning": True, "elapsed_sec": elapsed}
 
-        orchestrator = _get_orchestrator(preset)
-        import asyncio
-        scan_result = await asyncio.wait_for(
-            asyncio.to_thread(circuit_breaker.call, "scan", orchestrator.run_all_strategies),
-            timeout=30.0
-        )
-    except asyncio.TimeoutError:
-        logger.warning("scan 超时 30s，返回缓存或空结果")
-        cached = _cache_get(cache_key, max_age=86400)
-        if cached is not None:
-            return cached
-        return {
-            "preset": preset, "results": {}, "total": 0,
-            "risk_check": {}, "portfolio": {}, "factor_health": {},
-            "macro_filter": {}, "index_signal": {},
-            "error": "timeout"
-        }
-    except Exception as te:
-        logger.warning(f"scan 执行异常（非超时）: {te}")
-        scan_result = None
+    # 启动后台扫描
+    t = threading.Thread(target=_run_scan_background, args=(preset,), daemon=True)
+    t.start()
+    return {"preset": preset, "results": {}, "total": 0, "scanning": True, "elapsed_sec": 0}
 
-    if not scan_result:
-        scan_result = {}
-    results = scan_result.get("results", {})
-    risk_check = scan_result.get("risk_check", {})
-    portfolio = scan_result.get("portfolio", {})
-    factor_health = scan_result.get("factor_health", {})
 
-    output = {}
-    for name, df in results.items():
-        if hasattr(df, 'to_dict'):
-            output[name] = df.to_dict(orient="records")
-        else:
-            output[name] = []
-
-    data = {
-        "preset": preset,
-        "results": output,
-        "total": sum(len(v) for v in output.values()),
-        "risk_check": risk_check,
-        "portfolio": portfolio,
-        "factor_health": factor_health,
-        "macro_filter": scan_result.get("macro_filter", {}),
-        "index_signal": scan_result.get("index_signal", {}),
-    }
-    _cache_set(cache_key, data)
-    return data
+@app.get("/api/scan/status")
+async def scan_status(preset: str = "balanced"):
+    """扫描状态查询"""
+    task = _scan_tasks.get(preset)
+    if not task:
+        return {"preset": preset, "status": "idle"}
+    elapsed = int(time.time() - task["started_at"])
+    return {"preset": preset, "status": task["status"], "elapsed_sec": elapsed, "error": task.get("error")}
 
 
 @app.get("/api/score/{code}")

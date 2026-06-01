@@ -201,25 +201,46 @@ async function init() {
 
   document.getElementById('refreshBtn').addEventListener('click', async () => {
     const btn = document.getElementById('refreshBtn');
-    btn.disabled = true; btn.textContent = '加载中...';
-    // 显示全局加载指示器
+    btn.disabled = true; btn.textContent = '扫描中...';
     document.body.classList.add('loading-active');
     const preset = document.getElementById('presetSelect')?.value || 'balanced';
     try {
-      const [dashRes, scanRes, riskRes, auditRes, sigRes, expRes] = await apiClient.all([
+      // 1. 先拉取非扫描数据
+      const [dashRes, riskRes, auditRes, sigRes, expRes] = await apiClient.all([
         ['/api/dashboard', { preset }],
-        ['/api/scan', { preset }],
         ['/api/risk', {}],
         ['/api/audit', { limit: 15 }],
         ['/api/signals', { days: 30 }],
         ['/api/exposures', {}],
       ]);
       if (dashRes) stateManager.updateAll({ dashboard: dashRes });
-      if (scanRes) stateManager.updateAll({ scan: scanRes });
       if (riskRes) stateManager.updateAll({ risk: riskRes });
       if (auditRes) stateManager.updateAll({ audit: auditRes });
       if (sigRes) stateManager.updateAll({ signals: sigRes });
       if (expRes) stateManager.updateAll({ exposures: expRes });
+
+      // 2. 触发扫描（异步）
+      const scanRes = await apiClient.get('/api/scan', { preset });
+      if (scanRes?.scanning) {
+        // 3. 轮询等待扫描完成
+        const maxWait = 120; // 最多等 2 分钟
+        for (let i = 0; i < maxWait / 3; i++) {
+          await new Promise(r => setTimeout(r, 3000));
+          const status = await apiClient.get('/api/scan/status', { preset });
+          if (status?.status === 'done') {
+            const result = await apiClient.get('/api/scan', { preset });
+            if (result) stateManager.updateAll({ scan: result });
+            break;
+          }
+          if (status?.status === 'error') {
+            console.error('[Scan] 扫描失败:', status.error);
+            break;
+          }
+          btn.textContent = `扫描中... ${status?.elapsed_sec || 0}s`;
+        }
+      } else if (scanRes) {
+        stateManager.updateAll({ scan: scanRes });
+      }
     } catch (e) {
       console.error('[刷新] 加载失败:', e);
       alert('数据加载失败，请稍后重试');

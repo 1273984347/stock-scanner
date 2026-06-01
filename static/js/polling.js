@@ -73,11 +73,13 @@ class PollingController {
     }
   }
 
-  // 获取 scan 数据
+  // 获取 scan 数据（异步扫描：有缓存直接返回，无缓存触发后台扫描）
   async _fetchScan() {
     try {
       const data = await apiClient.get('/api/scan');
-      if (data) stateManager.set('scan', data);
+      if (data && !data.scanning) {
+        stateManager.set('scan', data);
+      }
     } catch (e) {
       console.error('[Polling] scan 获取失败:', e);
     }
