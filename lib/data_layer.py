@@ -499,8 +499,10 @@ def get_xsb_hist(code: str, days: int = 180) -> pd.DataFrame:
 
 # ========== 实时行情 ==========
 
-def get_realtime_quotes() -> pd.DataFrame:
-    cached = _load_cache("realtime/realtime", max_age_hours=get_config().cache.realtime_max_age_minutes / 60)
+def get_realtime_quotes(force: bool = False) -> pd.DataFrame:
+    # 扫描期间用长缓存（避免每个策略函数重复获取阻塞 30s+）
+    cache_minutes = 30 if not force else 0
+    cached = _load_cache("realtime/realtime", max_age_hours=cache_minutes / 60)
     if not cached.empty:
         return cached
 

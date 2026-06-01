@@ -371,14 +371,18 @@ async def scan(preset: str = "balanced", _=Security(verify_api_key)):
 
     scan_result = None
     try:
+        # 预取实时行情（写入长缓存，避免策略函数重复获取）
+        from lib.data_layer import get_realtime_quotes
+        get_realtime_quotes()  # 结果会缓存 30s，策略函数直接读缓存
+
         orchestrator = _get_orchestrator(preset)
         import asyncio
         scan_result = await asyncio.wait_for(
             asyncio.to_thread(circuit_breaker.call, "scan", orchestrator.run_all_strategies),
-            timeout=5.0
+            timeout=30.0
         )
     except asyncio.TimeoutError:
-        logger.warning("scan 超时 5s，返回缓存或空结果")
+        logger.warning("scan 超时 30s，返回缓存或空结果")
         cached = _cache_get(cache_key, max_age=86400)
         if cached is not None:
             return cached

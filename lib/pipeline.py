@@ -163,9 +163,11 @@ def _check_factor_health(results: dict) -> dict:
 def _get_sector_map(codes: list) -> dict:
     sector_map = {}
     try:
-        df = get_realtime_quotes()
+        # 优先用缓存，不阻塞扫描
+        df = _load_cache("realtime/realtime", max_age_hours=1)
+        if df.empty:
+            df = get_realtime_quotes()
         if not df.empty:
-            # 向量化处理：直接用 pandas 的 groupby + to_dict
             code_col = None
             sector_col = None
             for col in df.columns:
@@ -174,7 +176,6 @@ def _get_sector_map(codes: list) -> dict:
                 if "行业" in str(col):
                     sector_col = col
             if code_col and sector_col:
-                # 只筛选 codes 中存在的股票，然后转 dict
                 mask = df[code_col].astype(str).isin(codes)
                 sector_map = df.loc[mask].set_index(code_col)[sector_col].astype(str).to_dict()
     except Exception as e:
@@ -586,12 +587,20 @@ def run_all_strategies(
     config = get_config(preset)
     results = {}
     clean_cache(max_age_hours=24)
-    sentiment = get_market_sentiment()
-    if sentiment is not None:
-        logger.info(f"市场情绪分数: {sentiment:.2f}")
-    else:
-        logger.warning("市场情绪获取失败，使用默认值 0")
-        sentiment = 0
+
+    # 市场情绪：用缓存，不阻塞扫描（实时行情获取耗时 30s+）
+    sentiment = 0
+    try:
+        cached = _load_cache("realtime/realtime", max_age_hours=1)
+        if not cached.empty and "涨跌幅" in cached.columns:
+            up = (cached["涨跌幅"] > 0).sum()
+            down = (cached["涨跌幅"] < 0).sum()
+            total = up + down
+            if total > 0:
+                sentiment = max(-1, min(1, (up - down) / total))
+                logger.info(f"市场情绪(缓存): {sentiment:.2f}")
+    except Exception:
+        pass
 
     # ========== 宏观 + 指数过滤 ==========
     macro_filter = {"shibor": None, "shibor_regime": "UNKNOWN", "index_ma20": None, "index_trend": "UNKNOWN", "position_mult": 1.0}
