@@ -47,10 +47,28 @@ class CapitalAllocator:
         "RISK_OFF": 0.00,        # 极端：零风险预算
     }
 
-    # 单个 Alpha 最大仓位
+    # 单个 Alpha 最大仓位（基础值）
     MAX_SINGLE_ALPHA = 0.40
-    # 最小仓位（低于此值不分配）
-    MIN_ALLOCATION = 0.05
+    # 最小仓位软阈值中心（sigmoid 中点）
+    MIN_ALLOCATION_CENTER = 0.05
+    # sigmoid 陡度（越大越接近硬切）
+    MIN_ALLOCATION_STEEPNESS = 50.0
+
+    @classmethod
+    def _soft_min_allocation(cls, weight: float) -> float:
+        """P1-7 修复（2026-06-06）：sigmoid 软阈值替代硬切
+
+        旧：weight < 0.05 直接 0（阶跃不连续）
+        新：sigmoid((w - 0.05) * 50) 平滑过渡
+        - w=0.04 → ~0.18（仍分配但权重小）
+        - w=0.05 → 0.5
+        - w=0.06 → ~0.82
+        """
+        try:
+            import math
+            return 1.0 / (1.0 + math.exp(-cls.MIN_ALLOCATION_STEEPNESS * (weight - cls.MIN_ALLOCATION_CENTER)))
+        except OverflowError:
+            return 0.0 if weight < cls.MIN_ALLOCATION_CENTER else 1.0
 
     def allocate(
         self,
@@ -76,18 +94,29 @@ class CapitalAllocator:
         risk_budget_coeff = self.REGIME_RISK_BUDGET.get(regime, 0.50)
         total_risk_budget = risk_budget_coeff * regime_confidence
 
+        # P1-6 修复（2026-06-06）：MAX_SINGLE_ALPHA 缩放 regime_confidence
+        # 低置信度 regime → 缩紧单仓上限（防低质量信号被放大）
+        effective_max = self.MAX_SINGLE_ALPHA * regime_confidence
+
         allocations = []
         for alpha_type, weight in alpha_weights.items():
-            if weight < self.MIN_ALLOCATION:
+            # P1-7 修复：sigmoid 软阈值（不阶跃跳过小权重）
+            soft_weight = weight * self._soft_min_allocation(weight)
+            if soft_weight < 1e-4:
+                # 极小权重才真正跳过（实际 < 0.001）
                 continue
 
-            # 风险预算 = 总预算 × Alpha 权重
-            alpha_risk = total_risk_budget * weight
+            # 风险预算 = 总预算 × 软权重
+            alpha_risk = total_risk_budget * soft_weight
 
-            # 最大仓位
-            max_position = min(weight * total_risk_budget, self.MAX_SINGLE_ALPHA)
+            # 最大仓位（按 effective_max 限）
+            max_position = min(soft_weight * total_risk_budget, effective_max)
 
-            reason = f"regime={regime}, budget={total_risk_budget:.0%}, alpha_weight={weight:.0%}"
+            reason = (
+                f"regime={regime} conf={regime_confidence:.0%}, "
+                f"budget={total_risk_budget:.0%}, alpha_weight={weight:.0%}, "
+                f"effective_max={effective_max:.0%}"
+            )
 
             allocations.append(AllocationResult(
                 alpha_type=alpha_type,

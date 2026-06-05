@@ -68,15 +68,18 @@ class TestCapitalAllocator:
         )
         assert result_trend[0].risk_budget > result_mr[0].risk_budget
 
-    def test_small_alpha_filtered(self):
-        """权重过小的 Alpha 被过滤"""
+    def test_tiny_alpha_filtered(self):
+        """P1-7: 极小权重（< 0.005）才真正跳过，中间值用 sigmoid 软分配
+
+        旧版 weight=0.01 会被硬切 0.05 过滤；新版 sigmoid 软分配但 < 0.005 仍过滤
+        """
         allocator = self._make_allocator()
         result = allocator.allocate(
-            alpha_weights={"trend": 0.95, "noise": 0.01},
+            alpha_weights={"trend": 0.95, "noise": 0.001},
             total_capital=1_000_000,
         )
         types = [a.alpha_type for a in result]
-        assert "noise" not in types
+        assert "noise" not in types, "0.001 极小权重应被过滤"
 
     def test_max_single_alpha_cap(self):
         """单个 Alpha 不超过最大仓位"""
@@ -141,3 +144,57 @@ class TestCapitalAllocator:
         report = allocator.get_report(result)
         assert "资本配置报告" in report
         assert "trend" in report
+
+    # ========== P1-6 修复测试（2026-06-06）：MAX_SINGLE_ALPHA 缩放 regime_confidence ==========
+
+    def test_max_single_alpha_scales_with_regime_confidence(self):
+        """P1-6: regime_confidence 低时，单仓上限应按比例缩放
+
+        旧版 MAX_SINGLE_ALPHA = 0.40 固定，不受 regime_confidence 影响
+        新版：effective_max = MAX_SINGLE_ALPHA * regime_confidence
+        """
+        allocator = self._make_allocator()
+        # 高置信度（1.0）→ 上限 0.40
+        result_high = allocator.allocate(
+            alpha_weights={"trend": 1.0},
+            total_capital=1_000_000,
+            regime="TREND_UP",
+            regime_confidence=1.0,
+        )
+        # 低置信度（0.3）→ 上限 0.40 * 0.3 = 0.12
+        result_low = allocator.allocate(
+            alpha_weights={"trend": 1.0},
+            total_capital=1_000_000,
+            regime="TREND_UP",
+            regime_confidence=0.3,
+        )
+        assert result_high[0].max_position > result_low[0].max_position * 2, (
+            f"低置信度应比高置信度上限低很多："
+            f"high={result_high[0].max_position}, low={result_low[0].max_position}"
+        )
+        # 低置信度的 max_position 应接近 0.12 (0.40 * 0.3)
+        assert abs(result_low[0].max_position - 0.12) < 0.05
+
+    # ========== P1-7 修复测试（2026-06-06）：MIN_ALLOCATION 软阈值 ==========
+
+    def test_min_allocation_soft_threshold(self):
+        """P1-7: 权重在 0.04-0.05 边界不应阶跃到 0
+
+        旧版：weight < 0.05 直接 continue（不分配）
+        新版：sigmoid soft threshold → 边界处不阶跃
+        """
+        allocator = self._make_allocator()
+        # 0.04（旧版会跳过）vs 0.05（旧版会通过）
+        # 新版：两者都应被分配，但 0.04 权重略小
+        result_low = allocator.allocate(
+            alpha_weights={"a": 0.04, "b": 0.96},
+            total_capital=1_000_000,
+        )
+        result_high = allocator.allocate(
+            alpha_weights={"a": 0.05, "b": 0.95},
+            total_capital=1_000_000,
+        )
+        # 两者都应包含 alpha "a"（不阶跃跳过）
+        a_in_low = any(x.alpha_type == "a" for x in result_low)
+        a_in_high = any(x.alpha_type == "a" for x in result_high)
+        assert a_in_low and a_in_high, "P1-7 边界处不应阶跃跳过 a"
