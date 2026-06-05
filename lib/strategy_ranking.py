@@ -48,10 +48,17 @@ class StrategyRanker:
             json.dump(result, f, ensure_ascii=False, indent=2)
 
     def get_ranking(self, metric: str = "composite") -> List[Dict]:
-        """获取策略排行"""
+        """获取策略排行
+
+        P1-9 修复（2026-06-06）：无数据时返回空列表
+        - 旧：返回 3 个硬编码假策略（均衡/激进/保守）误导用户
+        - 新：返回 [] + 上层 UI 显示"暂无数据，请先跑回测"
+        - 注意：调用方应用 try/except 处理空列表，避免误显示旧假数据
+        """
         performances = self._load_all_performances()
         if not performances:
-            return self._get_default_ranking()
+            logger.info("无 backtest_results 数据，UI 应显示'暂无排名'")
+            return []
 
         # 计算综合得分
         self._calculate_composite_scores(performances)
