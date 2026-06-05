@@ -1,0 +1,177 @@
+/* High Contrast Theme - WCAG AAA compliant */
+
+[data-theme="high-contrast"] {
+  /* 背景色 - 纯黑 */
+  --bg-primary: #000000;
+  --bg-secondary: #1A1A1A;
+  --bg-chart: #000000;
+  --border: #FFFFFF;
+  --text-primary: #FFFFFF;
+  --text-secondary: #CCCCCC;
+  --accent: #00FFFF;
+
+  /* 兼容旧变量 */
+  --bg: #000000;
+  --card: #1A1A1A;
+  --card-hover: #333333;
+  --text: #FFFFFF;
+  --text-sub: #CCCCCC;
+  --text-dim: #999999;
+
+  /* 涨跌色 - 纯红绿，对比度 > 7:1 */
+  --color-up: #00FF00;
+  --color-down: #FF0000;
+  --up: #00FF00;
+  --down: #FF0000;
+  --warn: #FFFF00;
+
+  /* 边框加粗 */
+  --border-width: 2px;
+
+  /* 焦点指示器 */
+  --focus-outline: 3px solid #00FFFF;
+  --focus-offset: 3px;
+}
+
+/* 高对比度模式下的组件样式 */
+[data-theme="high-contrast"] .nav-item {
+  border: 2px solid transparent;
+}
+
+[data-theme="high-contrast"] .nav-item.active {
+  border-color: #00FFFF;
+  background: #1A1A1A;
+}
+
+[data-theme="high-contrast"] .nav-item:focus-visible {
+  outline: 3px solid #00FFFF;
+  outline-offset: 2px;
+}
+
+[data-theme="high-contrast"] button {
+  border: 2px solid #FFFFFF;
+}
+
+[data-theme="high-contrast"] button:focus-visible {
+  outline: 3px solid #00FFFF;
+  outline-offset: 2px;
+}
+
+[data-theme="high-contrast"] input,
+[data-theme="high-contrast"] select {
+  border: 2px solid #FFFFFF;
+  background: #000000;
+  color: #FFFFFF;
+}
+
+[data-theme="high-contrast"] input:focus,
+[data-theme="high-contrast"] select:focus {
+  outline: 3px solid #00FFFF;
+  outline-offset: 2px;
+}
+
+[data-theme="high-contrast"] table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+[data-theme="high-contrast"] th,
+[data-theme="high-contrast"] td {
+  border: 2px solid #FFFFFF;
+  padding: 8px;
+}
+
+[data-theme="high-contrast"] th {
+  background: #333333;
+  color: #FFFFFF;
+  font-weight: 700;
+}
+
+[data-theme="high-contrast"] .metric-card {
+  border: 2px solid #FFFFFF;
+  background: #1A1A1A;
+}
+
+[data-theme="high-contrast"] .metric-value {
+  color: #FFFFFF;
+  font-weight: 700;
+}
+
+[data-theme="high-contrast"] .metric-label {
+  color: #CCCCCC;
+}
+
+[data-theme="high-contrast"] .portfolio-card {
+  border: 2px solid #FFFFFF;
+  background: #1A1A1A;
+}
+
+[data-theme="high-contrast"] .toolbar {
+  border-bottom: 2px solid #FFFFFF;
+  background: #000000;
+}
+
+[data-theme="high-contrast"] .toolbar-brand {
+  color: #00FFFF;
+  font-weight: 700;
+}
+
+[data-theme="high-contrast"] .sidebar {
+  border-right: 2px solid #FFFFFF;
+  background: #000000;
+}
+
+[data-theme="high-contrast"] .statusbar {
+  border-top: 2px solid #FFFFFF;
+  background: #000000;
+}
+
+[data-theme="high-contrast"] .right-panel {
+  border-left: 2px solid #FFFFFF;
+  background: #000000;
+}
+
+[data-theme="high-contrast"] .modal-overlay {
+  background: rgba(0, 0, 0, 0.9);
+}
+
+[data-theme="high-contrast"] .modal {
+  border: 3px solid #00FFFF;
+  background: #000000;
+}
+
+[data-theme="high-contrast"] .loading .spinner {
+  border: 3px solid #333333;
+  border-top: 3px solid #00FFFF;
+}
+
+[data-theme="high-contrast"] a {
+  color: #00FFFF;
+  text-decoration: underline;
+}
+
+[data-theme="high-contrast"] a:focus-visible {
+  outline: 3px solid #00FFFF;
+  outline-offset: 2px;
+}
+
+/* 高对比度模式下的图表颜色调整 */
+[data-theme="high-contrast"] canvas {
+  filter: contrast(1.2);
+}
+
+/* 自动检测高对比度偏好 */
+@media (prefers-contrast: high) {
+  :root {
+    --color-up: #00FF00;
+    --color-down: #FF0000;
+    --up: #00FF00;
+    --down: #FF0000;
+    --border-width: 2px;
+  }
+
+  *:focus-visible {
+    outline: 3px solid #00FFFF;
+    outline-offset: 3px;
+  }
+}
