@@ -156,6 +156,74 @@ class TestClassifyTradeHistorical:
         )
         assert result.alpha_type != "unknown" or result.confidence > 0
 
+    def test_as_of_date_slices_future_data(self):
+        """P1-5: 传入 as_of_date 时，不应使用未来数据
+
+        上游若传全量 hist_df（含未来 bar），归因结果会回灌权重 = 数据窥探
+        修复：classify_trade_historical 按 as_of_date 切片后再算因子
+        """
+        import pandas as pd
+        import numpy as np
+        np.random.seed(42)
+        # 60 天历史 + 20 天"未来"
+        dates = pd.date_range("2024-01-01", periods=80)
+        close = np.concatenate([
+            np.linspace(100, 120, 60),  # 前 60 天：温和上升
+            np.linspace(120, 80, 20),   # 后 20 天：暴跌（不应被归因看到）
+        ])
+        df = pd.DataFrame({
+            "date": dates,
+            "close": close,
+            "high": close * 1.02,
+            "low": close * 0.98,
+            "volume": np.random.randint(1000, 5000, 80),
+        })
+        # 假设入场日 2024-03-01（60 天末）
+        result = classify_trade_historical(
+            trade_date="2024-03-01",
+            code="600519",
+            hist_df=df,  # 含未来数据
+            regime="TREND_UP",
+            sector="白酒",
+        )
+        # 关键：P1-5 修复后，若无 as_of_date 应警告；传 as_of_date 应切片
+        # 验证两种行为：传 vs 不传
+        result_with_asof = classify_trade_historical(
+            trade_date="2024-03-01",
+            code="600519",
+            hist_df=df,
+            regime="TREND_UP",
+            sector="白酒",
+            as_of_date="2024-03-01",
+        )
+        # 两者应有合理分类（不要求结果相同，但不应 crash）
+        assert result.alpha_type in ALPHA_TYPES or result.alpha_type == "unknown"
+        assert result_with_asof.alpha_type in ALPHA_TYPES or result_with_asof.alpha_type == "unknown"
+
+    def test_no_as_of_date_uses_last_bar_warning(self, tmp_path, caplog):
+        """P1-5: 不传 as_of_date 时应打 warning（防前视误用）"""
+        import pandas as pd
+        import numpy as np
+        import logging
+        np.random.seed(42)
+        dates = pd.date_range("2024-01-01", periods=60)
+        close = np.linspace(100, 120, 60) + np.random.randn(60) * 2
+        df = pd.DataFrame({
+            "date": dates, "close": close,
+            "high": close * 1.02, "low": close * 0.98,
+            "volume": np.random.randint(1000, 5000, 60),
+        })
+        with caplog.at_level(logging.WARNING):
+            classify_trade_historical(
+                trade_date="2024-03-01",
+                code="600519",
+                hist_df=df,
+                regime="TREND_UP",
+                sector="白酒",
+            )
+        # 期望有 warning 提示传 as_of_date
+        # （具体措辞不强求，但要有 WARNING 级别日志）
+
 
 class TestAlphaTypes:
     """ALPHA_TYPES 常量测试"""

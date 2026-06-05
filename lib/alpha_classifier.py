@@ -130,11 +130,17 @@ def classify_trade_historical(
     hist_df=None,
     regime: str = "MEAN_REVERSION",
     sector: str = "unknown",
+    as_of_date: Optional[str] = None,
 ) -> AlphaClassification:
     """回测用：根据历史数据事后归因
 
     简化版本：主要根据市场状态和板块信息归因，
     不需要实时数据（data_factors 在回测中不可用）。
+
+    P1-5 修复（2026-06-06）：加 as_of_date 参数防前视
+    - 不传 as_of_date：打 warning log 提醒，使用 hist_df 最后一行（不切片）
+    - 传 as_of_date：按 date <= as_of_date 切片后再算因子（防未来数据回灌）
+    - 旧行为兼容：不传时不阻断，但归因结果有未来数据风险
 
     Args:
         trade_date: 入场日期
@@ -142,12 +148,34 @@ def classify_trade_historical(
         hist_df: 历史K线数据（可选，用于计算因子）
         regime: 入场时的市场状态
         sector: 入场时的板块名称
+        as_of_date: 归因时间点（YYYY-MM-DD），可选
     """
     factors = {}
     channel_filter = {"kc_pos": 0.5}
     data_factors = {"sector_score": 50}
 
     if hist_df is not None and len(hist_df) > 20:
+        # P1-5：按 as_of_date 切片（防前视）
+        if as_of_date is not None and "date" in hist_df.columns:
+            hist_df = hist_df[hist_df["date"] <= as_of_date]
+            if len(hist_df) < 20:
+                logger.warning(
+                    f"as_of_date={as_of_date} 切片后 hist_df 不足 20 行（{len(hist_df)}），"
+                    f"跳过因子计算"
+                )
+                return classify_alpha_source(
+                    regime=regime,
+                    factors={},
+                    channel_filter=channel_filter,
+                    data_factors=data_factors,
+                )
+        elif as_of_date is None:
+            # 防前视：未传 as_of_date 时警告
+            logger.warning(
+                f"classify_trade_historical 未传 as_of_date（trade_date={trade_date}），"
+                f"可能使用未来数据，请传 as_of_date='{trade_date}' 防前视"
+            )
+
         try:
             from factors import calc_rsi, calc_adx
             close = hist_df["close"]
@@ -161,8 +189,12 @@ def classify_trade_historical(
 
             if "high" in hist_df.columns and "low" in hist_df.columns:
                 factors["adx"] = float(calc_adx(hist_df["high"], hist_df["low"], close))
-        except Exception:
-            pass
+        except Exception as e:
+            # P1-3 修复：不再静默吞错
+            logger.error(
+                f"classify_trade_historical 因子计算失败: {type(e).__name__}: {e}",
+                exc_info=True,
+            )
 
     return classify_alpha_source(
         regime=regime,
