@@ -113,7 +113,7 @@ body, html {
 .sidebar {
   width: var(--sidebar-width);
   background: var(--bg-secondary);
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   padding: 6px 0;
@@ -135,7 +135,7 @@ body, html {
   color: var(--text-dim);
   cursor: pointer;
   transition: all var(--transition-fast);
-  border-left: 2px solid transparent;
+  border-inline-start: 2px solid transparent;
   position: relative;
 }
 
@@ -147,7 +147,7 @@ body, html {
 .nav-item.active {
   color: var(--accent);
   background: var(--accent-glow);
-  border-left-color: var(--accent);
+  border-inline-start-color: var(--accent);
 }
 
 .nav-icon {
@@ -195,7 +195,7 @@ body, html {
   font-size: 13px;
   color: var(--accent);
   letter-spacing: 0.3px;
-  margin-right: 4px;
+  margin-inline-end: 4px;
 }
 
 .toolbar-separator {
@@ -276,7 +276,7 @@ body, html {
   min-width: var(--right-panel-width);
   flex-shrink: 0;
   background: var(--bg-secondary);
-  border-left: 1px solid var(--border);
+  border-inline-start: 1px solid var(--border);
   padding: 12px;
   overflow-y: auto;
 }
@@ -287,7 +287,7 @@ body, html {
 .statusbar {
   height: var(--statusbar-height);
   background: var(--bg-secondary);
-  border-top: 1px solid var(--border);
+  border-block-start: 1px solid var(--border);
   color: var(--text-dim);
   display: flex;
   align-items: center;
@@ -763,4 +763,153 @@ input:focus {
   .right-panel {
     display: none;
   }
+  .sidebar {
+    width: 100%;
+    height: auto;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    flex-direction: row;
+    justify-content: space-around;
+    padding: 8px 0;
+    z-index: 100;
+    border-right: none;
+    border-top: 1px solid var(--border);
+  }
+  .sidebar:hover {
+    width: 100%;
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.3);
+  }
+  .nav-item {
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 8px;
+    border-left: none;
+    border-top: 2px solid transparent;
+  }
+  .nav-item.active {
+    border-left-color: transparent;
+    border-top-color: var(--accent);
+  }
+  .nav-label {
+    font-size: 10px;
+    opacity: 1;
+  }
+  .app-layout {
+    flex-direction: column;
+  }
+  .main-area {
+    padding-bottom: 60px;
+  }
+  .toolbar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 8px;
+  }
+  .toolbar-brand {
+    display: none;
+  }
+  .toolbar-separator {
+    display: none;
+  }
+  .statusbar {
+    display: none;
+  }
+  .portfolio-grid {
+    grid-template-columns: 1fr;
+  }
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  table {
+    min-width: 600px;
+  }
+  /* 表格转卡片布局 */
+  .mobile-card-table {
+    display: block;
+  }
+  .mobile-card-table thead {
+    display: none;
+  }
+  .mobile-card-table tbody {
+    display: block;
+  }
+  .mobile-card-table tr {
+    display: block;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+    padding: 12px;
+  }
+  .mobile-card-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border: none;
+  }
+  .mobile-card-table td::before {
+    content: attr(data-label);
+    font-weight: 500;
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+  .modal {
+    width: 95%;
+    max-height: 90vh;
+  }
+  .chart-area {
+    padding: 8px;
+  }
+  .panel {
+    padding: 0 4px;
+  }
+}
+
+/* ============================================
+   RTL 布局支持
+   ============================================ */
+[dir="rtl"] .sidebar {
+  border-right: none;
+  border-left: 1px solid var(--border);
+}
+
+[dir="rtl"] .sidebar:hover {
+  box-shadow: -4px 0 12px rgba(0,0,0,0.3);
+}
+
+[dir="rtl"] .nav-item {
+  border-left: none;
+  border-right: 2px solid transparent;
+}
+
+[dir="rtl"] .nav-item.active {
+  border-left-color: transparent;
+  border-right-color: var(--accent);
+}
+
+[dir="rtl"] .right-panel {
+  border-left: none;
+  border-right: 1px solid var(--border);
+}
+
+[dir="rtl"] .toolbar-brand {
+  margin-right: 0;
+  margin-left: 4px;
+}
+
+[dir="rtl"] th {
+  text-align: right;
+}
+
+[dir="rtl"] .modal-close {
+  float: left;
+}
+
+[dir="rtl"] .spinner {
+  margin-right: 0;
+  margin-left: 6px;
 }

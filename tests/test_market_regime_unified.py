@@ -9,6 +9,7 @@ from lib.market_regime import (
     MEAN_REVERSION,
     REGIME_STATES, REGIME_POSITION_SCALAR,
     get_regime_description,
+    reset_hysteresis,
 )
 
 
@@ -93,6 +94,7 @@ class TestRegimeDetection:
 
     def test_insufficient_data_returns_default(self):
         """数据不足时返回默认状态（HIGH_VOLATILITY 更安全）"""
+        reset_hysteresis()  # 重置缓存，确保默认状态为 HIGH_VOLATILITY
         df = _make_index_df(10)
         result = detect_market_regime(df)
         assert result["regime"] == HIGH_VOLATILITY
@@ -142,3 +144,63 @@ class TestFiveStateCompleteness:
         for state in REGIME_STATES:
             desc = get_regime_description(state)
             assert "未知" not in desc, f"{state} 描述不应包含'未知'"
+
+
+class TestHysteresis:
+    """迟滞机制测试"""
+
+    def test_hysteresis_requires_n_confirmations(self):
+        """状态切换需要连续 N 天确认"""
+        reset_hysteresis()
+        df_up = _make_index_df(60, "up")
+        df_down = _make_index_df(60, "down")
+
+        # 第一次调用：建立初始状态
+        result1 = detect_market_regime(df_up, use_hysteresis=True, hysteresis_days=3)
+        initial_regime = result1["regime"]
+
+        # 第二次调用：切换到不同状态，但只有 1 次确认
+        result2 = detect_market_regime(df_down, use_hysteresis=True, hysteresis_days=3)
+
+        # 如果 up 和 down 产生了不同状态，应该有 hysteresis_pending 标记
+        raw_down = detect_market_regime(df_down, use_hysteresis=False)
+        if raw_down["regime"] != initial_regime:
+            # 新状态需要 3 次确认，当前只有 1 次，应保持原状态
+            assert result2["regime"] == initial_regime
+            assert result2["indicators"].get("hysteresis_pending") is True
+            assert result2["indicators"].get("hysteresis_count") == 1
+
+    def test_hysteresis_switches_after_n_confirmations(self):
+        """连续 N 次确认后状态切换"""
+        reset_hysteresis()
+        df_up = _make_index_df(60, "up")
+        df_down = _make_index_df(60, "down")
+
+        # 建立初始状态
+        detect_market_regime(df_up, use_hysteresis=True, hysteresis_days=3)
+
+        # 连续 3 次确认新状态
+        for _ in range(3):
+            result = detect_market_regime(df_down, use_hysteresis=True, hysteresis_days=3)
+
+        # 第 3 次确认后应该切换
+        raw_down = detect_market_regime(df_down, use_hysteresis=False)
+        assert result["regime"] == raw_down["regime"]
+
+    def test_hysteresis_disabled_passthrough(self):
+        """use_hysteresis=False 时直接返回当前检测结果"""
+        reset_hysteresis()
+        df = _make_index_df(60, "up")
+        result = detect_market_regime(df, use_hysteresis=False)
+        # 应直接返回检测结果，无 hysteresis_pending 标记
+        assert "hysteresis_pending" not in result.get("indicators", {})
+
+    def test_reset_hysteresis(self):
+        """reset_hysteresis 重置所有状态"""
+        reset_hysteresis()
+        df = _make_index_df(60, "up")
+        detect_market_regime(df, use_hysteresis=True, hysteresis_days=3)
+        reset_hysteresis()
+        # 重置后默认状态应为 HIGH_VOLATILITY
+        result = detect_market_regime(_make_index_df(10), use_hysteresis=False)
+        assert result["regime"] == HIGH_VOLATILITY

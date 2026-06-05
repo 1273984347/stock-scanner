@@ -217,6 +217,28 @@ Tushare (主) → AkShare → WeStock → 通达信 → Baostock → 东方财�
 | `quant-auditor` | 量化系统五维审计 | 代码质量/安全/性能审查 |
 | `python-design-patterns` | Python 设计模式 | 代码重构/架构优化 |
 | `dignified-python` | 生产级 Python 标准 | 代码规范/类型标注 |
+
+### Skill 路由速查（stock-scanner 专属）
+
+| 场景 | 首选 Skill | 备选 | 不用 |
+|:-----|:----------|:-----|:-----|
+| **新增 API 端点** | `fastapi` | `api-fault-handling` | — |
+| **修改策略/因子** | `brainstorming` → `writing-plans` | — | — |
+| **修 bug（Python）** | `systematic-debugging` | `dignified-python` | — |
+| **修 bug（前端）** | `systematic-debugging` → L3 验证 | — | — |
+| **代码审查** | `quant-auditor` | `code-review` | — |
+| **前端重构** | `frontend-dev` | — | `design-shotgun` |
+| **新增数据源** | `api-fault-handling` | — | — |
+| **安全审计** | `cso` | — | — |
+| **性能优化** | `performance-engineer` | — | — |
+| **测试补全** | `verification-before-completion` | — | — |
+| **多市场回测** | 直接执行 | — | — |
+| **E2E 测试** | Playwright test runner | — | MCP 浏览器 |
+| **代码部署** | `ship` | — | — |
+| **健康检查** | `health` | — | — |
+| **经验沉淀** | `experience-capture` | — | — |
+| **修复批量问题** | `fix-verify-loop` | — | — |
+| **任务前检查** | `reflection-retriever` | `skill-usage-checklist` | — |
 | `fastapi` | FastAPI 最佳实践 | API 端点开发 |
 | `database-admin` | 数据库管理 | SQLite/Parquet 优化 |
 | `performance-engineer` | 性能工程 | CPU 密集型计算优化 |

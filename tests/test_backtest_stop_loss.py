@@ -135,3 +135,87 @@ def test_empty_initial_positions_does_not_break():
 
     assert result is not None
     assert "trade_count" in result or "metrics" in result
+
+
+# ============== P0-2: 止损价考虑跳空低开 ==============
+
+def _make_kline_with_atr(n=35, entry_price=100.0, entry_atr_pct=2.0, day31_open=97.0, day31_low=99.0):
+    """构造 K 线: 30 天横盘 + 第 31 天 entry + 后续天数
+
+    Args:
+        n: 总天数
+        entry_price: 入场价 (i=30)
+        entry_atr_pct: ATR 百分比 (line 150 check_exit_v1_atr 使用)
+        day31_open: 第 31 天 (j=31) 开盘价，用于测试跳空
+        day31_low: 第 31 天 (j=31) 最低价，需 < stop_price 才能触发 atr_stop
+    """
+    dates = pd.date_range(start="2024-01-01", periods=n, freq="B")
+    closes = [100.0] * 30 + [entry_price] + [100.0] * (n - 31)
+    opens = [100.0] * 30 + [entry_price] + [day31_open] + [100.0] * (n - 32)
+    highs = [p * 1.01 for p in closes]
+    lows = [p * 0.99 for p in closes]
+    df = pd.DataFrame({
+        "date": dates,
+        "open": opens,
+        "close": closes,
+        "high": highs,
+        "low": lows,
+        "volume": [1e6] * n,
+    })
+    df.loc[31, "low"] = day31_low
+    return df
+
+
+def test_v1_atr_exit_uses_gap_down_open():
+    """P0-2: 跳空低开时，atr_stop 退出价 = min(open, stop_price)"""
+    from backtest.engine import check_exit_v1_atr
+    from backtest.utils import add_indicators
+
+    # entry_atr_pct=2 → stop_price = 100 * (1 - 2*2/100) = 96
+    # day31 open = 94 (跳空低开) < 96, low = 93 < 96 → 触发 atr_stop
+    # 旧逻辑: exit_price = 96
+    # 新逻辑: exit_price = min(94, 96) = 94
+    df = _make_kline_with_atr(n=35, entry_price=100.0, entry_atr_pct=2.0, day31_open=94.0, day31_low=93.0)
+    df = add_indicators(df)
+
+    reason, exit_price = check_exit_v1_atr(df, entry_i=30)
+    assert reason == "atr_stop"
+    assert abs(exit_price - 94.0) < 1e-6, f"期望 94.0 (gap down open), 实际 {exit_price}"
+
+
+def test_v1_atr_exit_keeps_stop_price_when_no_gap():
+    """P0-2: 无跳空时，atr_stop 退出价 = stop_price"""
+    from backtest.engine import check_exit_v1_atr
+    from backtest.utils import add_indicators
+
+    # day31 open = 97 (无跳空), low = 95.5 (< 96 stop_price) → 触发 atr_stop
+    # 新逻辑: exit_price = min(97, 96) = 96
+    df = _make_kline_with_atr(n=35, entry_price=100.0, entry_atr_pct=2.0, day31_open=97.0, day31_low=95.5)
+    df = add_indicators(df)
+
+    reason, exit_price = check_exit_v1_atr(df, entry_i=30)
+    assert reason == "atr_stop"
+    assert abs(exit_price - 96.0) < 1e-6, f"期望 96.0 (stop_price), 实际 {exit_price}"
+
+
+def test_v2_trend_exit_uses_gap_down_open():
+    """P0-2: 跳空低开时，trailing_stop 退出价 = min(open, trailing_stop)"""
+    from backtest.engine import check_exit_v2_trend
+    from backtest.utils import add_indicators
+
+    # low_10 在 day31 = 99 (前 10 天最低 99)
+    # trailing_stop initial = 99
+    # day31 open = 95 (跳空低开) < 99, close = 95 < 99 → 触发 trailing_stop
+    # 旧逻辑: exit_price = 99 (trailing_stop)
+    # 新逻辑: exit_price = min(95, 99) = 95
+    df = _make_kline_with_atr(n=35, entry_price=100.0, entry_atr_pct=1.0, day31_open=95.0, day31_low=93.0)
+    # 让 low_10 在 day30 之前都是 99
+    for i in range(0, 31):
+        df.loc[i, "low"] = 99.0
+    df.loc[31, "close"] = 95.0  # close < trailing_stop
+    df = add_indicators(df)
+
+    reason, exit_price = check_exit_v2_trend(df, entry_i=30)
+    assert reason == "trailing_stop"
+    assert abs(exit_price - 95.0) < 1e-6, f"期望 95.0 (gap down open), 实际 {exit_price}"
+

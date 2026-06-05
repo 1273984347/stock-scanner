@@ -4,9 +4,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 
 def test_config_import():
-    from config import SystemConfig, MLConfig, PortfolioConfig, MonitorConfig
+    from config import SystemConfig, PortfolioConfig, MonitorConfig
     c = SystemConfig()
-    assert c.ml.use_ml
+    # 注：原 c.ml.use_ml 断言已删除（use_ml 字段在死参数清理中移除）
     assert c.portfolio.optimize_method == "equal_weight"
 
 

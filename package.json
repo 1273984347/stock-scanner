@@ -10,10 +10,11 @@
   },
   "type": "module",
   "dependencies": {
-    "zustand": "^4.5.0",
-    "lightweight-charts": "^4.1.0"
+    "lightweight-charts": "^4.1.0",
+    "zustand": "^4.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "vite": "^5.0.0"
   }
 }

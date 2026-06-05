@@ -46,8 +46,8 @@ class TestBayesianUpdater:
         for _ in range(5):
             updater.update("TREND_UP", "high", "breakout", True)
         posterior = updater.get_posterior("TREND_UP", "high", "breakout")
-        # 贝叶斯平滑：(5 + 0.5*10) / (5 + 10) = 10/15 = 0.667
-        assert 0.65 < posterior < 0.70
+        # 贝叶斯平滑（min_samples=5）：(5 + 0.5*5) / (5 + 5) = 7.5/10 = 0.75
+        assert 0.73 < posterior < 0.77
 
     def test_bayesian_smoothing_with_few_samples(self, tmp_path):
         updater = self._make_updater(tmp_path)

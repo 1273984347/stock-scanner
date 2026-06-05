@@ -147,25 +147,25 @@ class TestDynamicExit:
         assert "position_multiplier" in status
 
     def test_get_exit_days_trend_up(self):
-        """TREND_UP regime should give 10 days"""
+        """TREND_UP regime should give 20 days (V6 design: let profits run)"""
         from lib.dynamic_exit import DynamicExitManager
         mgr = DynamicExitManager()
         mgr.loss_breaker.update_regime("TREND_UP")
-        assert mgr.get_exit_days() == 10
+        assert mgr.get_exit_days() == 20
 
     def test_get_exit_days_mean_reversion(self):
-        """MEAN_REVERSION regime should give 5 days"""
+        """MEAN_REVERSION regime should give 10 days (V6 design: quick in/out)"""
         from lib.dynamic_exit import DynamicExitManager
         mgr = DynamicExitManager()
         mgr.loss_breaker.update_regime("MEAN_REVERSION")
-        assert mgr.get_exit_days() == 5
+        assert mgr.get_exit_days() == 10
 
     def test_get_exit_days_trend_down(self):
-        """TREND_DOWN regime should give 3 days"""
+        """TREND_DOWN regime should give 0 days (V6 design: no entry)"""
         from lib.dynamic_exit import DynamicExitManager
         mgr = DynamicExitManager()
         mgr.loss_breaker.update_regime("TREND_DOWN")
-        assert mgr.get_exit_days() == 3
+        assert mgr.get_exit_days() == 0
 
     def test_get_exit_days_risk_off(self):
         """RISK_OFF regime should give 0 days (exit immediately)"""

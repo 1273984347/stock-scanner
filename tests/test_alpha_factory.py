@@ -1,0 +1,148 @@
+"""V8 Alpha 工厂测试"""
+import pytest
+from lib.alpha_factory import (
+    AlphaFactory, AlphaRecord, AlphaEvaluation,
+    LIFECYCLE_DISCOVERED, LIFECYCLE_EFFECTIVE, LIFECYCLE_CROWDED,
+    LIFECYCLE_DECAYING, LIFECYCLE_DEAD,
+)
+
+
+class TestAlphaFactory:
+    def _make_factory(self, tmp_path):
+        return AlphaFactory(persist_path=tmp_path / "alpha_factory.json")
+
+    def test_discover_alpha(self, tmp_path):
+        """发现新 Alpha"""
+        factory = self._make_factory(tmp_path)
+        alpha_id = factory.discover("momentum_20", name="20日动量")
+        assert alpha_id is not None
+        assert "momentum_20" in alpha_id
+
+    def test_discover_duplicate(self, tmp_path):
+        """重复发现返回现有 ID"""
+        factory = self._make_factory(tmp_path)
+        id1 = factory.discover("momentum_20")
+        id2 = factory.discover("momentum_20")
+        assert id1 == id2
+
+    def test_record_trade(self, tmp_path):
+        """记录交易结果"""
+        factory = self._make_factory(tmp_path)
+        alpha_id = factory.discover("rsi_14")
+        factory.record_trade(alpha_id, 5.0)
+        factory.record_trade(alpha_id, -2.0)
+        report = factory.get_report()
+        assert report["alphas"][alpha_id]["trade_count"] == 2
+
+    def test_evaluate(self, tmp_path):
+        """评估 Alpha"""
+        factory = self._make_factory(tmp_path)
+        alpha_id = factory.discover("adx")
+        # 添加足够样本
+        for _ in range(15):
+            factory.record_trade(alpha_id, 3.0)
+        eval_result = factory.evaluate(alpha_id)
+        assert isinstance(eval_result, AlphaEvaluation)
+        assert eval_result.win_rate > 0.5
+        assert eval_result.recommendation == "keep"
+
+    def test_lifecycle_transitions(self, tmp_path):
+        """生命周期状态转换"""
+        factory = self._make_factory(tmp_path)
+        alpha_id = factory.discover("trend_strength")
+
+        # 初始状态：discovered
+        assert factory._alphas[alpha_id].lifecycle == LIFECYCLE_DISCOVERED
+
+        # 添加 15 笔交易（超过 MIN_TRADES=10）
+        for _ in range(12):
+            factory.record_trade(alpha_id, 5.0)
+        for _ in range(3):
+            factory.record_trade(alpha_id, -2.0)
+
+        # 更新生命周期
+        changed = factory.update_lifecycle()
+        assert alpha_id in changed
+        assert factory._alphas[alpha_id].lifecycle == LIFECYCLE_EFFECTIVE
+
+    def test_decay_detection(self, tmp_path):
+        """衰退检测"""
+        factory = self._make_factory(tmp_path)
+        alpha_id = factory.discover("volume_ratio")
+
+        # 先盈利
+        for _ in range(10):
+            factory.record_trade(alpha_id, 5.0)
+        factory.update_lifecycle()
+        assert factory._alphas[alpha_id].lifecycle == LIFECYCLE_EFFECTIVE
+
+        # 连续亏损
+        for _ in range(15):
+            factory.record_trade(alpha_id, -3.0)
+        factory.update_lifecycle()
+        assert factory._alphas[alpha_id].lifecycle in (LIFECYCLE_DECAYING, LIFECYCLE_DEAD)
+
+    def test_dead_detection(self, tmp_path):
+        """失效检测"""
+        factory = self._make_factory(tmp_path)
+        alpha_id = factory.discover("cci")
+
+        # 大量亏损
+        for _ in range(20):
+            factory.record_trade(alpha_id, -5.0)
+        factory.update_lifecycle()
+        assert factory._alphas[alpha_id].lifecycle == LIFECYCLE_DEAD
+
+    def test_get_active_alphas(self, tmp_path):
+        """获取有效 Alpha"""
+        factory = self._make_factory(tmp_path)
+        id1 = factory.discover("momentum_20")
+        id2 = factory.discover("rsi_14")
+
+        # id1 有效
+        for _ in range(15):
+            factory.record_trade(id1, 5.0)
+
+        # id2 失效
+        for _ in range(15):
+            factory.record_trade(id2, -5.0)
+
+        factory.update_lifecycle()
+        active = factory.get_active_alphas()
+        active_ids = [r.alpha_id for r in active]
+        assert id1 in active_ids
+        assert id2 not in active_ids
+
+    def test_persistence(self, tmp_path):
+        """持久化测试"""
+        factory = self._make_factory(tmp_path)
+        alpha_id = factory.discover("adx", name="ADX因子")
+        factory.record_trade(alpha_id, 5.0)
+        factory.save()
+
+        # 重新加载
+        factory2 = self._make_factory(tmp_path)
+        assert alpha_id in factory2._alphas
+        assert factory2._alphas[alpha_id].trade_count == 1
+
+    def test_get_report(self, tmp_path):
+        """报告结构"""
+        factory = self._make_factory(tmp_path)
+        factory.discover("trend_strength")
+        report = factory.get_report()
+        assert "total_alphas" in report
+        assert "by_lifecycle" in report
+        assert "alphas" in report
+
+    def test_get_summary(self, tmp_path):
+        """摘要可读"""
+        factory = self._make_factory(tmp_path)
+        factory.discover("momentum_20", name="20日动量")
+        summary = factory.get_summary()
+        assert "Alpha 工厂报告" in summary
+        assert "20日动量" in summary
+
+    def test_record_unknown_alpha(self, tmp_path):
+        """记录未知 Alpha 不崩溃"""
+        factory = self._make_factory(tmp_path)
+        factory.record_trade("nonexistent", 5.0)  # 不应抛异常

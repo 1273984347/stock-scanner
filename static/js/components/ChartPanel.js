@@ -1,4 +1,5 @@
-import { createChart } from 'lightweight-charts';
+// lightweight-charts is loaded as a global via <script> tag
+const { createChart } = window.LightweightCharts || {};
 
 export class ChartPanel {
   constructor(container) {
