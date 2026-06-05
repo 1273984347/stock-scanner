@@ -3,6 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import logging.config
+import socket
 import numpy as np
 import pandas as pd
 import pytest
@@ -11,6 +12,91 @@ from unittest.mock import Mock, patch, MagicMock
 
 # 加载日志配置
 logging.config.fileConfig(os.path.join(os.path.dirname(__file__), "logging.conf"), disable_existing_loggers=False)
+
+
+# ============================================================================
+# 网络隔离（修 hang 35+ min 元凶 2026-06-06）
+#
+# 元凶：lib/data_ashare.py + lib/data_layer.py + lib/scorecard.py 等
+# 调 akshare / sina / eastmoney 真实网络 API，单测试慢（30-60s），
+# 多个测试叠加 + _retry_api_call 重试 = 全量 35+ min。
+#
+# 修法：autouse fixture 默认 mock 这些慢 API 返回缓存数据，
+# 标记 @pytest.mark.enable_socket 显式豁免。
+# ============================================================================
+
+def pytest_configure(config):
+    """注册 enable_socket 标记"""
+    config.addinivalue_line(
+        "markers", "enable_socket: 允许此测试访问真实网络（默认禁用）"
+    )
+
+
+def _mock_akshare_stock_zh_a_spot():
+    """ak.stock_zh_a_spot() → 模拟全市场股票列表（60+ 页 → 单页 100 只）"""
+    return pd.DataFrame({
+        "代码": [f"{i:06d}" for i in range(1, 101)],
+        "名称": [f"股票{i}" for i in range(1, 101)],
+        "最新价": np.random.uniform(5, 100, 100),
+        "涨跌幅": np.random.uniform(-10, 10, 100),
+        "市盈率-动态": np.random.uniform(5, 50, 100),
+        "市净率": np.random.uniform(0.5, 10, 100),
+        "量比": np.random.uniform(0.5, 5, 100),
+        "换手率": np.random.uniform(0.1, 10, 100),
+        "成交额": np.random.uniform(1e6, 1e10, 100),
+    })
+
+
+def _mock_akshare_stock_zh_index_daily(symbol="sh000300"):
+    """ak.stock_zh_index_daily() → 模拟 HS300 60 日 K 线"""
+    dates = pd.date_range("2025-01-01", periods=60, freq="D")
+    np.random.seed(42)
+    close = 4000 + np.cumsum(np.random.randn(60) * 20)
+    return pd.DataFrame({
+        "date": dates,
+        "open": close - np.random.rand(60) * 10,
+        "high": close + np.random.rand(60) * 20,
+        "low": close - np.random.rand(60) * 20,
+        "close": close,
+        "volume": np.random.randint(1e8, 5e8, 60),
+    })
+
+
+def _mock_akshare_stock_individual_info_em(symbol="000001"):
+    """ak.stock_individual_info_em() → 模拟个股信息"""
+    return pd.DataFrame({
+        "item": ["市盈率-动态", "市净率", "总市值", "流通市值"],
+        "value": ["15.5", "1.8", "500亿", "350亿"],
+    })
+
+
+@pytest.fixture(autouse=True)
+def _mock_akshare_by_default(request, monkeypatch):
+    """默认 mock akshare 慢 API（避免 35+ min hang）
+
+    豁免：标记 @pytest.mark.enable_socket 的测试可访问真实网络
+    """
+    if request.node.get_closest_marker("enable_socket"):
+        yield
+        return
+
+    # monkeypatch 关键慢 API
+    try:
+        import akshare as ak
+        monkeypatch.setattr(
+            "akshare.stock_zh_a_spot", _mock_akshare_stock_zh_a_spot
+        )
+        monkeypatch.setattr(
+            "akshare.stock_zh_index_daily", _mock_akshare_stock_zh_index_daily
+        )
+        monkeypatch.setattr(
+            "akshare.stock_individual_info_em",
+            _mock_akshare_stock_individual_info_em
+        )
+    except ImportError:
+        pass  # akshare 未装，不 mock
+
+    yield
 
 
 @pytest.fixture
