@@ -123,20 +123,27 @@ class AlphaFactory:
 
         # 计算 IC（如果有数据）
         ic = 0.0
-        icir = 0.0
+        icir = 0.0  # P1-1 修复（2026-06-06）：单点 IC 无法算 ICIR，置 0
         if factor_values is not None and forward_returns is not None:
             try:
                 from lib.alpha import AlphaSynthesizer
                 ic_result = AlphaSynthesizer.compute_ic(factor_values, forward_returns)
                 ic = ic_result.get("rank_ic", 0.0) or 0.0
-                # ICIR 需要滚动 IC，简化处理
-                icir = abs(ic) * 10  # 粗略估计
-            except Exception:
-                pass
+                # ICIR 需要滚动 IC 序列，单点 discover() 阶段无法计算。
+                # 留 0.0，在 evaluate() / update_lifecycle() 中基于 trade_history 计算真实值。
+            except Exception as e:
+                # P1-3 修复（2026-06-06）：不再静默吞错
+                logger.error(
+                    f"Alpha [{factor_name}] IC 计算失败: {type(e).__name__}: {e}",
+                    exc_info=True,
+                )
 
-        # 检查发现阈值
-        if abs(ic) < self.IC_THRESHOLD and factor_values is not None:
-            logger.debug(f"Alpha [{factor_name}] IC={ic:.4f} 未达阈值 {self.IC_THRESHOLD}")
+        # 检查发现阈值（P1-2 修复 2026-06-06）
+        # A 股 long-only：负 IC 因子应直接拒（不取 abs）
+        if factor_values is not None and ic < self.IC_THRESHOLD:
+            logger.debug(
+                f"Alpha [{factor_name}] IC={ic:.4f} 未达阈值 {self.IC_THRESHOLD}（long-only 拒绝负 IC）"
+            )
             return None
 
         record = AlphaRecord(

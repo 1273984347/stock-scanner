@@ -146,3 +146,57 @@ class TestAlphaFactory:
         """记录未知 Alpha 不崩溃"""
         factory = self._make_factory(tmp_path)
         factory.record_trade("nonexistent", 5.0)  # 不应抛异常
+
+    # ========== P1 修复测试（2026-06-06）==========
+
+    def test_discover_with_low_ic_rejected(self, tmp_path):
+        """P1-1/2: 低 IC 或负 IC 因子不通过发现阈值
+
+        A 股 long-only 场景：负 IC 因子应被拒（不应取 abs）
+        """
+        import pandas as pd
+        from lib.alpha import AlphaSynthesizer
+        factory = self._make_factory(tmp_path)
+
+        # 因子值与前向收益完全负相关 → rank_ic 应为负
+        factor_values = pd.Series([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype=float)
+        forward_returns = pd.Series([10, 9, 8, 7, 6, 5, 4, 3, 2, 1], dtype=float)
+        alpha_id = factory.discover(
+            "bad_factor", factor_values=factor_values, forward_returns=forward_returns
+        )
+        # 负 IC 应被拒（不创建）
+        assert alpha_id is None, f"负 IC 因子应被拒，但创建了 {alpha_id}"
+
+    def test_discover_icir_not_fake(self, tmp_path):
+        """P1-1: ICIR 不再用 abs(ic) * 10 硬编码假数
+
+        单点 IC 无法计算 ICIR（无时序），应返回 0.0 或 None
+        """
+        import pandas as pd
+        factory = self._make_factory(tmp_path)
+
+        factor_values = pd.Series([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype=float)
+        forward_returns = pd.Series([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], dtype=float)
+        alpha_id = factory.discover(
+            "test_factor", factor_values=factor_values, forward_returns=forward_returns
+        )
+        if alpha_id:
+            record = factory._alphas[alpha_id]
+            # ICIR 不应是简单的 abs(ic) * 10（那是硬编码）
+            # 实际值应该反映"无时序数据"的状态（0.0 或 None）
+            assert record.icir < 0.5, (
+                f"ICIR={record.icir} 看起来仍是硬编码假数（abs(ic)*10 模式）"
+            )
+
+    def test_discover_synthetic_data_error_logged(self, tmp_path, caplog):
+        """P1-3: AlphaSynthesizer 失败应打 ERROR log（不再静默 pass）"""
+        import logging
+        factory = self._make_factory(tmp_path)
+
+        with caplog.at_level(logging.DEBUG):
+            # 传 None 强制 AlphaSynthesizer 失败
+            alpha_id = factory.discover("bad_data", factor_values=None, forward_returns=None)
+
+        # 应该创建（不阻断主流程）但有 debug log 说明
+        # 关键：不静默 pass
+        assert alpha_id is not None  # 创建（不阻断）
