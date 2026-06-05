@@ -96,9 +96,25 @@ def _load_cache(key: str, max_age_hours: int = 2) -> pd.DataFrame:
         return pd.DataFrame()
     try:
         return pd.read_parquet(path)
-    except Exception as e:
-        logger.debug(f"[data_layer] 缓存读取失败 [{key}]: {e}")
+    except PermissionError as e:
+        # P1-2 修复（2026-06-05）：权限错误不删文件（保留待人工诊断）
+        logger.warning(f"[data_layer] 缓存文件权限错误 [{key}]: {e}，保留文件")
+        return pd.DataFrame()
+    except IsADirectoryError as e:
+        # 路径是目录（不应该）
+        logger.warning(f"[data_layer] 缓存路径是目录 [{key}]: {e}，保留路径")
+        return pd.DataFrame()
+    except (OSError, IOError) as e:
+        # 其他 OSError（文件损坏：pyarrow 解码失败通常抛 OSError）
+        logger.warning(f"[data_layer] 缓存文件损坏 [{key}]: {e}，删除并重试")
         path.unlink(missing_ok=True)
+        return pd.DataFrame()
+    except Exception as e:
+        # P1-2 修复：未知错误（如 KeyError）不删文件
+        # 可能是代码 bug 而非文件损坏，保留文件供诊断
+        logger.warning(
+            f"[data_layer] 缓存读取失败 [{key}] 但保留文件: {type(e).__name__}: {e}"
+        )
         return pd.DataFrame()
 
 
@@ -500,8 +516,15 @@ def get_xsb_hist(code: str, days: int = 180) -> pd.DataFrame:
 # ========== 实时行情 ==========
 
 def get_realtime_quotes(force: bool = False) -> pd.DataFrame:
-    # 扫描期间用长缓存（避免每个策略函数重复获取阻塞 30s+）
-    cache_minutes = 30 if not force else 0
+    # 扫描期间用缓存（避免每个策略函数重复获取阻塞 30s+）
+    # P1-4 修复（2026-06-05）：盘中缩短缓存到 5 分钟，避免盘中价格过期
+    # 判断：当前小时在 9:00-15:00 之间 → 缩短缓存
+    from datetime import datetime
+    now = datetime.now()
+    is_market_hours = 9 <= now.hour < 15  # A 股交易时段 9:30-15:00
+    cache_minutes = 5 if is_market_hours else 30  # 盘中 5min，盘后 30min
+    if force:
+        cache_minutes = 0
     cached = _load_cache("realtime/realtime", max_age_hours=cache_minutes / 60)
     if not cached.empty:
         return cached
@@ -512,13 +535,20 @@ def get_realtime_quotes(force: bool = False) -> pd.DataFrame:
         api = TdxHq_API()
         servers = [("119.147.212.81", 7709), ("112.74.214.43", 7709)]
         connected = False
+        # P1-1 修复（2026-06-05）：不再静默吞所有异常
+        # 每次连接失败打 warning log，让运维能诊断限流/网络问题
+        last_error = None
         for host, port in servers:
             try:
                 api.connect(host, port, time_out=5)
                 connected = True
                 break
-            except Exception:
+            except Exception as e:
+                last_error = e
+                logger.warning(f"pytdx 连接失败 {host}:{port}: {e}")
                 continue
+        if not connected and last_error is not None:
+            logger.warning(f"pytdx 所有服务器连接失败，最后错误: {last_error}")
         if connected:
             # 用 HS300 成分股 + 已知活跃股票作为样本（避免遍历全部 A 股）
             sample_codes = [

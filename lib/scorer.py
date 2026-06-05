@@ -220,3 +220,180 @@ def check_anomaly_threshold(deviation: float, board_type: str) -> Dict:
         "deviation": round(deviation, 4),
         "score_adjustment": score_adj,
     }
+
+
+# ========== V6 六因子评分系统 ==========
+
+SIX_FACTOR_WEIGHTS = {
+    "trend": 0.20,       # 趋势分
+    "momentum": 0.15,    # 动量分
+    "volume": 0.20,      # 量能分
+    "sector": 0.20,      # 板块分
+    "volatility": 0.10,  # 波动质量分
+    "structure": 0.15,   # 结构分
+}
+
+
+def score_trend(factors: dict) -> float:
+    """趋势分（0-100）
+
+    - trend_strength > 5: 90分（强趋势）
+    - trend_strength > 2: 75分
+    - trend_strength > 0: 60分
+    - trend_strength > -2: 40分
+    - else: 20分
+    """
+    ts = factors.get("trend_strength", 0)
+    if ts > 5:
+        return 90
+    elif ts > 2:
+        return 75
+    elif ts > 0:
+        return 60
+    elif ts > -2:
+        return 40
+    return 20
+
+
+def score_momentum(factors: dict) -> float:
+    """动量分（0-100）
+
+    - momentum_20 > 10%: 90分
+    - momentum_20 > 5%: 75分
+    - momentum_20 > 0: 60分
+    - momentum_20 > -5%: 40分
+    - else: 20分
+    """
+    m20 = factors.get("momentum_20", 0)
+    if m20 > 10:
+        return 90
+    elif m20 > 5:
+        return 75
+    elif m20 > 0:
+        return 60
+    elif m20 > -5:
+        return 40
+    return 20
+
+
+def score_volume(factors: dict) -> float:
+    """量能分（0-100）
+
+    - volume_ratio > 2.0: 90分（放量）
+    - volume_ratio > 1.5: 75分
+    - volume_ratio > 1.0: 60分
+    - volume_ratio > 0.7: 40分
+    - else: 20分（缩量）
+    """
+    vr = factors.get("volume_ratio", 1.0)
+    if vr > 2.0:
+        return 90
+    elif vr > 1.5:
+        return 75
+    elif vr > 1.0:
+        return 60
+    elif vr > 0.7:
+        return 40
+    return 20
+
+
+def score_sector(sector_score: float) -> float:
+    """板块分（0-100）
+
+    直接使用 sector_score（已归一化到 0-100）。
+    缺失时返回 50（中性）。
+    """
+    if sector_score is None or sector_score <= 0:
+        return 50
+    return max(0, min(100, sector_score))
+
+
+def score_volatility_quality(factors: dict) -> float:
+    """波动质量分（0-100）
+
+    ATR 太高 = 高风险，太低 = 无机会。
+    最佳区间：年化波动率 15%-35%。
+    """
+    vol = factors.get("volatility_20", 25)
+    if 15 <= vol <= 35:
+        return 80  # 最佳波动区间
+    elif 10 <= vol < 15 or 35 < vol <= 50:
+        return 60  # 可接受
+    elif vol > 50:
+        return 30  # 波动过高
+    return 40  # 波动过低
+
+
+def score_structure(factors: dict) -> float:
+    """结构分（0-100）
+
+    - ADX > 25: 强趋势结构 → 80分
+    - ADX > 20: 有趋势 → 65分
+    - ADX > 15: 弱趋势 → 50分
+    - ADX <= 15: 无趋势 → 30分
+    - KDJ 金叉加分 +10
+    """
+    adx = factors.get("adx", 15)
+    kdj_j = factors.get("kdj_j", 50)
+
+    if adx > 25:
+        base = 80
+    elif adx > 20:
+        base = 65
+    elif adx > 15:
+        base = 50
+    else:
+        base = 30
+
+    # KDJ 金叉加分（J < 30 且向上）
+    if kdj_j < 30:
+        base += 10
+
+    return min(100, base)
+
+
+def six_factor_score(factors: dict, sector_score: float = 50) -> dict:
+    """V6 六因子评分系统
+
+    与 comprehensive_score（4维）并存。
+    六因子更关注技术面和市场结构，适合趋势交易入场决策。
+
+    Args:
+        factors: 因子值 dict（来自 compute_all_signals["factors"]）
+        sector_score: 板块评分 0-100（来自 sector_score.py）
+
+    Returns:
+        dict: {score, rating, breakdown, weights}
+    """
+    breakdown = {
+        "trend": score_trend(factors),
+        "momentum": score_momentum(factors),
+        "volume": score_volume(factors),
+        "sector": score_sector(sector_score),
+        "volatility": score_volatility_quality(factors),
+        "structure": score_structure(factors),
+    }
+
+    total = sum(
+        breakdown[k] * SIX_FACTOR_WEIGHTS[k]
+        for k in SIX_FACTOR_WEIGHTS
+    )
+    total = round(max(0, min(100, total)), 1)
+
+    if total >= 80:
+        rating = "强烈买入"
+    elif total >= 70:
+        rating = "买入"
+    elif total >= 60:
+        rating = "持有"
+    elif total >= 40:
+        rating = "谨慎"
+    else:
+        rating = "回避"
+
+    return {
+        "score": total,
+        "rating": rating,
+        "breakdown": breakdown,
+        "weights": SIX_FACTOR_WEIGHTS,
+    }

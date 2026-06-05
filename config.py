@@ -5,7 +5,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 
 # 自动加载 .env 文件
@@ -46,53 +46,48 @@ class FactorConfig:
     use_fund_hold: bool = True
     use_dividend: bool = True
 
-    # 因子参数
-    momentum_periods: List[int] = field(default_factory=lambda: [5, 10, 20])
-    reversal_period: int = 5
-    volatility_window: int = 20
-    volume_short: int = 5
-    volume_long: int = 20
-    trend_short: int = 5
-    trend_long: int = 20
-    rsi_period: int = 14
+    # 注：原 momentum_periods/reversal_period/volatility_window 等参数字段已删除
+    # 原因：factors.py 中硬编码了相同默认值，从未读取 config 字段
 
-    # Alpha 合成权重（基于 IC 评价 2026-05-30）
-    # IC: volume_ratio(0.152) > adx(0.092) > williams_r(0.070) > cci(0.065) > rsi(0.061)
+    # Alpha 合成权重（等权，避免数据窥探）
+    # 之前基于历史 IC 分配权重，属于样本内优化。改为等权。
     factor_weights: Dict[str, float] = field(default_factory=lambda: {
-        "volume_ratio": 0.25,     # IC=0.152, 最强因子
-        "momentum_5": 0.05,       # IC=0.031
-        "momentum_20": 0.10,      # IC=0.052
-        "reversal_5": 0.00,       # 无 IC 数据
-        "volatility_20": 0.08,    # IC=0.048
-        "trend_strength": 0.09,   # IC=0.055
-        "rsi_14": 0.10,           # IC=0.061
-        "adx": 0.15,              # IC=0.092
-        "williams_r": 0.12,       # IC=0.070
-        "cci": 0.06,              # IC=0.065
+        "volume_ratio": 0.10,
+        "momentum_5": 0.10,
+        "momentum_20": 0.10,
+        "reversal_5": 0.10,
+        "volatility_20": 0.10,
+        "trend_strength": 0.10,
+        "rsi_14": 0.10,
+        "adx": 0.10,
+        "williams_r": 0.10,
+        "cci": 0.10,
     })
 
-    # 多策略权重（基于 IC 评价 2026-05-30）
+    # 多策略权重（等权，避免数据窥探）
     strategy_weights: Dict[str, float] = field(default_factory=lambda: {
-        "trend": 0.15,
-        "mean_reversion": 0.10,
-        "momentum": 0.20,
-        "volatility": 0.15,
-        "stat_arb": 0.10,
-        "trend_breakout": 0.30,
+        "trend": 0.167,
+        "mean_reversion": 0.167,
+        "momentum": 0.167,
+        "volatility": 0.167,
+        "stat_arb": 0.167,
+        "trend_breakout": 0.167,
     })
 
-    # IC 加权因子权重（基于 2026-05-30 IC 评价，30 只股票 × 500 天）
+    # IC 加权因子权重（等权，避免数据窥探）
+    # 之前基于历史 IC 分配权重（volume_ratio=0.22 等）属于样本内优化，
+    # 导致回测结果不可信。改为等权 0.10，消除数据窥探偏差。
     ic_factor_weights: Dict[str, float] = field(default_factory=lambda: {
-        "volume_ratio": 0.22,
-        "adx": 0.14,
-        "williams_r": 0.11,
-        "cci": 0.09,
-        "rsi_14": 0.09,
-        "trend_strength": 0.08,
-        "kdj_j": 0.08,
-        "kdj_resonance_score": 0.08,
-        "momentum_20": 0.07,
-        "volatility_20": 0.04,
+        "volume_ratio": 0.10,
+        "adx": 0.10,
+        "williams_r": 0.10,
+        "cci": 0.10,
+        "rsi_14": 0.10,
+        "trend_strength": 0.10,
+        "kdj_j": 0.10,
+        "kdj_resonance_score": 0.10,
+        "momentum_20": 0.10,
+        "volatility_20": 0.10,
     })
 
 
@@ -108,7 +103,7 @@ class ScanConfig:
 
     # 通用过滤
     exclude_st: bool = True
-    min_amount: float = 50000  # 最小成交额（万元）
+    # 注：原 min_amount 已删除（未被任何模块读取）
 
     # 候选数量
     max_candidates: int = 10
@@ -135,21 +130,17 @@ class RiskConfig:
 
     # 风险预警阈值
     max_single_weight: float = 0.20  # 单票最大仓位
-    max_drawdown: float = 0.15       # 最大回撤预警（15%）
-    daily_loss_limit: float = 0.03   # 单日亏损限制（3%）
-    weekly_loss_limit: float = 0.08  # 周亏损限制（8%）
+    # 注：原 max_drawdown/daily_loss_limit/weekly_loss_limit 已删除
+    # 原因：lib/risk_manager.py 有同名 RiskConfig 类的本地字段，config.py 的副本被遮蔽
 
 
 @dataclass
 class MLConfig:
-    """机器学习配置"""
-    use_ml: bool = True
-    ml_weight: float = 0.20
-    enable_xgb: bool = True
-    enable_lgbm: bool = True
-    enable_sentiment: bool = True
-    weekly_retrain_day: str = "Mon"
-    model_dir: str = "cache/models/"
+    """机器学习配置（当前为占位符）"""
+    # 注：原 use_ml/ml_weight/enable_xgb/enable_lgbm/enable_sentiment/weekly_retrain_day/model_dir
+    # 7 个字段已删除。ML 模块（ml_trainer.py/ml_predictor.py）使用本地参数，
+    # 未消费 config.MLConfig 的任何字段。
+    pass
 
 
 @dataclass
@@ -182,7 +173,7 @@ class PortfolioConfig:
     max_single_weight: float = 0.20
     max_sector_exposure: float = 0.30
     top_n: int = 10
-    rebalance_period: int = 5
+    # 注：原 rebalance_period 已删除（RebalanceConfig 有自己的本地副本）
     min_daily_volume: float = 5e6
     max_impact_ratio: float = 0.05
 
@@ -190,11 +181,9 @@ class PortfolioConfig:
 @dataclass
 class MonitorConfig:
     """监控配置"""
-    ic_window: int = 20
-    ic_alert_threshold: float = 0.0
+    # 注：原 ic_window/ic_alert_threshold/model_ttl_days/rollback_ic_ratio 已删除
+    # 原因：未被主流程消费（ml_monitor.py/factor_strategy.py 有本地副本）
     ic_alert_consecutive: int = 5
-    model_ttl_days: int = 7
-    rollback_ic_ratio: float = 0.8
     factor_ic_threshold: float = 0.02
     factor_corr_threshold: float = 0.95
 
@@ -203,8 +192,7 @@ class MonitorConfig:
 class CacheConfig:
     """缓存 TTL 配置"""
     hist_max_age_hours: float = 4.0
-    index_max_age_hours: float = 4.0
-    realtime_max_age_minutes: float = 0.5
+    # 注：原 index_max_age_hours/realtime_max_age_minutes 已删除（未被读取）
     macro_max_age_hours: float = 24.0
 
 
@@ -308,6 +296,63 @@ _CONFIG_FILE = Path("config.json")
 _config_mtime: float = 0
 _cached_overrides: dict = {}
 
+# P0-1 修复（2026-06-05）：配置热更新 schema/type/range 验证
+# 防止 {"stop_loss_pct": "5.0"}（字符串）等错误类型污染风控字段
+# 格式: {ClassName: {field_name: (type, min, max, description)}}
+# type: bool | int | float | str
+# min/max: 范围限制（None 表示无限制）
+# key 用 type(cfg).__name__（类名）匹配
+_CONFIG_SCHEMA = {
+    "RiskConfig": {
+        "stop_loss_pct": (float, 0.5, 20.0, "止损百分比"),
+        "take_profit_pct": (float, 1.0, 50.0, "止盈百分比"),
+        "trailing_stop": (bool, None, None, "是否启用移动止损"),
+        "trailing_pct": (float, 0.1, 10.0, "移动止损百分比"),
+        "max_hold_days": (int, 1, 30, "最大持有天数"),
+        "max_single_weight": (float, 0.01, 1.0, "单票最大仓位"),
+        "use_fixed_take_profit": (bool, None, None, "是否使用固定止盈"),
+    },
+    "ScanConfig": {
+        "min_zt_days": (int, 0, 30, "最小涨停天数"),
+        "price_change_min": (float, -10.0, 10.0, "最小涨跌幅(%)"),
+        "price_change_max": (float, -10.0, 20.0, "最大涨跌幅(%)"),
+    },
+    "MLConfig": {
+        "min_train_samples": (int, 50, 10000, "最小训练样本数"),
+    },
+    "CacheConfig": {
+        "ttl_minutes": (int, 1, 1440, "缓存 TTL（分钟）"),
+    },
+}
+
+
+def _validate_field_value(field_name: str, expected_type: type, value, min_val, max_val) -> bool:
+    """验证字段值是否符合 schema 定义的类型和范围
+
+    Returns:
+        True  - 值合法
+        False - 值非法（类型错或范围外）
+    """
+    # bool 是 int 的子类，要先检查 bool 避免误判
+    if expected_type is bool:
+        if not isinstance(value, bool):
+            return False
+        return True
+    if expected_type is int:
+        if isinstance(value, bool) or not isinstance(value, int):
+            return False
+    elif expected_type is float:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return False
+    elif expected_type is str:
+        if not isinstance(value, str):
+            return False
+    if min_val is not None and value < min_val:
+        return False
+    if max_val is not None and value > max_val:
+        return False
+    return True
+
 
 def _load_json_overrides() -> dict:
     """从 config.json 加载配置覆盖（带 mtime 缓存）"""
@@ -332,15 +377,34 @@ def _load_json_overrides() -> dict:
 
 
 def _apply_overrides(cfg: SystemConfig, overrides: dict) -> None:
-    """递归应用配置覆盖"""
+    """递归应用配置覆盖
+
+    P0-1 修复（2026-06-05）：在应用前对值做 schema/type/range 验证
+    - 字段在 _CONFIG_SCHEMA 中 → 按 (type, min, max) 验证
+    - 字段不在 _CONFIG_SCHEMA 中 → 跳过（避免误改）
+    - 类型错或范围外 → 打 warning，**保持原值**（不静默 setattr）
+    """
+    schema_root = _CONFIG_SCHEMA.get(type(cfg).__name__, {})
+
     for key, value in overrides.items():
         if not hasattr(cfg, key):
             logging.getLogger(__name__).warning(f"config.json 中的未知字段: {key}")
             continue
         attr = getattr(cfg, key)
         if isinstance(value, dict) and hasattr(attr, '__dataclass_fields__'):
+            # 递归到子 config
             _apply_overrides(attr, value)
         else:
+            # P0-1 修复：先校验再 setattr
+            if key in schema_root:
+                expected_type, min_val, max_val, desc = schema_root[key]
+                if not _validate_field_value(key, expected_type, value, min_val, max_val):
+                    logging.getLogger(__name__).warning(
+                        f"config.json 字段 {type(cfg).__name__}.{key} 值 {value!r} 不符合 schema "
+                        f"(类型={expected_type.__name__}, 范围=[{min_val}, {max_val}])，"
+                        f"保持原值"
+                    )
+                    continue
             setattr(cfg, key, value)
 
 
@@ -360,7 +424,8 @@ TURNOVER_PENALTY = 0.005
 
 # 交易配置
 COMMISSION_RATE = 0.00025
-STAMP_DUTY_RATE = 0.0005
+STAMP_DUTY_RATE = 0.0005  # A股印花税 0.05%（万分之五），仅卖出收取
+                             # 2023-08-28 起从 0.1% 降至 0.05% (财政部公告)
 MIN_COMMISSION = 5.0
 SLIPPAGE_RATE = 0.002  # 0.2% 滑点（A股小盘股实际可达0.3%-0.5%，取保守值）
 

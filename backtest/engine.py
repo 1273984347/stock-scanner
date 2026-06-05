@@ -43,6 +43,8 @@ class Trade:
     code: str = ""
     atr_pct: float = 0     # 入场时ATR%（用于止损空间）
     peak_trough_pct: float = 0  # 持仓期间最大浮盈/浮亏
+    alpha_type: str = ""       # V7: Alpha 来源分类
+    opportunity_score: float = 0  # V7: 入场时机会评分
 
 
 @dataclass
@@ -54,7 +56,7 @@ class BacktestConfig:
     trailing_stop_atr_mult: float = 3.0  # ATR移动止损
     trend_exit_days: int = 20         # 趋势持有最大天数
     atr_period: int = 14
-    sector_filter_top_n: int = 0     # 板块过滤：只做近N日最强板块（0=禁用，5=top5，8=top8）；需200+只股票才有效
+    sector_filter_top_n: int = 5     # 板块过滤：只做近N日最强板块（0=禁用，5=top5，8=top8）；需200+只股票才有效
     # STEP 6 相对强度过滤
     relative_strength_threshold: float = 0.0  # 股票必须相对HS300强势X%（0=禁用，正数如2.0要求 stock_ret > hs300_ret + 2%）
     relative_strength_lookback: int = 5       # 计算相对强度的回溯期（天）
@@ -156,7 +158,9 @@ def check_exit_v1_atr(df: pd.DataFrame, entry_i: int) -> Tuple[str, float]:
 
         # ATR止损（硬止损）
         if row['low'] < stop_price:
-            return "atr_stop", stop_price
+            # P0-2: 考虑跳空低开，实盘成交价 = min(open, stop_price)
+            actual_exit = min(row['open'], stop_price)
+            return "atr_stop", actual_exit
 
         # 持有超过5天后，EMA21辅助退出（需要前一天也确认跌破）
         if j - entry_i >= 5:
@@ -206,7 +210,9 @@ def check_exit_v2_trend(df: pd.DataFrame, entry_i: int) -> Tuple[str, float]:
 
         # 止损触发（全程有效）
         if row['close'] < trailing_stop:
-            return "trailing_stop", trailing_stop
+            # P0-2: 考虑跳空低开，实盘成交价 = min(open, trailing_stop)
+            actual_exit = min(row['open'], trailing_stop)
+            return "trailing_stop", actual_exit
 
         # EMA21辅助退出（仅前10天，第11天起禁用）
         # 诊断确认：day16-20的EMA21破坏几乎全是假信号
@@ -280,19 +286,29 @@ def _process_single_stock_engine(args):
 
     Args:
         args: tuple(code, start_date, data_days, exit_fn_name, hs300_regime_dict,
-                    hs300_pvem_dict, hs300_ret_dict, config_dict, multi_signal_entry)
+                    hs300_pvem_dict, hs300_ret_dict, config_dict, multi_signal_entry,
+                    include_delisted)
     Returns:
         list of Trade objects
     """
     code, start_date, data_days, exit_fn_name, hs300_regime_dict, \
-        hs300_pvem_dict, hs300_ret_dict, config_dict, multi_signal_entry = args
+        hs300_pvem_dict, hs300_ret_dict, config_dict, multi_signal_entry = args[:9]
+    include_delisted = args[9] if len(args) > 9 else False
 
     from lib.data_source_registry import get_stock_hist_multi_source as _get_hist
     from backtest.utils import add_indicators as _add_ind
+    # P0-4 修复（2026-06-05）：活股数据不足时 fallback 到退市股数据
+    from lib.data_delisted import get_delisted_stock_hist
 
     trades = []
     try:
         df = _get_hist(code, days=data_days, source="tdx_local_qfq")
+        # P0-4：include_delisted 开启 + 活股数据不足 → 用退市股数据补
+        if (df is None or len(df) < 60) and include_delisted:
+            try:
+                df = get_delisted_stock_hist(code, days=data_days)
+            except Exception:
+                df = None
         if df is None or len(df) < 60:
             return trades
         df = _add_ind(df)
@@ -372,8 +388,8 @@ def _process_single_stock_engine(args):
             )
             trades.append(trade)
 
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Stock {code} backtest failed: {e}")
 
     return trades
 
@@ -388,6 +404,7 @@ def _run_backtest_parallel(
     multi_signal_entry: bool,
     sentiment_filter: bool,
     days: int,
+    include_delisted: bool = True,
 ) -> Dict:
     """并行回测入口（当 parallel=True 且 stock_codes > 100 时调用）"""
     import os
@@ -442,7 +459,7 @@ def _run_backtest_parallel(
     task_args = [
         (code, start_date, data_days, exit_version,
          hs300_regime_dict, hs300_pvem_dict, hs300_ret_dict,
-         config_dict, multi_signal_entry)
+         config_dict, multi_signal_entry, include_delisted)
         for code in stock_codes
     ]
 
@@ -478,6 +495,17 @@ def _run_backtest_parallel(
             "trades": [], "equity_curve": [], "metrics": {
                 "total_trades": 0, "win_rate": 0, "avg_pnl": 0,
                 "profit_factor": 0, "max_drawdown": 0,
+                # P0-1: RiskManager 字段（即使无交易也需返回）
+                "risk_alerts_count": 0,
+                "risk_actions_count": 0,
+                "consecutive_losses": 0,
+                "risk_suspended": False,
+                "risk_max_drawdown": 0.0,
+                # P1-3: 幸存者偏差标注
+                "survivorship_bias_warning": True,
+                "survivorship_bias_factor": 0.97,
+                "survivorship_bias_adjusted_return_pct": 0.0,
+                "survivorship_bias_note": "回测仅含存活股票，实际收益可能被高估 1-3%/年",
             }
         }
 
@@ -542,6 +570,26 @@ def _run_backtest_parallel(
 
 
 # ============================================================
+# V7: Alpha 类型推断（回测用）
+# ============================================================
+
+def _infer_alpha_type(regime: str, exit_reason: str) -> str:
+    """根据市场状态和退出原因推断 Alpha 类型（简化版）
+
+    回测中没有实时 data_factors，用市场状态做粗略归因。
+    """
+    if regime == "TREND_UP":
+        return "trend"
+    elif regime == "MEAN_REVERSION":
+        return "mean_reversion"
+    elif regime in ("HIGH_VOLATILITY", "LOW_VOLATILITY"):
+        return "sentiment"
+    elif regime in ("TREND_DOWN", "RISK_OFF"):
+        return "event_driven"
+    return "trend"
+
+
+# ============================================================
 # 核心回测函数
 # ============================================================
 
@@ -557,6 +605,7 @@ def run_backtest(
     sentiment_filter: bool = False,
     symbols: List[str] = None,
     days: int = 500,
+    include_delisted: bool = True,
 ) -> Dict:
     """
     干净的回测
@@ -585,6 +634,24 @@ def run_backtest(
         from datetime import datetime, timedelta
         start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
+    # P0-4 修复（2026-06-05）：include_delisted 开启时，注入退市股票到 stock_codes
+    # 限最多 50 只，避免退市池过大拖慢回测
+    if include_delisted and parallel and len(stock_codes) > 100:
+        try:
+            from lib.data_delisted import get_delisted_symbols
+            delisted = list(get_delisted_symbols())[:50]
+            if delisted:
+                # 去重 + 保留原顺序
+                seen = set(stock_codes)
+                for code in delisted:
+                    if code not in seen:
+                        stock_codes.append(code)
+                        seen.add(code)
+        except Exception as e:
+            # 退市数据不可用时降级，不中断主流程
+            import logging
+            logging.getLogger(__name__).warning(f"退市股票注入失败: {e}")
+
     # ====== 并行执行路径 ======
     if parallel and len(stock_codes) > 100:
         return _run_backtest_parallel(
@@ -597,6 +664,7 @@ def run_backtest(
             multi_signal_entry=multi_signal_entry,
             sentiment_filter=sentiment_filter,
             days=days,
+            include_delisted=include_delisted,
         )
 
     all_trades: List[Trade] = []
@@ -850,6 +918,17 @@ def run_backtest(
                 "avg_pnl": 0,
                 "profit_factor": 0,
                 "max_drawdown": 0,
+                # P0-1: RiskManager 字段
+                "risk_alerts_count": 0,
+                "risk_actions_count": 0,
+                "consecutive_losses": 0,
+                "risk_suspended": False,
+                "risk_max_drawdown": 0.0,
+                # P1-3: 幸存者偏差标注
+                "survivorship_bias_warning": True,
+                "survivorship_bias_factor": 0.97,
+                "survivorship_bias_adjusted_return_pct": 0.0,
+                "survivorship_bias_note": "回测仅含存活股票，实际收益可能被高估 1-3%/年",
             }
         }
 
@@ -903,6 +982,19 @@ def run_backtest(
         "max_drawdown": round(max_drawdown, 2),
         "total_return_pct": round((equity - config.initial_capital) / config.initial_capital * 100, 2),
         "final_capital": round(equity, 2),
+        # P1-3: 幸存者偏差标注（轻量修复）
+        # 回测仅含当前存活股票，不含已退市/ST 历史股票
+        # 收益被高估约 1-3%/年 → 给用户提供保守调整后的数字
+        "survivorship_bias_warning": True,
+        "survivorship_bias_factor": 0.97,  # 收益调整系数（高估约 3%）
+        "survivorship_bias_adjusted_return_pct": round(
+            ((equity - config.initial_capital) / config.initial_capital * 100) * 0.97, 2
+        ),
+        "survivorship_bias_note": (
+            "回测仅含存活股票（不含已退市/ST），"
+            "实际收益可能被高估 1-3%/年。"
+            "使用 survivorship_bias_adjusted_return_pct 替代 total_return_pct 看保守值。"
+        ),
     }
 
     # 按月统计
@@ -920,12 +1012,85 @@ def run_backtest(
         win_rate=('pnl_pct', lambda x: (x > 0).mean() * 100),
     ).round(2)
 
+    # ========== V7: Alpha 反馈分析 ==========
+    alpha_feedback = {}
+    alpha_weights = {}
+    try:
+        from lib.alpha_feedback import AlphaFeedback
+        fb = AlphaFeedback()
+        for trade in all_trades:
+            # 简化归因：根据市场状态和退出原因推断 Alpha 类型
+            regime = hs300_regime_dict.get(trade.entry_date, "MEAN_REVERSION")
+            alpha_type = _infer_alpha_type(regime, trade.exit_reason)
+            fb.record_trade(
+                alpha_type=alpha_type,
+                pnl_pct=trade.pnl_pct,
+                regime=regime,
+                sector=SECTOR_MAP.get(trade.code, "unknown"),
+            )
+        alpha_feedback = fb.get_alpha_report()
+        alpha_weights = fb.get_alpha_weights()
+    except Exception as e:
+        logger.debug(f"[backtest] Alpha 反馈分析失败: {e}")
+
+    # ========== P0-1: 集成 RiskManager 模拟实盘风控 ==========
+    # 跑完所有交易后，调用 RiskManager.check_all() 检查：
+    # - max_drawdown_stop（15%）：若触发则 trading_suspended = True
+    # - daily_loss_limit / weekly_loss_limit：累计超限告警
+    # - consecutive_loss（P1-2）：连续亏损 ≥5 笔 → 减仓告警
+    try:
+        from lib.risk_manager import RiskManager
+        rm = RiskManager()
+        # P0-2: 注册 executor 回调（之前默认空，3 类 action 都静默失败）
+        # 回测场景下无可真实减仓，记录到 metrics 即视为"已执行"
+        def _on_stop_trading(action):
+            metrics["risk_actions_executed_stop"] = metrics.get("risk_actions_executed_stop", 0) + 1
+            logger.warning(f"[backtest] 风控动作: STOP_TRADING ({action.reason})")
+        def _on_reduce_position(action):
+            metrics["risk_actions_executed_reduce"] = metrics.get("risk_actions_executed_reduce", 0) + 1
+            logger.warning(f"[backtest] 风控动作: REDUCE_POSITION target={action.target} ({action.reason})")
+        def _on_block_new(action):
+            metrics["risk_actions_executed_block"] = metrics.get("risk_actions_executed_block", 0) + 1
+            logger.warning(f"[backtest] 风控动作: BLOCK_NEW_POSITIONS target={action.target} ({action.reason})")
+        rm.executor.register("STOP_TRADING", _on_stop_trading)
+        rm.executor.register("REDUCE_POSITION", _on_reduce_position)
+        rm.executor.register("BLOCK_NEW_POSITIONS", _on_block_new)
+        for trade in all_trades:
+            rm.record_trade_result(pnl_pct=trade.pnl_pct / 100.0)
+        # 计算回测期末组合的 max_drawdown
+        if equity_curve:
+            eq_values = [e for _, e in equity_curve]
+            peak = max(eq_values) if eq_values else config.initial_capital
+            current = eq_values[-1] if eq_values else config.initial_capital
+            computed_max_dd = (current - peak) / peak if peak > 0 else 0.0
+        else:
+            computed_max_dd = 0.0
+        risk_alerts, risk_actions = rm.check_all(
+            portfolio_value=equity,
+            positions={},  # 简化为空（回测不模拟多持仓）
+            daily_return=0,
+            max_drawdown=computed_max_dd,
+        )
+        metrics["risk_alerts_count"] = len(risk_alerts)
+        metrics["risk_actions_count"] = len(risk_actions)
+        metrics["consecutive_losses"] = rm.consecutive_losses
+        metrics["risk_suspended"] = rm.executor.is_trading_suspended
+        metrics["risk_max_drawdown"] = round(computed_max_dd * 100, 2)
+    except Exception as e:
+        logger.debug(f"[backtest] RiskManager 集成失败: {e}")
+        metrics["risk_alerts_count"] = 0
+        metrics["risk_actions_count"] = 0
+        metrics["consecutive_losses"] = 0
+        metrics["risk_suspended"] = False
+
     return {
         "trades": trades_df,
         "equity_curve": equity_curve,
         "metrics": metrics,
         "monthly": monthly,
         "by_reason": by_reason,
+        "alpha_feedback": alpha_feedback,
+        "alpha_weights": alpha_weights,
         "config": {
             "initial_capital": config.initial_capital,
             "position_size_pct": config.position_size_pct,

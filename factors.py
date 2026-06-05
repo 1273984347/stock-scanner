@@ -1479,9 +1479,19 @@ def _compute_all_signals_impl(hist_df: pd.DataFrame, macro_score: float = 0,
     if close.empty:
         return {}
 
-    # 1. 检测市场体制
-    regime_result = detect_market_regime(close, volume=volume, market_sentiment=macro_score)
-    regime = regime_result.regime
+    # 1. 检测市场体制（使用统一的 lib.market_regime 模块）
+    from lib.market_regime import detect_market_regime as _detect_regime
+    regime_df = hist_df[["close"]].copy()
+    if "high" in hist_df.columns:
+        regime_df["high"] = hist_df["high"]
+    else:
+        regime_df["high"] = hist_df["close"]
+    if "low" in hist_df.columns:
+        regime_df["low"] = hist_df["low"]
+    else:
+        regime_df["low"] = hist_df["close"]
+    regime_result = _detect_regime(regime_df)
+    regime = regime_result["regime"]
 
     # 2. 宏观风险门控
     macro_gate = evaluate_macro_gate(macro_score)
@@ -1663,9 +1673,9 @@ def _compute_all_signals_impl(hist_df: pd.DataFrame, macro_score: float = 0,
         "ic_score": round(ic_score, 4),  # IC 加权综合评分
         "regime": {
             "regime": regime,
-            "score": regime_result.score,
-            "confidence": regime_result.confidence,
-            "reasoning": regime_result.reasoning,
+            "score": regime_result.get("indicators", {}).get("trend_score", 0),
+            "confidence": regime_result.get("confidence", 0.5),
+            "reasoning": f"unified market_regime: {regime}",
         },
         "macro_gate": {
             "state": macro_gate.state,

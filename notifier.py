@@ -11,7 +11,7 @@ import pandas as pd
 from datetime import datetime
 from config import (FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_RECEIVE_ID,
                     FEISHU_RECEIVE_ID_TYPE, get_config)
-from factors import detect_market_regime, evaluate_macro_gate
+from factors import evaluate_macro_gate
 from scanner import get_realtime_quotes, get_market_sentiment
 import logging
 

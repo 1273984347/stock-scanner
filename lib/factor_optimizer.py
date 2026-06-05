@@ -1,9 +1,11 @@
 """因子权重自动优化器 —— GA 大范围搜索 + 贝叶斯精调
 
-使用遗传算法搜索最优 IC_FACTOR_WEIGHTS，然后用贝叶斯优化在最优解周围精调。
-内置 walk-forward 验证防止过拟合。
+⚠️ 警告：此模块存在严重过拟合风险。
+- GA 在样本内搜索 5000+ 次权重组合，必然拟合噪声
+- config.py 的因子权重已改为等权，消除了数据窥探
+- 此模块仅保留用于研究目的，禁止用于生产环境的权重选择
 
-使用方式：
+使用方式（仅限研究）：
     python -m lib.factor_optimizer --symbols 600519 000858 002714 --generations 50
     python -m lib.factor_optimizer --eval-only  # 只评估当前权重
 """
@@ -676,11 +678,18 @@ def run_optimization(
 ) -> Dict:
     """完整的因子权重优化流程
 
+    ⚠️ 警告：此函数存在严重过拟合风险。仅限研究使用。
+
     1. GA 搜索
     2. 贝叶斯精调
     3. Walk-forward 验证
     4. 保存结果
     """
+    logger.warning(
+        "[factor_optimizer] ⚠️ GA 优化器存在严重过拟合风险。"
+        "搜索结果仅用于研究，不可直接用于生产环境的权重选择。"
+        "config.py 的因子权重已改为等权，消除数据窥探偏差。"
+    )
     if config is None:
         config = OptimizerConfig()
 

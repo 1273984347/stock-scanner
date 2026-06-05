@@ -239,10 +239,23 @@ class ABroker:
             # 降级方案：使用成交量估算（误差大，标记为估算值）
             # 注：日成交量 ≠ 流通股本，此估算仅用于冲击成本的粗略参考
             if market_cap_result < 0 and volume > 0:
-                # 使用更保守的估算：假设换手率约 3%，反推流通股本
+                # P0-2 修复（2026-06-05）：估算时返回 sentinel = -2
+                # 区别于 -1（完全失败）和 >= 0（成功）
+                # 让 _get_dynamic_impact_model 能区分并用最保守 impact_model
+                # 同时打 warning log（不是 debug）让运维可见估算 fallback
                 estimated_float_shares = volume / 0.03 if volume > 0 else 0
-                market_cap_result = close * estimated_float_shares
-                logger.debug(f"[broker] {code} 市值为估算值（基于成交量反推），误差较大")
+                # 仍可计算一个粗略市值用于指标，但 marker 让上层知道这是估算
+                estimated_market_cap = close * estimated_float_shares
+                # 返回 (-2, estimated_market_cap) 元组以保留估算值 + 标记
+                market_cap_result = -2  # sentinel
+                # 单独保存估算值供可能的 metric 输出
+                if not hasattr(self, '_estimated_market_caps'):
+                    self._estimated_market_caps = {}
+                self._estimated_market_caps[code] = estimated_market_cap
+                logger.warning(
+                    f"[broker] {code} 流通市值获取失败，"
+                    f"使用估算值 ¥{estimated_market_cap:,.0f}（基于成交量反推，误差 5-50x）"
+                )
         # 缓存所有结果（包括失败结果-1），避免重复查询
         with self._broker_cache_lock:
             self._market_cap_cache[code] = market_cap_result
@@ -250,10 +263,17 @@ class ABroker:
 
     def _get_dynamic_impact_model(self, code: str, market_data: Dict[str, pd.DataFrame],
                                   date: str) -> MarketImpactModel:
-        """获取基于市值的动态冲击成本模型"""
+        """获取基于市值的动态冲击成本模型
+
+        P0-2 修复（2026-06-05）：
+        - market_cap == -2 (估算 sentinel) → 用默认 impact_model（最保守）
+        - market_cap == -1 (完全失败) → 用默认 impact_model
+        - market_cap > 0 (成功) → 用动态 impact_model
+        """
         market_cap = self._get_market_cap(code, market_data, date)
         if market_cap <= 0:
-            return self.impact_model  # 使用默认配置
+            # -2 (估算) 或 -1 (失败) 都用默认（最保守）
+            return self.impact_model
         dynamic_config = get_impact_config_by_market_cap(market_cap)
         return MarketImpactModel(dynamic_config)
 
@@ -276,9 +296,13 @@ class ABroker:
             if holding.shares < order.shares:
                 order.shares = holding.shares
         else:
-            # A 股买入必须整手
+            # A 股买入必须整手（P1-5 修复：floor 时打 warning）
             if order.shares % self.lot_size != 0:
+                old_shares = order.shares
                 order.shares = (order.shares // self.lot_size) * self.lot_size
+                logger.warning(
+                    f"{date} {order.code} 买入股数 {old_shares} 被向下取整到 {order.shares}（A 股 {self.lot_size} 股整手）"
+                )
                 if order.shares <= 0:
                     return None
 
@@ -806,7 +830,7 @@ class TDXBroker(LiveBrokerABC):
             yyb_id=self._yyb_id,
             account_id=self._account,
             trade_account=self._trade_account,
-            jy_passwrod=self._jy_password,
+            jy_password=self._jy_password,
             tx_password=self._tx_password,
         )
         if result.get("success") == 1 or result.get("success") == True:

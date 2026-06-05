@@ -97,6 +97,9 @@ class RiskConfig:
     weekly_loss_limit: float = 0.08
     enable_trailing_stop: bool = True
     trailing_stop_pct: float = 0.05
+    # P1-2: 连续亏损降仓（连续 N 笔亏损 → 减仓至 position_scalar）
+    consecutive_loss_threshold: int = 5
+    consecutive_loss_position_scalar: float = 0.5
 
 
 class RiskManager:
@@ -111,7 +114,19 @@ class RiskManager:
         self._weekly_returns: List[float] = []
         self._last_week_reset: Optional[datetime] = None
         self._last_return_date: Optional[str] = None  # 防止同一天重复累积
+        self.consecutive_losses: int = 0  # P1-2: 连续亏损计数器
         self._register_default_rules()
+
+    def record_trade_result(self, pnl_pct: float):
+        """P1-2: 记录单笔交易结果，更新连续亏损计数
+
+        Args:
+            pnl_pct: 单笔收益率（小数形式，如 0.05 表示 +5%）
+        """
+        if pnl_pct < 0:
+            self.consecutive_losses += 1
+        else:
+            self.consecutive_losses = 0
 
     def _register_default_rules(self):
         """注册默认风控规则"""
@@ -164,6 +179,12 @@ class RiskManager:
                 action="ALERT",
                 description="VaR95 突破 5% 阈值",
             ),
+            RiskRule(
+                name="consecutive_loss",
+                check_fn=self._check_consecutive_loss,
+                action="REDUCE",
+                description=f"连续亏损 {self.config.consecutive_loss_threshold} 笔后减仓至 {self.config.consecutive_loss_position_scalar:.0%}",
+            ),
         ]
 
     def add_rule(self, rule: RiskRule):
@@ -178,6 +199,11 @@ class RiskManager:
         """执行所有风控检查，返回 (alerts, actions)"""
         self.alerts = []
         self.actions = []
+
+        # 自动获取行业映射（当未传入且有持仓时）
+        if not industry_map and positions:
+            industry_map = self._auto_fetch_industry_map(list(positions.keys()))
+
         context = {
             "portfolio_value": portfolio_value,
             "positions": positions,
@@ -223,6 +249,16 @@ class RiskManager:
                 action = RiskAction(
                     action_type="REDUCE_POSITION",
                     target=alert.details.get("code", "ALL"),
+                    reason=alert.message,
+                    severity="WARNING"
+                )
+                self.actions.append(action)
+                self.executor.execute(action)
+            elif alert.level == "WARNING" and alert.rule_name == "consecutive_loss":
+                # P1-2: 连续亏损降仓必须执行
+                action = RiskAction(
+                    action_type="REDUCE_POSITION",
+                    target="ALL",
                     reason=alert.message,
                     severity="WARNING"
                 )
@@ -370,6 +406,25 @@ class RiskManager:
 
         return alerts
 
+    def _check_consecutive_loss(self, ctx: dict) -> Optional[RiskAlert]:
+        """P1-2: 连续亏损降仓检查
+
+        连续 N 笔亏损（默认 5）→ 触发 REDUCE，position_scalar 减至 50%
+        """
+        if self.consecutive_losses >= self.config.consecutive_loss_threshold:
+            return RiskAlert(
+                timestamp=datetime.now().isoformat(),
+                rule_name="consecutive_loss",
+                level="WARNING",
+                message=f"连续亏损 {self.consecutive_losses} 笔，减仓至 {self.config.consecutive_loss_position_scalar:.0%}",
+                details={
+                    "consecutive_losses": self.consecutive_losses,
+                    "threshold": self.config.consecutive_loss_threshold,
+                    "position_scalar": self.config.consecutive_loss_position_scalar,
+                }
+            )
+        return None
+
     def _check_var_breach(self, ctx: dict) -> List[RiskAlert]:
         """VaR 突破检查：VaR95 > 5% 时告警
 
@@ -406,6 +461,23 @@ class RiskManager:
             logger.debug(f"VaR 检查失败: {e}")
 
         return []
+
+    @staticmethod
+    def _auto_fetch_industry_map(codes: list) -> Dict[str, str]:
+        """自动获取行业映射（从实时行情）"""
+        try:
+            from lib.data_layer import get_realtime_quotes
+            df = get_realtime_quotes()
+            if df.empty:
+                return {}
+            code_col = next((c for c in df.columns if "代码" in str(c)), None)
+            sector_col = next((c for c in df.columns if "行业" in str(c)), None)
+            if code_col and sector_col:
+                mask = df[code_col].astype(str).isin(codes)
+                return df.loc[mask].set_index(code_col)[sector_col].astype(str).to_dict()
+        except Exception as e:
+            logger.warning(f"[risk_manager] 自动获取行业映射失败，行业集中度检查将跳过: {e}")
+        return {}
 
     def get_active_alerts(self, min_level: str = "WARNING") -> List[RiskAlert]:
         """获取活跃预警"""

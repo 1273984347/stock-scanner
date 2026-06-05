@@ -46,11 +46,47 @@ DEFAULT_EXIT_LEVELS = _build_exit_levels()
 
 
 class PartialExitManager:
-    """分仓变速止盈管理器"""
+    """分仓变速止盈管理器
 
-    def __init__(self, exit_levels: List[ExitLevel] = None):
-        self.exit_levels = exit_levels or DEFAULT_EXIT_LEVELS
+    V6 设计：止盈档位随市场状态自适应调整。
+    - TREND_UP: 提高止盈目标（+30%），让利润奔跑
+    - MEAN_REVERSION: 降低止盈目标（-30%），快进快出
+    - HIGH_VOLATILITY/RISK_OFF: 更早止盈（-50%），锁定利润
+    """
+
+    # 市场状态 → 止盈目标调整系数
+    REGIME_ADJUSTMENT = {
+        "TREND_UP": 1.3,
+        "LOW_VOLATILITY": 1.1,
+        "MEAN_REVERSION": 0.7,
+        "HIGH_VOLATILITY": 0.5,
+        "TREND_DOWN": 0.5,
+        "RISK_OFF": 0.3,
+    }
+
+    def __init__(self, exit_levels: List[ExitLevel] = None, regime: str = None):
+        self._base_levels = exit_levels or DEFAULT_EXIT_LEVELS
+        self._regime = regime or "MEAN_REVERSION"
+        self.exit_levels = self._adjust_levels()
         self._positions: Dict[str, dict] = {}  # code -> position info
+
+    def update_regime(self, regime: str):
+        """更新市场状态，重新计算止盈档位"""
+        if regime != self._regime:
+            self._regime = regime
+            self.exit_levels = self._adjust_levels()
+
+    def _adjust_levels(self) -> List[ExitLevel]:
+        """根据市场状态调整止盈档位"""
+        adj = self.REGIME_ADJUSTMENT.get(self._regime, 1.0)
+        return [
+            ExitLevel(
+                trigger_pct=lv.trigger_pct * adj,
+                exit_ratio=lv.exit_ratio,
+                description=f"{lv.description} [regime={self._regime}, adj={adj:.1f}]",
+            )
+            for lv in self._base_levels
+        ]
 
     def register_entry(self, code: str, entry_price: float, total_shares: int,
                        entry_date: str):

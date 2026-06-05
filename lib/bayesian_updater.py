@@ -72,7 +72,7 @@ class BayesianUpdater:
         # 先验：无数据时的默认胜率
         self._prior_win_rate = 0.5
         # 最小样本量：低于此数量时使用先验与观测的加权
-        self._min_samples = 10
+        self._min_samples = 5
         self._load()
 
     def _make_key(self, market_state: str, sector_bucket: str, signal_type: str) -> str:

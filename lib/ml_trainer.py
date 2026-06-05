@@ -16,9 +16,32 @@ from typing import Any, Dict, List, Optional, Tuple
 import lightgbm as lgb
 import numpy as np
 import xgboost as xgb
-from sklearn.model_selection import ParameterGrid
+from sklearn.model_selection import ParameterGrid, TimeSeriesSplit
 
 logger = logging.getLogger(__name__)
+
+
+class _TimeSeriesSplitWithEmbargo:
+    """P0-5: TimeSeriesSplit with embargo gap between train and val.
+
+    之前 grid search 用 nfold=3（随机 K-Fold）—— 标签泄漏到训练折
+    现在用 TimeSeriesSplit + embargo（前视偏差防护 + 标签窗口不重叠）
+    """
+    def __init__(self, n_splits: int = 3, embargo_gap: int = 5):
+        self.n_splits = n_splits
+        self.embargo_gap = embargo_gap
+        self._inner = TimeSeriesSplit(n_splits=n_splits)
+
+    def split(self, X, y=None, groups=None):
+        for train_idx, val_idx in self._inner.split(X):
+            if len(train_idx) > self.embargo_gap:
+                train_idx = train_idx[:-self.embargo_gap]
+            else:
+                train_idx = train_idx[:0]
+            yield train_idx, val_idx
+
+    def get_n_splits(self, X=None, y=None, groups=None):
+        return self.n_splits
 
 MODEL_DIR = Path(__file__).resolve().parent.parent / "cache" / "models"
 
@@ -365,11 +388,12 @@ class MLTrainer:
         for params in ParameterGrid(param_grid):
             merged = {**base_params, **params}
             try:
+                # P0-5: TimeSeriesSplit + embargo（之前 nfold=3 是随机 K-Fold，导致标签泄漏）
                 cv_result = xgb.cv(
                     merged,
                     dtrain,
                     num_boost_round=100,
-                    nfold=3,
+                    folds=_TimeSeriesSplitWithEmbargo(n_splits=3, embargo_gap=5),
                     early_stopping_rounds=10,
                     verbose_eval=False,
                 )
@@ -428,11 +452,12 @@ class MLTrainer:
         for params in ParameterGrid(param_grid):
             merged = {**base_params, **params}
             try:
+                # P0-5: TimeSeriesSplit + embargo（之前 nfold=3 是随机 K-Fold）
                 cv_result = lgb.cv(
                     merged,
                     train_data,
                     num_boost_round=100,
-                    nfold=3,
+                    folds=_TimeSeriesSplitWithEmbargo(n_splits=3, embargo_gap=5),
                     callbacks=[lgb.early_stopping(10), lgb.log_evaluation(0)],
                 )
                 # 查找 ndcg 相关的 mean 列（兼容不同 eval_at 配置）

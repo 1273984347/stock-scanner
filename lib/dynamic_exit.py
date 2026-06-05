@@ -274,21 +274,21 @@ class DynamicExitManager:
     def get_exit_days(self) -> int:
         """根据市场状态获取建议出场天数
 
-        基于回测数据：
-        - TREND_UP: 10天（让利润奔跑）
-        - MEAN_REVERSION: 5天（快进快出）
-        - HIGH_VOLATILITY: 5天（降低风险）
+        V6 设计要求：
+        - TREND_UP: 20天（让利润奔跑）
+        - MEAN_REVERSION: 10天（快进快出）
+        - HIGH_VOLATILITY: 5天（缩短周期）
         - LOW_VOLATILITY: 15天（耐心等待）
-        - TREND_DOWN: 3天（尽快退出）
-        - RISK_OFF: 0天（不进场）
+        - TREND_DOWN: 0天（不开仓）
+        - RISK_OFF: 0天（禁止一切开仓）
         """
         regime = self.loss_breaker.current_regime
         exit_days_map = self._exit_days_map if self._exit_days_map is not None else {
-            "TREND_UP": 10,
-            "MEAN_REVERSION": 5,
+            "TREND_UP": 20,
+            "MEAN_REVERSION": 10,
             "HIGH_VOLATILITY": 5,
             "LOW_VOLATILITY": 15,
-            "TREND_DOWN": 3,
+            "TREND_DOWN": 0,
             "RISK_OFF": 0,
         }
         return exit_days_map.get(regime, 10)  # 默认 10 天

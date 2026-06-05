@@ -146,29 +146,45 @@ def quick_score(row: pd.Series,
 
 def full_score(code: str, hist: pd.DataFrame, factors: dict,
                row: pd.Series) -> dict:
-    """完整四维评分 —— 用 K 线 + 因子 + 实时数据"""
+    """完整评分 —— 四维评分 + V6 六因子评分"""
     mom_5 = factors.get("momentum_5", 0) / 100
     mom_20 = factors.get("momentum_20", 0) / 100
     score_result = _compute_base_scores(row, code, mom_5, mom_20)
 
-    # Judge Panel 调整逻辑（仅 full_score 有）
-    pe = _safe_float(row.get("市盈率-动态"))
-    judge_result = {}
+    # V6 六因子评分（与四维评分并存）
     try:
-        from lib.judge_panel import JudgePanel
-        panel = JudgePanel(
-            factors={"pe_ttm": pe, **factors},
-            fundamentals={
-                "profitability": {"ROE": None, "gross_margin": None},
-                "solvency": {"debt_to_asset": None},
-                "per_share": {"BVPS": None},
-                "cash_flow": {"free_cash_flow": None},
-            },
-            market_data=hist,
-        )
-        judge_result = panel.evaluate_all()
+        from lib.scorer import six_factor_score
+        from lib.sector_score import get_sector_score_for_stock
+        sector_score = get_sector_score_for_stock(code)
+        six_result = six_factor_score(factors, sector_score=sector_score)
+        score_result["六因子评分"] = six_result["score"]
+        score_result["六因子评级"] = six_result["rating"]
+        score_result["六因子明细"] = six_result["breakdown"]
     except Exception as e:
-        logger.warning(f"JudgePanel 评估失败 [{code}]: {e}")
+        logger.debug(f"六因子评分失败 [{code}]: {e}")
+
+    # Judge Panel 调整逻辑（默认禁用）
+    # 原因：51 个评委 150+ 条未验证条件，是系统最大的过拟合来源。
+    # 如需启用，设置 config.use_judge_panel = True
+    judge_result = {}
+    use_judge_panel = getattr(getattr(config, 'factor', None), 'use_judge_panel', False) if 'config' in dir() else False
+    if use_judge_panel:
+        pe = _safe_float(row.get("市盈率-动态"))
+        try:
+            from lib.judge_panel import JudgePanel
+            panel = JudgePanel(
+                factors={"pe_ttm": pe, **factors},
+                fundamentals={
+                    "profitability": {"ROE": None, "gross_margin": None},
+                    "solvency": {"debt_to_asset": None},
+                    "per_share": {"BVPS": None},
+                    "cash_flow": {"free_cash_flow": None},
+                },
+                market_data=hist,
+            )
+            judge_result = panel.evaluate_all()
+        except Exception as e:
+            logger.warning(f"JudgePanel 评估失败 [{code}]: {e}")
     if judge_result and judge_result.get("consensus") in ("BUY", "SELL"):
         judge_bias = 1.0 if judge_result["consensus"] == "BUY" else -1.0
         judge_strength = abs(judge_result.get("score", 0))

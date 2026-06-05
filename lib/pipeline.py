@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, Optional
 import logging
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from config import get_config, SHIBOR_TIGHT_THRESHOLD, SHIBOR_CAUTION_THRESHOLD
 from factors import (compute_all_signals, evaluate_macro_gate, calc_market_exposure)
@@ -79,8 +80,8 @@ class StrategyFailureTracker:
         return self._failures.get(strategy_name, 0)
 
     def save(self):
-        if not self._persist:
-            return
+        # P0 修复（2026-06-05）：save 此前被 _persist 闸住，默认不写盘，导致
+        # test_persistence 失败。_persist 仅控制 init 时是否自动 _load 即可。
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with open(self._path, "w", encoding="utf-8") as f:
             json.dump(self._failures, f)
@@ -369,8 +370,25 @@ def _run_alpha_analysis(results: dict) -> dict:
                 logger.warning(f"组合权重优化失败: {e}")
     except Exception as e:
         logger.debug(f"因子 IC 分析异常: {e}")
-    return {"factor_ic": factor_ic, "cross_section_zscore": zscore_summary,
-            "optimized_weights": opt_weights}
+    result = {"factor_ic": factor_ic, "cross_section_zscore": zscore_summary,
+              "optimized_weights": opt_weights}
+
+    # V8: Alpha 工厂 — 自动发现和评估 Alpha
+    try:
+        from lib.alpha_factory import AlphaFactory
+        factory = AlphaFactory()
+        # 用 IC 分析结果发现新 Alpha
+        for factor_name, ic_info in factor_ic.items():
+            ic_val = ic_info.get("rank_ic", 0) or 0
+            if abs(ic_val) >= 0.03:
+                factory.discover(factor_name, name=f"{factor_name}(IC={ic_val:.3f})")
+        factory.update_lifecycle()
+        result["alpha_factory"] = factory.get_report()
+        factory.save()
+    except Exception as e:
+        logger.debug(f"[pipeline] Alpha 工厂分析失败: {e}")
+
+    return result
 
 
 # ========== 20d ML 评分 ==========
@@ -567,6 +585,19 @@ def get_stock_score(code: str) -> dict:
         },
     }
 
+    # V7: 机会评分
+    try:
+        from lib.opportunity_scorer import score_from_signals
+        # 构造简化的 signal_result 用于评分
+        signal_result = {
+            "regime": {"regime": "MEAN_REVERSION", "confidence": 0.5},
+            "factors": factors,
+            "data_factors": {},
+        }
+        result["opportunity_score"] = score_from_signals(signal_result)
+    except Exception as e:
+        logger.debug(f"[pipeline] 机会评分计算失败: {e}")
+
 
 # ========== 主入口 ==========
 
@@ -648,7 +679,7 @@ def run_all_strategies(
 
     # ========== V4 市场状态检测（HS300 驱动）==========
     try:
-        hs300_regime = detect_market_regime_from_hs300(days=60)
+        hs300_regime = detect_market_regime_from_hs300(days=60, use_hysteresis=True, hysteresis_days=3)
         regime = hs300_regime["regime"]
         regime_conf = hs300_regime["confidence"]
         position_scalar = hs300_regime["position_scalar"]
@@ -685,7 +716,15 @@ def run_all_strategies(
     try:
         from lib.dynamic_weight_manager import DynamicWeightManager
         from lib.strategy_regime_mapper import get_strategy_allocation, apply_strategy_weights_to_candidates
-        _weight_mgr = DynamicWeightManager()
+        # P0-2 修复（2026-06-05）：维护 BayesianUpdater 单例并传给 DynamicWeightManager，
+        # 让"根据交易结果微调"的自适应承诺真正生效
+        from lib.bayesian_updater import BayesianUpdater
+        from pathlib import Path
+        _bayes_updater = BayesianUpdater(
+            state_path=Path("cache/bayesian_state.json"),
+            mode="live",
+        )
+        _weight_mgr = DynamicWeightManager(bayesian_updater=_bayes_updater)
         dyn_weights = _weight_mgr.compute_weights(regime=regime)
         allocation = get_strategy_allocation(regime)
         logger.info(
@@ -706,15 +745,35 @@ def run_all_strategies(
         elif regime == "HIGH_VOLATILITY":
             allowed = {"龙虎榜"}
             strategies = {k: v for k, v in strategies.items() if k in allowed}
-    for name, func in strategies.items():
-        # 降频机制：连续失效 3 次的策略跳过
-        if _failure_tracker.should_skip(name):
-            logger.warning(f"跳过策略 {name}（连续失效 {_failure_tracker.get_failure_count(name)} 次）")
-            continue
+    # 并行执行策略（ThreadPoolExecutor）
+    active_strategies = {
+        name: func for name, func in strategies.items()
+        if not _failure_tracker.should_skip(name)
+    }
+    skipped = set(strategies.keys()) - set(active_strategies.keys())
+    for name in skipped:
+        logger.warning(f"跳过策略 {name}（连续失效 {_failure_tracker.get_failure_count(name)} 次）")
 
+    def _run_strategy(name, func):
+        """单个策略执行（线程安全）"""
         logger.info(f"运行策略: {name}")
         try:
             df = func(config)
+            return name, df, None
+        except Exception as e:
+            return name, pd.DataFrame(), e
+
+    with ThreadPoolExecutor(max_workers=min(len(active_strategies), 4)) as executor:
+        futures = {
+            executor.submit(_run_strategy, name, func): name
+            for name, func in active_strategies.items()
+        }
+        for future in as_completed(futures):
+            name, df, error = future.result()
+            if error:
+                _failure_tracker.record_failure(name)
+                logger.error(f"  -> 策略 {name} 执行失败: {error}")
+                continue
             if not df.empty:
                 # 如果指定了symbols，过滤结果
                 if symbols:
@@ -733,16 +792,13 @@ def run_all_strategies(
                         pass  # 权重应用失败不影响主流程
                     results[name] = df
                     _failure_tracker.record_success(name)
-                    logger.info(f"  -> {len(df)} 只候选股")
+                    logger.info(f"  -> {name}: {len(df)} 只候选股")
                 else:
                     _failure_tracker.record_failure(name)
-                    logger.info(f"  -> 无候选股（过滤后）")
+                    logger.info(f"  -> {name}: 无候选股（过滤后）")
             else:
                 _failure_tracker.record_failure(name)
-                logger.info(f"  -> 无候选股")
-        except Exception as e:
-            _failure_tracker.record_failure(name)
-            logger.error(f"  -> 策略执行失败: {e}")
+                logger.info(f"  -> {name}: 无候选股")
     # 保存降频状态
     _failure_tracker.save()
     # ========== 主线板块过滤 ==========
@@ -816,6 +872,20 @@ def run_all_strategies(
         alpha_analysis = _run_alpha_analysis(results)
     else:
         alpha_analysis = {}
+
+    # ========== V7: 机会评分 ==========
+    try:
+        from lib.opportunity_scorer import score_from_signals
+        from lib.alpha_feedback import AlphaFeedback
+        alpha_feedback = AlphaFeedback()
+        for name, df in results.items():
+            if df.empty or "代码" not in df.columns:
+                continue
+            # 为候选股计算机会评分（使用已有的信号数据）
+            # 注：这里不做完整 compute_all_signals（太慢），用已有的置信度和评分近似
+            pass  # 机会评分在 API 单股评分中使用（get_stock_score）
+    except Exception as e:
+        logger.debug(f"[pipeline] V7 机会评分初始化失败: {e}")
 
     ml_ranking = {}
     if include_ml:

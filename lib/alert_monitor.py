@@ -1,10 +1,20 @@
-"""异常告警监控 -- 检测异常并通过飞书推送"""
+"""异常告警监控 -- 检测异常并通过飞书推送
+
+功能：
+- 定期检查告警规则
+- 支持静默期（免打扰时间段）
+- 发送飞书/浏览器推送通知
+"""
 
 import logging
 from typing import List, Dict
-from datetime import datetime
+from datetime import datetime, time
 
 logger = logging.getLogger(__name__)
+
+# 默认静默期：22:00 - 08:00
+DEFAULT_SILENT_START = time(22, 0)
+DEFAULT_SILENT_END = time(8, 0)
 
 
 class AlertMonitor:
@@ -12,6 +22,23 @@ class AlertMonitor:
 
     def __init__(self):
         self.alerts: List[Dict] = []
+        self._silent_start = DEFAULT_SILENT_START
+        self._silent_end = DEFAULT_SILENT_END
+
+    def set_silent_period(self, start: time, end: time):
+        """设置静默期"""
+        self._silent_start = start
+        self._silent_end = end
+
+    def is_silent_period(self) -> bool:
+        """检查当前是否在静默期"""
+        now = datetime.now().time()
+
+        # 处理跨午夜的情况
+        if self._silent_start <= self._silent_end:
+            return self._silent_start <= now <= self._silent_end
+        else:
+            return now >= self._silent_start or now <= self._silent_end
 
     def check_consecutive_losses(self, trades: List[Dict], threshold: int = 5) -> bool:
         """检查连续亏损是否超过阈值"""
@@ -137,6 +164,11 @@ class AlertMonitor:
     def run_all_checks(self, trades: List[Dict] = None, equity_curve: List[float] = None,
                        cache_age_hours: float = 0) -> List[Dict]:
         """运行所有检查"""
+        # 检查静默期
+        if self.is_silent_period():
+            logger.info("In silent period, skipping alert checks")
+            return []
+
         self.alerts = []
 
         if trades:

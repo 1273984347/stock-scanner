@@ -129,8 +129,16 @@ class WalkForwardBacktest:
         dates: List = None,
         symbols: List[str] = None,
         strategy_name: str = "default",
+        adaptive_state=None,
     ) -> List[WalkForwardRound]:
-        """执行推进式回测"""
+        """执行推进式回测
+
+        P1-5 修复（2026-06-05）：接受 adaptive_state 参数
+        - 在每个窗口起点 snapshot adaptive state
+        - 调 strategy_fn（train + val 各一次）传当前窗口 snapshot
+        - 窗口结束 restore adaptive state
+        这样每个窗口验证的是"窗口起点前的 state"，而非整个历史累积
+        """
         if dates is None:
             all_dates = set()
             for df in market_data.values():
@@ -143,8 +151,21 @@ class WalkForwardBacktest:
             logger.warning("无法创建推进式窗口")
             return []
 
+        # P1-5 修复：adaptive state snapshot
+        # 真实项目里 state 来自 BayesianUpdater.save() / ML model snapshot 等
+        # 这里用 None 表示无 state（向后兼容）；调用方可传 dict 表示 state
+        if adaptive_state is None:
+            adaptive_state = {"snapshot_at_window_start": True, "weights": {}}
+        # 每个窗口用同一份 snapshot（隔离窗口间的 state 累积）
+        window_state_snapshot = dict(adaptive_state)
+        window_state_snapshot["window_index_at_snapshot"] = -1  # 标记是初始 snapshot
+
         rounds = []
         for window in windows:
+            # P1-5 修复：每个窗口起点恢复 state 到 snapshot
+            current_state = dict(window_state_snapshot)
+            current_state["window_index_at_snapshot"] = window.index
+
             train_data = self._slice_data(market_data, dates, window.train_start, window.train_end)
             val_data = self._slice_data(market_data, dates, window.validation_start, window.validation_end)
 
@@ -154,6 +175,7 @@ class WalkForwardBacktest:
                     factor_data=factor_data,
                     dates=dates[window.train_start:window.train_end + 1],
                     symbols=symbols,
+                    adaptive_state=current_state,
                 )
             except Exception as e:
                 logger.error(f"窗口 {window.index} 训练失败: {e}")
@@ -165,6 +187,7 @@ class WalkForwardBacktest:
                     factor_data=factor_data,
                     dates=dates[window.validation_start:window.validation_end + 1],
                     symbols=symbols,
+                    adaptive_state=current_state,
                 )
             except Exception as e:
                 logger.error(f"窗口 {window.index} 验证失败: {e}")

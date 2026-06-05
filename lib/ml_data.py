@@ -290,6 +290,10 @@ class MLDataPipeline:
     def _compute_forward_returns(self, close: np.ndarray) -> dict:
         """计算多周期前视收益率
 
+        P0-1 修复（2026-06-05）：窗口统一为 [i+1, i+offset+1]，与 bench 对齐。
+        - 修复前: arr[i] = (close[i + offset] / close[i]) - 1 → 5d 窗口 [i, i+offset]
+        - 修复后: arr[i] = (close[i + offset + 1] / close[i + 1]) - 1 → 5d 窗口 [i+1, i+offset+1]
+
         Parameters
         ----------
         close : np.ndarray
@@ -304,8 +308,9 @@ class MLDataPipeline:
         out = {}
         for label, offset in [("fwd_5d", 5), ("fwd_10d", 10), ("fwd_20d", 20)]:
             arr = np.full(n, np.nan)
-            for i in range(n - offset):
-                arr[i] = (close[i + offset] / close[i]) - 1.0
+            for i in range(n - offset - 1):
+                # P0-1 修复：起点 i+1，终点 i+offset+1（与 bench pct_change(N).shift(-N) 对齐）
+                arr[i] = (close[i + offset + 1] / close[i + 1]) - 1.0
             out[label] = arr
         return out
 
@@ -409,7 +414,9 @@ class MLDataPipeline:
         excess_Nd = 股票前视N日收益 - 基准前视N日收益
         """
         bench = bench_close.sort_index()
-        bench_fwd_5d = bench.pct_change(5).shift(-5 - 1)  # match evaluator.py: forward return from day i+1
+        # P0-1 修复（2026-06-05）：保持原 shift(-(N+1))，让 stock 改用 [i+1, i+N+1] 窗口对齐 bench
+        # bench_fwd_5d[i] = bench[i+N+1] / bench[i+1] - 1（窗口 [i+1, i+N+1]）
+        bench_fwd_5d = bench.pct_change(5).shift(-5 - 1)
         bench_fwd_10d = bench.pct_change(10).shift(-10 - 1)
         bench_fwd_20d = bench.pct_change(20).shift(-20 - 1)
 
@@ -601,6 +608,25 @@ class MLDataPipeline:
         train = panel[panel["date"].isin(train_dates)].copy()
         val = panel[panel["date"].isin(val_dates)].copy()
         test = panel[panel["date"].isin(test_dates)].copy()
+
+        # P1-3 修复（2026-06-05）：剔除"标签窗口越界到下一段"的样本
+        # 训练集最后 5 天的样本（D+1 已超出训练集）的 fwd_5d 用了 val 段数据
+        # 验证集最后 5 天的样本（D+1 已超出验证集）的 fwd_5d 用了 test 段数据
+        # 这些样本的标签"穿越"段边界，会让训练/评估不可信
+        # 修复：按日期段剔除最末 5 天的样本（覆盖 fwd_5d 越界）
+        # 注：fwd_10d/20d 越界在 _compute_forward_returns 阶段已处理为 NaN
+        BUFFER_DAYS = 7  # 7 个日历日 ≈ 5 个 B 频率交易日（覆盖 fwd_5d 越界）
+
+        # 训练集：剔除 D > train_max_date - BUFFER_DAYS 的样本
+        if len(train_dates) > 0:
+            train_max_date = train_dates[-1]
+            train_safe_end = train_max_date - pd.Timedelta(days=BUFFER_DAYS)
+            train = train[train["date"] <= train_safe_end].copy()
+        # 验证集：剔除 D > val_max_date - BUFFER_DAYS 的样本
+        if len(val_dates) > 0:
+            val_max_date = val_dates[-1]
+            val_safe_end = val_max_date - pd.Timedelta(days=BUFFER_DAYS)
+            val = val[val["date"] <= val_safe_end].copy()
 
         # 断言：无日期重叠
         assert len(set(train_dates) & set(val_dates)) == 0, "训练/验证集日期重叠"

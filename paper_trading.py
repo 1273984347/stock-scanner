@@ -131,7 +131,8 @@ def run_scan(preset: str = "balanced"):
     print(f"今日信号: {len(signals)} 只")
     print(f"{'='*60}")
     for s in signals:
-        print(f"  {s['code']} {s['name']:8s} | {s['strategy']:8s} | ¥{s['price']:.2f} | 评分={s['score']:.1f}")
+        # P1-fix (2026-06-05): Windows GBK 不支持 ¥ 字符
+        print(f"  {s['code']} {s['name']:8s} | {s['strategy']:8s} | CNY {s['price']:.2f} | score={s['score']:.1f}")
 
     return signals
 
@@ -167,7 +168,8 @@ def enter_position(code: str, name: str, price: float, strategy: str, score: flo
     }
 
     _save_json(POSITIONS_FILE, positions)
-    print(f"入场: {code} {name} @ ¥{price:.2f} | 止损=¥{stop_loss:.2f}")
+    # P1-fix (2026-06-05): Windows GBK 不支持 ¥ 字符
+    print(f"入场: {code} {name} @ CNY {price:.2f} | stop=CNY {stop_loss:.2f}")
 
 
 def update_positions():
@@ -239,7 +241,7 @@ def update_positions():
         else:
             # 打印持仓状态
             emoji = "↑" if pos["pnl_pct"] > 0 else "↓"
-            print(f"  {code} {pos['name']:8s} | ¥{price:.2f} | {pos['pnl_pct']:+.2f}% {emoji} | 持{pos['hold_days']}天 | 止损=¥{pos['stop_loss']:.2f}")
+            print(f"  {code} {pos['name']:8s} | CNY {price:.2f} | {pos['pnl_pct']:+.2f}% {emoji} | 持{pos['hold_days']}天 | stop=CNY {pos['stop_loss']:.2f}")
 
     _save_json(POSITIONS_FILE, positions)
     _save_json(TRADES_FILE, trades)
@@ -299,7 +301,7 @@ def generate_report():
         total_pnl = 0
         for code, pos in positions.items():
             emoji = "↑" if pos['pnl_pct'] > 0 else "↓"
-            print(f"  {code} {pos['name']:8s} | ¥{pos['current_price']:.2f} | {pos['pnl_pct']:+.2f}% {emoji} | 持{pos['hold_days']}天")
+            print(f"  {code} {pos['name']:8s} | CNY {pos['current_price']:.2f} | {pos['pnl_pct']:+.2f}% {emoji} | 持{pos['hold_days']}天")
             total_pnl += pos['pnl_pct']
         print(f"  持仓合计浮盈: {total_pnl:+.2f}%")
 

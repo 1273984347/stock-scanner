@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Optional, Tuple
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,21 @@ RISK_OFF = "RISK_OFF"
 COMPRESSION = HIGH_VOLATILITY  # 旧代码中的 COMPRESSION 映射到 HIGH_VOLATILITY
 
 REGIME_STATES = [TREND_UP, MEAN_REVERSION, HIGH_VOLATILITY, LOW_VOLATILITY, TREND_DOWN, RISK_OFF]
+
+# ========== 迟滞机制缓存 ==========
+_cached_regime: str = HIGH_VOLATILITY  # 当前稳定状态
+_regime_candidate: str = HIGH_VOLATILITY  # 候选状态（正在累积确认）
+_regime_stable_count: int = 0  # 候选状态连续出现次数
+_hysteresis_lock = threading.Lock()
+
+
+def reset_hysteresis():
+    """重置迟滞状态（测试用）"""
+    global _cached_regime, _regime_candidate, _regime_stable_count
+    with _hysteresis_lock:
+        _cached_regime = HIGH_VOLATILITY
+        _regime_candidate = HIGH_VOLATILITY
+        _regime_stable_count = 0
 
 # 状态 → 仓位系数（默认值，可被 position_size 覆盖）
 REGIME_POSITION_SCALAR = {
@@ -102,6 +118,8 @@ def detect_market_regime(
     kc_upper: pd.Series = None,
     kc_lower: pd.Series = None,
     atr: pd.Series = None,
+    use_hysteresis: bool = False,
+    hysteresis_days: int = 3,
 ) -> Dict:
     """检测市场体制
 
@@ -111,6 +129,8 @@ def detect_market_regime(
         kc_upper: 凯尔特纳上轨（可选）
         kc_lower: 凯尔特纳下轨（可选）
         atr: ATR（可选）
+        use_hysteresis: 是否启用迟滞机制（默认 False，实盘建议 True）
+        hysteresis_days: 连续多少天确认才切换状态（默认 3）
 
     Returns:
         Dict:
@@ -119,6 +139,8 @@ def detect_market_regime(
           - indicators: dict, 各指标值
           - position_scalar: (min, max), 建议仓位系数
     """
+    global _cached_regime, _regime_candidate, _regime_stable_count
+
     if index_df is None or index_df.empty or len(index_df) < 30:
         return _default_regime()
 
@@ -254,6 +276,26 @@ def detect_market_regime(
 
     indicators["confidence"] = round(float(confidence), 3)
 
+    # ========== 迟滞机制 ==========
+    # 实盘中频繁切换状态会导致策略混乱，需要连续 N 天确认才切换
+    with _hysteresis_lock:
+        if use_hysteresis:
+            if regime == _regime_candidate:
+                _regime_stable_count += 1
+            else:
+                _regime_candidate = regime
+                _regime_stable_count = 1
+
+            if _regime_stable_count >= hysteresis_days:
+                _cached_regime = regime
+            else:
+                # 未达到确认天数，保持当前稳定状态
+                regime = _cached_regime
+                indicators["hysteresis_pending"] = True
+                indicators["hysteresis_count"] = _regime_stable_count
+        else:
+            _cached_regime = regime
+
     position_scalar = REGIME_POSITION_SCALAR[regime]
 
     return {
@@ -267,9 +309,9 @@ def detect_market_regime(
 
 
 def _default_regime() -> Dict:
-    """默认状态（数据不足时）— 使用 HIGH_VOLATILITY 更安全"""
+    """默认状态（数据不足时）— 使用缓存状态或 HIGH_VOLATILITY"""
     return {
-        "regime": HIGH_VOLATILITY,
+        "regime": _cached_regime if _cached_regime else HIGH_VOLATILITY,
         "confidence": 0.3,
         "indicators": {},
         "position_scalar": REGIME_POSITION_SCALAR[HIGH_VOLATILITY],
@@ -296,7 +338,7 @@ def get_regime_description(regime: str) -> str:
 HS300_CODE = "000300"  # 沪深300指数代码
 
 
-def detect_market_regime_from_hs300(days: int = 60) -> Dict:
+def detect_market_regime_from_hs300(days: int = 60, use_hysteresis: bool = False, hysteresis_days: int = 3) -> Dict:
     """获取 HS300 数据，输出 V4 五态体制
 
     这是市场状态检测的主入口。V4 框架要求：
@@ -319,7 +361,7 @@ def detect_market_regime_from_hs300(days: int = 60) -> Dict:
         index_df = get_index_hist(HS300_CODE, days=days)
         if index_df.empty or len(index_df) < 30:
             return _default_regime()
-        result = detect_market_regime(index_df)
+        result = detect_market_regime(index_df, use_hysteresis=use_hysteresis, hysteresis_days=hysteresis_days)
         result["index_code"] = HS300_CODE
         return result
     except Exception as e:
