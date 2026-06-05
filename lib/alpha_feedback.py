@@ -111,39 +111,47 @@ class AlphaFeedback:
         })
 
     def get_alpha_weights(self) -> Dict[str, float]:
-        """返回各 Alpha 类型的动态权重（基于后验胜率归一化）
+        """返回各 Alpha 类型的动态权重（基于 Beta-Binomial 贝叶斯后验）
 
-        权重计算：
-        - 取各 Alpha 的 win_rate
-        - 低于 30% 的设为 0（淘汰）
-        - 归一化到和为 1
+        P1-4 修复（2026-06-06）：从"win_rate 归一化"改为真贝叶斯
+        - 先验：Beta(α=1, β=1)（均匀先验）
+        - 似然：(wins, losses) 二项分布
+        - 后验：Beta(α+wins, β+losses) → posterior_mean = (α+wins)/(α+β+wins+losses)
+        - 优势：
+          · 小样本平滑（先验防止过拟合，0 笔样本 → 后验 = 0.5 而非 0）
+          · 大样本趋近 win_rate
+        - 淘汰：posterior < 0.30 → weight = 0（kill switch）
+        - 归一化：除以 total（保证和为 1）
         """
         if not self._stats:
             return {}
 
+        BAYESIAN_PRIOR_ALPHA = 1.0  # Beta(1,1) 均匀先验
+        BAYESIAN_PRIOR_BETA = 1.0
+        KILL_SWITCH_THRESHOLD = 0.30
+
         raw_weights = {}
         for alpha_type, stats in self._stats.items():
-            if stats.total_trades < 3:
-                # 样本不足，给默认权重
-                raw_weights[alpha_type] = 0.5
-            elif stats.win_rate < 0.30:
-                # 胜率过低，淘汰
+            # Beta-Binomial 后验均值 = (α + wins) / (α + β + total)
+            posterior = (
+                BAYESIAN_PRIOR_ALPHA + stats.wins
+            ) / (
+                BAYESIAN_PRIOR_ALPHA + BAYESIAN_PRIOR_BETA + stats.total_trades
+            )
+            if posterior < KILL_SWITCH_THRESHOLD:
+                # kill switch：posterior < 30% → 0 权重
                 raw_weights[alpha_type] = 0.0
             else:
-                raw_weights[alpha_type] = stats.win_rate
+                raw_weights[alpha_type] = posterior
 
         total = sum(raw_weights.values())
         if total <= 0:
-            # P0-3 修复（2026-06-05）+ dim-5 P1-2 + dim-2 P0-3 三方共识：
-            # 旧逻辑：返回 {k: 1.0 / len(raw_weights)}（等权启用，方向相反！）
-            # 新逻辑：返回 {}（空字典 → kill switch）让上层（position_sizer / risk_manager）
-            #         显式响应"全市场关仓"，而不是悄悄回退到等权下注。
-            # 同时打 warning log 让运维可见
+            # 全员 kill switch：返回空字典（让上层 position_sizer 显式关仓）
             logger.warning(
-                f"Alpha kill switch 触发: 所有 {len(raw_weights)} 个 alpha 胜率<30%，"
+                f"Alpha kill switch 触发: 所有 {len(raw_weights)} 个 alpha posterior<30%，"
                 f"建议全市场关仓（position_sizer 应将仓位降至 0）"
             )
-            self._previous_weights = {}  # 清空历史权重
+            self._previous_weights = {}
             return {}
 
         weights = {k: round(v / total, 4) for k, v in raw_weights.items()}
