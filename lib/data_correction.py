@@ -160,14 +160,27 @@ class DataCorrection:
                         })
                         continue
 
-                    corrected_value = (prev_close + next_close) / 2
+                    # P1-10 修复（2026-06-06）：用前 N 日均值替代 next_close（前视）
+                    # 旧版 (prev + next) / 2 用了 next_close 是前视
+                    # 新版：前 5 日均值（不含异常日），不依赖未来数据
+                    LOOKBACK_DAYS = 5
+                    lookback_start = max(0, idx - LOOKBACK_DAYS)
+                    lookback_closes = [
+                        corrected[i].get("close", 0)
+                        for i in range(lookback_start, idx)
+                    ]
+                    if lookback_closes:
+                        corrected_value = sum(lookback_closes) / len(lookback_closes)
+                    else:
+                        corrected_value = prev_close  # fallback
+
                     corrections.append({
                         "type": "price_jump",
                         "index": idx,
                         "date": corrected[idx].get("date"),
                         "original": curr_close,
                         "corrected": corrected_value,
-                        "reason": f"价格跳变 {anomaly['change']:.2%}，next 不确认，判定数据错误"
+                        "reason": f"价格跳变 {anomaly['change']:.2%}，next 不确认，判定数据错误（前 {LOOKBACK_DAYS} 日均值修正）"
                     })
                     corrected[idx]["close"] = corrected_value
 
