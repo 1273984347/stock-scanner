@@ -4,18 +4,28 @@ import { getThemeColor } from '../theme.js';
 /**
  * KlineRenderer — K线图渲染器
  * 使用 Chart.js 折线+柱状混合图模拟 K 线效果（收盘价线 + 成交量柱）
- * 悬停 tooltip 显示完整 OHLC 数据
+ * 支持交易标记叠加 + 日期范围缩放
  */
 class KlineRenderer {
   constructor() {
     this._chart = null;
+    this._allData = [];
+    this._tradeData = [];
+    this._currentCode = '';
   }
 
   async loadKline(code, days = 120) {
+    this._currentCode = code;
     try {
-      const data = await apiClient.get(`/api/kline/${code}`, { days });
-      if (data && data.data && data.data.length > 0) {
-        this._renderKline(data.data, code);
+      const [klineRes, tradeRes] = await Promise.all([
+        apiClient.get(`/api/kline/${code}`, { days }),
+        apiClient.get('/api/trade-history', { days, code, limit: 200 }).catch(() => null),
+      ]);
+      if (klineRes && klineRes.data && klineRes.data.length > 0) {
+        this._allData = klineRes.data;
+        this._tradeData = tradeRes?.trades || [];
+        this._renderWithRange(0, this._allData.length);
+        this._setupRangeSelector();
       } else {
         this._showEmpty();
       }
@@ -33,7 +43,64 @@ class KlineRenderer {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
-  _renderKline(data, code) {
+  _setupRangeSelector() {
+    const container = document.getElementById('klineRangeContainer');
+    if (!container) return;
+    container.textContent = '';
+
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;font-size:12px';
+
+    const label = document.createElement('span');
+    label.style.color = 'var(--text-dim)';
+    label.textContent = '显示范围:';
+
+    const rangeInput = document.createElement('input');
+    rangeInput.type = 'range';
+    rangeInput.min = '20';
+    rangeInput.max = String(this._allData.length);
+    rangeInput.value = String(this._allData.length);
+    rangeInput.style.cssText = 'flex:1;accent-color:var(--accent)';
+
+    const rangeLabel = document.createElement('span');
+    rangeLabel.style.cssText = 'min-width:60px;text-align:right;color:var(--text-sub)';
+    rangeLabel.textContent = this._allData.length + ' 天';
+
+    rangeInput.addEventListener('input', () => {
+      const n = parseInt(rangeInput.value, 10);
+      rangeLabel.textContent = n + ' 天';
+      this._renderWithRange(this._allData.length - n, this._allData.length);
+    });
+
+    // 快捷按钮
+    const presets = [30, 60, 120, 250];
+    presets.forEach(n => {
+      if (n <= this._allData.length) {
+        const btn = document.createElement('button');
+        btn.textContent = n + '天';
+        btn.style.cssText = 'padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);cursor:pointer;font-size:11px';
+        btn.addEventListener('click', () => {
+          rangeInput.value = String(n);
+          rangeLabel.textContent = n + ' 天';
+          this._renderWithRange(this._allData.length - n, this._allData.length);
+        });
+        wrapper.appendChild(btn);
+      }
+    });
+
+    wrapper.appendChild(label);
+    wrapper.appendChild(rangeInput);
+    wrapper.appendChild(rangeLabel);
+    container.appendChild(wrapper);
+  }
+
+  _renderWithRange(startIdx, endIdx) {
+    const data = this._allData.slice(startIdx, endIdx);
+    if (!data.length) return;
+    this._renderKline(data, this._currentCode, startIdx);
+  }
+
+  _renderKline(data, code, offset = 0) {
     const canvas = document.getElementById('klineChart');
     if (!canvas) return;
     if (this._chart) this._chart.destroy();
@@ -53,6 +120,24 @@ class KlineRenderer {
     const keltnerLower = data.map(d => d.keltner_lower);
     const donchianHigh = data.map(d => d.donchian_high);
     const donchianLow = data.map(d => d.donchian_low);
+
+    // 交易标记：买入/卖出点
+    const buyMarkers = new Array(data.length).fill(null);
+    const sellMarkers = new Array(data.length).fill(null);
+    const dateSet = new Set(labels);
+    this._tradeData.forEach(t => {
+      const date = t.timestamp?.slice(0, 10);
+      if (date && dateSet.has(date)) {
+        const idx = labels.indexOf(date);
+        if (idx >= 0) {
+          if (t.action === 'buy' || t.action === 'BUY') {
+            buyMarkers[idx] = data[idx].low * 0.99;
+          } else if (t.action === 'sell' || t.action === 'SELL') {
+            sellMarkers[idx] = data[idx].high * 1.01;
+          }
+        }
+      }
+    });
 
     const datasets = [
       {
@@ -79,7 +164,37 @@ class KlineRenderer {
         order: 2,
         barPercentage: 0.6,
       },
-      // EMA overlays (hidden by default, toggle via legend)
+      // 买入标记
+      {
+        label: '买入',
+        data: buyMarkers,
+        type: 'line',
+        borderColor: 'transparent',
+        pointRadius: buyMarkers.map(v => v !== null ? 8 : 0),
+        pointBackgroundColor: '#3FB950',
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2,
+        pointStyle: 'triangle',
+        showLine: false,
+        yAxisID: 'y',
+        order: 0,
+      },
+      // 卖出标记
+      {
+        label: '卖出',
+        data: sellMarkers,
+        type: 'line',
+        borderColor: 'transparent',
+        pointRadius: sellMarkers.map(v => v !== null ? 8 : 0),
+        pointBackgroundColor: '#F85149',
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2,
+        pointStyle: 'rectRot',
+        showLine: false,
+        yAxisID: 'y',
+        order: 0,
+      },
+      // EMA overlays (hidden by default)
       { label: 'EMA5', data: ema5Data, type: 'line', borderColor: '#ffa500', borderWidth: 1, pointRadius: 0, hidden: true, yAxisID: 'y', order: 3 },
       { label: 'EMA21', data: ema21Data, type: 'line', borderColor: '#ff6b6b', borderWidth: 1, pointRadius: 0, hidden: true, yAxisID: 'y', order: 3 },
       { label: 'EMA50', data: ema50Data, type: 'line', borderColor: '#9c27b0', borderWidth: 1, pointRadius: 0, hidden: true, yAxisID: 'y', order: 3 },
@@ -93,10 +208,7 @@ class KlineRenderer {
 
     this._chart = new Chart(canvas.getContext('2d'), {
       type: 'bar',
-      data: {
-        labels,
-        datasets,
-      },
+      data: { labels, datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -119,12 +231,22 @@ class KlineRenderer {
                 const idx = items[0]?.dataIndex;
                 if (idx == null) return '';
                 const d = data[idx];
-                return [
+                const lines = [
                   `开盘: ${d.open?.toFixed(2)}`,
                   `最高: ${d.high?.toFixed(2)}`,
                   `最低: ${d.low?.toFixed(2)}`,
                   `收盘: ${d.close?.toFixed(2)}`,
                 ];
+                // 显示交易信息
+                const date = d.date;
+                const trades = this._tradeData.filter(t => t.timestamp?.startsWith(date));
+                if (trades.length > 0) {
+                  lines.push('---');
+                  trades.forEach(t => {
+                    lines.push(`${t.action === 'buy' ? '买入' : '卖出'} ${t.shares}股 @ ${t.price?.toFixed(2)}`);
+                  });
+                }
+                return lines;
               },
             },
           },

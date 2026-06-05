@@ -55,6 +55,28 @@ class StateManager {
     }
   }
 
+  // 深度合并更新（用于 WebSocket diff 数据）
+  merge(path, data) {
+    const keys = path.split('.');
+    const last = keys.pop();
+    const target = keys.reduce((obj, key) => {
+      if (!(key in obj)) obj[key] = {};
+      return obj[key];
+    }, this._state);
+    const oldValue = target[last];
+    if (typeof oldValue === 'object' && typeof data === 'object' && oldValue !== null && data !== null && !Array.isArray(data)) {
+      target[last] = { ...oldValue, ...data };
+    } else {
+      target[last] = data;
+    }
+    this._notify(path);
+    for (const subPath of this._listeners.keys()) {
+      if (subPath.startsWith(path + '.')) {
+        this._notify(subPath);
+      }
+    }
+  }
+
   // 订阅路径变化（立即调用一次回调，返回当前值）
   subscribe(path, callback) {
     console.log('[State.subscribe]', path);

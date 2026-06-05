@@ -39,6 +39,10 @@ export class AppLayout {
         <canvas id="returnVolChart"></canvas>
       </div>
       <div class="portfolio-card">
+        <div class="metric-label">实时资金曲线</div>
+        <canvas id="equityCurveChart"></canvas>
+      </div>
+      <div class="portfolio-card">
         <div class="metric-label">组合指标</div>
         <div id="portfolioStats" style="font-size:13px;line-height:2;color:var(--text-sub)"></div>
       </div>
@@ -71,6 +75,7 @@ export class AppLayout {
         </select>
       </div>
       <div id="klineChart" style="height:300px"></div>
+      <div id="klineRangeContainer"></div>
     </div>
     <div class="portfolio-grid">
       <div class="portfolio-card"><div class="metric-label">技术信号分布</div><canvas id="signalChart"></canvas></div>
@@ -82,6 +87,10 @@ export class AppLayout {
   <div class="panel" id="panel-risk">
     <div class="metric-label" style="margin:0 0 8px">风险暴露仪表盘</div>
     <div id="riskExposureSection" style="display:none"></div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div class="metric-label">持仓相关性矩阵</div>
+      <canvas id="correlationHeatmap" style="height:250px"></canvas>
+    </div>
     <div class="risk-grid" id="riskAlerts"></div>
     <div class="metric-label" style="margin:12px 0 8px">压力测试</div>
     <div class="stress-grid" id="stressTests"></div>
@@ -95,6 +104,7 @@ export class AppLayout {
       <div class="portfolio-card">
         <div class="metric-label">持仓概况 <button id="exportPositionsBtn" class="secondary" style="margin-left:8px;font-size:12px;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer">导出 CSV</button><button id="exportPositionsExcelBtn" class="secondary" style="margin-left:4px;font-size:12px;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer">导出 Excel</button></div>
         <div class="table-wrap"><table id="posTable"><thead><tr><th>代码</th><th>名称</th><th>行业</th><th>持仓</th><th>成本</th><th>现价</th><th>盈亏</th><th>仓位</th><th>止损</th><th>止盈</th></tr></thead><tbody id="posBody"></tbody></table></div>
+        <div id="posPagination" style="display:flex;justify-content:center;padding:8px 0"></div>
         <div class="loading" id="posLoading"><span class="spinner"></span>加载中...</div>
       </div>
       <div class="portfolio-card">
@@ -135,6 +145,10 @@ export class AppLayout {
         <div class="metric-label">因子 IC 分析</div>
         <div class="table-wrap"><table id="evalIcTable"><thead><tr><th>因子</th><th>IC</th><th>Rank IC</th><th>P-Value</th></tr></thead><tbody id="evalIcBody"></tbody></table></div>
         <div class="loading" id="evalLoading"><span class="spinner"></span>加载中...</div>
+      </div>
+      <div class="portfolio-card">
+        <div class="metric-label">因子 IC 时间序列</div>
+        <canvas id="icHistoryChart"></canvas>
       </div>
       <div class="portfolio-card">
         <div class="metric-label">高相关性因子对</div>
@@ -255,10 +269,15 @@ export class AppLayout {
     <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
       <div class="metric-label">最近信号</div>
       <div class="table-wrap"><table id="signalTable"><thead><tr><th>日期</th><th>代码</th><th>信号</th><th>置信度</th><th>IC分数</th><th>5日收益</th><th>结果</th></tr></thead><tbody id="signalBody"></tbody></table></div>
+      <div id="signalPagination" style="display:flex;justify-content:center;padding:8px 0"></div>
     </div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px">
       <div class="metric-label">按来源分组</div>
       <canvas id="signalSourceChart"></canvas>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:12px">
+      <div class="metric-label">信号准确率趋势</div>
+      <canvas id="accuracyTrendChart"></canvas>
     </div>
   </div>
 
@@ -278,6 +297,38 @@ export class AppLayout {
         <thead><tr><th>时间</th><th>代码</th><th>操作</th><th>价格</th><th>股数</th><th>盈亏</th><th>持有天数</th><th>原因</th></tr></thead>
         <tbody id="tradeHistoryBody"></tbody>
       </table>
+    </div>
+    <div id="tradePagination" style="display:flex;justify-content:center;padding:8px 0"></div>
+  </div>
+
+  <!-- 策略对比面板 -->
+  <div class="panel" id="panel-strategy">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div class="metric-label">多策略对比</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+        <input id="scSymbols" placeholder="股票代码(逗号分隔)" value="600519,000858" style="padding:6px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);font-size:13px;flex:1;min-width:200px">
+        <label style="font-size:12px;color:var(--text-dim)">止损(ATR): <input id="scSL" type="range" min="1" max="5" step="0.5" value="2" style="width:80px;vertical-align:middle"> <span id="scSLVal">2</span></label>
+        <label style="font-size:12px;color:var(--text-dim)">止盈(ATR): <input id="scTP" type="range" min="1" max="8" step="0.5" value="3" style="width:80px;vertical-align:middle"> <span id="scTPVal">3</span></label>
+        <label style="font-size:12px;color:var(--text-dim)">天数: <input id="scDays" type="range" min="60" max="500" step="10" value="250" style="width:80px;vertical-align:middle"> <span id="scDaysVal">250</span></label>
+        <button id="scCompareBtn" style="padding:6px 16px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#fff;cursor:pointer;font-size:13px">运行对比</button>
+        <button id="scRecommendBtn" style="padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);cursor:pointer;font-size:13px">参数推荐</button>
+        <button id="scHistoryBtn" style="padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);cursor:pointer;font-size:13px">历史记录</button>
+      </div>
+      <canvas id="scEquityChart" style="height:300px"></canvas>
+    </div>
+    <div class="portfolio-grid">
+      <div class="portfolio-card">
+        <div class="metric-label">策略统计</div>
+        <div class="table-wrap"><table><thead><tr><th>策略</th><th>夏普</th><th>最大回撤</th><th>胜率</th><th>总收益</th><th>交易数</th></tr></thead><tbody id="scStatsBody"></tbody></table></div>
+      </div>
+      <div class="portfolio-card">
+        <div class="metric-label">参数推荐</div>
+        <div id="scRecommendResult" style="font-size:13px;color:var(--text-sub)">点击"参数推荐"获取最优参数</div>
+      </div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:12px">
+      <div class="metric-label">回测历史</div>
+      <div class="table-wrap"><table><thead><tr><th>时间</th><th>股票</th><th>最佳夏普</th><th>策略</th></tr></thead><tbody id="scHistoryBody"></tbody></table></div>
     </div>
   </div>
 
@@ -301,6 +352,30 @@ export class AppLayout {
         <div>
           <label>默认股票池</label>
           <input type="text" id="settingSymbols" placeholder="留空使用默认" style="width:100%;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text)">
+        </div>
+        <div>
+          <label>字体大小</label>
+          <select id="settingFontSize" style="width:100%;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text)">
+            <option value="12">12px - 小</option>
+            <option value="14" selected>14px - 标准</option>
+            <option value="16">16px - 中</option>
+            <option value="18">18px - 大</option>
+            <option value="20">20px - 特大</option>
+          </select>
+        </div>
+        <div>
+          <label>语言 / Language</label>
+          <select id="settingLocale" style="width:100%;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text)">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <div>
+          <label>布局方向</label>
+          <select id="settingDirection" style="width:100%;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text)">
+            <option value="ltr">从左到右 (LTR)</option>
+            <option value="rtl">从右到左 (RTL)</option>
+          </select>
         </div>
       </div>
     </div>

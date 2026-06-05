@@ -1,29 +1,48 @@
 import { apiClient } from '../api.js';
+import { Pagination } from '../utils/pagination.js';
 
 export class TradesRenderer {
+  constructor() {
+    this._allTrades = [];
+    this._pagination = null;
+  }
+
   mount() {
     const select = document.getElementById('tradeSortSelect');
     if (select) select.addEventListener('change', () => this.fetch());
+    // 初始化分页
+    const paginationContainer = document.getElementById('tradePagination');
+    if (paginationContainer) {
+      this._pagination = new Pagination(paginationContainer, {
+        pageSize: 50,
+        onPageChange: () => this._renderCurrentPage(),
+      });
+    }
     this.fetch();
   }
 
   async fetch() {
     try {
       const sortBy = document.getElementById('tradeSortSelect')?.value || 'date';
-      const data = await apiClient.get('/api/trade-history', { days: 30, sort_by: sortBy, limit: 50 });
-      if (data) this.render(data.trades || []);
+      const data = await apiClient.get('/api/trade-history', { days: 30, sort_by: sortBy, limit: 500 });
+      if (data) {
+        this._allTrades = data.trades || [];
+        if (this._pagination) {
+          this._pagination.setTotal(this._allTrades.length);
+        }
+        this._renderCurrentPage();
+      }
     } catch (e) {
       console.error('[Trades] fetch failed:', e);
     }
   }
 
-  render(trades) {
+  _renderCurrentPage() {
     const tbody = document.getElementById('tradeHistoryBody');
     if (!tbody) return;
-    // Clear existing rows safely
     while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
 
-    if (!trades.length) {
+    if (!this._allTrades.length) {
       const tr = document.createElement('tr');
       const td = document.createElement('td');
       td.colSpan = 8;
@@ -34,7 +53,11 @@ export class TradesRenderer {
       return;
     }
 
-    trades.forEach(t => {
+    const start = this._pagination ? this._pagination.startIndex : 0;
+    const end = this._pagination ? this._pagination.endIndex : this._allTrades.length;
+    const page = this._allTrades.slice(start, end);
+
+    page.forEach(t => {
       const pnl = (t.pnl_pct || 0) * 100;
       const tr = document.createElement('tr');
       tr.style.color = pnl >= 0 ? 'var(--up)' : 'var(--down)';

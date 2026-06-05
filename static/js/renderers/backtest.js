@@ -1,7 +1,10 @@
+import { LazyChart } from '../utils/lazyChart.js';
+
 // backtest.js — 回测可视化（净值曲线 + 交易标记 + 退出分布）
 class BacktestRenderer {
   constructor() {
     this._charts = {};
+    this._lazy = new LazyChart('panel-backtest');
   }
 
   init() {
@@ -13,8 +16,17 @@ class BacktestRenderer {
     if (cmpBtn) {
       cmpBtn.addEventListener('click', () => this._runCompare());
     }
-    this._loadFactorContribution();
-    this._loadAttribution();
+    // 懒加载：只在面板可见时加载
+    this._lazy.whenVisible(
+      () => {
+        this._loadFactorContribution();
+        this._loadAttribution();
+      },
+      () => {
+        this._charts.contrib?.destroy(); this._charts.contrib = null;
+        this._charts.waterfall?.destroy(); this._charts.waterfall = null;
+      }
+    );
   }
 
   async _runBacktest() {

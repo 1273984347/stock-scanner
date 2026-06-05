@@ -92,21 +92,17 @@ class WebSocketManager {
         case 'data_update':
           // 全量数据更新
           stateManager.updateAll(msg.data);
-          // 单独分发 position_pnl 以确保订阅者收到实时更新
-          if (msg.data?.position_pnl) {
-            stateManager.set('position_pnl', msg.data.position_pnl);
-            // 盈亏告警通知
-            try {
-              Object.entries(msg.data.position_pnl).forEach(([code, pnl]) => {
-                if (pnl.pnl_pct < -0.05) {
-                  sendBrowserNotification(`${code} 亏损告警`, `当前亏损 ${(pnl.pnl_pct * 100).toFixed(1)}%`, `alert-${code}`);
-                }
-              });
-            } catch (_) { /* ignore notification errors */ }
-          }
-          // 新信号通知
-          if (msg.data?.signal_summary?.total_signals > 0) {
-            sendBrowserNotification('新信号', `${msg.data.signal_summary.total_signals} 条新信号`, 'signals');
+          this._handlePositionPnl(msg.data?.position_pnl);
+          this._handleSignalNotification(msg.data?.signal_summary);
+          break;
+        case 'data_diff':
+          // 增量更新：只更新变化的字段
+          if (msg.data) {
+            for (const [key, value] of Object.entries(msg.data)) {
+              stateManager.merge(key, value);
+            }
+            this._handlePositionPnl(msg.data.position_pnl);
+            this._handleSignalNotification(msg.data.signal_summary);
           }
           break;
         case 'ping':
@@ -117,6 +113,24 @@ class WebSocketManager {
       }
     } catch (e) {
       console.error('[WS] 解析失败:', e);
+    }
+  }
+
+  _handlePositionPnl(positionPnl) {
+    if (!positionPnl) return;
+    stateManager.set('position_pnl', positionPnl);
+    try {
+      Object.entries(positionPnl).forEach(([code, pnl]) => {
+        if (pnl.pnl_pct < -0.05) {
+          sendBrowserNotification(`${code} 亏损告警`, `当前亏损 ${(pnl.pnl_pct * 100).toFixed(1)}%`, `alert-${code}`);
+        }
+      });
+    } catch (_) { /* ignore notification errors */ }
+  }
+
+  _handleSignalNotification(signalSummary) {
+    if (signalSummary?.total_signals > 0) {
+      sendBrowserNotification('新信号', `${signalSummary.total_signals} 条新信号`, 'signals');
     }
   }
 

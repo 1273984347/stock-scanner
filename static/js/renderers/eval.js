@@ -1,5 +1,6 @@
 import { stateManager } from '../state.js';
 import { apiClient } from '../api.js';
+import { LazyChart } from '../utils/lazyChart.js';
 
 function esc(s) {
   if (s == null) return '';
@@ -11,7 +12,12 @@ function esc(s) {
 }
 
 class EvalRenderer {
-  constructor() { this._unsubscribers = []; this._loaded = false; this._charts = {}; }
+  constructor() {
+    this._unsubscribers = [];
+    this._loaded = false;
+    this._charts = {};
+    this._lazy = new LazyChart('panel-eval');
+  }
   mount() {
     // 懒加载：只有用户切换到 eval tab 时才请求数据
     const evalTab = document.querySelector('[data-panel="eval"]');
@@ -20,6 +26,7 @@ class EvalRenderer {
         if (!this._loaded) this._load();
         this._loadFactorWeights();
         this._loadFactorScatter();
+        this._loadICHistory();
       });
     }
   }
@@ -165,6 +172,49 @@ class EvalRenderer {
         scales: {
           x: { title: { display: true, text: data.x_factor } },
           y: { title: { display: true, text: data.y_factor } },
+        },
+      },
+    });
+  }
+
+  async _loadICHistory() {
+    try {
+      const data = await apiClient.get('/api/factor-ic-history', { days: 60 });
+      if (!data || !data.dates || !data.factors) return;
+      this._renderICHistoryChart(data);
+    } catch (e) {
+      console.error('[Eval] IC history failed:', e);
+    }
+  }
+
+  _renderICHistoryChart(data) {
+    const canvas = document.getElementById('icHistoryChart');
+    if (!canvas) return;
+    if (this._charts.icHistory) this._charts.icHistory.destroy();
+
+    const colors = ['#58A6FF', '#3FB950', '#F85149', '#D29922', '#9c27b0', '#00bcd4'];
+    const datasets = Object.entries(data.factors).map(([name, values], i) => ({
+      label: name,
+      data: values,
+      borderColor: colors[i % colors.length],
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      pointRadius: 0,
+      tension: 0.3,
+    }));
+
+    this._charts.icHistory = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: { labels: data.dates, datasets },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'top', labels: { font: { size: 11 } } },
+          tooltip: { mode: 'index', intersect: false },
+        },
+        scales: {
+          x: { ticks: { maxTicksLimit: 10, font: { size: 10 } } },
+          y: { title: { display: true, text: 'IC 值' } },
         },
       },
     });

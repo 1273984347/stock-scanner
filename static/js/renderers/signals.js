@@ -1,5 +1,7 @@
 import { apiClient } from '../api.js';
 import { stateManager } from '../state.js';
+import { Pagination } from '../utils/pagination.js';
+import { LazyChart } from '../utils/lazyChart.js';
 
 function esc(s) {
   if (s == null) return '';
@@ -13,10 +15,22 @@ function esc(s) {
 export class SignalsRenderer {
   constructor() {
     this.chart = null;
+    this._trendChart = null;
+    this._allRecent = [];
+    this._pagination = null;
+    this._lazy = new LazyChart('panel-signals');
   }
 
   mount() {
     stateManager.subscribe('signals', (data) => this.render(data));
+    // 初始化分页
+    const paginationContainer = document.getElementById('signalPagination');
+    if (paginationContainer) {
+      this._pagination = new Pagination(paginationContainer, {
+        pageSize: 30,
+        onPageChange: () => this._renderCurrentPage(),
+      });
+    }
   }
 
   async fetch() {
@@ -38,32 +52,62 @@ export class SignalsRenderer {
     set('sigAvgReturn', summary.avg_return_5d != null ? (summary.avg_return_5d * 100).toFixed(2) + '%' : '--');
     set('sigPLRatio', summary.profit_loss_ratio != null ? summary.profit_loss_ratio.toFixed(2) : '--');
 
-    const tbody = document.getElementById('signalBody');
-    if (tbody && recent) {
-      tbody.innerHTML = '';
-      recent.slice(0, 30).forEach(s => {
-        const tr = document.createElement('tr');
-        const cells = [
-          s.date || '',
-          s.code || '',
-          s.signal || '',
-          s.confidence != null ? s.confidence.toFixed(2) : '',
-          s.ic_score != null ? s.ic_score.toFixed(3) : '',
-          s.actual_return_5d != null ? (s.actual_return_5d * 100).toFixed(2) + '%' : '-',
-          s.is_correct === true ? '✓' : s.is_correct === false ? '✗' : '-',
-        ];
-        cells.forEach(txt => {
-          const td = document.createElement('td');
-          td.textContent = txt;
-          tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-      });
+    // 分页处理
+    this._allRecent = recent || [];
+    if (this._pagination) {
+      this._pagination.setTotal(this._allRecent.length);
     }
+    this._renderCurrentPage();
 
     if (by_source && Object.keys(by_source).length > 0) {
-      this._renderSourceChart(by_source);
+      this._lazy.whenVisible(
+        () => {
+          this._renderSourceChart(by_source);
+          this._loadAccuracyTrend();
+        },
+        () => { this.chart?.destroy(); this.chart = null; this._trendChart?.destroy(); this._trendChart = null; }
+      );
     }
+  }
+
+  _renderCurrentPage() {
+    const tbody = document.getElementById('signalBody');
+    if (!tbody) return;
+    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+
+    if (!this._allRecent.length) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 7;
+      td.textContent = '暂无信号记录';
+      td.style.cssText = 'color:var(--text-dim);padding:16px;text-align:center';
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+      return;
+    }
+
+    const start = this._pagination ? this._pagination.startIndex : 0;
+    const end = this._pagination ? this._pagination.endIndex : this._allRecent.length;
+    const page = this._allRecent.slice(start, end);
+
+    page.forEach(s => {
+      const tr = document.createElement('tr');
+      const cells = [
+        s.date || '',
+        s.code || '',
+        s.signal || '',
+        s.confidence != null ? s.confidence.toFixed(2) : '',
+        s.ic_score != null ? s.ic_score.toFixed(3) : '',
+        s.actual_return_5d != null ? (s.actual_return_5d * 100).toFixed(2) + '%' : '-',
+        s.is_correct === true ? '✓' : s.is_correct === false ? '✗' : '-',
+      ];
+      cells.forEach(txt => {
+        const td = document.createElement('td');
+        td.textContent = txt;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
   }
 
   _renderSourceChart(by_source) {
@@ -86,6 +130,58 @@ export class SignalsRenderer {
       },
       options: {
         responsive: true,
+        scales: {
+          y: { beginAtZero: true, max: 100, position: 'left', title: { display: true, text: '准确率(%)' } },
+          y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: '信号数' } },
+        },
+      },
+    });
+  }
+
+  async _loadAccuracyTrend() {
+    try {
+      const data = await apiClient.get('/api/signals/accuracy-trend', { days: 90 });
+      if (data && data.trend) this._renderAccuracyTrendChart(data);
+    } catch (e) {
+      console.error('[Signals] accuracy trend failed:', e);
+    }
+  }
+
+  _renderAccuracyTrendChart(data) {
+    const canvas = document.getElementById('accuracyTrendChart');
+    if (!canvas) return;
+    if (this._trendChart) this._trendChart.destroy();
+
+    this._trendChart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: data.trend.map(t => t.week),
+        datasets: [
+          {
+            label: '准确率(%)',
+            data: data.trend.map(t => (t.accuracy * 100).toFixed(1)),
+            borderColor: '#58A6FF',
+            backgroundColor: 'rgba(88,166,255,0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3,
+          },
+          {
+            label: '信号数',
+            data: data.trend.map(t => t.count),
+            borderColor: '#ffa500',
+            backgroundColor: 'transparent',
+            tension: 0.3,
+            pointRadius: 2,
+            yAxisID: 'y1',
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'top', labels: { font: { size: 11 } } },
+        },
         scales: {
           y: { beginAtZero: true, max: 100, position: 'left', title: { display: true, text: '准确率(%)' } },
           y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: '信号数' } },

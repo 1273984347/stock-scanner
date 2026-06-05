@@ -1,9 +1,15 @@
 import { stateManager } from '../state.js';
 import { apiClient } from '../api.js';
 import { fmtMoney } from './utils.js';
+import { Pagination } from '../utils/pagination.js';
 
 class PositionsRenderer {
-  constructor() { this._unsubscribers = []; this._charts = {}; }
+  constructor() {
+    this._unsubscribers = [];
+    this._charts = {};
+    this._allDetails = [];
+    this._pagination = null;
+  }
   mount() {
     this._unsubscribers.push(stateManager.subscribe('positions', (r) => this.render(r)));
     // 订阅 WebSocket 实时 P&L 更新
@@ -20,6 +26,14 @@ class PositionsRenderer {
         this._showPositionDetail(code);
       }
     });
+    // 初始化分页
+    const paginationContainer = document.getElementById('posPagination');
+    if (paginationContainer) {
+      this._pagination = new Pagination(paginationContainer, {
+        pageSize: 50,
+        onPageChange: () => this._renderCurrentPage(),
+      });
+    }
     this._loadPositionDistribution();
   }
   async _showPositionDetail(code) {
@@ -94,10 +108,36 @@ class PositionsRenderer {
     container.style.display = 'block';
   }
   render(r) {
+    this._allDetails = r?.summary?.details || [];
+    if (this._pagination) {
+      this._pagination.setTotal(this._allDetails.length);
+    }
+    this._renderCurrentPage();
+    const summary = r?.summary || {};
+    document.getElementById('posSummary').textContent =
+      `总持仓: ${summary.total_positions || 0} 只 | 总市值: ${fmtMoney(summary.total_market_value)} | 总盈亏: ${summary.total_pnl != null ? (summary.total_pnl > 0 ? '+' : '') + summary.total_pnl.toFixed(2) : '--'} | 仓位: ${summary.total_weight ? (summary.total_weight * 100).toFixed(1) + '%' : '--'}`;
+  }
+
+  _renderCurrentPage() {
     const body = document.getElementById('posBody');
-    body.innerHTML = '';
-    const details = r?.summary?.details || [];
-    if (!details.length) { body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-dim)">暂无持仓</td></tr>'; return; }
+    while (body.firstChild) body.removeChild(body.firstChild);
+    if (!this._allDetails.length) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 10;
+      td.style.cssText = 'text-align:center;color:var(--text-dim)';
+      td.textContent = '暂无持仓';
+      tr.appendChild(td);
+      body.appendChild(tr);
+      return;
+    }
+    const start = this._pagination ? this._pagination.startIndex : 0;
+    const end = this._pagination ? this._pagination.endIndex : this._allDetails.length;
+    const page = this._allDetails.slice(start, end);
+    this._renderRows(body, page);
+  }
+
+  _renderRows(body, details) {
     details.forEach(d => {
       const pnl = d.pnl || 0;
       const tr = document.createElement('tr');
@@ -150,9 +190,6 @@ class PositionsRenderer {
       tr.appendChild(takeTd);
       body.appendChild(tr);
     });
-    const summary = r?.summary || {};
-    document.getElementById('posSummary').textContent =
-      `总持仓: ${summary.total_positions || 0} 只 | 总市值: ${fmtMoney(summary.total_market_value)} | 总盈亏: ${summary.total_pnl != null ? (summary.total_pnl > 0 ? '+' : '') + summary.total_pnl.toFixed(2) : '--'} | 仓位: ${summary.total_weight ? (summary.total_weight * 100).toFixed(1) + '%' : '--'}`;
   }
   async _loadPositionDistribution() {
     try {

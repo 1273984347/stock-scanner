@@ -1,6 +1,8 @@
 import { stateManager } from '../state.js';
 import { apiClient } from '../api.js';
 import { getThemeColor } from '../theme.js';
+import { LazyChart } from '../utils/lazyChart.js';
+import { exportChartJs, addExportButton, generateFilename } from '../utils/chartExport.js';
 
 /**
  * PortfolioRenderer — 组合优化面板渲染器
@@ -11,11 +13,16 @@ class PortfolioRenderer {
     this._charts = { sector: null, returnVol: null, regime: null };
     this._unsubscribers = [];
     this._regimeLoaded = false;
+    this._lazy = new LazyChart('panel-portfolio');
   }
 
   mount() {
     this._unsubscribers.push(
       stateManager.subscribe('scan.portfolio', (data) => this.render(data))
+    );
+    // 订阅实时 P&L 更新资金曲线
+    this._unsubscribers.push(
+      stateManager.subscribe('position_pnl', (data) => this._updateEquityCurve(data))
     );
     // 事件委托：使用 data 属性而非 inline onclick
     document.getElementById('portfolioBody')?.addEventListener('click', (e) => {
@@ -37,9 +44,18 @@ class PortfolioRenderer {
       return;
     }
     this._renderTable(p.details || []);
-    this._renderSectorChart(p.sector_exposure || {});
-    this._renderReturnVolChart(p);
     this._renderStats(p);
+    // 图表懒加载：只在面板可见时渲染
+    this._lazy.whenVisible(
+      () => {
+        this._renderSectorChart(p.sector_exposure || {});
+        this._renderReturnVolChart(p);
+      },
+      () => {
+        this._charts.sector?.destroy(); this._charts.sector = null;
+        this._charts.returnVol?.destroy(); this._charts.returnVol = null;
+      }
+    );
   }
 
   _renderTable(details) {
@@ -79,7 +95,8 @@ class PortfolioRenderer {
   }
 
   _renderSectorChart(sectors) {
-    const ctx = document.getElementById('sectorChart')?.getContext('2d');
+    const canvas = document.getElementById('sectorChart');
+    const ctx = canvas?.getContext('2d');
     if (!ctx) return;
     this._charts.sector?.destroy();
     const labels = Object.keys(sectors);
@@ -93,6 +110,14 @@ class PortfolioRenderer {
       },
       options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: getThemeColor('--text-sub'), padding: 10, font: { size: 11 } } } } }
     });
+
+    // 添加导出按钮
+    const container = canvas.closest('.portfolio-card');
+    if (container) {
+      addExportButton(container, () => {
+        exportChartJs(this._charts.sector, generateFilename('行业暴露'));
+      }, '导出行业暴露图');
+    }
   }
 
   _renderReturnVolChart(p) {
@@ -132,7 +157,12 @@ class PortfolioRenderer {
     this._regimeLoaded = true;
     try {
       const data = await apiClient.get('/api/regime-history', { days: 60 });
-      if (data && data.regimes) this._renderRegimeTimeline(data.regimes);
+      if (data && data.regimes) {
+        this._lazy.whenVisible(
+          () => this._renderRegimeTimeline(data.regimes),
+          () => { this._charts.regime?.destroy(); this._charts.regime = null; }
+        );
+      }
     } catch (e) {
       console.error('[Portfolio] regime timeline failed:', e);
     }
@@ -195,8 +225,72 @@ class PortfolioRenderer {
     });
   }
 
+  _updateEquityCurve(positionPnl) {
+    if (!positionPnl) return;
+    // 计算总市值
+    let totalValue = 0;
+    Object.values(positionPnl).forEach(p => {
+      totalValue += (p.market_value || 0);
+    });
+    if (totalValue <= 0) return;
+
+    // 追加到历史
+    this._equityHistory = this._equityHistory || [];
+    this._equityHistory.push({ time: Date.now(), value: totalValue });
+    // 保留最近 100 个点
+    if (this._equityHistory.length > 100) {
+      this._equityHistory = this._equityHistory.slice(-100);
+    }
+
+    this._lazy.whenVisible(
+      () => this._renderEquityCurve(),
+      () => { this._charts.equity?.destroy(); this._charts.equity = null; }
+    );
+  }
+
+  _renderEquityCurve() {
+    const canvas = document.getElementById('equityCurveChart');
+    if (!canvas || !this._equityHistory?.length) return;
+    if (this._charts.equity) this._charts.equity.destroy();
+
+    const labels = this._equityHistory.map((h, i) => i);
+    const values = this._equityHistory.map(h => h.value);
+
+    this._charts.equity = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: '总市值',
+          data: values,
+          borderColor: '#58A6FF',
+          backgroundColor: 'rgba(88,166,255,0.1)',
+          fill: true,
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.3,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: {
+            ticks: {
+              color: getThemeColor('--text-sub'),
+              callback: v => (v / 10000).toFixed(0) + '万',
+            },
+            grid: { color: getThemeColor('--border') },
+          },
+        },
+      },
+    });
+  }
+
   unmount() {
     this._unsubscribers.forEach(unsub => unsub());
+    this._lazy.destroy();
     Object.values(this._charts).forEach(c => c?.destroy());
   }
 }

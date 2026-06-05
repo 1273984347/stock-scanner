@@ -25,6 +25,7 @@ class RiskRenderer {
       stateManager.subscribe('risk', (r) => this.render(r))
     );
     this._loadRiskExposure();
+    this._loadCorrelationMatrix();
   }
 
   render(r) {
@@ -189,8 +190,89 @@ class RiskRenderer {
     container.style.display = 'block';
   }
 
+  async _loadCorrelationMatrix() {
+    try {
+      const data = await apiClient.get('/api/risk/correlation');
+      if (data && data.codes && data.matrix) this._renderCorrelationHeatmap(data);
+    } catch (e) {
+      console.error('[Risk] correlation load failed:', e);
+    }
+  }
+
+  _renderCorrelationHeatmap(data) {
+    const canvas = document.getElementById('correlationHeatmap');
+    if (!canvas) return;
+    if (this._corrChart) this._corrChart.destroy();
+
+    const { codes, matrix } = data;
+    if (codes.length < 2) return;
+
+    // 构建热力图数据（Chart.js 矩阵图）
+    const points = [];
+    for (let i = 0; i < codes.length; i++) {
+      for (let j = 0; j < codes.length; j++) {
+        points.push({ x: j, y: i, v: matrix[i][j] });
+      }
+    }
+
+    // 使用气泡图模拟热力图
+    const colors = points.map(p => {
+      const v = p.v;
+      if (v > 0.5) return 'rgba(220,80,80,0.8)';
+      if (v > 0.3) return 'rgba(255,165,0,0.6)';
+      if (v > -0.1) return 'rgba(128,128,128,0.3)';
+      return 'rgba(80,200,120,0.6)';
+    });
+
+    this._corrChart = new Chart(canvas.getContext('2d'), {
+      type: 'bubble',
+      data: {
+        datasets: [{
+          data: points.map(p => ({ x: p.x, y: p.y, r: Math.abs(p.v) * 15 + 3 })),
+          backgroundColor: colors,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const p = points[ctx.dataIndex];
+                return `${codes[p.y]} vs ${codes[p.x]}: ${p.v.toFixed(3)}`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            type: 'linear',
+            min: -0.5,
+            max: codes.length - 0.5,
+            ticks: {
+              stepSize: 1,
+              callback: (v) => codes[v] || '',
+            },
+          },
+          y: {
+            type: 'linear',
+            min: -0.5,
+            max: codes.length - 0.5,
+            ticks: {
+              stepSize: 1,
+              callback: (v) => codes[v] || '',
+            },
+            reverse: true,
+          },
+        },
+      },
+    });
+  }
+
   unmount() {
     this._unsubscribers.forEach(unsub => unsub());
+    this._corrChart?.destroy();
   }
 }
 

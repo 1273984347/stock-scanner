@@ -6,6 +6,7 @@ import { getThemeColor } from '/js/theme.js';
 import { initNotifications } from '/js/notifications.js';
 import { initErrorTracker } from '/js/error_tracker.js';
 import { Onboarding } from '/js/onboarding.js';
+import { i18n } from '/js/i18n.js';
 import { MetricsRenderer } from '/js/renderers/metrics.js';
 import { PortfolioRenderer } from '/js/renderers/portfolio.js';
 import { ScannerRenderer } from '/js/renderers/scanner.js';
@@ -18,10 +19,14 @@ import { EvalRenderer } from '/js/renderers/eval.js';
 import { SignalsRenderer } from '/js/renderers/signals.js';
 import { TradesRenderer } from '/js/renderers/trades.js';
 import { SettingsRenderer } from '/js/renderers/settings.js';
+import { StrategyCompareRenderer } from '/js/renderers/strategy-compare.js';
 import { AppLayout } from '/js/layouts/AppLayout.js';
 import { Sidebar } from '/js/components/Sidebar.js';
 import { Toolbar } from '/js/components/Toolbar.js';
 import { StatusBar } from '/js/components/StatusBar.js';
+import { SearchBar } from '/js/components/SearchBar.js';
+import { multiWindowManager } from '/js/components/MultiWindow.js';
+import { helpCenter } from '/js/components/HelpCenter.js';
 
 const renderers = {};
 
@@ -145,20 +150,31 @@ function updateWsIndicator(status) {
 async function init() {
   console.log('[App] 初始化...');
 
+  // 加载翻译
+  await i18n.loadTranslations();
+
   // Initialize new TradingView-style layout
   const app = document.getElementById('app') || document.body;
   const layout = new AppLayout(app);
 
   // Panel switching function
   function switchPanel(panelId) {
-    document.querySelectorAll('.panels-container .panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.panels-container .panel').forEach(p => {
+      p.classList.remove('active');
+      p.setAttribute('aria-hidden', 'true');
+    });
     const panel = document.getElementById('panel-' + panelId);
-    if (panel) panel.classList.add('active');
+    if (panel) {
+      panel.classList.add('active');
+      panel.setAttribute('aria-hidden', 'false');
+    }
     // Sidebar handles its own active state via render() in bindEvents
     // Lazy-load data for panels that need it
     if (panelId === 'reports') loadReportsTab();
     if (panelId === 'trades') renderers.trades?.fetch();
     if (panelId === 'signals') renderers.signals?.fetch();
+    // 触发面板可见性变化（用于图表懒加载）
+    document.dispatchEvent(new CustomEvent('panelchange', { detail: { panelId } }));
   }
 
   const sidebar = new Sidebar(document.getElementById('sidebar'), switchPanel);
@@ -168,9 +184,47 @@ async function init() {
   });
   const statusbar = new StatusBar(document.getElementById('statusbar'));
 
+  // 初始化面板容器 ARIA 属性
+  document.querySelectorAll('.panels-container .panel').forEach(p => {
+    p.setAttribute('role', 'tabpanel');
+    p.setAttribute('aria-hidden', p.classList.contains('active') ? 'false' : 'true');
+  });
+  // 为主内容区域添加 id（Skip link 目标）
+  const contentArea = document.querySelector('.content-area');
+  if (contentArea) {
+    contentArea.id = 'main-content';
+    contentArea.setAttribute('role', 'main');
+  }
+
+  // 为所有表格表头添加 scope 属性
+  document.querySelectorAll('table thead th').forEach(th => {
+    th.setAttribute('scope', 'col');
+  });
+
+  // 为所有 canvas 图表添加 role="img" 和 aria-label
+  document.querySelectorAll('canvas').forEach(canvas => {
+    canvas.setAttribute('role', 'img');
+    const label = canvas.closest('.portfolio-card')?.querySelector('.metric-label')?.textContent || '图表';
+    canvas.setAttribute('aria-label', label);
+  });
+
+  // 为动态内容区域添加 aria-live
+  const liveRegions = ['sentiment', 'macroState', 'exposure', 'sharpe', 'nPositions', 'totalCand'];
+  liveRegions.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.setAttribute('aria-live', 'polite');
+  });
+
+  // 为状态栏添加 aria-live
+  const statusbarEl = document.getElementById('statusbar');
+  if (statusbarEl) statusbarEl.setAttribute('aria-live', 'polite');
+
   initErrorTracker();
   initTheme();
   renderWatchlist();
+
+  // 全局搜索
+  const searchBar = new SearchBar();
 
   renderers.metrics = new MetricsRenderer();
   renderers.portfolio = new PortfolioRenderer();
@@ -184,6 +238,7 @@ async function init() {
   renderers.signals = new SignalsRenderer();
   renderers.trades = new TradesRenderer();
   renderers.settings = new SettingsRenderer();
+  renderers.strategy = new StrategyCompareRenderer();
 
   Object.values(renderers).forEach(r => r.mount?.());
   renderers.backtest.init();
@@ -393,6 +448,7 @@ async function loadReportsTab() {
 window.openStockDetail = async function(code, name) {
   const modal = document.getElementById('stockModal');
   modal.classList.add('active');
+  modal.setAttribute('aria-hidden', 'false');
   const titleEl = document.getElementById('stockModalTitle');
   titleEl.textContent = name ? name + ' (' + code + ')' : code;
 
@@ -404,6 +460,21 @@ window.openStockDetail = async function(code, name) {
     wlBtn.style.cssText = 'margin-left:8px;font-size:12px;padding:4px 10px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;vertical-align:middle';
     titleEl.parentNode.insertBefore(wlBtn, titleEl.nextSibling);
   }
+
+  // Open in new window button
+  let newWinBtn = document.getElementById('stockModalNewWindowBtn');
+  if (!newWinBtn) {
+    newWinBtn = document.createElement('button');
+    newWinBtn.id = 'stockModalNewWindowBtn';
+    newWinBtn.style.cssText = 'margin-left:4px;font-size:12px;padding:4px 10px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;vertical-align:middle';
+    newWinBtn.title = '在新窗口打开';
+    newWinBtn.setAttribute('aria-label', '在新窗口打开');
+    titleEl.parentNode.insertBefore(newWinBtn, wlBtn.nextSibling);
+  }
+  newWinBtn.textContent = '⧉ 新窗口';
+  newWinBtn.onclick = () => {
+    multiWindowManager.open(code, name, { score: null, stock: null });
+  };
   const inList = isInWatchlist(code);
   wlBtn.textContent = inList ? '★ 已关注' : '☆ 加入观察';
   wlBtn.style.borderColor = inList ? 'var(--accent)' : 'var(--border)';
@@ -707,14 +778,32 @@ window.openAuditDetail = async function(id) {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+  // 初始化模态框 ARIA 属性
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-hidden', 'true');
+    const title = overlay.querySelector('h3');
+    if (title) {
+      title.id = title.id || overlay.id + 'Title';
+      overlay.setAttribute('aria-labelledby', title.id);
+    }
+  });
+
   document.querySelectorAll('.modal-close').forEach(btn => {
+    btn.setAttribute('aria-label', '关闭');
     btn.addEventListener('click', () => {
-      btn.closest('.modal-overlay')?.classList.remove('active');
+      const overlay = btn.closest('.modal-overlay');
+      overlay?.classList.remove('active');
+      overlay?.setAttribute('aria-hidden', 'true');
     });
   });
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) overlay.classList.remove('active');
+      if (e.target === overlay) {
+        overlay.classList.remove('active');
+        overlay.setAttribute('aria-hidden', 'true');
+      }
     });
   });
   init();

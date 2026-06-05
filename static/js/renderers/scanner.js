@@ -2,6 +2,8 @@ import { stateManager } from '../state.js';
 import { apiClient } from '../api.js';
 import { ChartPanel } from '../components/ChartPanel.js';
 import { getThemeColor } from '../theme.js';
+import { LazyChart } from '../utils/lazyChart.js';
+import { animateNumber, animateStagger, getAnimationDuration } from '../utils/animation.js';
 
 /**
  * ScannerRenderer — 选股结果面板渲染器
@@ -18,6 +20,7 @@ class ScannerRenderer {
     this._chartPanel = null;
     this._currentKlineCode = '';
     this._unsubscribers = [];
+    this._lazy = new LazyChart('panel-scanner');
   }
 
   mount() {
@@ -78,7 +81,12 @@ class ScannerRenderer {
   async _loadSectorHeatmap() {
     try {
       const data = await apiClient.get('/api/sector-heatmap', { top_n: 50 });
-      if (data && data.sectors) this._renderSectorHeatmap(data.sectors);
+      if (data && data.sectors) {
+        this._lazy.whenVisible(
+          () => this._renderSectorHeatmap(data.sectors),
+          () => { this._heatmapChart?.destroy(); this._heatmapChart = null; }
+        );
+      }
     } catch (e) {
       console.error('[Scanner] sector heatmap failed:', e);
     }
@@ -91,6 +99,13 @@ class ScannerRenderer {
 
     // Sort by score descending, take top 30
     const sorted = sectors.sort((a, b) => b.score - a.score).slice(0, 30);
+
+    // 记录旧分数用于动画
+    const oldScores = this._sectorScores || {};
+    this._sectorScores = {};
+    sorted.forEach(s => {
+      this._sectorScores[s.name] = s.score;
+    });
 
     const colors = sorted.map(s => {
       if (s.score >= 70) return 'rgba(63, 185, 80, 0.8)';
@@ -113,17 +128,33 @@ class ScannerRenderer {
       options: {
         indexAxis: 'y',
         responsive: true,
+        animation: {
+          duration: getAnimationDuration(500),
+          easing: 'easeOutCubic',
+          // 数值变化动画
+          numbers: { type: 'number', duration: 500, easing: 'easeOutCubic' },
+        },
+        transitions: {
+          active: {
+            animation: {
+              duration: getAnimationDuration(200)
+            }
+          }
+        },
         plugins: {
           legend: { display: false },
           tooltip: {
             callbacks: {
               afterLabel: ctx => {
                 const s = sorted[ctx.dataIndex];
+                const oldScore = oldScores[s.name];
+                const change = oldScore ? (s.score - oldScore).toFixed(1) : '0.0';
                 return [
                   `涨跌: ${s.return_pct?.toFixed(2)}%`,
                   `量比: ${s.volume_ratio?.toFixed(2)}`,
                   `涨停: ${s.limit_up_count}`,
                   `龙头: ${s.leader_code} (${s.leader_return?.toFixed(2)}%)`,
+                  `变化: ${change > 0 ? '+' : ''}${change}`
                 ].join(' | ');
               },
             },
@@ -237,8 +268,17 @@ class ScannerRenderer {
   }
 
   _renderCharts(data, name) {
-    this._renderSignalChart(data);
-    this._renderFactorChart(data);
+    // 图表懒加载：只在面板可见时渲染
+    this._lazy.whenVisible(
+      () => {
+        this._renderSignalChart(data);
+        this._renderFactorChart(data);
+      },
+      () => {
+        this._signalChart?.destroy(); this._signalChart = null;
+        this._factorChart?.destroy(); this._factorChart = null;
+      }
+    );
   }
 
   _renderSignalChart(data) {
