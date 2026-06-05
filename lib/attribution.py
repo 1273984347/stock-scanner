@@ -67,11 +67,13 @@ class PortfolioAttribution:
             portfolio, market_data
         )
 
-        # 分解收益
+        # 分解收益（P1-8 修复 2026-06-06：Brinson 4 维加和闭合）
+        # 旧版：factor_return = total - factor_contribution（错误，应是 total - 其他三维）
+        # 新版：factor_return = total - (market + sector + stock)，保证 4 维加和 = total
         market_contribution = market_return
         sector_return = sector_contribution - market_return
         stock_return = stock_contribution - sector_contribution
-        factor_return = total_return - factor_contribution
+        factor_return = total_return - market_return - sector_return - stock_return
 
         return AttributionResult(
             total_return=total_return,
