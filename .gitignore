@@ -10,3 +10,13 @@ cache/
 test-results/
 playwright-report/
 dist/
+
+# Vendor（不应入库）
+node_modules/
+
+# 运行时日志（每日 paper trading / TDX 更新 / 跟踪）
+logs/
+
+# Skill 自迭代产物（eval-N, run_loop — 不是源代码）
+.claude/skills/*/iteration-*/
+.claude/skills/*/run_loop/
