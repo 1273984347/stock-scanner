@@ -46,10 +46,12 @@ def _rate_limited():
 
 def _secid(code: str) -> str:
     """股票代码转 EastMoney secid"""
-    if code.startswith(("6", "5", "9")):
-        return f"1.{code}"   # 1=上海
-    else:
-        return f"0.{code}"   # 0=深圳
+    # 用 helper 替代手写市场判断（修复 bj 静默丢失）
+    from lib.market_utils import detect_market
+    market = detect_market(code)
+    # eastmoney secid: 1=沪, 0=深, 北证按 0 处理（eastmoney API 限制）
+    market_id = "1" if market == "sh" else "0"
+    return f"{market_id}.{code}"
 
 
 def _to_float(v) -> Optional[float]:

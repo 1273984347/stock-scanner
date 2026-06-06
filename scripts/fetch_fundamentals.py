@@ -245,11 +245,14 @@ def fetch_pe_pb_baostock(code: str, timeout: int = 10) -> dict:
     def _fetch() -> dict:
         bs_lib = _get_baostock()
 
-        # 转换代码格式: 000001 -> sz.000001, 600519 -> sh.600519
-        if code.startswith(("6", "9")):
-            bs_code = "sh." + code
-        else:
-            bs_code = "sz." + code
+        # 转换代码格式: 000001 -> sz.000001, 600519 -> sh.600519, 430017 -> bj.430017
+        # 用 helper 替代手写市场判断（修复 bj 静默丢失）
+        from lib.market_utils import detect_market
+        market = detect_market(code)
+        if market == "unknown":
+            return {}
+        bs_prefix = {"sh": "sh.", "sz": "sz.", "bj": "bj."}[market]
+        bs_code = bs_prefix + code
 
         result = {}
 
@@ -313,11 +316,12 @@ def fetch_financial_indicators(code: str, timeout: int = 20) -> dict:
     ak = _get_akshare()
 
     # 同花顺代码格式转换（股票列表返回的是纯代码如 000001）
+    # 用 helper 替代手写市场判断（修复 bj 静默丢失）
     ths_code = code
-    if code.startswith("6") or code.startswith("9"):
-        ths_code = "sh" + code
-    elif code.startswith(("0", "3", "2")):
-        ths_code = "sz" + code
+    from lib.market_utils import detect_market
+    market = detect_market(code)
+    if market in ("sh", "sz", "bj"):
+        ths_code = market + code
 
     def _fetch():
         try:

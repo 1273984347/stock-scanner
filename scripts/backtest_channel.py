@@ -89,16 +89,15 @@ def load_kline(code: str, days: int = 1000) -> pd.DataFrame:
 
     original_code = code
     code = code.strip()
-    if code.startswith(("sh", "sz", "SH", "SZ")):
+    if code.startswith(("sh", "sz", "bj", "SH", "SZ", "BJ")):
         market_str = code[:2].lower()
         code = code[2:].zfill(6)
     else:
         code = code.zfill(6)
-        if code.startswith(("6", "5", "9")):
-            market_str = "sh"
-        elif code.startswith(("0", "3", "2", "4", "8")):
-            market_str = "sz"
-        else:
+        # 用 helper 替代手写市场判断（修复 bj 静默丢失）
+        from lib.market_utils import detect_market
+        market_str = detect_market(code)
+        if market_str == "unknown":
             return pd.DataFrame()
 
     tdx_path = ARGS.tdx_path or "D:/TDX/vipdoc"

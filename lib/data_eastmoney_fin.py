@@ -39,9 +39,15 @@ def _to_float(v) -> Optional[float]:
 
 def _fetch_em_financial(code: str) -> Optional[Dict]:
     """从东方财富获取财务报表数据（最新一期）"""
-    # 转换代码格式: 600519 -> SH600519
-    prefix = "SH" if code.startswith(("6", "9")) else ("SZ" if code.startswith(("0", "3", "2")) else code)
-    bs_code = prefix + code if not code.startswith(("SH", "SZ")) else code
+    # 转换代码格式: 600519 -> SH600519, 430017 -> BJ430017
+    # 用 helper 替代手写市场判断（修复 bj 静默丢失）
+    from lib.market_utils import detect_market
+    market = detect_market(code)
+    if market == "unknown":
+        return None
+    # eastmoney API 用 SH/SZ/BJ 前缀
+    em_prefix = {"sh": "SH", "sz": "SZ", "bj": "BJ"}[market]
+    bs_code = em_prefix + code if not code.startswith(("SH", "SZ", "BJ")) else code
 
     def _fetch() -> Dict:
         resp = requests.get(
