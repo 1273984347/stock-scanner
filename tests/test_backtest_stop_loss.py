@@ -44,7 +44,7 @@ def test_initial_position_triggers_hard_stop_loss_on_day1():
     df_stock = _make_kline(base_date, n=35, start_price=100.0, slope=0.0)
     df_stock.loc[0, "close"] = 89.0  # -11% loss triggers 10% hard stop
 
-    with patch("backtest.get_stock_data") as mock_get:
+    with patch("backtest.core.get_stock_data") as mock_get:
         mock_get.return_value = df_stock
 
         result = run_factor_backtest(
@@ -75,7 +75,7 @@ def test_position_hard_stop_loss_during_holding():
         df_stock.loc[i, "close"] = 99.0  # days 1-3: stable at 99
     df_stock.loc[3, "close"] = 89.0  # day 4: -10.1% triggers 10% hard stop
 
-    with patch("backtest.get_stock_data") as mock_get:
+    with patch("backtest.core.get_stock_data") as mock_get:
         mock_get.return_value = df_stock
 
         result = run_factor_backtest(
@@ -101,7 +101,7 @@ def test_no_stop_loss_when_price_rises():
     base_date = datetime(2024, 1, 1)
     df_stock = _make_kline(base_date, n=35, start_price=100.0, slope=0.2)
 
-    with patch("backtest.get_stock_data") as mock_get:
+    with patch("backtest.core.get_stock_data") as mock_get:
         mock_get.return_value = df_stock
 
         result = run_factor_backtest(
@@ -123,7 +123,7 @@ def test_empty_initial_positions_does_not_break():
     base_date = datetime(2024, 1, 1)
     df_stock = _make_kline(base_date, n=35, start_price=100.0, slope=0.0)
 
-    with patch("backtest.get_stock_data") as mock_get:
+    with patch("backtest.core.get_stock_data") as mock_get:
         mock_get.return_value = df_stock
 
         result = run_factor_backtest(
