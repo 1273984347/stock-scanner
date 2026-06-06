@@ -61,7 +61,7 @@ def test_run_backtest_metrics_include_risk_fields():
     hs300 = _make_hs300_df(n=100)
 
     with patch("backtest.engine.get_stock_hist_multi_source") as mock_get, \
-         patch("backtest.engine.get_index_hist") as mock_idx:
+         patch("lib.data_layer.get_index_hist") as mock_idx:
         mock_get.return_value = df_with_ind
         mock_idx.return_value = hs300
         config = BacktestConfig(
@@ -100,7 +100,7 @@ def test_run_backtest_risk_manager_is_invoked():
     hs300 = _make_hs300_df(n=100)
 
     with patch("backtest.engine.get_stock_hist_multi_source") as mock_get, \
-         patch("backtest.engine.get_index_hist") as mock_idx:
+         patch("lib.data_layer.get_index_hist") as mock_idx:
         mock_get.return_value = df_with_ind
         mock_idx.return_value = hs300
 
@@ -140,7 +140,7 @@ def test_run_backtest_consecutive_loss_triggers_alert():
     hs300 = _make_hs300_df(n=100)
 
     with patch("backtest.engine.get_stock_hist_multi_source") as mock_get, \
-         patch("backtest.engine.get_index_hist") as mock_idx:
+         patch("lib.data_layer.get_index_hist") as mock_idx:
         mock_get.return_value = df_with_ind
         mock_idx.return_value = hs300
         config = BacktestConfig(
@@ -176,7 +176,7 @@ def test_survivorship_bias_factor_in_metrics():
     hs300 = _make_hs300_df(n=100)
 
     with patch("backtest.engine.get_stock_hist_multi_source") as mock_get, \
-         patch("backtest.engine.get_index_hist") as mock_idx:
+         patch("lib.data_layer.get_index_hist") as mock_idx:
         mock_get.return_value = df_with_ind
         mock_idx.return_value = hs300
         config = BacktestConfig(
