@@ -106,9 +106,11 @@ def get_delisted_stock_hist(symbol: str, days: int = 500) -> Optional[pd.DataFra
     from pathlib import Path
 
     # 1. 优先使用 TDX 本地数据（最可靠，无网络依赖）
+    # bj 退市股加入字典（修复 bj 静默丢失）
     tdx_paths = {
         "sh": Path("D:/TDX/vipdoc/sh/lday_4/"),  # 前复权数据
         "sz": Path("D:/TDX/vipdoc/sz/lday_4/"),
+        "bj": Path("D:/TDX/vipdoc/bj/lday/"),   # bj 无前复权，用 lday fallback
     }
     for market, base_path in tdx_paths.items():
         fpath = base_path / f"{market}{symbol}.day"

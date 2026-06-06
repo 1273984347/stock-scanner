@@ -42,33 +42,9 @@ class SectorScoreDetail:
 
 
 def _read_tdx_day(code: str, days: int = 60) -> Optional[pd.DataFrame]:
-    """读取 TDX 日线数据"""
-    import struct
-    market = "sh" if code.startswith(("6", "9")) else "sz"
-    fpath = Path(TDX_DATA_PATH) / market / "lday_4" / f"{market}{code}.day"
-    if not fpath.exists():
-        return None
-    try:
-        with open(fpath, "rb") as f:
-            f.seek(0, 2)
-            n = f.tell() // 32
-            if n < days:
-                return None
-            f.seek(-(days * 32), 2)
-            raw = f.read(days * 32)
-        records = []
-        for i in range(0, len(raw), 32):
-            date_int, open_p, high_p, low_p, close_p, amount, volume, _ = \
-                struct.unpack_from("<IiiiiiII", raw, i)
-            records.append({
-                "date": str(date_int),
-                "open": open_p / 100.0, "high": high_p / 100.0,
-                "low": low_p / 100.0, "close": close_p / 100.0,
-                "amount": amount, "volume": volume,
-            })
-        return pd.DataFrame(records)
-    except Exception:
-        return None
+    """读取 TDX 日线数据 — 委托给 lib.market_utils.read_tdx_day_ohlcv"""
+    from lib.market_utils import read_tdx_day_ohlcv
+    return read_tdx_day_ohlcv(code, days=days)
 
 
 def _score_return(avg_ret: float, all_returns: List[float]) -> float:

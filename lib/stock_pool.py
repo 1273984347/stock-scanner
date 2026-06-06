@@ -15,6 +15,7 @@
 """
 
 import logging
+import os
 import struct
 from pathlib import Path
 from typing import Dict, List, Set, Optional
@@ -23,7 +24,8 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-TDX_DATA_PATH = Path("D:/TDX/vipdoc")
+# 统一从 env 读取（之前硬编码，跨平台不可移植）
+TDX_DATA_PATH = Path(os.environ.get("TDX_DATA_PATH", "D:/TDX/vipdoc"))
 
 
 @dataclass
@@ -107,14 +109,19 @@ class StockPoolBuilder:
     def _find_breakout_20d(self) -> List[str]:
         """突破20日新高策略"""
         results = []
-        for market_dir in ["sh", "sz"]:
+        # 加入 bj（修复 bj 静默丢失）
+        for market_dir in ["sh", "sz", "bj"]:
             lday_dir = TDX_DATA_PATH / market_dir / "lday_4"
             if not lday_dir.exists():
-                continue
+                # bj 无 lday_4，fallback 到 lday
+                lday_dir = TDX_DATA_PATH / market_dir / "lday"
+                if not lday_dir.exists():
+                    continue
 
             for fpath in list(lday_dir.glob("*.day"))[:5000]:  # 限制扫描数
-                code = fpath.stem[2:]  # remove "sh"/"sz" prefix
-                if not code.startswith(("0", "3", "6")):
+                code = fpath.stem[2:]  # remove "sh"/"sz"/"bj" prefix
+                # 包含 "9" 是为了 92xxxx 北证原代码（修复 bj 920000 漏过滤）
+                if not code.startswith(("0", "3", "4", "6", "8", "9")):
                     continue
 
                 try:
@@ -196,14 +203,17 @@ class StockPoolBuilder:
             from lib.data_layer import get_stock_valuation, get_dividend_amount
 
             # 扫描本地 TDX 数据
-            for market_dir in ["sh", "sz"]:
+            for market_dir in ["sh", "sz", "bj"]:
                 lday_dir = TDX_DATA_PATH / market_dir / "lday_4"
                 if not lday_dir.exists():
-                    continue
+                    lday_dir = TDX_DATA_PATH / market_dir / "lday"
+                    if not lday_dir.exists():
+                        continue
 
                 for fpath in list(lday_dir.glob("*.day"))[:3000]:
                     code = fpath.stem[2:]
-                    if not code.startswith(("0", "3", "6")):
+                    # 包含 "9" 是为了 92xxxx 北证原代码（修复 bj 920000 漏过滤）
+                    if not code.startswith(("0", "3", "4", "6", "8", "9")):
                         continue
 
                     try:

@@ -12,6 +12,7 @@
 import struct
 import mmap
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,9 +20,12 @@ from functools import lru_cache
 import numpy as np
 import threading
 
+from lib.market_utils import get_tdx_path
+
 logger = logging.getLogger(__name__)
 
-TDX_DATA_PATH = Path("D:/TDX/vipdoc")
+# 统一从 config 读取（单一真相源），不再硬编码
+TDX_DATA_PATH = Path(os.environ.get("TDX_DATA_PATH", "D:/TDX/vipdoc"))
 
 # 全局缓存
 _closes_cache: Dict[str, np.ndarray] = {}
@@ -107,8 +111,10 @@ def batch_read_closes(codes: List[str], days: int = 60, max_workers: int = 8) ->
 
     # 并行读取
     def _fetch_one(code: str) -> Tuple[str, Optional[np.ndarray]]:
-        market = "sh" if code.startswith(("6", "9")) else "sz"
-        fpath = TDX_DATA_PATH / market / "lday_4" / f"{market}{code}.day"
+        # 用 helper 替代手写市场判断 + lday_4 硬编码（修复 bj 静默丢失）
+        fpath = get_tdx_path(code, prefer_qfq=True)
+        if fpath is None:
+            return code, None
         closes = _read_closes_only(fpath, days)
         return code, closes
 
@@ -144,8 +150,9 @@ def batch_read_day_files(codes: List[str], days: int = 60, max_workers: int = 8)
     result = {}
 
     def _fetch_one(code: str) -> Tuple[str, Optional[List[Dict]]]:
-        market = "sh" if code.startswith(("6", "9")) else "sz"
-        fpath = TDX_DATA_PATH / market / "lday_4" / f"{market}{code}.day"
+        fpath = get_tdx_path(code, prefer_qfq=True)
+        if fpath is None:
+            return code, None
         records = _read_day_file_raw(fpath, days)
         return code, records
 

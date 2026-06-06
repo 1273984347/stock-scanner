@@ -22,8 +22,8 @@ DATA_SOURCE_PRIORITY_ADJUSTED = ["tdx_local_qfq", "baostock", "akshare", "tdx_lo
 
 
 def _is_bj_stock(code: str) -> bool:
-    """判断是否为北交所股票（8开头）"""
-    return code.startswith("8")
+    """判断是否为北交所股票（4/8 开头：43/83/87/88/92）"""
+    return code.startswith(("4", "8"))
 
 
 # 每个数据源独立的熔断器

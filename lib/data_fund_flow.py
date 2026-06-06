@@ -95,7 +95,11 @@ def get_fund_flow_estimate(code: str) -> dict:
     # 3. akshare 兜底
     try:
         import akshare as ak
-        market = "sh" if code.startswith(("6", "5", "9")) else "sz"
+        from lib.market_utils import detect_market
+        market = detect_market(code)
+        if market in ("unknown", "bj"):
+            # akshare 不支持 bj 股票和无效代码
+            return None
         df = ak.stock_individual_fund_flow(stock=code, market=market)
         if df is not None and not df.empty:
             # akshare 列名：主力净流入-净额, 主力净流入-净占比

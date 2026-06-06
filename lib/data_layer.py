@@ -276,11 +276,10 @@ def _fetch_from_tdx_local(code: str, days: int) -> pd.DataFrame:
         return pd.DataFrame()
 
     code = code.strip().zfill(6)
-    if code.startswith(("6", "5", "9")):
-        market_str = "sh"
-    elif code.startswith(("0", "3", "2", "4", "8")):
-        market_str = "sz"
-    else:
+    # 用 helper 替代手写市场判断（修复 bj 静默丢失：旧代码 ("0","3","2","4","8") 把 4/8 开头都归 sz）
+    from lib.market_utils import detect_market
+    market_str = detect_market(code)
+    if market_str == "unknown":
         return pd.DataFrame()
 
     tdx_path = os.environ.get("TDX_DATA_PATH", "D:/TDX/vipdoc")

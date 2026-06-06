@@ -241,7 +241,15 @@ def get_kline(code: str, days: int = 180, period: str = "daily") -> pd.DataFrame
     logger.debug(f"TDX 网络+本地均失败，fallback 到 akshare 获取 {code}")
     try:
         import akshare as ak
-        symbol = code if code.startswith(("sh", "sz")) else (("sh" if code.startswith(("6", "5", "9")) else "sz") + code)
+        from lib.market_utils import detect_market
+        market = detect_market(code)
+        if market == "unknown":
+            return pd.DataFrame()
+        # akshare 不支持 bj 行情 → 跳过避免 silent wrong 数据
+        if market == "bj":
+            logger.debug(f"akshare 不支持 bj 股票 {code}，返回空")
+            return pd.DataFrame()
+        symbol = code if code.startswith(("sh", "sz")) else (market + code)
         df_ak = ak.stock_zh_a_hist(symbol=symbol, period="daily", adjust="qfq")
         if df_ak is not None and not df_ak.empty:
             df_ak = df_ak.rename(columns={

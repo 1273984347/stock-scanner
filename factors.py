@@ -981,8 +981,8 @@ def get_northbound_top_stocks(top_n: int = 20, days: int = 20) -> List[Dict]:
     """
     import struct
     from pathlib import Path
+    from config import TDX_DATA_PATH  # 单一真相源
 
-    TDX_DATA_PATH = "D:/TDX/vipdoc"
     results = []
 
     for market in ["sh", "sz", "bj"]:
@@ -1090,27 +1090,14 @@ def get_sector_performance(top_n: int = 10, days: int = 20) -> List[Dict]:
 
         returns = []
         for code in stock_codes[:50]:  # sample up to 50 stocks per block
-            market = "sh" if code.startswith(("6", "9")) else "sz"
-            fpath = Path(TDX_DATA_PATH) / market / "lday_4" / f"{market}{code}.day"
-            if not fpath.exists():
+            from lib.market_utils import read_tdx_day_ohlcv
+            df = read_tdx_day_ohlcv(code, days=days)
+            if df is None or len(df) < 2:
                 continue
-            try:
-                with open(fpath, "rb") as f:
-                    f.seek(0, 2)
-                    n = f.tell() // 32
-                    if n < days:
-                        continue
-                    f.seek(-(days * 32), 2)
-                    raw = f.read(days * 32)
-                closes = []
-                for i in range(0, len(raw), 32):
-                    _, _, _, _, c, _, _, _ = struct.unpack_from("<IiiiiiII", raw, i)
-                    closes.append(c)
-                if len(closes) >= 2 and closes[0] != 0:
-                    ret = (closes[-1] / closes[0] - 1) * 100
-                    returns.append(ret)
-            except Exception:
-                continue
+            closes = df["close"].values
+            if closes[0] != 0:
+                ret = (closes[-1] / closes[0] - 1) * 100
+                returns.append(ret)
 
         if not returns:
             continue
