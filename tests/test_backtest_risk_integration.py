@@ -37,6 +37,20 @@ def _make_stock_df(n=100, start_price=100.0):
     })
 
 
+def _make_hs300_df(n=100, start_price=4000.0):
+    """构造 HS300 指数数据（满足 backtest/engine.py 677 行对 close 列的需求）"""
+    dates = pd.date_range(start="2024-01-01", periods=n, freq="B")
+    closes = [start_price + i * 10.0 for i in range(n)]  # 单调递增
+    return pd.DataFrame({
+        "date": dates,
+        "open": [c * 0.99 for c in closes],
+        "high": [c * 1.01 for c in closes],
+        "low": [c * 0.98 for c in closes],
+        "close": closes,
+        "volume": [1e7] * n,
+    })
+
+
 def test_run_backtest_metrics_include_risk_fields():
     """P0-1: run_backtest 的 metrics 包含 risk_alerts_count / risk_actions_count"""
     from backtest.engine import run_backtest, BacktestConfig
@@ -44,9 +58,12 @@ def test_run_backtest_metrics_include_risk_fields():
 
     df = _make_stock_df(n=100, start_price=100.0)
     df_with_ind = add_indicators(df)
+    hs300 = _make_hs300_df(n=100)
 
-    with patch("backtest.engine.get_stock_hist_multi_source") as mock_get:
+    with patch("backtest.engine.get_stock_hist_multi_source") as mock_get, \
+         patch("backtest.engine.get_index_hist") as mock_idx:
         mock_get.return_value = df_with_ind
+        mock_idx.return_value = hs300
         config = BacktestConfig(
             sector_filter_top_n=0,
             relative_strength_threshold=0.0,
@@ -80,9 +97,12 @@ def test_run_backtest_risk_manager_is_invoked():
 
     df = _make_stock_df(n=100, start_price=100.0)
     df_with_ind = add_indicators(df)
+    hs300 = _make_hs300_df(n=100)
 
-    with patch("backtest.engine.get_stock_hist_multi_source") as mock_get:
+    with patch("backtest.engine.get_stock_hist_multi_source") as mock_get, \
+         patch("backtest.engine.get_index_hist") as mock_idx:
         mock_get.return_value = df_with_ind
+        mock_idx.return_value = hs300
 
         config = BacktestConfig(
             sector_filter_top_n=0,
@@ -117,9 +137,12 @@ def test_run_backtest_consecutive_loss_triggers_alert():
     # 但更简单：mock RiskManager 让它强制触发
     df = _make_stock_df(n=100, start_price=100.0)
     df_with_ind = add_indicators(df)
+    hs300 = _make_hs300_df(n=100)
 
-    with patch("backtest.engine.get_stock_hist_multi_source") as mock_get:
+    with patch("backtest.engine.get_stock_hist_multi_source") as mock_get, \
+         patch("backtest.engine.get_index_hist") as mock_idx:
         mock_get.return_value = df_with_ind
+        mock_idx.return_value = hs300
         config = BacktestConfig(
             sector_filter_top_n=0,
             relative_strength_threshold=0.0,
@@ -150,9 +173,12 @@ def test_survivorship_bias_factor_in_metrics():
     df = _make_stock_df(n=100, start_price=100.0)
     from backtest.utils import add_indicators
     df_with_ind = add_indicators(df)
+    hs300 = _make_hs300_df(n=100)
 
-    with patch("backtest.engine.get_stock_hist_multi_source") as mock_get:
+    with patch("backtest.engine.get_stock_hist_multi_source") as mock_get, \
+         patch("backtest.engine.get_index_hist") as mock_idx:
         mock_get.return_value = df_with_ind
+        mock_idx.return_value = hs300
         config = BacktestConfig(
             sector_filter_top_n=0,
             relative_strength_threshold=0.0,
