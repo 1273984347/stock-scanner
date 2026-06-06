@@ -116,18 +116,15 @@ def get_kline(code: str, days: int = 180, period: str = "daily") -> pd.DataFrame
 def _to_bs_code(code: str) -> str:
     """转换为 baostock 代码格式
 
-    BaoStock 格式: sh.600001 / sz.000001 / sz.300001 / sh.688001
+    BaoStock 格式: sh.600001 / sz.000001 / sz.300001 / sh.688001 / bj.430017
     """
     code = code.strip()
     # 如果已有前缀
-    if code.startswith("sh") or code.startswith("sz"):
+    if code.startswith(("sh", "sz", "bj")):
         return f"{code[:2]}.{code[2:]}"
-    # 判断市场
-    if code.startswith("6") or code.startswith("9"):
-        return f"sh.{code}"
-    elif code.startswith("0") or code.startswith("3") or code.startswith("2"):
-        return f"sz.{code}"
-    elif code.startswith("4") or code.startswith("8"):
-        return f"bj.{code}"
-    else:
-        return f"sz.{code}"  # 默认深圳
+    # 用 helper 替代手写市场判断（修复 bj 静默丢失）
+    from lib.market_utils import detect_market
+    market = detect_market(code)
+    if market == "unknown":
+        return f"sz.{code}"  # 默认深圳（保持向后兼容）
+    return f"{market}.{code}"

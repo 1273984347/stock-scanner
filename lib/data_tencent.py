@@ -23,10 +23,16 @@ TENCENT_URL = "https://qt.gtimg.cn/q={sym}"
 
 def _sym(code: str) -> str:
     """将 6 位代码转为腾讯格式"""
-    c = code.strip().replace("sh.", "").replace("sz.", "")
-    if c.startswith("6") or c.startswith("5") or c.startswith("9"):
+    c = code.strip().replace("sh.", "").replace("sz.", "").replace("bj.", "")
+    # 用 helper 替代手写市场判断（修复 bj 静默丢失）
+    from lib.market_utils import detect_market
+    market = detect_market(c)
+    if market == "bj":
+        # 腾讯财经对 bj 股票用 sh 前缀（同深圳 0 编号）
         return f"sh{c}"
-    return f"sz{c}"
+    if market in ("sh", "sz"):
+        return f"{market}{c}"
+    return f"sz{c}"  # 默认深圳（保持向后兼容）
 
 
 def get_tencent_quote(code: str) -> dict:

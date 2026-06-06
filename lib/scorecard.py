@@ -311,14 +311,16 @@ def _get_industry(code: str) -> str:
             _industry_cache_time = now
             logger.debug(f"行业缓存已刷新，条目数: {len(_industry_cache)}")
     # 转换代码格式
-    if code.startswith("sh") or code.startswith("sz"):
+    if code.startswith(("sh", "sz", "bj")):
         pass
-    elif code.startswith("6") or code.startswith("9"):
-        code = f"sh.{code}"
-    elif code.startswith("0") or code.startswith("3") or code.startswith("2"):
-        code = f"sz.{code}"
     else:
-        code = f"sz.{code}"
+        # 用 helper 替代手写市场判断（修复 bj 静默丢失）
+        from lib.market_utils import detect_market
+        market = detect_market(code)
+        if market in ("sh", "sz", "bj"):
+            code = f"{market}.{code}"
+        else:
+            code = f"sz.{code}"  # 默认深圳
     with _industry_cache_lock:
         return _industry_cache.get(code, "")
 
