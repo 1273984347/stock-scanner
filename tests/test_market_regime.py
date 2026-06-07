@@ -2,12 +2,14 @@
 import pytest
 import numpy as np
 import pandas as pd
+import lib.market_regime as mr_module
 from lib.market_regime import (
     detect_market_regime,
     get_regime_description,
     REGIME_STATES,
     REGIME_POSITION_SCALAR,
-    TREND_UP, MEAN_REVERSION, COMPRESSION, TREND_DOWN,
+    TREND_UP, MEAN_REVERSION, TREND_DOWN,
+    HIGH_VOLATILITY, LOW_VOLATILITY,
 )
 
 
@@ -67,5 +69,27 @@ class TestRegimePositionScalar:
     def test_position_scalars(self):
         assert REGIME_POSITION_SCALAR[TREND_UP] == (0.75, 1.00)
         assert REGIME_POSITION_SCALAR[MEAN_REVERSION] == (0.25, 0.50)
-        assert REGIME_POSITION_SCALAR[COMPRESSION] == (0.00, 0.25)
+        assert REGIME_POSITION_SCALAR[HIGH_VOLATILITY] == (0.00, 0.25)
+        assert REGIME_POSITION_SCALAR[LOW_VOLATILITY] == (0.50, 0.75)
         assert REGIME_POSITION_SCALAR[TREND_DOWN] == (0.00, 0.00)
+
+
+class TestCompressionAliasRemoved:
+    """P1-1: COMPRESSION 别名反语义（误映射到 HIGH_VOLATILITY）已删除
+
+    原 bug: ``COMPRESSION = HIGH_VOLATILITY`` —— 字面"压缩"应对应 LOW_VOLATILITY。
+    修复: 直接删除别名，旧代码点应改用 LOW_VOLATILITY。
+    """
+
+    def test_compression_not_exported(self):
+        """COMPRESSION 常量不应再从 market_regime 导出"""
+        assert not hasattr(mr_module, "COMPRESSION"), (
+            "COMPRESSION 别名反语义（压缩 ≠ 高波动），应删除并改用 LOW_VOLATILITY"
+        )
+
+    def test_regime_states_contains_six_canonical(self):
+        """REGIME_STATES 仅包含六态，无 COMPRESSION 别名"""
+        assert "COMPRESSION" not in REGIME_STATES
+        assert set(REGIME_STATES) == {
+            TREND_UP, MEAN_REVERSION, HIGH_VOLATILITY, LOW_VOLATILITY, TREND_DOWN, "RISK_OFF"
+        }

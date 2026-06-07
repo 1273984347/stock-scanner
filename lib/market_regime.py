@@ -1,12 +1,13 @@
 """
-市场体制检测器 —— 五态模型
+市场体制检测器 —— 六态模型
 
 参考：因子.txt (V4修正版)
 
-五种状态：
+六种状态：
 - TREND_UP:       积极做多
 - MEAN_REVERSION: 短线回归
-- COMPRESSION:    少做等突破
+- HIGH_VOLATILITY: 高波动，少做等突破
+- LOW_VOLATILITY: 低波动，适度加仓
 - TREND_DOWN:     不做多
 - RISK_OFF:       极端波动，禁止一切开仓
 """
@@ -19,7 +20,7 @@ import threading
 logger = logging.getLogger(__name__)
 
 
-# ========== 五态常量 ==========
+# ========== 六态常量 ==========
 
 TREND_UP = "TREND_UP"
 MEAN_REVERSION = "MEAN_REVERSION"
@@ -28,8 +29,7 @@ LOW_VOLATILITY = "LOW_VOLATILITY"
 TREND_DOWN = "TREND_DOWN"
 RISK_OFF = "RISK_OFF"
 
-# 向后兼容别名
-COMPRESSION = HIGH_VOLATILITY  # 旧代码中的 COMPRESSION 映射到 HIGH_VOLATILITY
+# P1-1: COMPRESSION 别名反语义（压缩 ≠ 高波动）已删除。旧代码点应改用 LOW_VOLATILITY。
 
 REGIME_STATES = [TREND_UP, MEAN_REVERSION, HIGH_VOLATILITY, LOW_VOLATILITY, TREND_DOWN, RISK_OFF]
 
