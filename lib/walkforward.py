@@ -300,6 +300,11 @@ class WalkForwardBacktest:
         }
 
     def _build_diagnostics(self, train_result, val_result) -> Dict:
+        """P1-6 修复 (2026-06-08): 合并 train + val 的 exit_reasons
+
+        之前: 只用 train_result 的 exit_reasons, val 阶段永远是 0
+        现在: 合并两个阶段的 stop_loss/take_profit/opposite_signal/end_exit 计数
+        """
         diag = {
             "no_entry_reasons": {},
             "stop_loss_count": 0,
@@ -308,11 +313,19 @@ class WalkForwardBacktest:
             "end_exit_count": 0,
             "total_fees": 0,
         }
-        if isinstance(train_result, dict):
-            exits = train_result.get("exit_reasons", {})
-            diag["stop_loss_count"] = exits.get("stop_loss", 0)
-            diag["take_profit_count"] = exits.get("take_profit", 0)
-            diag["total_fees"] = train_result.get("total_fees", 0)
+
+        def _accumulate(result):
+            if not isinstance(result, dict):
+                return
+            exits = result.get("exit_reasons", {})
+            diag["stop_loss_count"] += exits.get("stop_loss", 0)
+            diag["take_profit_count"] += exits.get("take_profit", 0)
+            diag["opposite_signal_count"] += exits.get("opposite_signal", 0)
+            diag["end_exit_count"] += exits.get("end_exit", 0)
+            diag["total_fees"] += result.get("total_fees", 0)
+
+        _accumulate(train_result)
+        _accumulate(val_result)
         return diag
 
 
