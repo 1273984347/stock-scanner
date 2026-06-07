@@ -7,8 +7,11 @@
 
 import argparse
 import json
+import shutil
 import sys
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 import numpy as np
 import pandas as pd
@@ -200,6 +203,60 @@ def generate_all_charts(result: dict, output_dir: str = "cache/charts"):
     plot_trade_heatmap(result, f"{output_dir}/trade_heatmap.png")
     plot_factor_contribution(result, f"{output_dir}/factor_contribution.png")
     print(f"\n所有图表已保存到: {output_dir}/")
+
+
+# 临时图表后缀白名单 —— cleanup_charts 只删图表文件，避免误伤其他资产
+_CHART_SUFFIXES = {".png", ".pdf", ".jpg", ".jpeg", ".svg"}
+
+
+def cleanup_charts(output_dir: str = "cache/charts") -> int:
+    """清理图表缓存目录中的图表文件（png/pdf/svg/...）
+
+    Args:
+        output_dir: 要清理的目录路径，不存在时返回 0
+
+    Returns:
+        删除的文件数量
+    """
+    chart_dir = Path(output_dir)
+    if not chart_dir.exists() or not chart_dir.is_dir():
+        return 0
+    removed = 0
+    for f in chart_dir.iterdir():
+        if f.is_file() and f.suffix.lower() in _CHART_SUFFIXES:
+            try:
+                f.unlink()
+                removed += 1
+            except OSError as e:
+                print(f"清理失败: {f} -> {e}")
+    return removed
+
+
+@contextmanager
+def temp_charts(result: dict, output_dir: str = "cache/charts/_temp") -> Iterator[Path]:
+    """临时生成图表到指定目录，退出上下文时自动清理（try/finally 语义）
+
+    用法:
+        with temp_charts(result) as chart_dir:
+            # chart_dir 包含生成的图表
+            upload_or_process(chart_dir / "equity_curve.png")
+        # 退出 with 后整个目录被递归删除
+
+    Args:
+        result: 回测结果 dict（传给 generate_all_charts）
+        output_dir: 临时目录路径
+
+    Yields:
+        Path: 临时目录路径（已生成图表）
+    """
+    target = Path(output_dir)
+    try:
+        generate_all_charts(result, str(target))
+        yield target
+    finally:
+        # try/finally 保证异常路径下也清理
+        if target.exists():
+            shutil.rmtree(target, ignore_errors=True)
 
 
 def main():
