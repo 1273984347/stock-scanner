@@ -147,7 +147,19 @@ def test_p1_3_sell_does_not_mutate_input():
     broker = ABroker(initial_cash=100_000)
     dates = ["2026-01-05", "2026-01-06"]
     broker.set_trade_dates(dates)
-    md = _md(dates[0], close=10.0)
+    # 两日 market data
+    md = {
+        "000001": pd.DataFrame([
+            {"trade_date": pd.Timestamp(dates[0]), "open": 10.0, "close": 10.0,
+             "high": 10.1, "low": 9.9, "volume": 1_000_000, "pre_close": 10.0,
+             "pct_chg": 0.0, "is_limit_up": False, "is_limit_down": False,
+             "is_suspend": False, "名称": "TEST"},
+            {"trade_date": pd.Timestamp(dates[1]), "open": 10.0, "close": 10.0,
+             "high": 10.1, "low": 9.9, "volume": 1_000_000, "pre_close": 10.0,
+             "pct_chg": 0.0, "is_limit_up": False, "is_limit_down": False,
+             "is_suspend": False, "名称": "TEST"},
+        ])
+    }
 
     # T 日建仓 1000 股
     order_buy = Order(code="000001", direction="BUY", price=10, shares=1000,

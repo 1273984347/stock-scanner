@@ -313,11 +313,21 @@ class ABroker:
 
     def submit_order(self, order: Order, market_data: Dict[str, pd.DataFrame],
                      date: str) -> Optional[Trade]:
-        """提交订单，返回成交（或 None）"""
+        """提交订单，返回成交（或 None）
+
+        P1-3 修复（2026-06-08）：
+        不修改入参 order.shares。SELL 路径若 order.shares > holding.shares，
+        用 actual_shares = holding.shares 局部变量，Trade.shares 反映实际成交。
+        BUY 资金不足 retry 时同理：actual_shares = max_shares。
+        旧代码直接改 order.shares，caller 看到的 order 已被修改。
+        """
         can, reason = self.can_trade(order.code, market_data, date)
         if not can:
             logger.debug(f"{date} {order.code} {order.direction} 无法交易: {reason}")
             return None
+
+        # P1-3：局部变量 actual_shares 代替直接修改 order.shares
+        actual_shares = order.shares
 
         # T+1 检查：当日买入的不能卖出
         if order.direction == "SELL":
@@ -327,17 +337,17 @@ class ABroker:
             if holding.can_sell_date > date:
                 logger.debug(f"{date} {order.code} T+1 限制，不可卖出")
                 return None
-            if holding.shares < order.shares:
-                order.shares = holding.shares
+            if holding.shares < actual_shares:
+                actual_shares = holding.shares
         else:
             # A 股买入必须整手（P1-5 修复：floor 时打 warning）
-            if order.shares % self.lot_size != 0:
-                old_shares = order.shares
-                order.shares = (order.shares // self.lot_size) * self.lot_size
+            if actual_shares % self.lot_size != 0:
+                old_shares = actual_shares
+                actual_shares = (actual_shares // self.lot_size) * self.lot_size
                 logger.warning(
-                    f"{date} {order.code} 买入股数 {old_shares} 被向下取整到 {order.shares}（A 股 {self.lot_size} 股整手）"
+                    f"{date} {order.code} 买入股数 {old_shares} 被向下取整到 {actual_shares}（A 股 {self.lot_size} 股整手）"
                 )
-                if order.shares <= 0:
+                if actual_shares <= 0:
                     return None
 
         # 获取实际成交价（含滑点 + 冲击成本）
@@ -357,7 +367,7 @@ class ABroker:
             slippage_price = base_price * (1 + self.slippage)
             impact_model = self._get_dynamic_impact_model(order.code, market_data, date)
             impact_price = impact_model.estimate_impact_price(
-                order.shares, base_price, daily_volume, "BUY", volatility
+                actual_shares, base_price, daily_volume, "BUY", volatility
             )
             exec_price = max(slippage_price, impact_price)
             limit_up = latest["pre_close"] * (1 + limit_pct)
@@ -366,16 +376,16 @@ class ABroker:
             slippage_price = base_price * (1 - self.slippage)
             impact_model = self._get_dynamic_impact_model(order.code, market_data, date)
             impact_price = impact_model.estimate_impact_price(
-                order.shares, base_price, daily_volume, "SELL", volatility
+                actual_shares, base_price, daily_volume, "SELL", volatility
             )
             exec_price = min(slippage_price, impact_price)
             limit_down = latest["pre_close"] * (1 - limit_pct)
             exec_price = max(exec_price, limit_down)
 
-        impact_cost = abs(exec_price - slippage_price) * order.shares
+        impact_cost = abs(exec_price - slippage_price) * actual_shares
 
         # 资金检查
-        amount = exec_price * order.shares
+        amount = exec_price * actual_shares
         commission = max(amount * self.commission_rate, self.min_commission)
         stamp_tax = amount * self.stamp_tax_rate if order.direction == "SELL" else 0
         total_cost = amount + commission + stamp_tax
@@ -384,8 +394,9 @@ class ABroker:
             max_shares = int(self.cash / (exec_price * (1 + self.commission_rate)) / self.lot_size) * self.lot_size
             if max_shares < self.lot_size:
                 return None
-            order.shares = max_shares
-            amount = exec_price * order.shares
+            # P1-3 修复：用 actual_shares 局部变量，不再修改 order.shares
+            actual_shares = max_shares
+            amount = exec_price * actual_shares
             commission = max(amount * self.commission_rate, self.min_commission)
             total_cost = amount + commission
 
@@ -396,7 +407,7 @@ class ABroker:
             if order.code in self.holdings:
                 h = self.holdings[order.code]
                 total_cost_basis = h.shares * h.cost_price + amount
-                h.shares += order.shares
+                h.shares += actual_shares
                 h.cost_price = total_cost_basis / h.shares if h.shares > 0 else 0
                 # T+1: 加仓部分需要更新 can_sell_date
                 # 仅当旧仓已可卖时才更新（旧仓今日可卖则整体锁定到明日）
@@ -404,20 +415,20 @@ class ABroker:
                     h.can_sell_date = next_sell_date
             else:
                 self.holdings[order.code] = Holding(
-                    code=order.code, shares=order.shares,
+                    code=order.code, shares=actual_shares,
                     cost_price=exec_price, buy_date=date,
                     can_sell_date=self._next_trade_date(date, market_data)
                 )
         else:
             self.cash += amount - commission - stamp_tax
             h = self.holdings[order.code]
-            h.shares -= order.shares
+            h.shares -= actual_shares
             if h.shares <= 0:
                 del self.holdings[order.code]
 
         trade = Trade(
             code=order.code, direction=order.direction,
-            price=exec_price, shares=order.shares,
+            price=exec_price, shares=actual_shares,
             amount=amount, commission=commission,
             stamp_tax=stamp_tax, impact_cost=impact_cost,
             date=date, reason=order.reason
