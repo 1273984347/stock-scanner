@@ -1,11 +1,16 @@
 """动态退出规则 —— 基于市场状态自适应调整
 
-1. 动态 loss breaker 阈值：牛市放宽、熊市收紧
-2. 基于波动率的仓位管理：高波动自动减仓
-3. 动态止盈策略：基于波动率的档位调整
+1. 基于波动率的仓位管理：高波动自动减仓
+2. 动态止盈策略：基于波动率的档位调整
+3. 市场状态 → 出场天数映射（V6 设计）
+
+P0-2 (2026-06-08): 删除 `DynamicLossBreaker`（死代码 — backtest 从未实例化）
+   和 `LossBreakerConfig`。`DynamicExitManager` 改用 `ConsecutiveLossBreaker`
+   （from `lib.partial_exit`）。Regime 信息改为存放在 `DynamicExitManager._current_regime`。
+   决策：(b) 删除而非接入 — 单一实现 + 减设计债。
 
 使用方式：
-    from lib.dynamic_exit import DynamicLossBreaker, VolatilityPositionSizer, DynamicTakeProfit
+    from lib.dynamic_exit import VolatilityPositionSizer, DynamicTakeProfit, DynamicExitManager
 """
 
 import logging
@@ -14,110 +19,6 @@ from typing import Dict, Optional
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
-
-
-# ========== 动态 Loss Breaker ==========
-
-@dataclass
-class LossBreakerConfig:
-    """Loss Breaker 配置"""
-    # 默认阈值
-    base_reduce_threshold: int = 3
-    base_stop_threshold: int = 5
-    cooldown_days: int = 20
-
-    # 市场状态调整系数
-    # 牛市（TREND_UP）：放宽阈值
-    trend_up_reduce_mult: float = 1.5
-    trend_up_stop_mult: float = 1.5
-
-    # 熊市（TREND_DOWN）：收紧阈值
-    trend_down_reduce_mult: float = 0.7
-    trend_down_stop_mult: float = 0.7
-
-    # 震荡（COMPRESSION/MEAN_REVERSION）：不变
-    neutral_mult: float = 1.0
-
-
-class DynamicLossBreaker:
-    """基于市场状态的动态 Loss Breaker"""
-
-    def __init__(self, config: LossBreakerConfig = None):
-        self.config = config or LossBreakerConfig()
-        self.consecutive_losses = 0
-        self.cooldown_remaining = 0
-        self.is_stopped = False
-        self.current_regime = "UNKNOWN"
-        self._effective_reduce = self.config.base_reduce_threshold
-        self._effective_stop = self.config.base_stop_threshold
-
-    def update_regime(self, regime: str):
-        """更新市场状态，动态调整阈值"""
-        self.current_regime = regime
-
-        if regime == "TREND_UP":
-            mult = self.config.trend_up_reduce_mult
-            stop_mult = self.config.trend_up_stop_mult
-        elif regime in ("TREND_DOWN", "RISK_OFF"):
-            mult = self.config.trend_down_reduce_mult
-            stop_mult = self.config.trend_down_stop_mult
-        else:
-            mult = self.config.neutral_mult
-            stop_mult = self.config.neutral_mult
-
-        self._effective_reduce = max(2, int(self.config.base_reduce_threshold * mult))
-        self._effective_stop = max(3, int(self.config.base_stop_threshold * stop_mult))
-
-        logger.debug(
-            f"LossBreaker regime={regime}: reduce={self._effective_reduce} stop={self._effective_stop}"
-        )
-
-    def record_trade(self, is_win: bool):
-        """记录交易结果"""
-        if is_win:
-            self.consecutive_losses = 0
-        else:
-            self.consecutive_losses += 1
-
-        # 检查是否触发熔断
-        if self.consecutive_losses >= self._effective_stop:
-            self.is_stopped = True
-            self.cooldown_remaining = self.config.cooldown_days
-            logger.warning(
-                f"LossBreaker 触发! 连亏{self.consecutive_losses}笔，"
-                f"阈值{self._effective_stop}(regime={self.current_regime})，"
-                f"冷却{self.cooldown_remaining}天"
-            )
-
-    def advance_day(self):
-        """推进一天"""
-        if self.cooldown_remaining > 0:
-            self.cooldown_remaining -= 1
-            if self.cooldown_remaining <= 0:
-                self.is_stopped = False
-                self.consecutive_losses = 0
-                logger.info("LossBreaker 冷却期结束，恢复交易")
-
-    def get_position_multiplier(self) -> float:
-        """获取仓位乘数"""
-        if self.is_stopped:
-            return 0.0
-
-        if self.consecutive_losses >= self._effective_reduce:
-            return 0.5
-
-        return 1.0
-
-    def get_status(self) -> Dict:
-        return {
-            "is_stopped": self.is_stopped,
-            "consecutive_losses": self.consecutive_losses,
-            "cooldown_remaining": self.cooldown_remaining,
-            "regime": self.current_regime,
-            "effective_reduce": self._effective_reduce,
-            "effective_stop": self._effective_stop,
-            "position_multiplier": self.get_position_multiplier(),
-        }
 
 
 # ========== 波动率仓位管理 ==========
@@ -229,18 +130,24 @@ class DynamicTakeProfit:
 class DynamicExitManager:
     """综合动态退出管理器
 
-    集成动态 Loss Breaker + 波动率仓位 + 动态止盈
+    集成 ConsecutiveLossBreaker（来自 lib.partial_exit）+ 波动率仓位 + 动态止盈
+    + 市场状态 → 出场天数映射。
     """
 
     def __init__(self, exit_days_map: dict = None):
-        self.loss_breaker = DynamicLossBreaker()
+        # P0-2: 复用 ConsecutiveLossBreaker（统一实现），不再用 DynamicLossBreaker
+        from lib.partial_exit import ConsecutiveLossBreaker
+        self.loss_breaker = ConsecutiveLossBreaker(
+            reduce_threshold=3, stop_threshold=5, cooldown_days=20
+        )
         self.position_sizer = VolatilityPositionSizer()
         self.take_profit = DynamicTakeProfit()
         self._exit_days_map = exit_days_map
+        self._current_regime = "MEAN_REVERSION"  # 默认
 
     def update_market_state(self, regime: str, annualized_vol: float):
         """更新市场状态"""
-        self.loss_breaker.update_regime(regime)
+        self._current_regime = regime
         self._current_vol = annualized_vol
 
     def get_position_pct(self) -> float:
@@ -253,9 +160,16 @@ class DynamicExitManager:
         """获取当前止盈档位"""
         return self.take_profit.get_exit_levels(getattr(self, '_current_vol', 0.3))
 
-    def record_trade(self, is_win: bool):
-        """记录交易结果"""
-        self.loss_breaker.record_trade(is_win)
+    def record_trade(self, code: str, pnl: float, date: str):
+        """记录交易结果
+
+        Args:
+            code: 股票代码
+            pnl: 单笔盈亏（正=赢，负=亏）
+            date: 交易日
+        """
+        # P0-2: ConsecutiveLossBreaker 接口 (code, pnl, date) — 兼容
+        self.loss_breaker.record_trade(code, pnl, date)
 
     def advance_day(self):
         """推进一天"""
@@ -268,6 +182,7 @@ class DynamicExitManager:
             "position_pct": self.get_position_pct(),
             "exit_levels": self.get_exit_levels(),
             "current_vol": getattr(self, '_current_vol', 0),
+            "current_regime": self._current_regime,
             "exit_days": self.get_exit_days(),
         }
 
@@ -282,7 +197,7 @@ class DynamicExitManager:
         - TREND_DOWN: 0天（不开仓）
         - RISK_OFF: 0天（禁止一切开仓）
         """
-        regime = self.loss_breaker.current_regime
+        regime = self._current_regime
         exit_days_map = self._exit_days_map if self._exit_days_map is not None else {
             "TREND_UP": 20,
             "MEAN_REVERSION": 10,
@@ -292,3 +207,4 @@ class DynamicExitManager:
             "RISK_OFF": 0,
         }
         return exit_days_map.get(regime, 10)  # 默认 10 天
+

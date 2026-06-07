@@ -62,55 +62,10 @@ class TestFactorOptimizer:
 
 
 # ========== dynamic_exit ==========
+# P0-2 (2026-06-08): 删除 DynamicLossBreaker（死代码）— 仅保留 VolatilityPositionSizer,
+# DynamicTakeProfit, DynamicExitManager 三个非死代码组件的测试。
 
 class TestDynamicExit:
-    def test_dynamic_loss_breaker_regime(self):
-        from lib.dynamic_exit import DynamicLossBreaker
-        lb = DynamicLossBreaker()
-
-        lb.update_regime("TREND_UP")
-        assert lb._effective_reduce > lb.config.base_reduce_threshold
-
-        lb.update_regime("TREND_DOWN")
-        assert lb._effective_reduce < lb.config.base_reduce_threshold
-
-        lb.update_regime("COMPRESSION")
-        assert lb._effective_reduce == lb.config.base_reduce_threshold
-
-    def test_loss_breaker_stop(self):
-        from lib.dynamic_exit import DynamicLossBreaker
-        lb = DynamicLossBreaker()
-        lb.update_regime("COMPRESSION")
-
-        for _ in range(5):
-            lb.record_trade(is_win=False)
-
-        assert lb.is_stopped
-        assert lb.get_position_multiplier() == 0.0
-
-    def test_loss_breaker_cooldown(self):
-        from lib.dynamic_exit import DynamicLossBreaker
-        lb = DynamicLossBreaker()
-        lb.update_regime("COMPRESSION")
-
-        for _ in range(5):
-            lb.record_trade(is_win=False)
-
-        assert lb.is_stopped
-
-        for _ in range(20):
-            lb.advance_day()
-
-        assert not lb.is_stopped
-
-    def test_loss_breaker_win_resets(self):
-        from lib.dynamic_exit import DynamicLossBreaker
-        lb = DynamicLossBreaker()
-        lb.record_trade(is_win=False)
-        lb.record_trade(is_win=False)
-        lb.record_trade(is_win=True)
-        assert lb.consecutive_losses == 0
-
     def test_volatility_position_sizer(self):
         from lib.dynamic_exit import VolatilityPositionSizer
         sizer = VolatilityPositionSizer()
@@ -138,54 +93,46 @@ class TestDynamicExit:
         assert "position_pct" in status
         assert "exit_levels" in status
 
-    def test_loss_breaker_status(self):
-        from lib.dynamic_exit import DynamicLossBreaker
-        lb = DynamicLossBreaker()
-        status = lb.get_status()
-        assert "is_stopped" in status
-        assert "consecutive_losses" in status
-        assert "position_multiplier" in status
-
     def test_get_exit_days_trend_up(self):
         """TREND_UP regime should give 20 days (V6 design: let profits run)"""
         from lib.dynamic_exit import DynamicExitManager
         mgr = DynamicExitManager()
-        mgr.loss_breaker.update_regime("TREND_UP")
+        mgr.update_market_state("TREND_UP", 0.25)
         assert mgr.get_exit_days() == 20
 
     def test_get_exit_days_mean_reversion(self):
         """MEAN_REVERSION regime should give 10 days (V6 design: quick in/out)"""
         from lib.dynamic_exit import DynamicExitManager
         mgr = DynamicExitManager()
-        mgr.loss_breaker.update_regime("MEAN_REVERSION")
+        mgr.update_market_state("MEAN_REVERSION", 0.25)
         assert mgr.get_exit_days() == 10
 
     def test_get_exit_days_trend_down(self):
         """TREND_DOWN regime should give 0 days (V6 design: no entry)"""
         from lib.dynamic_exit import DynamicExitManager
         mgr = DynamicExitManager()
-        mgr.loss_breaker.update_regime("TREND_DOWN")
+        mgr.update_market_state("TREND_DOWN", 0.25)
         assert mgr.get_exit_days() == 0
 
     def test_get_exit_days_risk_off(self):
         """RISK_OFF regime should give 0 days (exit immediately)"""
         from lib.dynamic_exit import DynamicExitManager
         mgr = DynamicExitManager()
-        mgr.loss_breaker.update_regime("RISK_OFF")
+        mgr.update_market_state("RISK_OFF", 0.25)
         assert mgr.get_exit_days() == 0
 
     def test_get_exit_days_low_volatility(self):
         """LOW_VOLATILITY regime should give 15 days"""
         from lib.dynamic_exit import DynamicExitManager
         mgr = DynamicExitManager()
-        mgr.loss_breaker.update_regime("LOW_VOLATILITY")
+        mgr.update_market_state("LOW_VOLATILITY", 0.25)
         assert mgr.get_exit_days() == 15
 
     def test_get_exit_days_unknown_regime(self):
         """Unknown regime should use default (10 days)"""
         from lib.dynamic_exit import DynamicExitManager
         mgr = DynamicExitManager()
-        mgr.loss_breaker.update_regime("UNKNOWN_REGIME")
+        mgr.update_market_state("UNKNOWN_REGIME", 0.25)
         days = mgr.get_exit_days()
         assert days == 10  # default fallback per actual implementation
 
