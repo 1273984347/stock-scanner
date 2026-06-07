@@ -94,12 +94,17 @@ def _batch_get_financial_data(codes: List[str]) -> Dict[str, Optional[pd.Series]
     return results
 
 
-def _batch_get_stock_hist(codes: List[str], days: int = 180) -> Dict[str, pd.DataFrame]:
+def _batch_get_stock_hist(codes: List[str], days: int = 180,
+                          as_of_date: Optional[str] = None) -> Dict[str, pd.DataFrame]:
     """批量并行获取股票历史数据（解决 N+1 查询问题）
 
     Args:
         codes: 股票代码列表
         days: 历史数据天数
+        as_of_date: P1-3 修复 (2026-06-08): 可选 cutoff 日期 (YYYY-MM-DD)。
+                   设置后，DataFrame 中 > as_of_date 的数据会被过滤掉，
+                   避免回测环境使用"今天盘中"的实时数据造成未来函数。
+                   None = 不过滤（默认行为，向后兼容）。
 
     Returns:
         Dict[code -> DataFrame]，只包含成功获取且非空的股票
@@ -115,6 +120,19 @@ def _batch_get_stock_hist(codes: List[str], days: int = 180) -> Dict[str, pd.Dat
             try:
                 df = future.result()
                 if df is not None and not df.empty and len(df) >= 60:
+                    # P1-3: 过滤掉 > as_of_date 的"未来"数据
+                    if as_of_date is not None:
+                        cutoff = pd.Timestamp(as_of_date)
+                        date_col = None
+                        for col in ("trade_date", "date", "日期"):
+                            if col in df.columns:
+                                date_col = col
+                                break
+                        if date_col is not None:
+                            mask = pd.to_datetime(df[date_col]) <= cutoff
+                            df = df[mask].reset_index(drop=True)
+                            if len(df) < 60:
+                                continue
                     results[code] = df
             except Exception as e:
                 logger.debug(f"[strategies] 历史数据获取失败 [{code}]: {e}")
@@ -294,8 +312,16 @@ def get_zt_candidates(config: SystemConfig) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def get_volume_breakout_candidates(config: SystemConfig) -> pd.DataFrame:
-    """量价突破策略"""
+def get_volume_breakout_candidates(config: SystemConfig,
+                                    as_of_date: Optional[str] = None) -> pd.DataFrame:
+    """量价突破策略
+
+    Args:
+        config: 系统配置
+        as_of_date: P1-3 修复 (2026-06-08): 可选 cutoff 日期 (YYYY-MM-DD)。
+                   回测环境传 as_of_date，避免使用"今天盘中"的实时 K 线数据。
+                   None = 使用当前实时数据（默认，向后兼容）。
+    """
     try:
         df = get_realtime_quotes()
         if df.empty:
@@ -310,7 +336,8 @@ def get_volume_breakout_candidates(config: SystemConfig) -> pd.DataFrame:
         row_map = df.set_index(df["代码"].astype(str)).to_dict("index")
         # 批量并行获取历史数据（解决 N+1 查询问题）
         all_codes = df["代码"].astype(str).tolist()
-        stock_hist_data = _batch_get_stock_hist(all_codes, days=180)
+        # P1-3: 传入 as_of_date 以便回测环境过滤未来数据
+        stock_hist_data = _batch_get_stock_hist(all_codes, days=180, as_of_date=as_of_date)
         batch_financial = _batch_get_financial_data(all_codes)
         # 预获取 HS300 数据（用于相对强度过滤，避免循环内重复调用）
         _hs300 = get_index_hist('000300', days=60)
