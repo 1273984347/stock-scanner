@@ -6,7 +6,12 @@
 - 发送飞书/浏览器推送通知
 """
 
+import json
 import logging
+import os
+import time as _time
+import uuid
+from pathlib import Path
 from typing import List, Dict
 from datetime import datetime, time
 
@@ -16,6 +21,12 @@ logger = logging.getLogger(__name__)
 DEFAULT_SILENT_START = time(22, 0)
 DEFAULT_SILENT_END = time(8, 0)
 
+# 推送失败时降级目录（环境变量可覆盖，便于测试/部署）
+FALLBACK_DIR = Path(os.environ.get(
+    "ALERT_FALLBACK_DIR",
+    str(Path(__file__).parent.parent / "logs" / "alert_fallback"),
+))
+
 
 class AlertMonitor:
     """异常告警监控器"""
@@ -24,6 +35,9 @@ class AlertMonitor:
         self.alerts: List[Dict] = []
         self._silent_start = DEFAULT_SILENT_START
         self._silent_end = DEFAULT_SILENT_END
+        # P1-1: 推送失败降级 — 计数器 + 降级文件
+        self._push_failure_count: int = 0
+        self._fallback_path: str = ""
 
     def set_silent_period(self, start: time, end: time):
         """设置静默期"""
@@ -144,22 +158,67 @@ class AlertMonitor:
         return "\n".join(lines)
 
     def push_alerts(self) -> bool:
-        """推送告警到飞书"""
+        """推送告警到飞书
+
+        失败时降级：
+        - 写本地 JSONL 降级文件（logs/alert_fallback/alert-{ts}-{id}.json）
+        - 维护 _push_failure_count 计数器
+        - 日志含 alert_id 便于人工定位
+        """
         if not self.alerts:
             return False
 
         message = self.format_alert_message()
+        # 生成 alert_id（每次推送唯一）
+        alert_id = f"alert-{int(_time.time())}-{uuid.uuid4().hex[:8]}"
         try:
             from reporter.feishu_pusher import push_report
             success = push_report(message, [])
             if success:
-                logger.info(f"告警推送成功：{len(self.alerts)} 条")
+                logger.info(f"告警推送成功 alert_id={alert_id}：{len(self.alerts)} 条")
             else:
-                logger.warning("告警推送失败")
+                # 推送函数返回 False 也算失败，走降级
+                self._push_failure_count += 1
+                fallback = self._write_fallback(message, alert_id, reason="push_returned_false")
+                logger.error(
+                    f"告警推送失败 alert_id={alert_id}, count={self._push_failure_count}, "
+                    f"已降级到 {fallback}"
+                )
             return success
         except Exception as e:
-            logger.error(f"告警推送异常: {e}")
+            self._push_failure_count += 1
+            fallback = self._write_fallback(message, alert_id, reason=f"exception:{e!r}")
+            logger.error(
+                f"告警推送异常 alert_id={alert_id}, count={self._push_failure_count}, "
+                f"已降级到 {fallback}, error={e}"
+            )
             return False
+
+    def _write_fallback(self, message: str, alert_id: str, reason: str) -> str:
+        """写入降级文件（JSONL 格式，含原始消息+元数据）
+
+        Returns:
+            str: 降级文件路径
+        """
+        FALLBACK_DIR.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        path = FALLBACK_DIR / f"{ts}-{alert_id}.json"
+        self._fallback_path = str(path)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "alert_id": alert_id,
+                    "timestamp": datetime.now().isoformat(),
+                    "reason": reason,
+                    "message": message,
+                    "alerts": self.alerts,
+                    "failure_count": self._push_failure_count,
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
+        return str(path)
 
     def run_all_checks(self, trades: List[Dict] = None, equity_curve: List[float] = None,
                        cache_age_hours: float = 0) -> List[Dict]:
