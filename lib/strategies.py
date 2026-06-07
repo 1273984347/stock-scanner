@@ -207,28 +207,12 @@ def full_score(code: str, hist: pd.DataFrame, factors: dict,
     except Exception as e:
         logger.debug(f"六因子评分失败 [{code}]: {e}")
 
-    # Judge Panel 调整逻辑（默认禁用）
-    # 原因：51 个评委 150+ 条未验证条件，是系统最大的过拟合来源。
-    # 如需启用，设置 config.use_judge_panel = True
+    # Judge Panel 调整逻辑已删除 (P1-1 修复 2026-06-08)
+    # 原因：原代码用 `getattr(getattr(config, 'factor', None), 'use_judge_panel', False) if 'config' in dir() else False`
+    #       'config' 永远不在 dir() 中（实际 import 的是 SystemConfig/get_config），
+    #       所以 use_judge_panel 恒为 False，JudgePanel 评估结果永远不影响评分 — 死代码 + 阅读误导
+    #       51 个评委 150+ 条未验证条件是系统最大的过拟合来源，仍禁用但代码已清理
     judge_result = {}
-    use_judge_panel = getattr(getattr(config, 'factor', None), 'use_judge_panel', False) if 'config' in dir() else False
-    if use_judge_panel:
-        pe = _safe_float(row.get("市盈率-动态"))
-        try:
-            from lib.judge_panel import JudgePanel
-            panel = JudgePanel(
-                factors={"pe_ttm": pe, **factors},
-                fundamentals={
-                    "profitability": {"ROE": None, "gross_margin": None},
-                    "solvency": {"debt_to_asset": None},
-                    "per_share": {"BVPS": None},
-                    "cash_flow": {"free_cash_flow": None},
-                },
-                market_data=hist,
-            )
-            judge_result = panel.evaluate_all()
-        except Exception as e:
-            logger.warning(f"JudgePanel 评估失败 [{code}]: {e}")
     if judge_result and judge_result.get("consensus") in ("BUY", "SELL"):
         judge_bias = 1.0 if judge_result["consensus"] == "BUY" else -1.0
         judge_strength = abs(judge_result.get("score", 0))
