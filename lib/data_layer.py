@@ -185,7 +185,7 @@ def _to_float(v) -> Optional[float]:
         return None
 
 
-def _get_financial_data(code: str) -> Optional[pd.Series]:
+def _get_financial_data(code: str, as_of_date: Optional[str] = None) -> Optional[pd.Series]:
     """获取个股基本面数据（PE/PB/市值/质押率等）
 
     数据源优先级：
@@ -195,7 +195,24 @@ def _get_financial_data(code: str) -> Optional[pd.Series]:
     4. 东方财富财报（毛利率/经营现金流/负债率/增长率）
 
     缓存：5分钟内存LRU + 7天 parquet 持久化（通过 FinancialCache 统一管理）
+
+    Args:
+        code: 股票代码（如 "600519"）
+        as_of_date: 历史快照日期（YYYY-MM-DD）。**backtest 必须传入**
+                   防止 look-ahead bias（拉取的是 T 日实时数据，但用作 T-1 日训练特征）
+
+    P1-2 修复（2026-06-07）：增加 as_of_date 参数
+    - 不传 as_of_date → 打 warning，提示仅用于实时扫描
+    - 传入 as_of_date → 数据源应基于 T-1 日快照（待实现，目前仅参数传递）
     """
+    if as_of_date is None:
+        # P1-2 修复：不传 as_of_date 视为实时快照，警告 backtest 误用风险
+        # 实时扫描（scanner.py）可忽略此 warning
+        # backtest 训练特征必须传 as_of_date
+        logger.warning(
+            f"[data_layer] _get_financial_data({code}) 未传 as_of_date，"
+            f"将拉取实时快照。backtest 训练特征必须传 as_of_date='YYYY-MM-DD' 防止未来信息泄露"
+        )
     # 1. 缓存检查（优先复用 get_stock_fundamentals 的结果）
     cached = _financial_cache.get(code)
     if cached is not None:
