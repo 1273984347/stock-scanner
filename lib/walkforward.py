@@ -2,6 +2,7 @@
 Walk-Forward Backtest + Factor Audit —— 推进式回测 + 因子时间戳审计
 参考 cryptoquant-ai 的 walkForwardBacktest + backtestValidation 设计
 """
+import copy
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Callable, Any
@@ -185,13 +186,18 @@ class WalkForwardBacktest:
         if adaptive_state is None:
             adaptive_state = {"snapshot_at_window_start": True, "weights": {}}
         # 每个窗口用同一份 snapshot（隔离窗口间的 state 累积）
-        window_state_snapshot = dict(adaptive_state)
+        # P0-3 修复 (2026-06-08): 用 deepcopy 而非 dict() 浅拷贝
+        # 之前: dict(adaptive_state) 浅拷贝, values (list/dict) 仍是引用
+        #       → train 阶段 strategy_fn 内部若改 list/dict 嵌套 state, 泄漏到 val
+        # 现在: copy.deepcopy 完整隔离, 外部传入 state 和窗口间 state 都不被串改
+        window_state_snapshot = copy.deepcopy(adaptive_state)
         window_state_snapshot["window_index_at_snapshot"] = -1  # 标记是初始 snapshot
 
         rounds = []
         for window in windows:
             # P1-5 修复：每个窗口起点恢复 state 到 snapshot
-            current_state = dict(window_state_snapshot)
+            # P0-3 修复: 用 deepcopy 防止 strategy_fn 内部 mutation 泄漏到下一次调用
+            current_state = copy.deepcopy(window_state_snapshot)
             current_state["window_index_at_snapshot"] = window.index
 
             train_data = self._slice_data(market_data, dates, window.train_start, window.train_end)
@@ -219,7 +225,7 @@ class WalkForwardBacktest:
                     factor_data=factor_data,
                     dates=dates[window.train_start:window.train_end + 1],
                     symbols=symbols,
-                    adaptive_state=current_state,
+                    adaptive_state=copy.deepcopy(current_state),  # P0-3: train/val 各自 deepcopy
                 )
             except Exception as e:
                 logger.error(f"窗口 {window.index} 训练失败: {e}")
@@ -231,7 +237,7 @@ class WalkForwardBacktest:
                     factor_data=factor_data,
                     dates=dates[window.warmup_start:window.validation_end + 1],
                     symbols=symbols,
-                    adaptive_state=current_state,
+                    adaptive_state=copy.deepcopy(current_state),  # P0-3: 隔离 train 阶段 mutation
                 )
             except Exception as e:
                 logger.error(f"窗口 {window.index} 验证失败: {e}")
