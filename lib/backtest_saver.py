@@ -84,12 +84,40 @@ def _compute_metrics(nav: np.ndarray, trades: Optional[List[Dict]] = None) -> Di
     # 交易统计
     if trades:
         n_trades = len(trades)
+        # P2-3: 显式拆分 win/loss（不再仅算 ratio, 暴露 losses 笔数与金额）
         wins = [t for t in trades if t.get("pnl", 0) > 0]
         losses = [t for t in trades if t.get("pnl", 0) < 0]
+        n_wins = len(wins)
+        n_losses = len(losses)
+        win_pnls = [t["pnl"] for t in wins]
+        loss_pnls = [t["pnl"] for t in losses]  # 负数
+        total_win_pnl = float(sum(win_pnls)) if win_pnls else 0.0
+        total_loss_pnl = float(sum(loss_pnls)) if loss_pnls else 0.0
+        avg_win = float(np.mean(win_pnls)) if win_pnls else 0.0
+        avg_loss = float(np.mean(loss_pnls)) if loss_pnls else 0.0
+        # win/loss ratio (avg_win / abs(avg_loss)) — 经典 Kelly/期望值公式
+        win_loss_ratio = (avg_win / abs(avg_loss)) if (wins and losses and avg_loss != 0) else 0.0
+        # profit factor (gross_profit / |gross_loss|) — 全赢时定义为 inf
+        if total_loss_pnl < 0 and total_win_pnl > 0:
+            profit_factor = total_win_pnl / abs(total_loss_pnl)
+        elif total_win_pnl > 0 and total_loss_pnl == 0:
+            profit_factor = float("inf")
+        else:
+            profit_factor = 0.0
+        # expectancy = E[pnl per trade]
+        expectancy = (total_win_pnl + total_loss_pnl) / n_trades if n_trades > 0 else 0.0
+
         metrics["n_trades"] = n_trades
-        metrics["win_rate"] = round(len(wins) / n_trades, 4) if n_trades > 0 else 0
-        metrics["avg_win"] = round(float(np.mean([t["pnl"] for t in wins])), 6) if wins else 0
-        metrics["avg_loss"] = round(float(np.mean([t["pnl"] for t in losses])), 6) if losses else 0
+        metrics["n_wins"] = n_wins
+        metrics["n_losses"] = n_losses
+        metrics["win_rate"] = round(n_wins / n_trades, 4) if n_trades > 0 else 0
+        metrics["avg_win"] = round(avg_win, 6)
+        metrics["avg_loss"] = round(avg_loss, 6)
+        metrics["total_win_pnl"] = round(total_win_pnl, 6)
+        metrics["total_loss_pnl"] = round(total_loss_pnl, 6)
+        metrics["win_loss_ratio"] = round(win_loss_ratio, 4)
+        metrics["profit_factor"] = round(profit_factor, 4) if profit_factor != float("inf") else float("inf")
+        metrics["expectancy"] = round(expectancy, 6)
 
         # 退出原因统计
         exit_counts = {}
