@@ -420,10 +420,35 @@ class ABroker:
 
         若当前日期为最后一个交易日，返回一个远未来日期，
         确保当日买入的股票无法在回测期内卖出，严格模拟 T+1。
+
+        P1-5 修复（2026-06-08）：
+        缺交易日历（未调 set_trade_dates）时，idx=None → 旧版返回 "9999-12-31"，
+        买入后永远不能卖（T+1 锁死）。
+        修复：警告日志 + 用 calendar 工作日推算（次一工作日）。
         """
         idx = self._trade_date_index.get(date)
         if idx is not None and idx + 1 < len(self._trade_dates):
             return self._trade_dates[idx + 1]
+        # P1-5 fallback：缺交易日历时
+        if not self._trade_dates:
+            logger.warning(
+                f"_next_trade_date({date}) 调用时未设置交易日历，"
+                f"fallback 到 calendar 工作日 +1。建议先调 set_trade_dates()。"
+            )
+            try:
+                from datetime import datetime, timedelta
+                dt = datetime.strptime(date, "%Y-%m-%d")
+                # 简单推算：周一-周四 +1 天，周五 +3 天（跳过周末）
+                weekday = dt.weekday()
+                if weekday < 4:  # Mon-Thu
+                    next_day = dt + timedelta(days=1)
+                else:  # Fri -> Mon
+                    next_day = dt + timedelta(days=3)
+                return next_day.strftime("%Y-%m-%d")
+            except (ValueError, TypeError) as e:
+                logger.error(f"_next_trade_date({date}) fallback 失败: {e}，返回 9999-12-31")
+                return "9999-12-31"
+        # 已是最后一个交易日：T+1 永远不可卖
         return "9999-12-31"
 
     def _compute_daily_volume(self, code: str, market_data: Dict[str, pd.DataFrame],

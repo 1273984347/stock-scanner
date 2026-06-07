@@ -207,8 +207,8 @@ def test_p1_5_next_trade_date_no_calendar():
     """
     broker = ABroker(initial_cash=100_000)
     # 不调 set_trade_dates
-    dates = ["2026-01-05"]
-    md = _md(dates[0], close=10.0)
+    dates = ["2026-01-05"]  # Mon
+    md = {"000001": _md(dates[0], close=10.0)}
     order = Order(code="000001", direction="BUY", price=10, shares=100,
                   date=dates[0], reason="p1-5 测试")
     trade = broker.submit_order(order, md, dates[0])
