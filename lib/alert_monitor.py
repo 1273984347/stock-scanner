@@ -44,9 +44,14 @@ class AlertMonitor:
         self._silent_start = start
         self._silent_end = end
 
-    def is_silent_period(self) -> bool:
-        """检查当前是否在静默期"""
-        now = datetime.now().time()
+    def is_silent_period(self, current_time: time = None) -> bool:
+        """检查当前是否在静默期
+
+        Args:
+            current_time: 注入的时间（用于 backtest）；None 时用 wall-clock
+        """
+        # P0-1: backtest 必须注入 current_time，否则 wall-clock 与回测日期错位
+        now = current_time if current_time is not None else datetime.now().time()
 
         # 处理跨午夜的情况
         if self._silent_start <= self._silent_end:
@@ -221,10 +226,15 @@ class AlertMonitor:
         return str(path)
 
     def run_all_checks(self, trades: List[Dict] = None, equity_curve: List[float] = None,
-                       cache_age_hours: float = 0) -> List[Dict]:
-        """运行所有检查"""
-        # 检查静默期
-        if self.is_silent_period():
+                       cache_age_hours: float = 0,
+                       current_time: time = None) -> List[Dict]:
+        """运行所有检查
+
+        Args:
+            current_time: 注入时间（backtest 用）；None 时用 wall-clock
+        """
+        # 检查静默期（支持时间注入）
+        if self.is_silent_period(current_time=current_time):
             logger.info("In silent period, skipping alert checks")
             return []
 
