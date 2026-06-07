@@ -137,20 +137,26 @@ def clean_cache(max_age_hours: int = 24, max_total_mb: int = 500):
         if path.suffix not in (".parquet", ".json"):
             continue
         try:
-            mtime = datetime.fromtimestamp(path.stat().st_mtime)
-            size = path.stat().st_size
+            stat = path.stat()
+            mtime = datetime.fromtimestamp(stat.st_mtime)
+            # P1-1 修复（2026-06-07）：LRU 应按 atime 排序
+            # Linux/macOS 默认 atime 在读文件时更新，Windows 也支持
+            # 某些挂载点 (noatime) atime 不会更新 → 用 max(atime, mtime) 兜底
+            atime = datetime.fromtimestamp(max(stat.st_atime, stat.st_mtime))
+            size = stat.st_size
             age_hours = (now - mtime).total_seconds() / 3600
             if age_hours > max_age_hours:
                 path.unlink(missing_ok=True)
                 deleted += 1
             else:
                 total_size += size
-                alive_files.append((path, mtime, size))
+                alive_files.append((path, atime, size))
         except Exception as e:
             logger.debug(f"[data_layer] 缓存文件处理失败: {e}")
             continue
     max_bytes = max_total_mb * 1024 * 1024
     if total_size > max_bytes:
+        # 按 atime（访问时间）升序排序，删最久未访问的
         alive_files.sort(key=lambda x: x[1])
         for path, _, size in alive_files:
             path.unlink(missing_ok=True)
