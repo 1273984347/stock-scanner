@@ -195,7 +195,8 @@ class RiskManager:
     def check_all(self, portfolio_value: float, positions: Dict,
                   daily_return: float = 0, industry_map: Dict[str, str] = None,
                   max_drawdown: float = 0,
-                  market_data: Dict[str, pd.DataFrame] = None) -> Tuple[List[RiskAlert], List[RiskAction]]:
+                  market_data: Dict[str, pd.DataFrame] = None,
+                  now: Optional[datetime] = None) -> Tuple[List[RiskAlert], List[RiskAction]]:
         """执行所有风控检查，返回 (alerts, actions)"""
         self.alerts = []
         self.actions = []
@@ -204,6 +205,9 @@ class RiskManager:
         if not industry_map and positions:
             industry_map = self._auto_fetch_industry_map(list(positions.keys()))
 
+        # P0-1: 允许从外部注入 now（默认 datetime.now()），便于回测/复盘时间一致
+        if now is None:
+            now = datetime.now()
         context = {
             "portfolio_value": portfolio_value,
             "positions": positions,
@@ -211,6 +215,7 @@ class RiskManager:
             "industry_map": industry_map or {},
             "max_drawdown": max_drawdown,
             "market_data": market_data or {},
+            "now": now,
         }
 
         for rule in self.rules:
@@ -348,15 +353,24 @@ class RiskManager:
             )
         return None
 
-    def _check_weekly_loss(self, ctx: dict) -> Optional[RiskAlert]:
+    def _check_weekly_loss(self, ctx: dict, now: Optional[datetime] = None) -> Optional[RiskAlert]:
+        """P0-1 修复: 周重置改为 ISO week 比较
+
+        旧实现 `now.weekday() == 0` 仅在周一调用时触发重置；若周一整日
+        无调用（节假日/系统未运行），周二调用时永不重置 → 跨周累加
+        误判周亏损。新实现基于 isocalendar().week：跨周即重置。
+        """
         daily_return = ctx.get("daily_return", 0)
-        now = datetime.now()
+        if now is None:
+            now = datetime.now()
         today_str = now.strftime("%Y-%m-%d")
 
-        # Reset weekly tracking on Monday (or first call)
-        if self._last_week_reset is None or (
-            now.weekday() == 0 and (now - self._last_week_reset).days >= 1
-        ):
+        # P0-1: 跨周即重置（isocalendar week 比较，避免周一漏调用的累加污染）
+        need_reset = (
+            self._last_week_reset is None
+            or self._last_week_reset.isocalendar()[:2] != now.isocalendar()[:2]
+        )
+        if need_reset:
             self._weekly_returns = []
             self._last_week_reset = now
 
