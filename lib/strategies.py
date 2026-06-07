@@ -15,7 +15,14 @@ from lib.position_size import RiskSizedPosition, PositionSizeConfig
 from lib.technical_signals import calc_composite_verdict
 from lib.scorer import (score_fundamental, score_capital_flow,
                          score_news, score_technical, comprehensive_score)
-from lib.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
+# P0-2 修复: 删除模块级 _risk_manager 单例（2026-06-07）
+# 原代码: from lib.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
+# 原代码: _risk_manager = VolCorrRiskManager(VolCorrRiskConfig())
+# 风险: 所有策略共享同一 consecutive_losses / _weekly_returns / _trading_suspended，
+#       导致 get_zt_candidates 连亏 5 次后，get_volume_breakout_candidates 进入时
+#       被错误触发 REDUCE 动作（多策略状态污染）。
+# 修复: 改为各策略函数内自行实例化 VolCorrRiskManager（按需），状态天然隔离。
+#       当前模块未在任何策略函数中直接使用 RiskManager，移除 import 即可。
 from lib.data_layer import (get_stock_hist_multi_source, get_realtime_quotes,
                              get_stock_fund_flow, get_news_signals,
                              get_market_sentiment, _get_financial_data,
@@ -27,9 +34,11 @@ from factors import calc_rsi as compute_rsi
 logger = logging.getLogger(__name__)
 
 # 模块级复用
+# P0-2 修复 (2026-06-07): 移除 _risk_manager = VolCorrRiskManager(...)
+# 多策略状态污染风险（consecutive_losses / _weekly_returns 跨策略共享）
+# 见 tests/test_strategies_p0_2.py 回归测试
 _constraints = DeterministicConstraints()
 _position_sizer = RiskSizedPosition(PositionSizeConfig())
-_risk_manager = VolCorrRiskManager(VolCorrRiskConfig())
 
 
 def _batch_get_financial_data(codes: List[str]) -> Dict[str, Optional[pd.Series]]:
