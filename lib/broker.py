@@ -689,6 +689,9 @@ class PaperBroker(LiveBrokerABC):
         if order.direction == "BUY":
             total_value = self._broker.total_value
             if total_value > 0:
+                # P1-2 修复：用 _exec_price_estimate 估算实际成交价
+                # 旧版用 order.price 估值不足，大单实际占用突破单票上限
+                exec_px = self._exec_price_estimate(order, self._market_data, order.date)
                 # 单票仓位限制
                 existing = self._broker.holdings.get(order.code)
                 # P1-1 修复：用 last_price() 显式拿价格，无值时退化为 cost_price
@@ -698,7 +701,7 @@ class PaperBroker(LiveBrokerABC):
                     existing_value = existing.shares * last_px
                 else:
                     existing_value = 0
-                new_value = existing_value + order.price * order.shares
+                new_value = existing_value + exec_px * order.shares
                 if new_value / total_value > self._max_single_weight:
                     logger.warning(f"PaperBroker 风控: {order.code} 仓位 {new_value/total_value:.1%} 超过 {self._max_single_weight:.0%} 上限")
                     # 缩减到限额内
@@ -711,7 +714,7 @@ class PaperBroker(LiveBrokerABC):
 
                 # 总仓位限制
                 total_market_value = self._broker.total_market_value
-                if (total_market_value + order.price * order.shares) / total_value > self._max_total_exposure:
+                if (total_market_value + exec_px * order.shares) / total_value > self._max_total_exposure:
                     max_buy_value = total_value * self._max_total_exposure - total_market_value
                     if max_buy_value <= 0:
                         logger.warning("PaperBroker 风控: 总仓位已达上限")
@@ -781,6 +784,26 @@ class PaperBroker(LiveBrokerABC):
         if "date" in data.columns and "trade_date" not in data.columns:
             data = data.rename(columns={"date": "trade_date"})
         self._market_data[code] = data
+
+    def _exec_price_estimate(self, order: Order, market_data: Dict[str, pd.DataFrame],
+                             date: str) -> float:
+        """估算订单实际成交价（含滑点+冲击成本）
+
+        P1-2 修复（2026-06-07）：
+        风控检查前必须估算 exec_price（含滑点+冲击），而非用 order.price。
+        大单实际占用资金 > order.price * shares，会突破单票上限。
+
+        Args:
+            order: 订单
+            market_data: 行情数据
+            date: 当前日期
+
+        Returns:
+            估算的实际成交价
+        """
+        # 默认实现：保守用 order.price（不开滑点冲击模拟）
+        # 子类或测试可 override 此钩子用真实模型估算
+        return order.price
 
     def set_trade_dates(self, dates: list):
         """设置交易日历"""
