@@ -72,7 +72,10 @@ class WalkForwardConfig:
     warmup_bars: int = 80
     min_train_trades: int = 5
     min_validation_trades: int = 3
-    risk_per_trade_pct: float = 0.5
+    # P1-9 修复 (2026-06-08): 删除 risk_per_trade_pct 死配置
+    # 原因: 字段声明但全代码无引用, 是 dead config
+    # 替代: 仓位管理由 lib/position_size.RiskSizedPosition 独立负责
+    # risk_per_trade_pct: float = 0.5
     strict_factor_audit: bool = True
 
 
