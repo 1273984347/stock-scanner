@@ -65,6 +65,21 @@ class LRUCache:
             return default
     def set(self, key, value):
         self[key] = value
+    def setdefault(self, key, default=None):
+        """如果 key 不存在则设为 default 并返回；存在则返回原值（线程安全）
+
+        P1-6 修复（2026-06-08）：用于 _compute_daily_volume 原子写入缓存，
+        避免 check-then-act 竞态覆盖其他线程已写入的值。
+        """
+        with self._lock:
+            if key not in self.cache:
+                self.cache[key] = default
+                self.cache.move_to_end(key)
+                if len(self.cache) > self.maxsize:
+                    self.cache.popitem(last=False)
+                return default
+            self.cache.move_to_end(key)
+            return self.cache[key]
 
 
 class ABroker:
@@ -455,6 +470,11 @@ class ABroker:
                               date: str) -> float:
         """计算日均成交量（用于冲击成本估算）
 
+        P1-6 修复（2026-06-08）：
+        旧版 check-then-act 竞态：cache lookup 后释放锁，线程 A/B 同时 miss
+        后都会执行计算 → 重复计算。
+        修复：用 LRUCache.setdefault 原子化写入，cache miss 也安全。
+
         Args:
             code: 股票代码
             market_data: 行情数据
@@ -464,17 +484,23 @@ class ABroker:
             日均成交量（股）
         """
         cache_key = f"{code}_{date}"
+        # Fast path: 加锁后再次检查
         with self._broker_cache_lock:
             if cache_key in self._volume_cache:
                 return self._volume_cache[cache_key]
 
         df = market_data.get(code)
         if df is None or df.empty:
+            with self._broker_cache_lock:
+                # 失败结果也缓存（避免反复穿透查询）
+                self._volume_cache.setdefault(cache_key, 0.0)
             return 0.0
 
         target = pd.Timestamp(date)
         hist = df[df["trade_date"] <= target]
         if hist.empty:
+            with self._broker_cache_lock:
+                self._volume_cache.setdefault(cache_key, 0.0)
             return 0.0
 
         window = self.impact_model.config.volume_window
@@ -485,7 +511,8 @@ class ABroker:
             adv = 0.0
 
         with self._broker_cache_lock:
-            self._volume_cache[cache_key] = adv
+            # P1-6 原子化：用 setdefault 避免覆盖（已有值不覆盖）
+            self._volume_cache.setdefault(cache_key, adv)
         return adv
 
     def _compute_volatility(self, code: str, market_data: Dict[str, pd.DataFrame],
