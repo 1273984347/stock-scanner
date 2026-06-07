@@ -18,6 +18,7 @@ from dataclasses import dataclass
 import logging
 import threading
 from collections import OrderedDict
+import abc
 
 import akshare as ak
 
@@ -528,7 +529,7 @@ class ABroker:
 
 # ========== 实盘券商接口 ==========
 
-class LiveBrokerABC:
+class LiveBrokerABC(abc.ABC):
     """实盘券商抽象接口
 
     定义实盘交易的通用接口，子类实现具体券商的连接逻辑。
@@ -562,29 +563,37 @@ class LiveBrokerABC:
         self._positions: Dict[str, dict] = {}
         self._orders: List[dict] = []
 
+    # P1-7：使用 @abc.abstractmethod 强制子类实现（旧版用 raise NotImplementedError，
+    #       不会阻止实例化，子类漏实现时运行时才报错；新版用 abc.ABC 静态拦截）
+    @abc.abstractmethod
     def _connect(self):
         """建立连接（子类实现）"""
-        raise NotImplementedError
+        ...
 
+    @abc.abstractmethod
     def _disconnect(self):
         """断开连接（子类实现）"""
-        raise NotImplementedError
+        ...
 
+    @abc.abstractmethod
     def _place_order(self, order: Order) -> Optional[Trade]:
         """下单（子类实现）"""
-        raise NotImplementedError
+        ...
 
+    @abc.abstractmethod
     def _cancel_order(self, order_id: str) -> bool:
         """撤单（子类实现）"""
-        raise NotImplementedError
+        ...
 
+    @abc.abstractmethod
     def _query_positions(self) -> Dict[str, dict]:
         """查询持仓（子类实现）"""
-        raise NotImplementedError
+        ...
 
+    @abc.abstractmethod
     def _query_balance(self) -> dict:
         """查询账户余额（子类实现）"""
-        raise NotImplementedError
+        ...
 
     def connect(self) -> bool:
         """建立连接"""
