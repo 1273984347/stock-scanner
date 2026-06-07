@@ -709,6 +709,14 @@ class MLDataPipeline:
             if groups is not None:
                 groups = groups[valid_mask]
 
+        # P1-3 修复（2026-06-07）：过滤后 qid 可能产生 gap（某日所有样本 y 都 NaN
+        # → 该 qid 整组消失），np.bincount(groups) 会出现 0 → XGBRanker.set_group
+        # 报错 / LightGBM Dataset(group=) 行为不可预测。
+        # 修复：剩余 qid 重新密集化为 [0, 1, 2, ...]，保持原始时间顺序。
+        if groups is not None and len(groups) > 0:
+            unique_qids, inverse = np.unique(groups, return_inverse=True)
+            groups = inverse.astype(np.int32)
+
         return X, y, groups
 
 
