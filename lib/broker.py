@@ -645,7 +645,10 @@ class PaperBroker(LiveBrokerABC):
                  stop_loss_pct: float = 0.05, **kwargs):
         super().__init__(account=account, env="paper")
         self.initial_cash = initial_cash
-        self.cash = initial_cash
+        # P0-1 修复（2026-06-07）：删除 self.cash = initial_cash
+        # 历史 bug：PaperBroker 同时维护 self.cash（从未更新）和 self._broker.cash（被成交修改），
+        # 导致 _query_balance() 永远返回初始资金，paper trading 决策失效。
+        # 修复后现金单一来源：self._broker.cash
         self._broker = ABroker(initial_cash=initial_cash)
         self._market_data: Dict[str, pd.DataFrame] = {}
         self._max_single_weight = max_single_weight
@@ -737,9 +740,13 @@ class PaperBroker(LiveBrokerABC):
         return positions
 
     def _query_balance(self) -> dict:
-        """查询余额"""
+        """查询余额
+
+        P0-1 修复（2026-06-07）：cash 字段改读 self._broker.cash（单一来源），
+        不再读已删除的 self.cash。修复后 _query_balance() 现金会随成交而变化。
+        """
         return {
-            "cash": self.cash,
+            "cash": self._broker.cash,
             "market_value": self._broker.total_market_value,
             "total_value": self._broker.total_value,
             "initial_cash": self.initial_cash,
