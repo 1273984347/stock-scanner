@@ -10,11 +10,85 @@
 """
 
 import io
+import os
+import platform
+import sys
 from datetime import datetime
 from typing import Dict, List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+# ----------------------------------------------------------------------------
+# 中文字体跨平台路径解析（P2-2 fix）
+#
+# 设计目标：
+# 1. 不硬编码单一平台路径 — 按 sys.platform 给出候选列表
+# 2. 平台检测失败 / 找不到字体 → 显式抛错，不静默 fallback 到 Helvetica
+#    （Helvetica 渲染中文会变方块/方框，伪装成成功比失败更危险）
+# 3. 支持环境变量 STOCK_FONT_PATH 覆盖（CI / 字体自定义场景）
+# ----------------------------------------------------------------------------
+_FONT_CANDIDATES = {
+    "Windows": [
+        r"C:\Windows\Fonts\msyh.ttc",      # 微软雅黑
+        r"C:\Windows\Fonts\msyh.ttf",
+        r"C:\Windows\Fonts\simhei.ttf",    # 黑体
+        r"C:\Windows\Fonts\simsun.ttc",    # 宋体
+    ],
+    "Darwin": [                            # macOS
+        "/System/Library/Fonts/PingFang.ttc",                    # 苹方
+        "/System/Library/Fonts/STHeiti Medium.ttc",              # 华文黑体
+        "/System/Library/Fonts/STHeiti Light.ttc",
+        "/Library/Fonts/Songti.ttc",                             # 宋体
+        "/System/Library/Fonts/Supplemental/Songti.ttc",
+    ],
+    "Linux": [
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",          # 文泉驿正黑
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",       # 文泉驿微米黑
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+    ],
+}
+
+
+def get_chinese_font_candidates() -> List[str]:
+    """返回当前平台的字体候选路径列表（按优先级排序）。
+
+    设计为模块级独立函数以便测试 mock sys.platform。
+    """
+    system = platform.system()  # 'Windows' / 'Darwin' / 'Linux'
+    candidates = list(_FONT_CANDIDATES.get(system, []))
+
+    # 兜底：未知平台时也试一下常见路径（Docker alpine / FreeBSD 等）
+    if not candidates:
+        candidates = [
+            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        ]
+
+    # 允许环境变量覆盖（单个绝对路径）
+    override = os.environ.get("STOCK_FONT_PATH", "").strip()
+    if override:
+        candidates = [override] + candidates
+
+    return candidates
+
+
+def resolve_chinese_font_path() -> Optional[str]:
+    """返回第一个存在的字体绝对路径；找不到则返回 None。
+
+    不抛错 — 由调用方决定如何处理（生成 PDF 时应明确报错）。
+    """
+    for path in get_chinese_font_candidates():
+        try:
+            if os.path.isfile(path):
+                return path
+        except OSError:
+            # 权限 / 路径异常等跳过该候选
+            continue
+    return None
 
 # 检查依赖
 try:
@@ -48,27 +122,35 @@ class PDFReportGenerator:
         self._setup_fonts()
 
     def _setup_fonts(self):
-        """设置中文字体"""
+        """设置中文字体
+
+        P2-2: 跨平台字体路径检测 + 显式 fallback
+        - 通过 resolve_chinese_font_path() 在当前平台上找第一个存在的字体
+        - 找不到时**抛 RuntimeError**（不静默用 Helvetica 渲染中文变成方块）
+        """
         if not HAS_REPORTLAB:
             return
 
-        # 尝试加载中文字体
-        font_paths = [
-            'C:/Windows/Fonts/msyh.ttc',  # 微软雅黑
-            'C:/Windows/Fonts/simsun.ttc',  # 宋体
-            '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',  # Linux
-        ]
+        font_path = resolve_chinese_font_path()
+        if font_path is None:
+            candidates = get_chinese_font_candidates()
+            raise RuntimeError(
+                "No Chinese font found on this platform. "
+                f"Searched paths (platform={platform.system()}): {candidates}. "
+                "Install a CJK font (e.g. msyh.ttc on Windows, "
+                "PingFang.ttc on macOS, wqy-zenhei or NotoSansCJK on Linux) "
+                "or set STOCK_FONT_PATH env var to an absolute .ttf/.ttc path."
+            )
 
-        for font_path in font_paths:
-            try:
-                pdfmetrics.registerFont(TTFont('Chinese', font_path))
-                self._chinese_font = 'Chinese'
-                return
-            except Exception:
-                continue
-
-        self._chinese_font = 'Helvetica'
-        logger.warning("Chinese font not found, using Helvetica")
+        try:
+            pdfmetrics.registerFont(TTFont('Chinese', font_path))
+            self._chinese_font = 'Chinese'
+            self._chinese_font_path = font_path
+            logger.info(f"Chinese font registered: {font_path}")
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to register Chinese font at {font_path}: {e}"
+            ) from e
 
     def _get_styles(self):
         """获取样式"""
