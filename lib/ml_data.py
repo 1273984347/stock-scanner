@@ -43,7 +43,9 @@ FACTOR_COLS: List[str] = [
     "mfi",
     "trix",
     # Barra 风格因子（需截面计算或基本面数据）
-    "pe_percentile",
+    # TODO(P1-1): pe_percentile 因缺乏 PE 基本面数据源，曾被填为整列 NaN，
+    # 已从 FACTOR_COLS 中移除以避免污染特征矩阵。
+    # 接入基本面数据后（如 akshare stock_a_lg_indicator）可恢复并填入真实 PE 分位数。
     "log_market_cap",
     "turnover_rate",
     # 基准因子
@@ -280,8 +282,10 @@ class MLDataPipeline:
         log_mc = np.log(amount.replace(0, np.nan))
         result["log_market_cap"] = log_mc
 
-        # --- pe_percentile（无基本面数据，留空） ---
-        result["pe_percentile"] = pd.Series(np.nan, index=hist.index)
+        # P1-1 修复（2026-06-07）：移除 pe_percentile 整列 NaN 填充。
+        # 之前 result["pe_percentile"] = pd.Series(np.nan, ...) 让该列被持久化到面板，
+        # 但因 FACTOR_COLS 已移除 pe_percentile，不再进入特征矩阵 X。
+        # 如需恢复，请接入真实 PE 数据源并同时将 pe_percentile 加回 FACTOR_COLS。
 
         return result
 
