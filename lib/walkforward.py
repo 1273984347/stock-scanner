@@ -172,6 +172,19 @@ class WalkForwardBacktest:
             # 现在: 用 [warmup_start, val_end] 提供 EMA-21 等指标所需上下文
             val_data = self._slice_data(market_data, dates, window.warmup_start, window.validation_end)
 
+            # P1-7 修复 (2026-06-08): 在 train_data 准备后调 FactorAudit 验证时间戳
+            # 防止回测期间使用未来数据
+            factor_audit = FactorAudit(strict_mode=self.config.strict_factor_audit)
+            ref_ts = dates[window.train_end] if window.train_end < len(dates) else dates[-1]
+            for factor_name in factor_audit.get_enabled_factors():
+                ok, msg = factor_audit.validate_timestamp(
+                    factor_name, ref_ts, ref_ts
+                )
+                if not ok:
+                    logger.warning(
+                        f"窗口 {window.index} 因子 {factor_name} 审计未通过: {msg}"
+                    )
+
             try:
                 train_result = strategy_fn(
                     market_data=train_data,
