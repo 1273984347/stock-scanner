@@ -648,6 +648,7 @@ class ModuleContributionAnalyzer:
 from pathlib import Path
 import json
 import hashlib
+import time
 
 
 def save_walkforward_results(strategy_name: str, summary: Dict, rounds_count: int) -> Path:
@@ -660,15 +661,28 @@ def save_walkforward_results(strategy_name: str, summary: Dict, rounds_count: in
 
     Returns:
         保存的文件路径
+
+    P1-8 修复 (2026-06-08): 避免同日同 strategy 多次调用时覆盖前一次结果
+    - 之前: 文件名 hash 仅基于 strategy_name + date → 必覆盖
+    - 现在: hash 包含 rounds_count + summary 关键字段 + 毫秒级时间戳
     """
     cache_dir = Path(__file__).resolve().parent.parent / "cache" / "walkforward"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # 生成文件名：strategy_date_hash.json
+    # 生成文件名：strategy_date_contenthash_ms.json
     date_str = datetime.now().strftime("%Y%m%d")
-    key = f"{strategy_name}_{date_str}"
-    hash_suffix = hashlib.md5(key.encode()).hexdigest()[:6]
-    filename = f"{strategy_name}_{date_str}_{hash_suffix}.json"
+    # 取 summary 中可能变化的字段做指纹
+    fingerprint_data = {
+        "rounds": rounds_count,
+        "median_return": summary.get("median_return", 0),
+        "median_sharpe": summary.get("median_sharpe", 0),
+        "total_trades": summary.get("total_trades", 0),
+    }
+    fingerprint_str = json.dumps(fingerprint_data, sort_keys=True, ensure_ascii=False)
+    content_hash = hashlib.md5(fingerprint_str.encode()).hexdigest()[:8]
+    # 加毫秒级时间戳避免同 fingerprint 但调用过快时仍覆盖
+    ms_suffix = f"{int(time.time() * 1000) % 10000:04d}"
+    filename = f"{strategy_name}_{date_str}_{content_hash}_{ms_suffix}.json"
     filepath = cache_dir / filename
 
     data = {
