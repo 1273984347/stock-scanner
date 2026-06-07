@@ -989,7 +989,13 @@ class TDXBroker(LiveBrokerABC):
         return 0  # 深圳
 
     def _get_gddm(self, market: int) -> Optional[str]:
-        """获取股东代码"""
+        """获取股东代码
+
+        P1-8 修复（2026-06-08）：
+        旧版找不到匹配 market 时兜底取 data_list[0]，
+        可能拿深市 gddm 去买沪市股票（跨市场错误下单）。
+        修复：找不到匹配 market 时返回 None，让 _place_order 上层判 None 后拒绝下单。
+        """
         result = self._api.query_data(self._client_id, category=5)  # category 5=股东代码
         if result.get("success") != 1:
             return None
@@ -999,9 +1005,11 @@ class TDXBroker(LiveBrokerABC):
         for item in data_list:
             if isinstance(item, dict) and item.get("market") == market:
                 return item.get("gddm")
-        # 兜底：取第一个
-        if data_list and isinstance(data_list[0], dict):
-            return data_list[0].get("gddm")
+        # P1-8：不再兜底取 data_list[0]（避免深市 gddm 去买沪市股票）
+        logger.error(
+            f"TDX 股东代码列表无 market={market} 的条目（data_list 长度={len(data_list)}），"
+            f"拒绝下单避免跨市场错误"
+        )
         return None
 
     def _parse_positions(self, data: list) -> Dict[str, dict]:
