@@ -118,6 +118,24 @@ class ABroker:
         """设置股票名称映射（回测场景下 market_data 无名称列时使用）"""
         self._stock_names = names
 
+    def last_price(self, code: str, default: float = np.nan) -> float:
+        """安全获取最近一次更新的市价
+
+        P1-1 修复（2026-06-07）：
+        暴露显式 last_price() 方法，避免外部直接读 _last_prices 私有字段。
+        若 update_market_prices 尚未调用或该 code 不在持仓中，
+        返回 default（默认 NaN，调用方应显式处理）。
+
+        Args:
+            code: 股票代码
+            default: 无价格时的默认值，默认 NaN
+
+        Returns:
+            最近一次市价，无则返回 default
+        """
+        with self._broker_cache_lock:
+            return self._last_prices.get(code, default)
+
     def update_market_prices(self, market_data: Dict[str, pd.DataFrame], date: str):
         """更新市场价，同时检测退市"""
         target_date = pd.Timestamp(date)
@@ -673,7 +691,13 @@ class PaperBroker(LiveBrokerABC):
             if total_value > 0:
                 # 单票仓位限制
                 existing = self._broker.holdings.get(order.code)
-                existing_value = (existing.shares * self._broker._last_prices.get(order.code, existing.cost_price)) if existing else 0
+                # P1-1 修复：用 last_price() 显式拿价格，无值时退化为 cost_price
+                # 旧版 _last_prices.get() 私有访问 + 无值时退化为 0 导致 first-buy 仓位检查失效
+                if existing:
+                    last_px = self._broker.last_price(existing.code, default=existing.cost_price)
+                    existing_value = existing.shares * last_px
+                else:
+                    existing_value = 0
                 new_value = existing_value + order.price * order.shares
                 if new_value / total_value > self._max_single_weight:
                     logger.warning(f"PaperBroker 风控: {order.code} 仓位 {new_value/total_value:.1%} 超过 {self._max_single_weight:.0%} 上限")
