@@ -167,7 +167,10 @@ class WalkForwardBacktest:
             current_state["window_index_at_snapshot"] = window.index
 
             train_data = self._slice_data(market_data, dates, window.train_start, window.train_end)
-            val_data = self._slice_data(market_data, dates, window.validation_start, window.validation_end)
+            # P1-4 修复 (2026-06-08): val_data 包含 warmup_bars 上下文
+            # 之前: warmup 字段被计算后丢弃, val_data 只到 validation_start
+            # 现在: 用 [warmup_start, val_end] 提供 EMA-21 等指标所需上下文
+            val_data = self._slice_data(market_data, dates, window.warmup_start, window.validation_end)
 
             try:
                 train_result = strategy_fn(
@@ -185,7 +188,7 @@ class WalkForwardBacktest:
                 val_result = strategy_fn(
                     market_data=val_data,
                     factor_data=factor_data,
-                    dates=dates[window.validation_start:window.validation_end + 1],
+                    dates=dates[window.warmup_start:window.validation_end + 1],
                     symbols=symbols,
                     adaptive_state=current_state,
                 )
@@ -222,11 +225,21 @@ class WalkForwardBacktest:
     ) -> Dict[str, pd.DataFrame]:
         sliced = {}
         date_slice = set(dates[start:end + 1])
+        # P1-4 修复 (2026-06-08): 兼容 date_slice 是字符串/日期对象, df 是 Timestamp
+        # 之前: df['trade_date'].isin(str_set) 永远 False, 导致 sliced 永远是空 dict
+        # 现在: 用 normalize 后的字符串集合, 兼容 str / Timestamp / datetime
+        normalized = set()
+        for d in date_slice:
+            try:
+                normalized.add(pd.Timestamp(d).strftime("%Y-%m-%d"))
+            except Exception:
+                normalized.add(str(d))
         for code, df in market_data.items():
             if df is None or df.empty:
                 continue
             if "trade_date" in df.columns:
-                mask = df["trade_date"].isin(date_slice)
+                ts_norm = pd.to_datetime(df["trade_date"]).dt.strftime("%Y-%m-%d")
+                mask = ts_norm.isin(normalized)
                 sub = df[mask].copy()
             else:
                 sub = df.iloc[start:end + 1].copy() if len(df) > end else df.iloc[start:].copy()
