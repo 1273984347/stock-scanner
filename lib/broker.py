@@ -252,23 +252,12 @@ class ABroker:
         # 流通市值 = 收盘价 × 流通股本
         market_cap_result = -1
         if close > 0:
-            # 优先使用 akshare 获取实际流通股本
-            try:
-                info_df = ak.stock_individual_info_em(symbol=code)
-                if info_df is not None and not info_df.empty:
-                    # 查找流通股本字段（可能有不同命名）
-                    cap_row = info_df[info_df["item"].str.contains("流通", na=False)]
-                    if not cap_row.empty:
-                        cap_str = cap_row.iloc[0]["value"]
-                        # 处理格式：e.g., "4.56亿股" 或 "456000000"
-                        if "亿" in cap_str:
-                            market_cap_result = float(cap_str.replace("亿股", "")) * 1e8 * close
-                        elif "万" in cap_str:
-                            market_cap_result = float(cap_str.replace("万股", "")) * 1e4 * close
-                        else:
-                            market_cap_result = float(cap_str) * close
-            except Exception as e:
-                logger.warning(f"[broker] 流通市值获取失败: {e}")
+            # P0-1 修复（2026-06-08）：完全跳过 akshare 实时流通股本接口
+            # 旧实现 ak.stock_individual_info_em(symbol=code) 返回**当前实时**流通股本，
+            # 回测 2019 年用 close × 实时流通股本 = 错误市值（数据穿越 / 未来函数）。
+            # 历史流通股本需 data_layer 预拉快照按 report_date 对齐，超出 P0 修复范围。
+            # 当前策略：直接走 volume 估算路径（sentinel=-2），让 _get_dynamic_impact_model
+            # 用最保守的 impact_model，不引入未来函数风险。
 
             # 降级方案：使用成交量估算（误差大，标记为估算值）
             # 注：日成交量 ≠ 流通股本，此估算仅用于冲击成本的粗略参考

@@ -165,3 +165,38 @@ def test_tdx_broker_holdings_no_attribute_error():
         )
         # AttributeError 但不包含 '_broker' → 证明 property 已删除，是预期行为
         assert "holdings" in msg, f"AttributeError 消息应提及 holdings: {msg}"
+
+
+def test_get_market_cap_no_lookahead():
+    """P0-1: _get_market_cap 不应调用 ak.stock_individual_info_em（未来函数）
+
+    旧实现调用 akshare 拿**当前实时**流通股本，回测 2019 时用 close × 实时股本
+    = 错误市值（数据穿越）。
+    修复：完全回退到 volume 估算路径（sentinel = -2），不走 akshare 实时接口。
+    """
+    import lib.broker as broker_mod
+
+    call_count = {"n": 0}
+    original_func = broker_mod.ak.stock_individual_info_em
+
+    def tracking_call(symbol):
+        call_count["n"] += 1
+        return original_func(symbol)  # 实际不会调用，只为了类型兼容
+
+    broker_mod.ak.stock_individual_info_em = tracking_call
+
+    try:
+        broker = ABroker(initial_cash=1_000_000)
+        dates = ["2024-01-05"]
+        # volume > 0 时应走估算路径（sentinel=-2）
+        md = _make_market_data(dates, [100])
+        cap = broker._get_market_cap("000001", md, dates[0])
+        assert call_count["n"] == 0, (
+            f"P0-1 未修复：_get_market_cap 仍调用 ak.stock_individual_info_em "
+            f"({call_count['n']} 次)，回测时会造成未来函数"
+        )
+        assert cap == -2, (
+            f"P0-1 未修复：应回退到 volume 估算路径（sentinel=-2），实际={cap}"
+        )
+    finally:
+        broker_mod.ak.stock_individual_info_em = original_func

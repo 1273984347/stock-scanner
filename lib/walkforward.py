@@ -122,6 +122,31 @@ class WalkForwardBacktest:
                 validation_end_date=str(dates[val_end]) if val_end < len(dates) else "",
             ))
 
+        # P0-4 修复 (2026-06-08): 末尾补救窗口
+        # 之前: range 上限 n - train_bars - val_bars + 1, 当 step 不能整除时漏掉末尾
+        # 例: n=30, train=20, val=5, step=20 → range(0, 6, 20) = [0] → 漏掉 start=5 的末窗
+        # 现在: 末窗 val_end < n-1 时追加 start = n - train_bars - val_bars
+        if windows and windows[-1].validation_end < n - 1:
+            start = n - train_bars - val_bars
+            train_start = start
+            train_end = start + train_bars - 1
+            val_start = train_end + 1
+            val_end = min(val_start + val_bars - 1, n - 1)
+            warmup_start = max(train_start, val_start - self.config.warmup_bars)
+            windows.append(WalkForwardWindow(
+                index=len(windows),
+                train_start=train_start,
+                train_end=train_end,
+                validation_start=val_start,
+                validation_end=val_end,
+                warmup_start=warmup_start,
+                warmup_bars=val_start - warmup_start,
+                train_start_date=str(dates[train_start]) if train_start < len(dates) else "",
+                train_end_date=str(dates[train_end]) if train_end < len(dates) else "",
+                validation_start_date=str(dates[val_start]) if val_start < len(dates) else "",
+                validation_end_date=str(dates[val_end]) if val_end < len(dates) else "",
+            ))
+
         return windows
 
     def run(
@@ -508,7 +533,7 @@ def summarize_rounds(rounds: List[WalkForwardRound]) -> Dict:
         "worst_return": min(returns) if returns else 0,
         "median_sharpe": _median(sharpes),
         "median_win_rate": _median(win_rates),
-        "worst_drawdown": max(drawdowns) if drawdowns else 0,
+        "worst_drawdown": min(drawdowns) if drawdowns else 0,  # P0-2 修复 (2026-06-08): drawdown 是负值, 用 min 取最深
         "median_profit_factor": _median(profit_factors),
         "total_trades": sum(m.get("total_trades", 0) for m in val_metrics),
     }

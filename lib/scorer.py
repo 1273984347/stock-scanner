@@ -3,9 +3,13 @@
 来源：股票综合分析器 skill
 维度：基本面 35% + 资金面 35% + 消息面 20% + 技术面 10%
 """
+import logging
+
 import pandas as pd
 import numpy as np
 from typing import Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def score_fundamental(pe: float = None, roe: float = None,
@@ -73,9 +77,31 @@ def score_capital_flow(main_net_ratio: float = 0,
 def score_news(major_positive: bool = False,
                institutional_buy: bool = False,
                industry_policy: bool = False,
-               no_negative: bool = True,
+               no_negative: bool = False,
                earnings_positive: bool = False) -> float:
-    """消息面评分（0-10 分，权重 20%）"""
+    """消息面评分（0-10 分，权重 20%）
+
+    Args:
+        no_negative: 是否确认"无负面新闻"。默认 False —— 数据缺失=中性（0 分），
+                     避免无新闻源时虚高 +2 分。调用方需**显式传 True**才加 +2。
+        其他参数同理：默认 False = 数据缺失 = 中性，不贡献分数。
+    """
+    # 检测"数据缺失"场景：所有布尔信号都未传=True。
+    # 这种情况下 no_negative=False 可能是"没数据"，而不是"确认有负面"。
+    data_missing = not any([
+        major_positive,
+        institutional_buy,
+        industry_policy,
+        no_negative,
+        earnings_positive,
+    ])
+    if data_missing:
+        logger.warning(
+            "score_news: 所有新闻信号均为 False/默认 —— 视为数据缺失。"
+            "no_negative 默认 False 防止虚高入场信号。"
+            "若确认无负面新闻，请显式传 no_negative=True。"
+        )
+
     score = 0.0
     if major_positive:
         score += 3.0
