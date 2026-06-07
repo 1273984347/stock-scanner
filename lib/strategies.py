@@ -662,7 +662,8 @@ def get_multi_factor_candidates(config: SystemConfig) -> pd.DataFrame:
 
 # ========== 第6策略：超短线通道策略（凯尔特纳+薛斯） ==========
 
-def get_keltner_xosi_mt_candidates(config: SystemConfig) -> pd.DataFrame:
+def get_keltner_xosi_mt_candidates(config: SystemConfig,
+                                    as_of_date: Optional[str] = None) -> pd.DataFrame:
     """超短线通道策略 —— 基于凯尔特纳+薛斯通道
 
     参考：因子.txt + v4.txt
@@ -682,6 +683,12 @@ def get_keltner_xosi_mt_candidates(config: SystemConfig) -> pd.DataFrame:
     - T+0 收盘：跌破入场关键价位 → 次日评估
     - T+1 动量：未量价齐升 → 减半
     - T+3 逻辑：未触及第一止盈 → 强制离场
+
+    Args:
+        config: 系统配置
+        as_of_date: P0-2 修复 (2026-06-08): 可选 cutoff 日期 (YYYY-MM-DD)。
+                   回测环境传 as_of_date，避免使用"今天盘中"的实时 K 线/指数数据
+                   造成未来函数。None = 使用当前实时数据（默认，向后兼容）。
     """
     try:
         from lib.indicators import compute_all_channels, get_regime_from_kc
@@ -708,6 +715,17 @@ def get_keltner_xosi_mt_candidates(config: SystemConfig) -> pd.DataFrame:
                     index_hist = get_stock_hist_multi_source(code, 60)
                     if index_hist is not None and not index_hist.empty:
                         index_df = index_hist
+                        # P0-2: 指数数据按 as_of_date 截断（get_stock_hist_multi_source 不接受 cutoff）
+                        if as_of_date is not None and not index_df.empty:
+                            cutoff = pd.Timestamp(as_of_date)
+                            date_col = None
+                            for col in ("date", "trade_date", "日期"):
+                                if col in index_df.columns:
+                                    date_col = col
+                                    break
+                            if date_col is not None:
+                                mask = pd.to_datetime(index_df[date_col]) <= cutoff
+                                index_df = index_df[mask].reset_index(drop=True)
         except Exception as e:
             logger.debug(f"[strategies] 上证指数数据获取失败: {e}")
 
@@ -726,7 +744,8 @@ def get_keltner_xosi_mt_candidates(config: SystemConfig) -> pd.DataFrame:
         candidates = []
         row_map = df.set_index(df["代码"].astype(str)).to_dict("index")
         all_codes = df["代码"].astype(str).tolist()
-        stock_hist_data = _batch_get_stock_hist(all_codes, days=60)
+        # P0-2: 传入 as_of_date 以便回测环境过滤未来数据
+        stock_hist_data = _batch_get_stock_hist(all_codes, days=60, as_of_date=as_of_date)
 
         for _, row in df.iterrows():
             code = row["代码"]
