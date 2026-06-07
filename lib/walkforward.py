@@ -222,7 +222,7 @@ class WalkForwardBacktest:
             try:
                 train_result = strategy_fn(
                     market_data=train_data,
-                    factor_data=factor_data,
+                    factor_data=self._slice_factor_data(factor_data, dates, window.train_end),  # P0-1
                     dates=dates[window.train_start:window.train_end + 1],
                     symbols=symbols,
                     adaptive_state=copy.deepcopy(current_state),  # P0-3: train/val 各自 deepcopy
@@ -234,7 +234,7 @@ class WalkForwardBacktest:
             try:
                 val_result = strategy_fn(
                     market_data=val_data,
-                    factor_data=factor_data,
+                    factor_data=self._slice_factor_data(factor_data, dates, window.validation_end),  # P0-1
                     dates=dates[window.warmup_start:window.validation_end + 1],
                     symbols=symbols,
                     adaptive_state=copy.deepcopy(current_state),  # P0-3: 隔离 train 阶段 mutation
@@ -300,6 +300,50 @@ class WalkForwardBacktest:
             if not sub.empty:
                 sliced[code] = sub
         return sliced
+
+    def _slice_factor_data(
+        self,
+        factor_data: pd.DataFrame,
+        dates: List,
+        end_idx: int,
+    ) -> pd.DataFrame:
+        """P0-1 修复 (2026-06-08): 按窗口 end 切 factor_data 防未来函数
+
+        之前: train/val strategy_fn 都收到完整 factor_data, val 阶段可读到未来期因子值
+        现在: 切片到 ≤ dates[end_idx] 的行
+        支持 3 种因子时间戳表示:
+          1. DatetimeIndex
+          2. 已知日期列 (trade_date / date / timestamp / ann_date / report_date)
+          3. 兜底: 位置切片 (假设 factor_data 与 dates 位置对齐)
+        """
+        if factor_data is None or factor_data.empty:
+            return factor_data
+        if end_idx >= len(dates):
+            return factor_data
+        if end_idx < 0:
+            return factor_data.iloc[0:0]
+
+        try:
+            cutoff = pd.Timestamp(dates[end_idx])
+        except Exception:
+            cutoff = None
+
+        # Case 1: DatetimeIndex
+        if cutoff is not None and isinstance(factor_data.index, pd.DatetimeIndex):
+            return factor_data[factor_data.index <= cutoff].copy()
+
+        # Case 2: 已知日期列
+        if cutoff is not None:
+            for col in ("trade_date", "date", "timestamp", "ann_date", "report_date", "as_of_date"):
+                if col in factor_data.columns:
+                    try:
+                        ts = pd.to_datetime(factor_data[col])
+                        return factor_data[ts <= cutoff].copy()
+                    except Exception:
+                        continue
+
+        # Case 3: 兜底 - 位置切片
+        return factor_data.iloc[: end_idx + 1].copy()
 
     def _classify_status(
         self,

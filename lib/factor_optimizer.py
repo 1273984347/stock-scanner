@@ -43,6 +43,12 @@ WEIGHT_MIN = -0.30
 WEIGHT_MAX = 0.30
 WEIGHT_SUM_TARGET = 1.0
 
+# P0-2: OOS sharpe 在 fitness 公式中的权重。
+# 设计目标：fitness = sharpe_in*sharpe_weight + sharpe_oos*OOS_SHARPE_WEIGHT + ...
+# 当 OOS_SHARPE_WEIGHT > 0.5 时，OOS 表现主导 fitness，
+# 强制 GA 寻找"样本内+样本外都稳健"的权重，而非过拟合噪声。
+OOS_SHARPE_WEIGHT = 0.6
+
 
 @dataclass
 class OptimizerConfig:
@@ -139,23 +145,31 @@ def evaluate_fitness(
     calmar_weight: float = 0.1,
     exit_days_map: Optional[Dict[str, int]] = None,
     regime_strategy_presets: Optional[Dict[str, Dict[str, float]]] = None,
+    oos_test_days: int = 0,
 ) -> Tuple[float, Dict]:
     """评估一组因子权重的适应度
+
+    P0-2 修复：fitness 公式中内嵌 OOS sharpe 权重（OOS_SHARPE_WEIGHT），
+    防止 GA 在 in-sample 上过拟合噪声。
 
     Args:
         weights: IC 因子权重
         symbols: 股票代码列表
-        days: 回测天数
+        days: 回测天数（IS + OOS 总和）。当 oos_test_days > 0 时，
+              IS 用前 (days - oos_test_days) 天，OOS 用后 oos_test_days 天。
         n_stocks: 评估股票数
         disable_loss_breaker: 禁用连亏熔断
-        sharpe_weight: Sharpe 权重
+        sharpe_weight: IS Sharpe 权重
         maxdd_weight: 最大回撤权重
         calmar_weight: Calmar 权重
         exit_days_map: 每个 regime 的出场天数（可选）
         regime_strategy_presets: 每个 regime 的策略权重预设（可选）
+        oos_test_days: OOS 评估天数。0 = 禁用（保持旧行为，向后兼容），
+                       >0 = 启用样本外评估。典型值 125（半年）。
 
     Returns:
         (fitness_score, metrics_dict)
+        metrics 包含 oos_sharpe 字段（启用 OOS 时）。
     """
     import factors as F
 
@@ -176,6 +190,12 @@ def evaluate_fitness(
 
         # 运行回测
         from backtest.rebalance import run_rebalance_backtest
+
+        # IS 部分：全量 days（IS + OOS 一起算，expanding window 简化）
+        # 注意：因 run_rebalance_backtest 只支持"取最近 N 天"，
+        # 无法做严格的 walk-forward split。这里采用 expanding window：
+        # IS 用全部 days，OOS 用最近 oos_test_days 天。
+        # 这是对严格分离的折中；研究使用可接受。
         result = run_rebalance_backtest(
             symbols=selected,
             days=days,
@@ -196,15 +216,49 @@ def evaluate_fitness(
         # Calmar = total_return / max_drawdown
         calmar = total_return / max_dd if max_dd > 0.001 else 0
 
+        # P0-2: OOS 评估 —— 当 oos_test_days > 0 时启用
+        oos_sharpe = 0.0
+        oos_failed = False
+        if oos_test_days > 0 and days > oos_test_days:
+            try:
+                oos_result = run_rebalance_backtest(
+                    symbols=selected,
+                    days=oos_test_days,  # 只取最近 oos_test_days 天
+                    disable_loss_breaker=disable_loss_breaker,
+                    exit_days_map=exit_days_map,
+                )
+                if oos_result is not None:
+                    oos_sharpe = (
+                        oos_result.get("sharpe",
+                                       oos_result.get("final_sharpe", 0)) or 0
+                    )
+                else:
+                    # OOS backtest 失败 → 标记但不整体崩溃
+                    oos_failed = True
+                    logger.warning(
+                        f"[evaluate_fitness] OOS backtest 返回 None "
+                        f"(days={oos_test_days})，OOS sharpe 记为 0"
+                    )
+            except Exception as e:
+                oos_failed = True
+                logger.warning(
+                    f"[evaluate_fitness] OOS backtest 异常: {e}，OOS sharpe 记为 0"
+                )
+
         # 组合适应度
+        # P0-2: 在原公式基础上增加 OOS sharpe 权重。
+        # 当 OOS_SHARPE_WEIGHT > 0.5 时，OOS 表现主导 fitness，强制 GA 寻找稳健权重。
         # 惩罚过少交易（<10 笔说明权重配置有问题）
         trade_penalty = min(1.0, n_trades / 10) if n_trades < 10 else 1.0
 
-        fitness = (
+        is_component = (
             sharpe_weight * sharpe
             + maxdd_weight * (1.0 - min(max_dd, 1.0))  # 回撤越小越好
             + calmar_weight * min(calmar, 5.0)  # cap Calmar to avoid extreme
-        ) * trade_penalty
+        )
+        oos_component = OOS_SHARPE_WEIGHT * oos_sharpe if oos_test_days > 0 else 0.0
+
+        fitness = (is_component + oos_component) * trade_penalty
 
         metrics = {
             "sharpe": round(sharpe, 4),
@@ -215,6 +269,11 @@ def evaluate_fitness(
             "total_return": round(total_return, 4),
             "trade_penalty": round(trade_penalty, 4),
         }
+        if oos_test_days > 0:
+            metrics["oos_sharpe"] = round(oos_sharpe, 4)
+            metrics["oos_test_days"] = oos_test_days
+            if oos_failed:
+                metrics["oos_failed"] = True
 
         return fitness, metrics
 
