@@ -2,7 +2,7 @@
 import akshare as ak
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
@@ -39,6 +39,41 @@ logger = logging.getLogger(__name__)
 # 见 tests/test_strategies_p0_2.py 回归测试
 _constraints = DeterministicConstraints()
 _position_sizer = RiskSizedPosition(PositionSizeConfig())
+
+
+def _safe_signal_date(now: Optional[datetime] = None) -> str:
+    """P0-3 修复: 返回安全的信号日期（盘未收稳时使用前一交易日）
+
+    背景：lib/strategies.py 多处直接用 datetime.now().strftime(...)
+    作 akshare 查询日期或 signal_date。盘中（09:30-15:00）调用时，
+    当天数据可能未收盘，paper trading 信号错位。
+
+    Args:
+        now: 可选测试用时间戳。默认 None = datetime.now()。
+
+    Returns:
+        ISO 格式日期字符串 (YYYY-MM-DD)。
+        akshare 紧凑格式（YYYYMMDD）由调用方 .replace("-", "") 派生。
+
+    收盘判定：
+        A 股 15:00 收盘，15:30 之前认为盘未完全收稳。
+        即 hour<15 或 hour==15 and minute<30 时，返回前一交易日。
+
+    上一交易日（简单版，跳过周末）：
+        - 周一（weekday==0）→ date - 3 days = 上周五
+        - 其他（周二-周日）→ date - 1 day = 昨天
+    """
+    if now is None:
+        now = datetime.now()
+
+    # 盘未完全收稳
+    if now.hour < 15 or (now.hour == 15 and now.minute < 30):
+        if now.weekday() == 0:  # 周一 → 上周五
+            prev_date = now.date() - timedelta(days=3)
+        else:  # 其他 → 昨天
+            prev_date = now.date() - timedelta(days=1)
+        return prev_date.strftime("%Y-%m-%d")
+    return now.strftime("%Y-%m-%d")
 
 
 def _batch_get_financial_data(codes: List[str]) -> Dict[str, Optional[pd.Series]]:
@@ -221,7 +256,7 @@ def full_score(code: str, hist: pd.DataFrame, factors: dict,
 def get_zt_candidates(config: SystemConfig) -> pd.DataFrame:
     """涨停板复盘策略"""
     try:
-        df = _retry_api_call(ak.stock_zt_pool_em, date=datetime.now().strftime("%Y%m%d"))
+        df = _retry_api_call(ak.stock_zt_pool_em, date=_safe_signal_date().replace("-", ""))
         if df.empty:
             return pd.DataFrame()
         df = df[df["连板数"] >= config.scan.min_zt_days]
@@ -234,7 +269,7 @@ def get_zt_candidates(config: SystemConfig) -> pd.DataFrame:
             lambda r: min(0.3 + r["连板数"] * 0.15, 0.9), axis=1).round(2)
         result["策略"] = "涨停板复盘"
         result["entry_timing"] = "次日开盘"
-        result["signal_date"] = datetime.now().strftime("%Y-%m-%d")
+        result["signal_date"] = _safe_signal_date()
         realtime = get_realtime_quotes()
         if not realtime.empty:
             row_map = realtime.set_index(realtime["代码"].astype(str)).to_dict("index")
@@ -357,7 +392,7 @@ def get_volume_breakout_candidates(config: SystemConfig) -> pd.DataFrame:
                 "评级": comp_rating,
                 "波动率20": round(factors.get("volatility_20", 25), 1),
                 "entry_timing": "次日开盘",
-                "signal_date": datetime.now().strftime("%Y-%m-%d"),
+                "signal_date": _safe_signal_date(),
             })
             if len(candidates) >= config.scan.max_candidates:
                 break
@@ -430,7 +465,7 @@ def _is_sector_declining(sector_df: pd.DataFrame) -> bool:
 def get_hot_board_candidates(config: SystemConfig) -> pd.DataFrame:
     """热门板块策略 — 四维评分 + 退潮检测"""
     try:
-        df = _retry_api_call(ak.stock_zt_pool_em, date=datetime.now().strftime("%Y%m%d"))
+        df = _retry_api_call(ak.stock_zt_pool_em, date=_safe_signal_date().replace("-", ""))
         if df.empty:
             return pd.DataFrame()
 
@@ -458,7 +493,7 @@ def get_hot_board_candidates(config: SystemConfig) -> pd.DataFrame:
         result = board_stats.head(8).copy()
         result["策略"] = "热门板块"
         result["entry_timing"] = "次日开盘"
-        result["signal_date"] = datetime.now().strftime("%Y-%m-%d")
+        result["signal_date"] = _safe_signal_date()
         result = result.rename(columns={"所属行业": "板块"})
         return result
     except Exception as e:
@@ -510,7 +545,7 @@ def get_lhb_candidates(config: SystemConfig) -> pd.DataFrame:
             result["综合评分"] = scores
         result["策略"] = "龙虎榜"
         result["entry_timing"] = "次日开盘"
-        result["signal_date"] = datetime.now().strftime("%Y-%m-%d")
+        result["signal_date"] = _safe_signal_date()
         return result
     except Exception as e:
         logger.error(f"龙虎榜策略出错: {e}")
@@ -585,7 +620,7 @@ def get_multi_factor_candidates(config: SystemConfig) -> pd.DataFrame:
                 "评分明细": score_breakdown,
                 "波动率20": round(factors.get("volatility_20", 25), 1),
                 "entry_timing": "次日开盘",
-                "signal_date": datetime.now().strftime("%Y-%m-%d"),
+                "signal_date": _safe_signal_date(),
             })
         if not candidates:
             return pd.DataFrame()
@@ -748,7 +783,7 @@ def get_keltner_xosi_mt_candidates(config: SystemConfig) -> pd.DataFrame:
                 "通道信号": reason,
                 "策略": "超短线通道",
                 "entry_timing": "次日开盘",
-                "signal_date": datetime.now().strftime("%Y-%m-%d"),
+                "signal_date": _safe_signal_date(),
             })
 
         if not candidates:
