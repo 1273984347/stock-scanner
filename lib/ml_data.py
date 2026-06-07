@@ -524,6 +524,11 @@ class MLDataPipeline:
             panel["benchmark_ret_5d"] = np.nan
             panel["benchmark_ret_20d"] = np.nan
 
+        # P1-2 修复（2026-06-07）：截面排名特征此前定义但从未调用。
+        # 在所有股票合并后、计算超额收益前，按日期分组生成 <col>_rank（百分位）。
+        # 注：rank 列不会自动进入 FACTOR_COLS，下游可显式选择使用。
+        panel = self.add_cross_sectional_features(panel)
+
         # 计算超额收益标签
         if not benchmark.empty:
             panel = self._compute_excess_returns(panel, bench_close)
