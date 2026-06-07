@@ -66,7 +66,8 @@ def _load_news_cache():
         logger.debug(f"加载业绩数据失败: {e}")
     try:
         df = load_cache("lhb_codes", max_age_hours=4)
-        if df.empty:
+        # P2-5 兼容：load_cache 加载失败时返回 None（与空 DataFrame 区分）
+        if df is None or df.empty:
             df = retry_api_call(ak.stock_lhb_detail_em)
             if not df.empty:
                 save_cache("lhb_codes", df)

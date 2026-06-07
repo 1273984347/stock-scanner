@@ -62,20 +62,42 @@ def _cache_path(key: str) -> Path:
     return CACHE_DIR / f"{key}.parquet"
 
 
-def load_cache(key: str, max_age_hours: int = 2) -> pd.DataFrame:
+def load_cache(key: str, max_age_hours: int = 2) -> pd.DataFrame | None:
+    """加载缓存 DataFrame。
+
+    返回值（必须区分的三种情况）：
+    - DataFrame（非空）：加载成功，包含缓存数据
+    - pd.DataFrame()（空）：缓存未命中（文件不存在 / 已过期），**预期行为，无需告警**
+    - None：缓存加载失败（文件存在但读取失败：损坏/IO/权限），
+            上游**必须**感知并走降级或告警路径
+
+    错误处理（2026-06-07 P2-5 修复）：
+    - 加载失败时升级到 logger.error（之前是 logger.debug，被静默吞掉）
+    - 返回 None 作为显式错误标记（之前是返回空 df，调用方无法区分 miss vs error）
+    - **不删除失败的文件**（保留现场，运维需人工诊断/手动删除）
+      - 这与 data_layer._load_cache P1-2 修复一致：PermissionError/IO 错误保留文件
+    """
     path = _cache_path(key)
     if not path.exists():
+        # 缓存未命中，预期行为（debug 级别，避免日志噪音）
+        logger.debug(f"[cache] 缓存未命中 [{key}]（文件不存在）")
         return pd.DataFrame()
     mtime = datetime.fromtimestamp(path.stat().st_mtime)
     if datetime.now() - mtime > timedelta(hours=max_age_hours):
+        # 缓存过期，删除并视为未命中
         path.unlink(missing_ok=True)
+        logger.debug(f"[cache] 缓存过期 [{key}]（已删除）")
         return pd.DataFrame()
     try:
         return pd.read_parquet(path)
     except Exception as e:
-        logger.debug(f"[cache] 缓存读取失败 [{key}]: {e}")
-        path.unlink(missing_ok=True)
-        return pd.DataFrame()
+        # P2-5 修复（2026-06-07）：从 logger.debug 升级到 logger.error
+        # 失败时保留文件（不动 unlink），让运维诊断 PermissionError/IO 错误/损坏原因
+        logger.error(
+            f"[cache] 缓存加载失败 [{key}]: {type(e).__name__}: {e}（文件保留，路径: {path}）",
+            exc_info=True,
+        )
+        return None  # 显式错误标记：None = 加载失败（与空 DataFrame 的 cache miss 区分）
 
 
 def save_cache(key: str, df: pd.DataFrame):
