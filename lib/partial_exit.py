@@ -234,18 +234,40 @@ class ConsecutiveLossBreaker:
         return self._consecutive_losses >= self.reduce_threshold
 
     def is_stopped(self) -> bool:
-        """是否已停止交易（含冷却期自动恢复）"""
+        """是否已停止交易（纯查询 — 不修改任何状态）
+
+        P0-3 修复：原实现 line 241 在查询中调用 self.reset() 副作用，破坏查询
+        语义（同一实例多次调用结果不一致）。冷却期自动重置逻辑已搬到
+        `_check_auto_reset()`，由 `advance_day()` 显式调用。
+
+        返回值语义：
+        - 未触发熔断 → False
+        - 触发熔断 + 冷却期未满 → True
+        - 触发熔断 + 冷却期已满（_current_day - _stop_day >= cooldown_days）→ False
+          （caller 需调 advance_day() 才会真正重置 _is_stopped 字段）
+        """
         if not self._is_stopped:
             return False
         if self.cooldown_days > 0 and self._current_day - self._stop_day >= self.cooldown_days:
-            self.reset()
-            logger.info(f"【冷却期结束】{self.cooldown_days}天已过，自动恢复交易")
-            return False
+            return False  # 冷却期已过（仅查询；advance_day 负责重置字段）
         return True
 
+    def _check_auto_reset(self):
+        """检查并执行冷却期自动重置（由 advance_day 调用）
+
+        P0-3 新增：从 is_stopped() 抽出的副作用逻辑，caller 通过 advance_day()
+        显式推进时间时触发，确保查询无副作用。
+        """
+        if (self._is_stopped
+                and self.cooldown_days > 0
+                and self._current_day - self._stop_day >= self.cooldown_days):
+            self.reset()
+            logger.info(f"【冷却期结束】{self.cooldown_days}天已过，自动恢复交易")
+
     def advance_day(self):
-        """推进一天（用于冷却期计数）"""
+        """推进一天（用于冷却期计数 + 触发冷却期自动重置）"""
         self._current_day += 1
+        self._check_auto_reset()
 
     def get_position_multiplier(self) -> float:
         """获取仓位乘数"""
