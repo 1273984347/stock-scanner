@@ -387,6 +387,7 @@ class ABroker:
         # 资金检查
         amount = exec_price * actual_shares
         commission = max(amount * self.commission_rate, self.min_commission)
+        # P1-4 注释：BUY 无印花税，仅 SELL 计 stamp_tax
         stamp_tax = amount * self.stamp_tax_rate if order.direction == "SELL" else 0
         total_cost = amount + commission + stamp_tax
 
@@ -395,10 +396,12 @@ class ABroker:
             if max_shares < self.lot_size:
                 return None
             # P1-3 修复：用 actual_shares 局部变量，不再修改 order.shares
+            # P1-4 注释：BUY retry 后 stamp_tax 仍为 0（BUY 无印花税，仅 SELL 计）
             actual_shares = max_shares
             amount = exec_price * actual_shares
             commission = max(amount * self.commission_rate, self.min_commission)
-            total_cost = amount + commission
+            stamp_tax = 0  # BUY 无印花税
+            total_cost = amount + commission + stamp_tax
 
         # 执行交易
         if order.direction == "BUY":

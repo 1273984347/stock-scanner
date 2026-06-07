@@ -192,11 +192,12 @@ def test_p1_4_buy_retry_no_stamp_tax():
     修复前: retry 路径注释缺失，潜在 bug 风险（重算 stamp_tax 误加）。
     修复后: 显式注释 + 行为保证 stamp_tax=0。
     """
-    broker = ABroker(initial_cash=10_000)  # 资金不足触发 retry
+    broker = ABroker(initial_cash=20_000)  # 现金够买 1000 股但不够 5000 股 → 触发 retry
     dates = ["2026-01-05"]
     broker.set_trade_dates(dates)
-    md = _md(dates[0], close=10.0)
-    # 想要买 5000 股 = 50000 元，远超现金 10000，会触发 max_shares 重算
+    md = {"000001": _md(dates[0], close=10.0)}
+    # 想要买 5000 股 = 50000 元，远超现金 20000，会触发 max_shares 重算
+    # max_shares 约 1900 股（受 slippage/impact 影响）
     order = Order(code="000001", direction="BUY", price=10, shares=5000,
                   date=dates[0], reason="资金不足")
     trade = broker.submit_order(order, md, dates[0])
@@ -205,6 +206,8 @@ def test_p1_4_buy_retry_no_stamp_tax():
     assert trade.stamp_tax == 0.0, (
         f"P1-4 BUG: BUY 成交 stamp_tax={trade.stamp_tax}（应为 0）"
     )
+    # 关键断言：retry 后实际成交 shares < 原始 5000
+    assert trade.shares < 5000, f"retry 后实际成交 {trade.shares}（应 < 5000）"
 
 
 # ============================================================
