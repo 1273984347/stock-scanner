@@ -137,3 +137,31 @@ def test_suspend_rejects_sell():
                        date=dates[1], reason="停牌卖出")
     trade = broker.submit_order(order_sell, md_suspend, dates[1])
     assert trade is None, "停牌日应拒绝卖出"
+
+
+def test_tdx_broker_holdings_no_attribute_error():
+    """P0-2: TDXBroker.holdings 旧版引用不存在的 self._broker，应删除该 property
+
+    旧实现：@property holdings 返回 self._broker.holdings，
+    但 TDXBroker.__init__ 没有 self._broker = ABroker(...)，
+    任何访问 broker.holdings 的代码都会抛 AttributeError。
+    修复：删除该 property，TDXBroker 走 _query_positions 路径查询实盘持仓。
+    """
+    from lib.broker import TDXBroker
+    broker = TDXBroker(account="test_account")
+    # 修复后（推荐方案）：完全删除 holdings property
+    # 调用方应改用 broker.get_positions() 走 _query_positions() 路径
+    # 任何对 broker.holdings 的访问应抛 AttributeError
+    # 但**绝不能**包含 "_broker" 字样（证明旧引用已删除）
+    try:
+        result = broker.holdings
+        # 另一种合法修复：返回 dict/None（get_positions 风格）
+        assert isinstance(result, (dict, type(None))), \
+            f"TDXBroker.holdings 应为 dict 或 None，得到 {type(result)}"
+    except AttributeError as e:
+        msg = str(e)
+        assert "_broker" not in msg, (
+            f"P0-2 未修复：TDXBroker.holdings 仍引用不存在的 self._broker: {msg}"
+        )
+        # AttributeError 但不包含 '_broker' → 证明 property 已删除，是预期行为
+        assert "holdings" in msg, f"AttributeError 消息应提及 holdings: {msg}"

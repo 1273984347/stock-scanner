@@ -1100,6 +1100,9 @@ class TDXBroker(LiveBrokerABC):
     def client_id(self) -> int:
         return self._client_id
 
-    @property
-    def holdings(self):
-        return self._broker.holdings
+    # P0-2 修复（2026-06-08）：删除 @property holdings
+    # 旧实现 return self._broker.holdings 必抛 AttributeError，
+    # 因 TDXBroker.__init__ 不注入 self._broker = ABroker(...)。
+    # TDXBroker 是实盘券商，持仓应通过 _query_positions() 查询交易所返回的数据，
+    # 不应通过 ABroker.holdings 访问（不同数据源）。
+    # 调用方改用 broker.get_positions() 走 _query_positions() 路径。
