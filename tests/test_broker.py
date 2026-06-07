@@ -9,7 +9,7 @@ from lib.broker_data import Order, TradingConstraints  # 从子包 lib/broker_da
 
 
 def _make_market_data(dates, close_vec, limit_up=False, limit_down=False,
-                      suspend=False):
+                      suspend=False, code="000001"):
     """构造模拟市场数据"""
     records = []
     pre_close = close_vec[0]
@@ -28,7 +28,7 @@ def _make_market_data(dates, close_vec, limit_up=False, limit_down=False,
         })
         pre_close = c
     df = pd.DataFrame(records)
-    return {"000001": df}
+    return {code: df}
 
 
 def test_t_plus_1():
@@ -200,3 +200,112 @@ def test_get_market_cap_no_lookahead():
         )
     finally:
         broker_mod.ak.stock_individual_info_em = original_func
+
+
+def test_delisted_holdings_cleared_after_60_days():
+    """P0-3: 退市后 holdings 应被清理，submit_order 拒绝 delisted code
+
+    旧实现：60 天无行情仅写入 _delisted_codes，但 holdings 仍按 _missing_days
+    路径追踪"0 价"，净值仍计入（成本价退路兜底），update_market_prices 后 60 天内
+    仍占用 position_count 触发策略调仓信号。
+    修复：
+    1. update_market_prices 标记 delisted 时，从 holdings 中强制移除该 code
+    2. submit_order 拒绝 SELL 已退市 code（避免幽灵持仓被减仓）
+    """
+    broker = ABroker(initial_cash=1_000_000)
+    dates = ["2024-01-02", "2024-01-03"]
+    broker.set_trade_dates(dates)
+    md_buy = _make_market_data(dates[:1], [100])
+    order = Order(code="000001", direction="BUY", price=100, shares=1000,
+                  date=dates[0], reason="买入即将退市股")
+    trade = broker.submit_order(order, md_buy, dates[0])
+    assert trade is not None
+    assert "000001" in broker.holdings
+
+    # 模拟 60 天无行情（无 market_data）
+    empty_md: dict = {}
+    for i in range(60):
+        broker.update_market_prices(empty_md, dates[0])
+
+    # 修复后：holdings 应被强制清理
+    assert "000001" not in broker.holdings, (
+        f"P0-3 未修复：60 天无行情后 holdings 仍含退市股 "
+        f"(holdings={list(broker.holdings.keys())}, "
+        f"delisted={broker.get_delisted_codes()})"
+    )
+    # position_count 同步减 1
+    assert broker.position_count == 0, (
+        f"P0-3 未修复：position_count={broker.position_count}，应清理退市股后归零"
+    )
+
+    # 修复后：submit_order 应拒绝 delisted code
+    order_sell = Order(code="000001", direction="SELL", price=100, shares=1000,
+                       date=dates[1], reason="卖出已退市股")
+    trade_sell = broker.submit_order(order_sell, md_buy, dates[1])
+    assert trade_sell is None, (
+        "P0-3 未修复：submit_order 仍接受退市 code 的 SELL 订单"
+    )
+
+
+def test_paper_broker_uses_internal_lot_size():
+    """P0-4: PaperBroker 风控缩量应使用 self._broker.lot_size 而非硬编码 100
+
+    旧实现 L796/L807 用 int(... / 100) * 100 硬编码 100，
+    与 self._broker.lot_size（默认 100，可被覆写为其他值）解耦。
+    当内部 ABroker 的 lot_size 被设为非 100 时：
+    - PaperBroker 缩量后 order.shares = 100 * K（K 整数）
+    - ABroker.submit_order 再用 self.lot_size=L floor
+    - 若 L > order.shares（缩量结果 < lot_size），floor → 0，订单被静默丢弃
+
+    修复：PaperBroker 风控缩量时使用 self._broker.lot_size 统一口径，
+    避免两次缩量基线不一致 + 缩量结果 < lot_size 时直接 return None。
+
+    触发场景：max_single_weight 较紧，缩量结果在 [100, lot_size) 之间。
+    修复后行为：PaperBroker 在缩量阶段就 floor 到 0，return None（不调 ABroker）。
+    """
+    from lib.broker import PaperBroker
+    broker = PaperBroker(
+        account="test", initial_cash=1_000_000,
+        max_single_weight=0.01,
+    )
+    broker._broker.lot_size = 200
+    dates = ["2024-01-02"]
+    broker.set_trade_dates(dates)
+    md = _make_market_data(dates, [100], code="000001")
+    broker.update_market_data("000001", md["000001"])
+    broker._connected = True
+
+    order = Order(code="000001", direction="BUY", price=100, shares=10000,
+                  date=dates[0], reason="紧限+非标 lot_size 测试")
+
+    # Spy：捕获 PaperBroker 传给 ABroker 的 order.shares
+    captured_shares = []
+    original_submit = broker._broker.submit_order
+
+    def spy_submit(o, md_, date_):
+        captured_shares.append(o.shares)
+        return original_submit(o, md_, date_)
+
+    broker._broker.submit_order = spy_submit
+    try:
+        result = broker._place_order(order)
+    finally:
+        broker._broker.submit_order = original_submit
+
+    # 修复后行为有两种合法路径：
+    # A. PaperBroker 缩量后 order.shares > 0（multiple of lot_size=200）→ 调 ABroker
+    # B. PaperBroker 缩量后 order.shares <= 0 → 直接 return None，不调 ABroker
+    # 关键断言：绝对不能是"100 倍数（硬编码 100）传给 ABroker"（旧 bug）
+    if captured_shares:
+        floor_shares = captured_shares[0]
+        assert floor_shares % 200 == 0, (
+            f"P0-4 未修复：PaperBroker 缩量后 order.shares={floor_shares} "
+            f"是 100 倍数（硬编码 100），不是 lot_size=200 倍数"
+        )
+    else:
+        # PaperBroker 提前 return None（缩量=0 路径）
+        assert result is None, (
+            f"P0-4 异常：PaperBroker 未调 ABroker 但 result={result}（应 None）"
+        )
+
+

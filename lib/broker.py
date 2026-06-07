@@ -153,7 +153,15 @@ class ABroker:
             return self._last_prices.get(code, default)
 
     def update_market_prices(self, market_data: Dict[str, pd.DataFrame], date: str):
-        """更新市场价，同时检测退市"""
+        """更新市场价，同时检测退市
+
+        P0-3 修复（2026-06-08）：
+        旧实现 60 天无行情仅写入 _delisted_codes，holdings 仍按 _missing_days
+        路径追踪"0 价"，净值仍计入（成本价退路兜底），但 update_market_prices
+        后 60 天内仍占用 position_count 触发策略调仓信号。
+        修复：标记 delisted 时从 holdings 强制移除该 code（视为强平至现金），
+        避免幽灵持仓污染调仓决策。
+        """
         target_date = pd.Timestamp(date)
         self._last_prices = {}
         for code in list(self.holdings.keys()):
@@ -169,7 +177,11 @@ class ABroker:
                 with self._broker_cache_lock:
                     if code not in self._delisted_codes:
                         self._delisted_codes.add(code)
-                        logger.warning(f"{date} {code} 连续 {self._missing_days[code]} 天无行情，疑似退市")
+                        logger.warning(f"{date} {code} 连续 {self._missing_days[code]} 天无行情，疑似退市，强制清理持仓")
+                        # P0-3：从 holdings 强制移除（强平至现金）
+                        # 现金不入账（已无对手盘），但释放 position_count 槽位
+                        self.holdings.pop(code, None)
+                        self._missing_days.pop(code, None)
 
     def get_delisted_codes(self) -> set:
         """获取疑似退市的股票代码"""
@@ -309,7 +321,16 @@ class ABroker:
         用 actual_shares = holding.shares 局部变量，Trade.shares 反映实际成交。
         BUY 资金不足 retry 时同理：actual_shares = max_shares。
         旧代码直接改 order.shares，caller 看到的 order 已被修改。
+
+        P0-3 修复（2026-06-08）：
+        退市 code（已加入 _delisted_codes）的 SELL 订单直接拒绝，
+        避免幽灵持仓被减仓导致 cash 入账但实际无成交对手盘。
         """
+        # P0-3：拒绝已退市 code 的订单
+        with self._broker_cache_lock:
+            if order.code in self._delisted_codes:
+                logger.debug(f"{date} {order.code} 已退市（_delisted_codes），拒绝 {order.direction}")
+                return None
         can, reason = self.can_trade(order.code, market_data, date)
         if not can:
             logger.debug(f"{date} {order.code} {order.direction} 无法交易: {reason}")
@@ -748,7 +769,17 @@ class PaperBroker(LiveBrokerABC):
         pass
 
     def _place_order(self, order: Order) -> Optional[Trade]:
-        """通过本地 ABroker 执行订单（含风控检查）"""
+        """通过本地 ABroker 执行订单（含风控检查）
+
+        P0-4 修复（2026-06-08）：
+        风控缩量使用 self._broker.lot_size 而非硬编码 100，
+        与 ABroker.submit_order 的二次 floor 基线一致。
+        旧实现硬编码 100，当内部 ABroker.lot_size 被覆写为非 100 值时，
+        PaperBroker 缩量结果（如 100）会被 ABroker 二次 floor 到 0，
+        订单被静默丢弃。
+        """
+        # P0-4：缩量基线用 self._broker.lot_size，与 ABroker.submit_order 统一
+        lot_size = self._broker.lot_size
         # 风控检查：买入时验证仓位限制
         if order.direction == "BUY":
             total_value = self._broker.total_value
@@ -772,7 +803,8 @@ class PaperBroker(LiveBrokerABC):
                     max_new_value = total_value * self._max_single_weight - existing_value
                     if max_new_value <= 0:
                         return None
-                    order.shares = int(max_new_value / order.price / 100) * 100
+                    # P0-4：用 lot_size 替代硬编码 100
+                    order.shares = int(max_new_value / order.price / lot_size) * lot_size
                     if order.shares <= 0:
                         return None
 
@@ -783,7 +815,8 @@ class PaperBroker(LiveBrokerABC):
                     if max_buy_value <= 0:
                         logger.warning("PaperBroker 风控: 总仓位已达上限")
                         return None
-                    order.shares = int(max_buy_value / order.price / 100) * 100
+                    # P0-4：用 lot_size 替代硬编码 100
+                    order.shares = int(max_buy_value / order.price / lot_size) * lot_size
                     if order.shares <= 0:
                         return None
 
