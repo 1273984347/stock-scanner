@@ -90,6 +90,16 @@ class FactorConfig:
         "volatility_20": 0.10,
     })
 
+    # 机会评分权重（P2-1：从 lib/opportunity_scorer.py 提到 config.py，便于调参）
+    # 公式：score = regime×30% + alpha×25% + sector×20% + trend×15% + volume×10%
+    opp_score_weights: Dict[str, float] = field(default_factory=lambda: {
+        "regime": 0.30,
+        "alpha": 0.25,
+        "sector": 0.20,
+        "trend": 0.15,
+        "volume": 0.10,
+    })
+
 
 @dataclass
 class ScanConfig:

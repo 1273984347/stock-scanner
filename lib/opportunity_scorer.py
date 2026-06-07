@@ -6,6 +6,11 @@
 - ≥80: 可做（正常仓位）
 - 70-79: 观察（半仓）
 - <70: 过滤（不做）
+
+P2-1（2026-06-07）：权重从硬编码改为从 config.FactorConfig.opp_score_weights 读取
+- 提供 set_opp_score_weights / get_opp_score_weights / reset_opp_score_weights API
+- 默认值兜底（与历史硬编码一致）：regime=0.30, alpha=0.25, sector=0.20, trend=0.15, volume=0.10
+- WEIGHTS 常量保留以兼容旧 import（返回当前生效的权重）
 """
 import numpy as np
 from typing import Dict, Optional
@@ -23,14 +28,103 @@ REGIME_MULTIPLIER = {
     "RISK_OFF": 0.0,
 }
 
-# 评分权重
-WEIGHTS = {
+# 评分权重默认值（兜底用 — 历史硬编码值）
+_DEFAULT_OPP_SCORE_WEIGHTS: Dict[str, float] = {
     "regime": 0.30,
     "alpha": 0.25,
     "sector": 0.20,
     "trend": 0.15,
     "volume": 0.10,
 }
+
+# 模块级缓存：set_opp_score_weights() 设置后，compute_opportunity_score() 立即读取
+# 设为 None 表示「下次计算时从 config 拉取最新值」
+_active_weights: Optional[Dict[str, float]] = None
+
+# 兼容旧 import：WEIGHTS 是动态属性，返回当前生效的权重
+# 注意：WEIGHTS 不再是 dict 字面量，需通过 WEIGHTS["x"] 访问的元素依然可用
+
+
+class _WeightsProxy:
+    """权重代理：保持 `from ... import WEIGHTS; WEIGHTS["regime"]` 旧用法兼容"""
+
+    def __getitem__(self, key):
+        return get_opp_score_weights()[key]
+
+    def values(self):
+        return get_opp_score_weights().values()
+
+    def keys(self):
+        return get_opp_score_weights().keys()
+
+    def items(self):
+        return get_opp_score_weights().items()
+
+    def __iter__(self):
+        return iter(get_opp_score_weights())
+
+    def __contains__(self, key):
+        return key in get_opp_score_weights()
+
+    def __len__(self):
+        return len(get_opp_score_weights())
+
+    def __eq__(self, other):
+        return dict(self) == dict(other) if hasattr(other, 'items') else False
+
+    def __repr__(self):
+        return repr(get_opp_score_weights())
+
+
+WEIGHTS = _WeightsProxy()
+
+
+def get_opp_score_weights(source_config=None) -> Dict[str, float]:
+    """获取当前生效的机会评分权重
+
+    优先级：
+    1. 模块级缓存 `_active_weights`（被 set_opp_score_weights 设置过）
+    2. source_config.opp_score_weights（调用方传入的 FactorConfig）
+    3. config.FactorConfig().opp_score_weights（默认 FactorConfig 的默认值）
+    4. _DEFAULT_OPP_SCORE_WEIGHTS（兜底）
+
+    Args:
+        source_config: 可选，传入 FactorConfig 实例时从中读取 opp_score_weights
+
+    Returns:
+        dict: 当前生效的权重字典
+    """
+    if _active_weights is not None:
+        return dict(_active_weights)
+
+    if source_config is not None and hasattr(source_config, 'opp_score_weights'):
+        return dict(source_config.opp_score_weights)
+
+    # 尝试从 config 模块拉取默认值（避免循环导入：失败时兜底）
+    try:
+        from config import FactorConfig
+        return dict(FactorConfig().opp_score_weights)
+    except Exception as e:
+        logger.debug(f"从 config 拉取 opp_score_weights 失败，使用兜底: {e}")
+        return dict(_DEFAULT_OPP_SCORE_WEIGHTS)
+
+
+def set_opp_score_weights(weights: Dict[str, float]) -> None:
+    """设置机会评分权重（覆盖默认值）
+
+    Args:
+        weights: 5 项权重 dict（regime/alpha/sector/trend/volume）
+    """
+    global _active_weights
+    if not isinstance(weights, dict):
+        raise TypeError(f"weights 必须是 dict，实际 {type(weights).__name__}")
+    _active_weights = dict(weights)
+
+
+def reset_opp_score_weights() -> None:
+    """重置为从 config 读取（清除 set_opp_score_weights 的覆盖）"""
+    global _active_weights
+    _active_weights = None
 
 
 def _normalize_trend(trend_strength: float) -> float:
@@ -68,7 +162,7 @@ def compute_opportunity_score(
         volume_ratio: 成交量比（5日/20日）
 
     Returns:
-        dict: {score, rating, breakdown}
+        dict: {score, rating, breakdown, weights}
     """
     # 各维度分数（0-100）
     regime_mult = REGIME_MULTIPLIER.get(regime, 0.5)
@@ -82,13 +176,16 @@ def compute_opportunity_score(
 
     vol_score = _normalize_volume(volume_ratio)
 
+    # 读取当前生效的权重（P2-1：改为从 config 读取）
+    weights = get_opp_score_weights()
+
     # 加权总分
     total = (
-        regime_score * WEIGHTS["regime"]
-        + alpha_score * WEIGHTS["alpha"]
-        + sector_score * WEIGHTS["sector"]
-        + trend_score * WEIGHTS["trend"]
-        + vol_score * WEIGHTS["volume"]
+        regime_score * weights["regime"]
+        + alpha_score * weights["alpha"]
+        + sector_score * weights["sector"]
+        + trend_score * weights["trend"]
+        + vol_score * weights["volume"]
     )
     total = round(max(0, min(100, total)), 1)
 
@@ -110,7 +207,7 @@ def compute_opportunity_score(
             "trend_score": round(trend_score, 1),
             "volume_score": round(vol_score, 1),
         },
-        "weights": WEIGHTS,
+        "weights": weights,
     }
 
 
@@ -125,7 +222,7 @@ def score_from_signals(signal_result: dict, alpha_posterior: float = 0.5) -> Dic
         dict: {score, rating, breakdown}
     """
     if not signal_result:
-        return {"score": 0, "rating": "过滤", "breakdown": {}, "weights": WEIGHTS}
+        return {"score": 0, "rating": "过滤", "breakdown": {}, "weights": get_opp_score_weights()}
 
     regime_info = signal_result.get("regime", {})
     regime = regime_info.get("regime", "MEAN_REVERSION")
