@@ -199,18 +199,25 @@ class WalkForwardBacktest:
             train_trades = train_result.get("trades", []) if isinstance(train_result, dict) else []
             val_trades = val_result.get("trades", []) if isinstance(val_result, dict) else []
 
+            # P1-5 修复 (2026-06-08): 基于 train/val sharpe 偏离度自动判定 fragile
+            train_metrics = self._extract_metrics(train_result)
+            val_metrics = self._extract_metrics(val_result)
+            train_sharpe = train_metrics.get("sharpe_ratio", 0)
+            val_sharpe = val_metrics.get("sharpe_ratio", 0)
+
             status = self._classify_status(
                 train_trades=len(train_trades),
                 validation_trades=len(val_trades),
-                fragile=False,
+                train_sharpe=train_sharpe,
+                val_sharpe=val_sharpe,
             )
 
             rounds.append(WalkForwardRound(
                 window_index=window.index,
                 strategy=strategy_name,
                 validation_status=status,
-                train_metrics=self._extract_metrics(train_result),
-                validation_metrics=self._extract_metrics(val_result),
+                train_metrics=train_metrics,
+                validation_metrics=val_metrics,
                 diagnostics=self._build_diagnostics(train_result, val_result),
             ))
 
@@ -251,14 +258,32 @@ class WalkForwardBacktest:
         self,
         train_trades: int,
         validation_trades: int,
-        fragile: bool,
+        train_sharpe: float = 0.0,
+        val_sharpe: float = 0.0,
+        fragile: bool = None,
     ) -> ValidationStatus:
+        """P1-5 修复 (2026-06-08): 基于 train/val sharpe 偏离度自动判定 FRAGILE
+
+        之前: fragile 硬编码 False, FRAGILE 状态永远走不到
+        现在: 显式传 fragile 时优先; 否则按 sharpe 偏离度自动判定
+              - train > 0.5 且 |train-val|/|train| > 0.5 → FRAGILE
+              - 其它 → STABLE (保守判定, FRAGILE 误报更危险)
+        """
         if train_trades < self.config.min_train_trades:
             return ValidationStatus.INSUFFICIENT_TRADES
         if validation_trades <= 0:
             return ValidationStatus.NO_VALIDATION_TRADES
-        if fragile:
+
+        # 显式 fragile 优先
+        if fragile is True:
             return ValidationStatus.FRAGILE
+
+        # 自动判定: sharpe 偏离度
+        if train_sharpe > 0.5 and val_sharpe >= 0:
+            divergence = abs(train_sharpe - val_sharpe) / abs(train_sharpe)
+            if divergence > 0.5:
+                return ValidationStatus.FRAGILE
+
         return ValidationStatus.STABLE
 
     def _extract_metrics(self, result) -> Dict:
