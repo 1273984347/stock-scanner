@@ -174,6 +174,20 @@ def quick_score(row: pd.Series,
                 news_sig: Optional[dict] = None) -> dict:
     """快速四维评分 —— 仅用实时行情数据（无需拉 K 线）
 
+    ⚠️ P1-2 修复 (2026-06-08): 此函数为**快速评分近似**，并非真正的 10/20 日动量。
+
+    设计权衡：
+    - quick_score 路径不能拉 K 线（成本太高、命中率低）
+    - 但 row 里只有"当日涨跌幅"和"60日涨跌幅"两个回报字段
+    - 用 pct_chg 替代真 10 日动量、用 ret_60d 替代真 20 日动量
+
+    已知偏差：
+    - 当日涨跌幅含今日盘中实时波动（_safe_signal_date 已尽量取前一交易日）
+    - 60 日回报窗口与真 20 日回报窗口不同（粗略近似）
+
+    适用场景：实时扫描数千只股票时的粗筛。
+    精确评分请用 full_score()，它会拉 K 线并计算真 10/20 日动量。
+
     Args:
         row: 股票实时行情
         fund_flow: 可选，预获取的资金流向数据
@@ -182,9 +196,10 @@ def quick_score(row: pd.Series,
     code = str(row.get("代码", ""))
     pct_chg = _safe_float(row.get("涨跌幅"))
     ret_60d = _safe_float(row.get("60日涨跌幅"))
-    tech_return_10d = pct_chg / 100 if abs(pct_chg) < 50 else 0
-    tech_return_20d = ret_60d / 100 if abs(ret_60d) < 200 else 0
-    return _compute_base_scores(row, code, tech_return_10d, tech_return_20d,
+    # ⚠️ 仅快速评分近似：当日涨跌幅 ≠ 真 10 日动量，60日涨跌幅 ≠ 真 20 日动量
+    pct_chg_proxy = pct_chg / 100 if abs(pct_chg) < 50 else 0
+    ret_60d_proxy = ret_60d / 100 if abs(ret_60d) < 200 else 0
+    return _compute_base_scores(row, code, pct_chg_proxy, ret_60d_proxy,
                                 fund_flow, news_sig)
 
 
