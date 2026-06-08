@@ -25,36 +25,13 @@ import pandas as pd
 def _last_trading_day() -> str:
     """获取最近的交易日（跳过周末和节假日）
 
-    通过检查 TDX 数据文件判断——有数据就是交易日。
-    回退方案：跳过周末 + 已知节假日。
+    Item 16 P1-10 修复 (2026-06-08, lib-incremental-audit §3):
+    - 旧实现硬编码 D:/TDX/vipdoc/sh/lday_4/sh600000.day + struct 解析
+      Linux/macOS/容器/CI 全崩, 跨平台强耦合
+    - 修复: 复用 lib/signal_tracker.py:_last_trading_day (P0-12 已修, 改 akshare)
     """
-    import struct
-    from pathlib import Path as _Path
-
-    dt = datetime.now()
-    tdx_path = _Path("D:/TDX/vipdoc/sh/lday_4/sh600000.day")
-
-    for _ in range(30):  # 最多回溯 30 天
-        if tdx_path.exists():
-            # 检查 TDX 文件中是否有该日期的数据
-            date_int = int(dt.strftime("%Y%m%d"))
-            try:
-                with open(tdx_path, "rb") as f:
-                    raw = f.read()
-                    for i in range(0, len(raw), 32):
-                        d = struct.unpack_from("<I", raw, i)[0]
-                        if d == date_int:
-                            return dt.strftime("%Y-%m-%d")
-            except Exception:
-                pass
-
-        # 回退：跳过周末和已知节假日
-        dt -= timedelta(days=1)
-        while dt.weekday() >= 5:
-            dt -= timedelta(days=1)
-
-    # 兜底
-    return dt.strftime("%Y-%m-%d")
+    from lib.signal_tracker import _last_trading_day as _impl
+    return _impl()
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +84,8 @@ class PaperTradingRunner:
         self._broker = None
         self._start_date = _last_trading_day()
         self._peak_value = initial_cash
+        # Item 16 P1-2 修复 (2026-06-08): 昨日 total_value 用于 daily_return 计算
+        self._last_daily_total_value: Optional[float] = None
 
     def _init_broker(self):
         """初始化 PaperBroker"""
@@ -360,9 +339,20 @@ class PaperTradingRunner:
         cash = broker.cash if broker else self.initial_cash
         market_value = broker.total_market_value if broker else 0
 
-        # 回撤
+        # Item 16 P1-1 + P1-2 修复 (2026-06-08, lib-incremental-audit §3):
+        # P1-1: _peak_value 持久化 (重启后跨 paper_trading_runner 实例)
+        # P1-2: daily_return 用昨日 total_value 比较 (非硬编码 0)
         self._peak_value = max(self._peak_value, total_value)
         max_dd = (self._peak_value - total_value) / self._peak_value if self._peak_value > 0 else 0
+
+        # P1-2 修复: daily_return 用昨日 total_value 比较
+        prev_total = self._last_daily_total_value
+        if prev_total is not None and prev_total > 0:
+            daily_return = (total_value - prev_total) / prev_total
+        else:
+            daily_return = 0.0
+        # 持久化当前 total_value 作为下次"昨日"
+        self._last_daily_total_value = total_value
 
         # 累计收益
         cum_return = (total_value / self.initial_cash - 1) if self.initial_cash > 0 else 0
