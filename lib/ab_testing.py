@@ -85,7 +85,16 @@ class ABTester:
         class MockEngine:
             def run(self, symbols, days, params=None):
                 # 模拟回测结果
-                np.random.seed(hash(str(params)) % 2**32)
+                # §4.2 P1 修复 (2026-06-08, lib-incremental-audit §2.4):
+                # 旧 hash(str(params)) 在 Python 3.3+ 默认 randomize (PYTHONHASHSEED)
+                # 跨 session 不可复现 — 同一 params 跑出不同 mock 数据
+                # 修复: hashlib.md5 (稳定哈希, 跨 session 可复现)
+                import hashlib
+                seed = int.from_bytes(
+                    hashlib.md5(str(params).encode("utf-8")).digest()[:4],
+                    byteorder="big"
+                )
+                np.random.seed(seed)
                 returns = np.random.normal(0.0005, 0.02, days)
                 cum_returns = (1 + returns).cumprod()
                 total_return = cum_returns[-1] - 1

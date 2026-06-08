@@ -244,6 +244,14 @@ def _get_financial_data(code: str, as_of_date: Optional[str] = None) -> Optional
 
     缓存：5分钟内存LRU + 7天 parquet 持久化（通过 FinancialCache 统一管理）
 
+    §4.2 历史集成 TODO (2026-06-08, lib-incremental-audit §4.1):
+    - 当前 4 数据源 (腾讯/akshare/东方财富/baostock) 都是实时拉取
+    - backtest 走此路径 = 前视偏差 (Item 12 P0 #1 raise NotImplementedError 防误用)
+    - 真正历史快照需 akshare/baostock 历史 API (multi-day 重构, ~1-2 周)
+    - 集成完成后此函数可在 as_of_date != today 时自动走历史 API
+
+    Args:
+
     Args:
         code: 股票代码（如 "600519"）
         as_of_date: 历史快照日期（YYYY-MM-DD）。**backtest 必须传入**
