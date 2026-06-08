@@ -152,7 +152,12 @@ class MLMonitor:
 
             # 单周期内不足以计算有意义的 IC
             if len(period_scores) < 3:
-                return None
+                # §4.2 P1 修复 (2026-06-08, lib-incremental-audit §1.2):
+                # 旧直接 return None — 数据少就闭嘴, 模型退化在低流动性日 (<3 只股票有预测)
+                # 会被静默吞掉, 累计 0 个负 IC 中断连续序列
+                # 修复: logger.debug 记录样本不足, 继续到下一周期
+                logger.debug(f"[ml_monitor.alert] 周期内样本不足 ({len(period_scores)} < 3), 跳过本周期, 继续累积")
+                continue
 
             try:
                 rho, _ = spearmanr(period_scores, period_returns)
