@@ -89,11 +89,28 @@ class MultiMarketValidator:
             end = pd.to_datetime(period.end_date)
             days = (end - start).days
 
+            # §4.2 P0 #2 修复: 检测"3 周期相同 end_date"导致实际跑同一窗口的情况
+            # 已知问题: run_rebalance_backtest 当前不支持 start_date/end_date slicing
+            # 修复路径: backtest 引擎 walk-forward 重构 (本次仅警告 + 透传参数)
+            all_same_end = all(
+                pd.to_datetime(p.end_date) == end for p in self.periods
+            )
+            if all_same_end:
+                logger.warning(
+                    f"[multi_market_validator] 所有 {len(self.periods)} 周期 end_date 都是 {period.end_date}, "
+                    f"可能实际跑同一窗口 (run_rebalance_backtest 暂不支持 start_date slicing). "
+                    f"等 walk-forward 引擎重构"
+                )
+
             try:
                 result = backtest_func(
                     symbols=symbols,
                     days=days,
                     disable_loss_breaker=False,
+                    # §4.2 P0 #2 修复: 透传 start_date/end_date 给 backtest_func
+                    # 当前 run_rebalance_backtest 暂忽略, 但签名就绪等 walk-forward 重构
+                    start_date=period.start_date,
+                    end_date=period.end_date,
                 )
 
                 if result:

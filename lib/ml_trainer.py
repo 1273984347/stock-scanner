@@ -193,6 +193,29 @@ class MLTrainer:
             "label_gain": list(range(MAX_LABEL_GAIN)),
         }
 
+        # §4.2 P0 #4 修复 (lib-incremental-audit §2.2):
+        # 旧实现直接传连续浮点 label (excess_5d/10d/20d ∈ [-10%, +10%]) 给 LGBM lambdarank
+        # LightGBM 内部静默 cast float → int: 负收益 → 0, 0.05 → 0, 0.5 → 0
+        # 所有正收益被截断到 0/1 二元 → ranker 退化为分类
+        # 修复: pd.qcut(y_train, q=200, labels=False, duplicates='drop') 转离散 rank
+        # 优先用 qcut (200 档离散), 失败时降级为 rankdata
+        import pandas as _pd
+        y_train_arr = _pd.Series(y_train).reset_index(drop=True)
+        n_unique = y_train_arr.nunique(dropna=True)
+        if n_unique < 2:
+            logger.warning(f"[train_lgbm_ranker] y_train unique={n_unique}, LGBM 训练将失败")
+        try:
+            n_bins = min(MAX_LABEL_GAIN, max(2, n_unique))
+            y_train_discrete = _pd.qcut(
+                y_train_arr, q=n_bins, labels=False, duplicates="drop"
+            ).astype(int).fillna(0).values
+        except (ValueError, TypeError) as e:
+            logger.warning(f"[train_lgbm_ranker] qcut 失败 ({e}), 降级 rankdata")
+            from scipy.stats import rankdata as _rankdata
+            y_train_discrete = _rankdata(y_train_arr.fillna(y_train_arr.median()).values) - 1
+            y_train_discrete = (y_train_discrete * (MAX_LABEL_GAIN - 1) // max(y_train_discrete.max(), 1)).astype(int)
+        y_train = y_train_discrete
+
         if search_params:
             best_params = self._grid_search_lgbm(X_train, y_train, group_train)
             params.update(best_params)

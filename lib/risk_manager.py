@@ -527,12 +527,24 @@ class RiskManager:
         return []
 
     @staticmethod
-    def _auto_fetch_industry_map(codes: list) -> Dict[str, str]:
-        """自动获取行业映射（从实时行情）"""
+    def _auto_fetch_industry_map(codes: list, as_of_date: Optional[str] = None) -> Dict[str, str]:
+        """自动获取行业映射（从实时行情）
+
+        §4.2 P0 #2.4 修复 (2026-06-08, lib-incremental-audit §2.1):
+        - 旧实现静默调 get_realtime_quotes() — backtest 走 wall-clock 实时行情 = 前视偏差
+        - 修复: as_of_date 接受 (YYYY-MM-DD), get_realtime_quotes(as_of_date=as_of_date)
+        - 不传 = 实时模式 (scanner 兼容, 但 backtest 必须传)
+        - 传 = 回测模式 (Industry 信息可能为空, 因为 realtime 不支持历史快照)
+        """
         try:
             from lib.data_layer import get_realtime_quotes
-            df = get_realtime_quotes()
+            df = get_realtime_quotes(as_of_date=as_of_date)
             if df.empty:
+                if as_of_date:
+                    logger.debug(
+                        f"[risk_manager._auto_fetch_industry_map] as_of_date={as_of_date} 无行业映射数据 "
+                        f"(realtime API 不支持历史快照)"
+                    )
                 return {}
             code_col = next((c for c in df.columns if "代码" in str(c)), None)
             sector_col = next((c for c in df.columns if "行业" in str(c)), None)
