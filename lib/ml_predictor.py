@@ -39,7 +39,12 @@ class MLPredictor:
     def __init__(
         self,
         model_dir: str = "cache/models/",
-        xgb_name: str = "xgb_20d_v1",
+        # §4.2 P1-2 修复 (2026-06-08, lib-incremental-audit §1.1):
+        # 旧 xgb_name = "xgb_20d_v1" 硬编码在 MLPredictor.__init__
+        # 风险: 测试用 'xgb_20d_v2/v1' 等不同名, 生产 silent 返回 model_available=False
+        # 修复: 从 config.py 集中读取 ML_MODEL_XGB_NAME (允许 env override)
+        # 旧 caller 仍可显式传 xgb_name=... (向后兼容)
+        xgb_name: str = None,
         lgbm_name: str = "lgbm_20d",
     ):
         self.model_dir = model_dir
@@ -48,6 +53,14 @@ class MLPredictor:
         self.xgb_manifest: Optional[Dict[str, Any]] = None
         self.lgbm_model: Any = None  # lightgbm.Booster
         self.lgbm_manifest: Optional[Dict[str, Any]] = None
+
+        # §4.2 P1-2 修复: xgb_name 默认值从 config.py 读 (集中化)
+        if xgb_name is None:
+            from config import get_config
+            try:
+                xgb_name = getattr(get_config().ml, "xgb_model_name", "xgb_20d_v1")
+            except Exception:
+                xgb_name = "xgb_20d_v1"  # 兜底向后兼容
 
         self._load_models(xgb_name, lgbm_name)
 

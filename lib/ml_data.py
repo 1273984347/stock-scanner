@@ -437,9 +437,13 @@ class MLDataPipeline:
         bench = bench_close.sort_index()
         # P0-1 修复（2026-06-05）：保持原 shift(-(N+1))，让 stock 改用 [i+1, i+N+1] 窗口对齐 bench
         # bench_fwd_5d[i] = bench[i+N+1] / bench[i+1] - 1（窗口 [i+1, i+N+1]）
-        bench_fwd_5d = bench.pct_change(5).shift(-5 - 1)
-        bench_fwd_10d = bench.pct_change(10).shift(-10 - 1)
-        bench_fwd_20d = bench.pct_change(20).shift(-20 - 1)
+        # §4.2 P1-6 修复 (2026-06-08, lib-incremental-audit §1.1):
+        # 旧 'bench_fwd_5d' 命名误导: 实际是 5 trading days return ([i+1, i+6] 窗口)
+        # 不是 '5d 后基准', 命名者可能想表达后者, 实际口径与 stock fwd_5d 一致已 fix
+        # 修复: 加注释明示 [i+1, i+N+1] 窗口 (5 trading days, 不是 5d 后基准)
+        bench_fwd_5d = bench.pct_change(5).shift(-5 - 1)  # 5 trading days return [i+1, i+6]
+        bench_fwd_10d = bench.pct_change(10).shift(-10 - 1)  # 10 trading days return
+        bench_fwd_20d = bench.pct_change(20).shift(-20 - 1)  # 20 trading days return
 
         panel["benchmark_fwd_5d"] = panel["date"].map(bench_fwd_5d)
         panel["benchmark_fwd_10d"] = panel["date"].map(bench_fwd_10d)
@@ -717,10 +721,16 @@ class MLDataPipeline:
         # 过滤 NaN 目标
         valid_mask = y.notna()
         n_dropped = (~valid_mask).sum()
+        # §4.2 P1-5 修复 (2026-06-08, lib-incremental-audit §1.1):
+        # 旧 logger.debug '删除 N 行（目标值为 NaN）' — 静默 debug, 运维看不见
+        # 训练集尾部 5-20 天的样本整段缺失, 没有显式警告
+        # 修复: logger.warning 报告 drop 行数 + 占比, caller 能识别样本量静默变化
         if n_dropped > 0:
-            logger.debug(
-                f"删除 {n_dropped} 行（目标值为 NaN），"
-                f"{valid_mask.sum()} 行保留"
+            n_total = len(y)
+            pct = n_dropped / n_total * 100 if n_total > 0 else 0
+            logger.warning(
+                f"[feature_target_split] 删除 {n_dropped}/{n_total} 行 ({pct:.2f}%) "
+                f"目标值为 NaN (fwd_20d 越界), {valid_mask.sum()} 行保留"
             )
             X = X[valid_mask].copy()
             y = y[valid_mask].copy()

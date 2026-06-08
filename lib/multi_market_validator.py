@@ -24,6 +24,9 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# §4.2 P1 修复 (2026-06-08): ROBUST_MAX_DRAWDOWN 常量化
+ROBUST_MAX_DRAWDOWN: float = 0.30  # 30% 回撤容忍度
+
 
 @dataclass
 class MarketPeriod:
@@ -149,7 +152,7 @@ class MultiMarketValidator:
             if r.get("sharpe", 0) < -1:
                 is_robust = False
                 issues.append(f"{r['period']}: Sharpe={r['sharpe']:.2f} 过低")
-            if abs(r.get("max_drawdown", 0)) > 0.30:
+            if abs(r.get("max_drawdown", 0)) > ROBUST_MAX_DRAWDOWN:
                 is_robust = False
                 issues.append(f"{r['period']}: 回撤={r['max_drawdown']:.1%} 过大")
 
