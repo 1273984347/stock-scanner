@@ -12,6 +12,10 @@
 """
 
 import logging
+
+# §4.2 P1 修复 (2026-06-08): TRADING_DAYS_PER_YEAR 常量
+TRADING_DAYS_PER_YEAR = 252  # A 股年化交易天数 (硬编码, 简化)
+
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 from datetime import datetime

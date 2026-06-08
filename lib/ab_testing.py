@@ -8,6 +8,10 @@
 """
 
 import numpy as np
+
+# §4.2 P1 修复 (2026-06-08): TRADING_DAYS_PER_YEAR 常量
+TRADING_DAYS_PER_YEAR = 252  # A 股年化交易天数 (硬编码, 简化)
+
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 from scipy import stats
@@ -85,7 +89,7 @@ class ABTester:
                 returns = np.random.normal(0.0005, 0.02, days)
                 cum_returns = (1 + returns).cumprod()
                 total_return = cum_returns[-1] - 1
-                sharpe = np.mean(returns) / np.std(returns) * np.sqrt(252)
+                sharpe = np.mean(returns) / np.std(returns) * np.sqrt(TRADING_DAYS_PER_YEAR)
                 max_dd = np.min(cum_returns / np.maximum.accumulate(cum_returns) - 1)
                 win_rate = np.mean(returns > 0)
                 trades = np.random.randint(50, 200)
@@ -218,7 +222,7 @@ class ABTester:
         std = float(np.std(returns, ddof=1))
         if std == 0:
             return 0.0
-        return float(np.mean(returns) / std * np.sqrt(252))
+        return float(np.mean(returns) / std * np.sqrt(TRADING_DAYS_PER_YEAR))
 
     def _run_test_degraded(self, config, a_result, b_result) -> ABTestResult:
         """降级路径：引擎无日收益序列时"""

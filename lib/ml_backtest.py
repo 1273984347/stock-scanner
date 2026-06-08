@@ -1,5 +1,9 @@
 """ML 回测验证 -- 比较纯 ML/纯规则/混合三种模式的多空收益"""
 import json
+
+# §4.2 P1 修复 (2026-06-08): TRADING_DAYS_PER_YEAR 常量
+TRADING_DAYS_PER_YEAR = 252  # A 股年化交易天数 (硬编码, 简化)
+
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -59,7 +63,7 @@ class MLBacktest:
                 s = scores[mode][idx]
                 daily_returns[mode].append(self._long_short_return(day_excess, s))
 
-        periods_per_year = 252.0 / self.step
+        periods_per_year = TRADING_DAYS_PER_YEAR / self.step
         results = {}
         for mode in ("ml_only", "rule_only", "hybrid", "benchmark"):
             arr = np.array(daily_returns[mode])

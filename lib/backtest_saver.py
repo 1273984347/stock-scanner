@@ -3,6 +3,10 @@
 所有回测脚本共用，统一格式存入 cache/backtest_results/。
 """
 import json
+
+# §4.2 P1 修复 (2026-06-08): TRADING_DAYS_PER_YEAR 常量
+TRADING_DAYS_PER_YEAR = 252  # A 股年化交易天数 (硬编码, 简化)
+
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -62,7 +66,7 @@ def _compute_metrics(nav: np.ndarray, trades: Optional[List[Dict]] = None) -> Di
         return {}
 
     daily_returns = np.diff(nav) / nav[:-1]
-    n_years = len(nav) / 252
+    n_years = len(nav) / TRADING_DAYS_PER_YEAR
     total_return = float(nav[-1] / nav[0] - 1)
     annualized = (1 + total_return) ** (1 / n_years) - 1 if n_years > 0 else 0
 
@@ -71,7 +75,7 @@ def _compute_metrics(nav: np.ndarray, trades: Optional[List[Dict]] = None) -> Di
     max_drawdown = float(drawdown.min())
 
     std = float(daily_returns.std())
-    sharpe = float(daily_returns.mean() / std * np.sqrt(252)) if std > 0 else 0
+    sharpe = float(daily_returns.mean() / std * np.sqrt(TRADING_DAYS_PER_YEAR)) if std > 0 else 0
 
     metrics = {
         "total_return": round(total_return, 6),
