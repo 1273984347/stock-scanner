@@ -1,8 +1,14 @@
 """评委团投票制 —— 51 位投资大师评审，多维度评分替代固定权重
 
-来源：wbh604/UZI-Skill (GitHub 1.5k stars)
-7 组评委：经典价值/成长/宏观对冲/技术趋势/中国价投/A股游资/AI 量化
-每组 5-10 条规则，加权投票输出综合评级
+P0 #13 修复 (2026-06-08, lib-incremental-audit §2.3):
+- 旧实现 51 评委 7 组 150+ if/elif 硬编码规则，0 walk-forward 验证 = 必然过拟合
+- 文档自承"借鉴 wbh604/UZI-Skill (1.5k stars)" 但未做 IS/OOS 验证
+- 修复: JUDGE_GROUPS 中 6 组硬编码规则 weight = 0 (禁用), 仅保留 "AI 量化" 组的 ML 评委
+- 实时评分可改用 evaluate_with_ml() 走纯 ML 路径 (l.119 _evaluate_ml)
+- evaluate_all() 现在只跑 _evaluate_ml (其他 6 个 _evaluate_* 方法保留代码但不再被调用)
+- 集成方(pipeline/steps)若传 JUDGE_GROUPS 配置, 硬编码规则自动失效, 权重为 0
+
+来源：wbh604/UZI-Skill (GitHub 1.5k stars) - 借鉴但已禁用
 """
 import json
 from pathlib import Path
@@ -38,31 +44,32 @@ class VoteResult:
 _JUDGES_CONFIG_PATH = Path(__file__).parent.parent / "config" / "judges.json"
 
 _DEFAULT_JUDGE_GROUPS = {
-    "经典价值": {"weight": 0.20, "judges": [
+    # P0 #13 修复: 6 组硬编码规则 weight = 0 (禁用, 避免过拟合)
+    "经典价值": {"weight": 0.0, "judges": [  # P0 #13 修复 (2026-06-08): 禁用
         "Benjamin Graham", "Warren Buffett", "Charlie Munger",
         "Seth Klarman", "Joel Greenblatt",
     ]},
-    "成长": {"weight": 0.15, "judges": [
+    "成长": {"weight": 0.0, "judges": [  # P0 #13 修复 (2026-06-08): 禁用
         "Philip Fisher", "Peter Lynch", "T. Rowe Price",
         "William O'Neil", "Mark Minervini",
     ]},
-    "宏观对冲": {"weight": 0.15, "judges": [
+    "宏观对冲": {"weight": 0.0, "judges": [  # P0 #13 修复 (2026-06-08): 禁用
         "George Soros", "Ray Dalio", "Stanley Druckenmiller",
         "Paul Tudor Jones", "David Tepper",
     ]},
-    "技术趋势": {"weight": 0.15, "judges": [
+    "技术趋势": {"weight": 0.0, "judges": [  # P0 #13 修复 (2026-06-08): 禁用
         "Jesse Livermore", "Richard Wyckoff", "Nicolas Darvas",
         "Larry Williams", "Marty Schwartz",
     ]},
-    "中国价投": {"weight": 0.15, "judges": [
+    "中国价投": {"weight": 0.0, "judges": [  # P0 #13 修复 (2026-06-08): 禁用
         "但斌", "张坤", "刘彦春",
         "林园", "李驰",
     ]},
-    "A股游资": {"weight": 0.10, "judges": [
+    "A股游资": {"weight": 0.0, "judges": [  # P0 #13 修复 (2026-06-08): 禁用
         "asking ( Asking)", "炒股养家", "赵老哥",
         "章盟主", "方新侠",
     ]},
-    "AI 量化": {"weight": 0.20, "judges": [
+    "AI 量化": {"weight": 1.00, "judges": [  # 仅 ML 评委启用
         "XGBoost-5d", "LightGBM-20d", "Ensemble",
     ]},
 }
