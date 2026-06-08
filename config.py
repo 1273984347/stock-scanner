@@ -143,6 +143,32 @@ class RiskConfig:
     # 注：原 max_drawdown/daily_loss_limit/weekly_loss_limit 已删除
     # 原因：lib/risk_manager.py 有同名 RiskConfig 类的本地字段，config.py 的副本被遮蔽
 
+    # === Deferred config migration (P2-config-migration-deferred) ===
+    # 以下常量原在 lib/dynamic_exit.py / lib/partial_exit.py 模块顶层，
+    # 2026-06-08 §4.2 A3 迁移到 config 统一管理。
+    consec_loss_stop: int = 5           # 连亏熔断触发次数 (原 DEFAULT_CONSEC_LOSS_STOP)
+    consec_loss_cooldown_days: int = 20 # 连亏冷却天数 (原 DEFAULT_CONSEC_LOSS_COOLDOWN_DAYS)
+    forced_threshold: float = 0.5       # "勉强单"阈值 (原 FORCED_THRESHOLD)
+    exit_days_map: dict = field(default_factory=lambda: {
+        "TREND_UP": 20,         # 让利润奔跑
+        "MEAN_REVERSION": 10,   # 快进快出
+        "HIGH_VOLATILITY": 5,   # 缩短周期
+        "LOW_VOLATILITY": 15,   # 耐心等待
+        "TREND_DOWN": 0,        # 不开仓
+        "RISK_OFF": 0,          # 禁止一切开仓
+    })  # 原 DEFAULT_EXIT_DAYS_MAP
+
+    # === Bayesian updater 阈值 (P2-config-migration-deferred → §4.2 A3 迁移) ===
+    # 原 lib/bayesian_updater.py 模块级常量
+    prior_win_rate: float = 0.5          # 无数据时先验胜率
+    bayes_min_samples: int = 5           # 贝叶斯平滑收缩强度 (k)
+    high_win_threshold: float = 0.6      # 权重上调起点（高胜率分界）
+    low_win_threshold: float = 0.4       # 权重下调起点（低胜率分界）
+    weight_slope: float = 2.5            # 权重随胜率变化斜率
+    weight_ceiling: float = 1.5          # 权重上限
+    weight_floor: float = 0.5            # 权重下限
+    min_display_samples: int = 3         # 摘要展示的最小样本数
+
 
 @dataclass
 class MLConfig:
@@ -150,7 +176,17 @@ class MLConfig:
     # 注：原 use_ml/ml_weight/enable_xgb/enable_lgbm/enable_sentiment/weekly_retrain_day/model_dir
     # 7 个字段已删除。ML 模块（ml_trainer.py/ml_predictor.py）使用本地参数，
     # 未消费 config.MLConfig 的任何字段。
-    pass
+    # === Deferred config migration (P2-config-migration-deferred) ===
+    default_xgb_params: dict = field(default_factory=lambda: {
+        "objective": "rank:ndcg",
+        "eval_metric": "ndcg@5",
+        "learning_rate": 0.1,
+        "max_depth": 6,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "lambda": 1.0,
+        "seed": 42,
+    })  # 原 ml_trainer.DEFAULT_XGB_PARAMS
 
 
 @dataclass
@@ -196,6 +232,8 @@ class MonitorConfig:
     ic_alert_consecutive: int = 5
     factor_ic_threshold: float = 0.02
     factor_corr_threshold: float = 0.95
+    # === Deferred config migration (P2-config-migration-deferred) ===
+    min_nb_samples: int = 5  # 北向资金最小样本数 (原 alert_monitor.MIN_NB_SAMPLES)
 
 
 @dataclass

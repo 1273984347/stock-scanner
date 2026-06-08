@@ -12,24 +12,26 @@ from typing import Dict, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from config import RiskConfig
+
 logger = logging.getLogger(__name__)
 
 # 持久化路径（回测和实盘分离，防止状态污染）
-# P2-config-migration-deferred: 路径应迁移至 lib/config.py，
-# 本次 P2 范围不包含 config.py 改动，故保留模块顶层常量。
+# 注：路径依赖 __file__，保留模块顶层常量（不适合迁到 config.py）
 _BAYES_STATE_PATH = Path(__file__).parent.parent / "cache" / "bayesian_state.json"
 _BAYES_BACKTEST_PATH = Path(__file__).parent.parent / "cache" / "bayesian_state_backtest.json"
 
 # 贝叶斯平滑与权重调整阈值
-# P2-config-migration-deferred: 下列常数应迁移至 lib/config.py。
-PRIOR_WIN_RATE: float = 0.5          # 无数据时先验胜率
-MIN_SAMPLES: int = 5                 # 贝叶斯平滑收缩强度 (k)
-HIGH_WIN_THRESHOLD: float = 0.6      # 权重上调起点（高胜率分界）
-LOW_WIN_THRESHOLD: float = 0.4       # 权重下调起点（低胜率分界）
-WEIGHT_SLOPE: float = 2.5            # 权重随胜率变化斜率
-WEIGHT_CEILING: float = 1.5          # 权重上限
-WEIGHT_FLOOR: float = 0.5            # 权重下限
-MIN_DISPLAY_SAMPLES: int = 3         # 摘要展示的最小样本数
+# §4.2 A3 迁移 (2026-06-08): 原模块级常量 → config.RiskConfig
+_risk_config = RiskConfig()
+PRIOR_WIN_RATE: float = _risk_config.prior_win_rate
+MIN_SAMPLES: int = _risk_config.bayes_min_samples
+HIGH_WIN_THRESHOLD: float = _risk_config.high_win_threshold
+LOW_WIN_THRESHOLD: float = _risk_config.low_win_threshold
+WEIGHT_SLOPE: float = _risk_config.weight_slope
+WEIGHT_CEILING: float = _risk_config.weight_ceiling
+WEIGHT_FLOOR: float = _risk_config.weight_floor
+MIN_DISPLAY_SAMPLES: int = _risk_config.min_display_samples
 
 
 @dataclass

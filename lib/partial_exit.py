@@ -15,7 +15,7 @@ import pandas as pd
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
-from config import get_config
+from config import get_config, RiskConfig
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +27,10 @@ from lib.dynamic_exit import (
     DEFAULT_CONSEC_LOSS_STOP,
     DEFAULT_CONSEC_LOSS_COOLDOWN_DAYS,
 )
-# P2-config-migration-deferred: 上述常量未来可迁入 config.RiskConfig
-# （agent1 范围内不在 lib/config.py 写字段，留给 main agent 跨批统一处理）
 
 # P2 #11: "勉强单" 阈值 — 与 verdict 分档 (0.4/0.6/0.8) 解耦时使用统一常量
-# 注：原 is_forced = total < 0.5 跨过分档边界（0.4=勉强开仓，0.6=合格开仓），
-# 此处显式独立，便于将来调整 (例如: 与 0.4 对齐 = 严格; 与 0.6 对齐 = 宽松)
-FORCED_THRESHOLD = 0.5
+# §4.2 A3 迁移 (2026-06-08): 原模块级常量 → config.RiskConfig.forced_threshold
+FORCED_THRESHOLD = RiskConfig().forced_threshold
 
 # P2 #9: 评分维度的 tier 阈值（止损距离 / 盈亏比）— dataclass 顶部集中
 # 注：这些是评分分档阈值，调节 score() 输出，不属于业务参数

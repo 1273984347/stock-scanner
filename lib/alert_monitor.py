@@ -17,6 +17,8 @@ from datetime import datetime, time
 
 import numpy as np  # P2 #6: 顶层 import 符合 PEP 8
 
+from config import MonitorConfig
+
 logger = logging.getLogger(__name__)
 
 # 默认静默期：22:00 - 08:00
@@ -29,9 +31,8 @@ DEFAULT_STALE_HOURS = 24.0
 # 北向资金 z-score 异常倍数（>2σ 视为异常流入/流出）
 DEFAULT_NB_ZSCORE = 2.0
 # 北向资金最小样本数（< 5 天数据不可靠）
-MIN_NB_SAMPLES = 5
-# P2-config-migration-deferred: 上述常量未来考虑迁入 config.RiskConfig
-# （agent1 范围内不在 lib/config.py 写字段，留给 main agent 跨批统一处理）
+# §4.2 A3 迁移 (2026-06-08): 原模块级常量 → config.MonitorConfig.min_nb_samples
+MIN_NB_SAMPLES = MonitorConfig().min_nb_samples
 
 # 推送失败时降级目录（环境变量可覆盖，便于测试/部署）
 FALLBACK_DIR = Path(os.environ.get(

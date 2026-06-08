@@ -18,21 +18,13 @@ import numpy as np
 import xgboost as xgb
 from sklearn.model_selection import ParameterGrid, TimeSeriesSplit
 
+from config import MLConfig
+
 logger = logging.getLogger(__name__)
 
 # 训练/搜索默认参数（被 train_* / _grid_search_* 共用）
-# P2-config-migration-deferred: 下列参数应迁移至 lib/config.py，
-# 本次 P2 范围不包含 config.py 改动，故保留模块顶层常量字典。
-DEFAULT_XGB_PARAMS: Dict[str, Any] = {
-    "objective": "rank:ndcg",
-    "eval_metric": "ndcg@5",
-    "learning_rate": 0.1,
-    "max_depth": 6,
-    "subsample": 0.8,
-    "colsample_bytree": 0.8,
-    "lambda": 1.0,
-    "seed": 42,
-}
+# §4.2 A3 迁移 (2026-06-08): 原模块级常量 → config.MLConfig.default_xgb_params
+DEFAULT_XGB_PARAMS: Dict[str, Any] = MLConfig().default_xgb_params
 
 DEFAULT_LGBM_PARAMS: Dict[str, Any] = {
     "objective": "lambdarank",

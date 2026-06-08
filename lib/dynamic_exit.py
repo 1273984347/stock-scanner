@@ -18,30 +18,23 @@ import numpy as np
 from typing import Dict, Optional
 from dataclasses import dataclass
 
+from config import RiskConfig
+
 logger = logging.getLogger(__name__)
 
 
-# === Agent 1 Constants === (P2 #4 + #5: 提常量便于 preset/调参；P2-config-migration-deferred)
+# === Agent 1 Constants === (P2 #4 + #5: 提常量便于 preset/调参)
+# §4.2 A3 迁移 (2026-06-08): 原模块级常量 → config.RiskConfig 统一管理
 # V6 设计的 regime → 出场天数映射（balanced preset；aggressive 可覆盖为更短天数）
 # 5 个 string regime + 默认 fallback（regime 不在表内时返回 10 天）
-DEFAULT_EXIT_DAYS_MAP: dict = {
-    "TREND_UP": 20,         # 让利润奔跑
-    "MEAN_REVERSION": 10,   # 快进快出
-    "HIGH_VOLATILITY": 5,   # 缩短周期
-    "LOW_VOLATILITY": 15,   # 耐心等待
-    "TREND_DOWN": 0,        # 不开仓
-    "RISK_OFF": 0,          # 禁止一切开仓
-}
+_risk_config = RiskConfig()
+DEFAULT_EXIT_DAYS_MAP: dict = _risk_config.exit_days_map
 DEFAULT_EXIT_DAYS_FALLBACK = 10
 
 # ConsecutiveLossBreaker 阈值（与 lib.partial_exit 中保持一致 — 单一权威）
-# P2 #5: 两文件原本都硬编码 3/5/20；此处显式声明，partial_exit 默认参数
-# 也已对齐到这些值（见 partial_exit.py 顶层 DEFAULT_CONSEC_* 常量）
 DEFAULT_CONSEC_LOSS_REDUCE = 3
-DEFAULT_CONSEC_LOSS_STOP = 5
-DEFAULT_CONSEC_LOSS_COOLDOWN_DAYS = 20
-# P2-config-migration-deferred: 上述常量未来可迁入 config.RiskConfig
-# （agent1 范围内不在 lib/config.py 写字段，留给 main agent 跨批统一处理）
+DEFAULT_CONSEC_LOSS_STOP = _risk_config.consec_loss_stop
+DEFAULT_CONSEC_LOSS_COOLDOWN_DAYS = _risk_config.consec_loss_cooldown_days
 
 
 # ========== 波动率仓位管理 ==========
