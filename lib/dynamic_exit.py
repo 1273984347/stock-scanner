@@ -21,6 +21,29 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 
+# === Agent 1 Constants === (P2 #4 + #5: 提常量便于 preset/调参；P2-config-migration-deferred)
+# V6 设计的 regime → 出场天数映射（balanced preset；aggressive 可覆盖为更短天数）
+# 5 个 string regime + 默认 fallback（regime 不在表内时返回 10 天）
+DEFAULT_EXIT_DAYS_MAP: dict = {
+    "TREND_UP": 20,         # 让利润奔跑
+    "MEAN_REVERSION": 10,   # 快进快出
+    "HIGH_VOLATILITY": 5,   # 缩短周期
+    "LOW_VOLATILITY": 15,   # 耐心等待
+    "TREND_DOWN": 0,        # 不开仓
+    "RISK_OFF": 0,          # 禁止一切开仓
+}
+DEFAULT_EXIT_DAYS_FALLBACK = 10
+
+# ConsecutiveLossBreaker 阈值（与 lib.partial_exit 中保持一致 — 单一权威）
+# P2 #5: 两文件原本都硬编码 3/5/20；此处显式声明，partial_exit 默认参数
+# 也已对齐到这些值（见 partial_exit.py 顶层 DEFAULT_CONSEC_* 常量）
+DEFAULT_CONSEC_LOSS_REDUCE = 3
+DEFAULT_CONSEC_LOSS_STOP = 5
+DEFAULT_CONSEC_LOSS_COOLDOWN_DAYS = 20
+# P2-config-migration-deferred: 上述常量未来可迁入 config.RiskConfig
+# （agent1 范围内不在 lib/config.py 写字段，留给 main agent 跨批统一处理）
+
+
 # ========== 波动率仓位管理 ==========
 
 @dataclass
@@ -86,6 +109,12 @@ class DynamicTPConfig:
         (0.00, 1.00),  # 回到成本 全出
     ]
 
+    # P2 #1: 与 VolPositionConfig 共享同一阈值语义（避免调一处漂移）
+    # 注：Dataclass 字段若想复用 VolPositionConfig 的同名字段，可改 type 注解
+    # 为 `VolPositionConfig` 并设 default_factory；此处维持 float 简单些
+    high_vol_threshold: float = 0.40  # >40% 年化波动 = 高波动（降档位）
+    low_vol_threshold: float = 0.20   # <20% 年化波动 = 低波动（升档位）
+
     # 高波动时降低止盈目标（更早锁定利润）
     high_vol_reduction: float = 0.15  # 档位降低 15%
 
@@ -108,10 +137,11 @@ class DynamicTakeProfit:
         Returns:
             list of (trigger_pct, exit_ratio) tuples
         """
-        if annualized_vol > 0.40:
+        # P2 #1: 改用 self.config 字段（之前硬编码 0.40/0.20 与 VolPositionConfig 漂移风险）
+        if annualized_vol > self.config.high_vol_threshold:
             # 高波动：降低止盈目标
             factor = 1.0 - self.config.high_vol_reduction
-        elif annualized_vol < 0.20:
+        elif annualized_vol < self.config.low_vol_threshold:
             # 低波动：提高止盈目标
             factor = 1.0 + self.config.low_vol_boost
         else:
@@ -134,16 +164,25 @@ class DynamicExitManager:
     + 市场状态 → 出场天数映射。
     """
 
-    def __init__(self, exit_days_map: dict = None):
+    def __init__(self, exit_days_map: dict = None,
+                 reduce_threshold: int = DEFAULT_CONSEC_LOSS_REDUCE,
+                 stop_threshold: int = DEFAULT_CONSEC_LOSS_STOP,
+                 cooldown_days: int = DEFAULT_CONSEC_LOSS_COOLDOWN_DAYS):
         # P0-2: 复用 ConsecutiveLossBreaker（统一实现），不再用 DynamicLossBreaker
+        # P2 #5: 阈值从模块常量传入，与 lib.partial_exit.DEFAULT_CONSEC_* 对齐
         from lib.partial_exit import ConsecutiveLossBreaker
         self.loss_breaker = ConsecutiveLossBreaker(
-            reduce_threshold=3, stop_threshold=5, cooldown_days=20
+            reduce_threshold=reduce_threshold,
+            stop_threshold=stop_threshold,
+            cooldown_days=cooldown_days,
         )
         self.position_sizer = VolatilityPositionSizer()
         self.take_profit = DynamicTakeProfit()
-        self._exit_days_map = exit_days_map
+        # P2 #4: 默认用模块常量；调用方可传 preset-specific 覆盖
+        self._exit_days_map = exit_days_map if exit_days_map is not None else DEFAULT_EXIT_DAYS_MAP
         self._current_regime = "MEAN_REVERSION"  # 默认
+        # P2 #10: 显式初始化避免 getattr 防御式访问 + 不一致（line 184 用 0 fallback）
+        self._current_vol: float = 0.3
 
     def update_market_state(self, regime: str, annualized_vol: float):
         """更新市场状态"""
@@ -153,12 +192,12 @@ class DynamicExitManager:
     def get_position_pct(self) -> float:
         """获取建议仓位比例"""
         lb_mult = self.loss_breaker.get_position_multiplier()
-        vol_pct = self.position_sizer.get_position_pct(getattr(self, '_current_vol', 0.3))
+        vol_pct = self.position_sizer.get_position_pct(self._current_vol)
         return vol_pct * lb_mult
 
     def get_exit_levels(self) -> list:
         """获取当前止盈档位"""
-        return self.take_profit.get_exit_levels(getattr(self, '_current_vol', 0.3))
+        return self.take_profit.get_exit_levels(self._current_vol)
 
     def record_trade(self, code: str, pnl: float, date: str):
         """记录交易结果
@@ -181,7 +220,7 @@ class DynamicExitManager:
             "loss_breaker": self.loss_breaker.get_status(),
             "position_pct": self.get_position_pct(),
             "exit_levels": self.get_exit_levels(),
-            "current_vol": getattr(self, '_current_vol', 0),
+            "current_vol": self._current_vol,
             "current_regime": self._current_regime,
             "exit_days": self.get_exit_days(),
         }
@@ -189,7 +228,7 @@ class DynamicExitManager:
     def get_exit_days(self) -> int:
         """根据市场状态获取建议出场天数
 
-        V6 设计要求：
+        V6 设计要求（详见模块顶层 DEFAULT_EXIT_DAYS_MAP）：
         - TREND_UP: 20天（让利润奔跑）
         - MEAN_REVERSION: 10天（快进快出）
         - HIGH_VOLATILITY: 5天（缩短周期）
@@ -197,14 +236,6 @@ class DynamicExitManager:
         - TREND_DOWN: 0天（不开仓）
         - RISK_OFF: 0天（禁止一切开仓）
         """
-        regime = self._current_regime
-        exit_days_map = self._exit_days_map if self._exit_days_map is not None else {
-            "TREND_UP": 20,
-            "MEAN_REVERSION": 10,
-            "HIGH_VOLATILITY": 5,
-            "LOW_VOLATILITY": 15,
-            "TREND_DOWN": 0,
-            "RISK_OFF": 0,
-        }
-        return exit_days_map.get(regime, 10)  # 默认 10 天
+        # P2 #4: 不再内联 dict 默认值 — 改用模块顶层 DEFAULT_EXIT_DAYS_MAP
+        return self._exit_days_map.get(self._current_regime, DEFAULT_EXIT_DAYS_FALLBACK)
 

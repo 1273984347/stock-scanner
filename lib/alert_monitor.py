@@ -15,11 +15,23 @@ from pathlib import Path
 from typing import List, Dict
 from datetime import datetime, time
 
+import numpy as np  # P2 #6: 顶层 import 符合 PEP 8
+
 logger = logging.getLogger(__name__)
 
 # 默认静默期：22:00 - 08:00
 DEFAULT_SILENT_START = time(22, 0)
 DEFAULT_SILENT_END = time(8, 0)
+
+# === Agent 1 Constants === (P2 #8: 提常量便于调参 + 测试)
+# 数据缓存超过 24 小时视为过期（实盘每日 15:00 收盘后入库）
+DEFAULT_STALE_HOURS = 24.0
+# 北向资金 z-score 异常倍数（>2σ 视为异常流入/流出）
+DEFAULT_NB_ZSCORE = 2.0
+# 北向资金最小样本数（< 5 天数据不可靠）
+MIN_NB_SAMPLES = 5
+# P2-config-migration-deferred: 上述常量未来考虑迁入 config.RiskConfig
+# （agent1 范围内不在 lib/config.py 写字段，留给 main agent 跨批统一处理）
 
 # 推送失败时降级目录（环境变量可覆盖，便于测试/部署）
 FALLBACK_DIR = Path(os.environ.get(
@@ -78,7 +90,12 @@ class AlertMonitor:
         return consecutive
 
     def check_drawdown(self, equity_curve: List[float], threshold: float = 0.03) -> bool:
-        """检查单日回撤是否超过阈值"""
+        """检查**全期**回撤是否超过阈值（P2 #7: 修正文档与实现一致）
+
+        实现：取 equity_curve 全局最大值为高水位 peak，current 为最后一点；
+        算 (peak - current) / peak。文档原写"单日"是错误的——本函数实际
+        是全期 high-water-mark 回撤（适合盘后/日内触发；日级单日跌幅请另写）。
+        """
         if len(equity_curve) < 2:
             return False
 
@@ -96,7 +113,8 @@ class AlertMonitor:
             return True
         return False
 
-    def check_data_staleness(self, cache_age_hours: float, threshold_hours: float = 24) -> bool:
+    def check_data_staleness(self, cache_age_hours: float,
+                             threshold_hours: float = DEFAULT_STALE_HOURS) -> bool:
         """检查数据是否过期"""
         if cache_age_hours > threshold_hours:
             self.alerts.append({
@@ -109,7 +127,7 @@ class AlertMonitor:
         return False
 
     def check_northbound_anomaly(self, daily_flows: list = None,
-                                 threshold_multiplier: float = 2.0) -> bool:
+                                 threshold_multiplier: float = DEFAULT_NB_ZSCORE) -> bool:
         """检查北向资金异常流入/流出
 
         Args:
@@ -119,10 +137,10 @@ class AlertMonitor:
         Returns:
             True if anomaly detected
         """
-        if not daily_flows or len(daily_flows) < 5:
+        if not daily_flows or len(daily_flows) < MIN_NB_SAMPLES:
             return False
 
-        import numpy as np
+        # P2 #6: numpy 已移至模块顶层 import
         arr = np.array(daily_flows)
         mean = float(arr.mean())
         std = float(arr.std())
@@ -227,11 +245,13 @@ class AlertMonitor:
 
     def run_all_checks(self, trades: List[Dict] = None, equity_curve: List[float] = None,
                        cache_age_hours: float = 0,
-                       current_time: time = None) -> List[Dict]:
-        """运行所有检查
+                       current_time: time = None,
+                       northbound_flows: list = None) -> List[Dict]:
+        """运行所有检查（P2 #2: 文档与实现对齐 — 现在确实运行 4 项检查）
 
         Args:
             current_time: 注入时间（backtest 用）；None 时用 wall-clock
+            northbound_flows: 最近 N 天北向资金净流入列表（亿）；None 跳过北向检查
         """
         # 检查静默期（支持时间注入）
         if self.is_silent_period(current_time=current_time):
@@ -247,5 +267,10 @@ class AlertMonitor:
             self.check_drawdown(equity_curve)
 
         self.check_data_staleness(cache_age_hours)
+
+        # P2 #2: 原实现漏调此方法 — 现在接受可选 northbound_flows，
+        # 调用方（实盘/回测）注入即可触发北向异常告警
+        if northbound_flows:
+            self.check_northbound_anomaly(northbound_flows)
 
         return self.alerts

@@ -20,6 +20,37 @@ from config import get_config
 logger = logging.getLogger(__name__)
 
 
+# === Agent 1 Constants === (P2 #5: 与 dynamic_exit 共享同一份阈值；P2 #9 + #11: 提常量便于调参)
+# 从 lib.dynamic_exit 复用 — 单一权威实现（lib.partial_exit.ConsecutiveLossBreaker 是真正使用者）
+from lib.dynamic_exit import (
+    DEFAULT_CONSEC_LOSS_REDUCE,
+    DEFAULT_CONSEC_LOSS_STOP,
+    DEFAULT_CONSEC_LOSS_COOLDOWN_DAYS,
+)
+# P2-config-migration-deferred: 上述常量未来可迁入 config.RiskConfig
+# （agent1 范围内不在 lib/config.py 写字段，留给 main agent 跨批统一处理）
+
+# P2 #11: "勉强单" 阈值 — 与 verdict 分档 (0.4/0.6/0.8) 解耦时使用统一常量
+# 注：原 is_forced = total < 0.5 跨过分档边界（0.4=勉强开仓，0.6=合格开仓），
+# 此处显式独立，便于将来调整 (例如: 与 0.4 对齐 = 严格; 与 0.6 对齐 = 宽松)
+FORCED_THRESHOLD = 0.5
+
+# P2 #9: 评分维度的 tier 阈值（止损距离 / 盈亏比）— dataclass 顶部集中
+# 注：这些是评分分档阈值，调节 score() 输出，不属于业务参数
+STOP_DIST_TIERS: List[Tuple[float, float]] = [
+    (0.03, 1.0),   # 止损 ≤3% → 1.0 (风险极小)
+    (0.05, 0.7),   # 止损 ≤5% → 0.7 (风险可控)
+    (0.08, 0.4),   # 止损 ≤8% → 0.4 (风险偏高)
+    (float("inf"), 0.1),  # 止损 >8% → 0.1 (风险高)
+]
+PNL_RATIO_TIERS: List[Tuple[float, float]] = [
+    (3.0, 1.0),    # 盈亏比 ≥3:1 → 1.0
+    (2.0, 0.7),    # ≥2:1 → 0.7
+    (1.5, 0.4),    # ≥1.5:1 → 0.4
+    (float("inf"), 0.1),  # <1.5:1 → 0.1
+]
+
+
 # ========== 分仓变速止盈 ==========
 
 @dataclass
@@ -42,7 +73,15 @@ def _build_exit_levels():
         for lv in cfg.risk.partial_exit_levels
     ]
 
-DEFAULT_EXIT_LEVELS = _build_exit_levels()
+
+# P2 #12: 不在 import 时执行 get_config() — 改用 factory 在 __init__ 中惰性求值
+# 原因：
+#   1) 模块导入副作用污染测试（pytest 收集阶段触发 config 初始化 + file I/O）
+#   2) preset 切换需要重建 levels（每次都用 balanced 不灵活）
+#   3) 减少冷启动时延（按需加载）
+def _default_exit_levels_factory() -> List[ExitLevel]:
+    """DEFAULT_EXIT_LEVELS 的惰性求值工厂（PartialExitManager.__init__ 内部用）"""
+    return _build_exit_levels()
 
 
 class PartialExitManager:
@@ -65,7 +104,8 @@ class PartialExitManager:
     }
 
     def __init__(self, exit_levels: List[ExitLevel] = None, regime: str = None):
-        self._base_levels = exit_levels or DEFAULT_EXIT_LEVELS
+        # P2 #12: 惰性求值 — 仅在第一次真正需要时调用 get_config
+        self._base_levels = exit_levels if exit_levels is not None else _default_exit_levels_factory()
         self._regime = regime or "MEAN_REVERSION"
         self.exit_levels = self._adjust_levels()
         self._positions: Dict[str, dict] = {}  # code -> position info
@@ -143,9 +183,19 @@ class PartialExitManager:
                       price: float, date: str, level: ExitLevel) -> Dict:
         """执行退出"""
         remaining = pos["remaining_shares"]
-        exit_shares = int(remaining * level.exit_ratio / 100) * 100  # 整手
-        if exit_shares <= 0:
-            exit_shares = remaining  # 全部退出
+        # P2 #3: 整手计算 bug 修复
+        # 原公式：int(remaining * level.exit_ratio / 100) * 100
+        # 问题：level.exit_ratio 是小数（如 0.33 / 0.5 / 1.0），除以 100 变成 0.0033/0.005/0.01
+        #       → 950 股 * 1.0 / 100 = 9.5 → int(9.5) * 100 = 900 → 剩 50 股**永远不退出**
+        #       因为 line 148 兜底是 exit_shares <= 0（这里 900 > 0 不触发）
+        # 修复策略 1（保留整手语义）：level.exit_ratio == 1.0 → 全清；否则整手向下取整
+        if level.exit_ratio >= 1.0:
+            exit_shares = remaining
+        else:
+            exit_shares = int(remaining * level.exit_ratio) // 100 * 100
+            if exit_shares <= 0:
+                # 整手取整后为 0：可能剩余不足 1 手（< 100 股），全清兜底
+                exit_shares = remaining
 
         exit_shares = min(exit_shares, remaining)
         pos["remaining_shares"] -= exit_shares
@@ -193,13 +243,15 @@ class ConsecutiveLossBreaker:
     """连续亏损熔断器
 
     规则：
-    - 连续亏损 2 笔 → 仓位减半
-    - 连续亏损 3 笔 → 停止交易
+    - 连续亏损 reduce_threshold 笔 → 仓位减半（默认 3 笔）
+    - 连续亏损 stop_threshold 笔 → 停止交易（默认 5 笔）
     - 盈利 1 笔 → 重置计数器
     """
 
-    def __init__(self, reduce_threshold: int = 3, stop_threshold: int = 5,
-                 cooldown_days: int = 20):
+    # P2 #5: 默认值与 lib.dynamic_exit 中常量保持一致（单一权威）
+    def __init__(self, reduce_threshold: int = DEFAULT_CONSEC_LOSS_REDUCE,
+                 stop_threshold: int = DEFAULT_CONSEC_LOSS_STOP,
+                 cooldown_days: int = DEFAULT_CONSEC_LOSS_COOLDOWN_DAYS):
         self.reduce_threshold = reduce_threshold
         self.stop_threshold = stop_threshold
         self.cooldown_days = cooldown_days
@@ -362,7 +414,8 @@ class QualityScorer:
             "total_score": total,
             "dimensions": scores,
             "verdict": verdict,
-            "is_forced": total < 0.5,  # 标记为"勉强单"
+            # P2 #11: 提常量 — 避免与 verdict 分档 (0.4/0.6/0.8) 隐式耦合
+            "is_forced": total < FORCED_THRESHOLD,
         }
 
     def _score_dimension(self, dim: QualityDimension, data: Dict) -> float:
@@ -395,24 +448,20 @@ class QualityScorer:
             return 0.0  # TREND_DOWN, RISK_OFF
 
         elif name == "止损空间":
+            # P2 #9: 提常量到模块顶部 STOP_DIST_TIERS
             stop_dist = data.get("stop_distance_pct", 0.05)
-            if stop_dist <= 0.03:
-                return 1.0
-            elif stop_dist <= 0.05:
-                return 0.7
-            elif stop_dist <= 0.08:
-                return 0.4
-            return 0.1
+            for threshold, score in STOP_DIST_TIERS:
+                if stop_dist <= threshold:
+                    return score
+            return 0.1  # fallback（实际不会被触发，因 STOP_DIST_TIERS 含 inf）
 
         elif name == "盈亏比":
+            # P2 #9: 提常量到模块顶部 PNL_RATIO_TIERS
             ratio = data.get("expected_pnl_ratio", 1.0)
-            if ratio >= 3.0:
-                return 1.0
-            elif ratio >= 2.0:
-                return 0.7
-            elif ratio >= 1.5:
-                return 0.4
-            return 0.1
+            for threshold, score in PNL_RATIO_TIERS:
+                if ratio >= threshold:
+                    return score
+            return 0.1  # fallback
 
         elif name == "信号一致性":
             consensus = data.get("signal_consensus", "mixed")
