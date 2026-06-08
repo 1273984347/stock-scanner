@@ -20,3 +20,6 @@ logs/
 # Skill 自迭代产物（eval-N, run_loop — 不是源代码）
 .claude/skills/*/iteration-*/
 .claude/skills/*/run_loop/
+
+# Data corrections (运行时人工修正日志, 不是源代码)
+data_corrections.json
