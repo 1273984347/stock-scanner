@@ -30,25 +30,38 @@ def _make_market_data(code="600519", close=100.0, volume=1_000_000):
     return {code: df}
 
 
-def test_market_cap_succeeds_with_real_data():
-    """成功获取流通股本 → 返回正值"""
+def test_market_cap_volume_estimate_fallback():
+    """P0-1 修复后：原 akshare 成功路径已删（数据穿越风险）。
+    改为测 volume 估算 fallback：close > 0 + volume > 0 → 返回 sentinel -2 + 记录估算值。
+
+    估算公式: estimated_market_cap = close * (volume / 0.03)
+    估算结果存到 _estimated_market_caps[code] 供指标输出。
+    """
     from lib.broker import ABroker as Broker
     b = Broker.__new__(Broker)  # 绕过 __init__
     b._broker_cache_lock = MagicMock()
     b._market_cap_cache = {}
     b.impact_model = MagicMock()
 
-    # 模拟 akshare 返回有效数据
-    with patch("akshare.stock_individual_info_em") as mock_ak:
-        mock_ak.return_value = pd.DataFrame({
-            "item": ["流通股本"],
-            "value": ["5.0亿股"],  # 5 亿股
-        })
-        market_data = _make_market_data(close=100.0, volume=1_000_000)
-        result = b._get_market_cap("600519", market_data, "2024-06-01")
-        # 5e8 * 100 = 5e10
-        assert result > 0, f"期望 > 0, 实际 {result}"
-        assert result == 5e8 * 100.0
+    # P0-1 后不再调用 akshare，估算逻辑在 _get_market_cap 内部完成
+    market_data = _make_market_data(close=100.0, volume=1_000_000)
+    result = b._get_market_cap("600519", market_data, "2024-06-01")
+
+    # 返回 sentinel -2（不是 -1 完全失败，也不是 >= 0 成功）
+    assert result == -2, f"估算 fallback 应返回 sentinel -2, 实际 {result}"
+
+    # 估算值应记录在 _estimated_market_caps
+    assert hasattr(b, '_estimated_market_caps'), \
+        "估算 fallback 应保存估算值到 _estimated_market_caps"
+    assert '600519' in b._estimated_market_caps, \
+        "估算值应记录在 _estimated_market_caps['600519']"
+
+    # 估算市值公式: close * (volume / 0.03)
+    # 100 * (1_000_000 / 0.03) ≈ 3.333e9
+    expected = 100.0 * (1_000_000 / 0.03)
+    actual = b._estimated_market_caps['600519']
+    assert abs(actual - expected) < 1, \
+        f"估算市值期望 {expected:,.2f}, 实际 {actual:,.2f}"
 
 
 def test_market_cap_returns_minus_two_on_estimation_fallback(caplog):
