@@ -183,16 +183,24 @@ class ABroker:
         后 60 天内仍占用 position_count 触发策略调仓信号。
         修复：标记 delisted 时从 holdings 强制移除该 code（视为强平至现金），
         避免幽灵持仓污染调仓决策。
+
+        P0 #14.1 修复 (2026-06-08, lib-incremental-audit §2.5):
+        - 旧实现 self._last_prices = {} (line 188) + _last_prices[code] = ... (line 194) + _missing_days[code] += 1 (line 197) 全部无锁
+        - last_price() (line 174) 持锁读, 但 update_market_prices 写时无锁 → 并发读撕裂
+        - 修复: 全函数体加 self._broker_cache_lock (in 缩到最短范围, 不阻塞 IO)
         """
         target_date = pd.Timestamp(date)
-        self._last_prices = {}
+        # P0 #14.1 修复: 写 _last_prices 持锁
+        with self._broker_cache_lock:
+            self._last_prices = {}
         for code in list(self.holdings.keys()):
             df = market_data.get(code)
             if df is not None and not df.empty:
                 latest = df[df["trade_date"] <= target_date]
                 if not latest.empty:
-                    self._last_prices[code] = latest["close"].iloc[-1]
-                    self._missing_days[code] = 0
+                    with self._broker_cache_lock:
+                        self._last_prices[code] = latest["close"].iloc[-1]
+                        self._missing_days[code] = 0
                     continue
             self._missing_days[code] = self._missing_days.get(code, 0) + 1
             if self._missing_days[code] >= 60:
@@ -436,30 +444,35 @@ class ABroker:
             total_cost = amount + commission + stamp_tax
 
         # 执行交易
-        if order.direction == "BUY":
-            self.cash -= total_cost
-            next_sell_date = self._next_trade_date(date, market_data)
-            if order.code in self.holdings:
-                h = self.holdings[order.code]
-                total_cost_basis = h.shares * h.cost_price + amount
-                h.shares += actual_shares
-                h.cost_price = total_cost_basis / h.shares if h.shares > 0 else 0
-                # T+1: 加仓部分需要更新 can_sell_date
-                # 仅当旧仓已可卖时才更新（旧仓今日可卖则整体锁定到明日）
-                if date >= h.can_sell_date:
-                    h.can_sell_date = next_sell_date
+        # P0 #14.2 修复 (2026-06-08, lib-incremental-audit §2.5):
+        # 旧 submit_order 中 cash -= total_cost (line 440) / cash += (line 458) / holdings mutation
+        # 全部无锁。PaperBroker 并发下单可能导致 cash 漂移/重复扣款
+        # 修复: 资金 + 持仓变更在持锁块内完成
+        with self._broker_cache_lock:
+            if order.direction == "BUY":
+                self.cash -= total_cost
+                next_sell_date = self._next_trade_date(date, market_data)
+                if order.code in self.holdings:
+                    h = self.holdings[order.code]
+                    total_cost_basis = h.shares * h.cost_price + amount
+                    h.shares += actual_shares
+                    h.cost_price = total_cost_basis / h.shares if h.shares > 0 else 0
+                    # T+1: 加仓部分需要更新 can_sell_date
+                    # 仅当旧仓已可卖时才更新（旧仓今日可卖则整体锁定到明日）
+                    if date >= h.can_sell_date:
+                        h.can_sell_date = next_sell_date
+                else:
+                    self.holdings[order.code] = Holding(
+                        code=order.code, shares=actual_shares,
+                        cost_price=exec_price, buy_date=date,
+                        can_sell_date=self._next_trade_date(date, market_data)
+                    )
             else:
-                self.holdings[order.code] = Holding(
-                    code=order.code, shares=actual_shares,
-                    cost_price=exec_price, buy_date=date,
-                    can_sell_date=self._next_trade_date(date, market_data)
-                )
-        else:
-            self.cash += amount - commission - stamp_tax
-            h = self.holdings[order.code]
-            h.shares -= actual_shares
-            if h.shares <= 0:
-                del self.holdings[order.code]
+                self.cash += amount - commission - stamp_tax
+                h = self.holdings[order.code]
+                h.shares -= actual_shares
+                if h.shares <= 0:
+                    del self.holdings[order.code]
 
         trade = Trade(
             code=order.code, direction=order.direction,
