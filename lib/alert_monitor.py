@@ -50,6 +50,21 @@ class AlertMonitor:
         # P1-1: 推送失败降级 — 计数器 + 降级文件
         self._push_failure_count: int = 0
         self._fallback_path: str = ""
+        # §4.2 P1 #2 修复 (2026-06-08, lib-incremental-audit §3):
+        # current_time 注入 (回测用), 默认 None = wall-clock 模式
+        # run_all_checks 调用时设置, check_* 方法通过 _now_iso() 读
+        self._current_time: Optional[time] = None
+
+    def _now_iso(self) -> str:
+        """§4.2 P1 #2: 返回当前时间 (time 对象) 或 wall-clock ISO 字符串
+
+        优先级:
+        1. self._current_time (time 对象, 仅时间戳, 默认 wall-clock)
+        2. wall-clock (datetime.now().isoformat())
+        """
+        if self._current_time is not None:
+            return f"TODAY-T{self._current_time.isoformat()}"
+        return datetime.now().isoformat()
 
     def set_silent_period(self, start: time, end: time):
         """设置静默期"""
@@ -85,7 +100,7 @@ class AlertMonitor:
                 "level": "WARNING",
                 "message": f"连续 {threshold} 笔亏损！最近 {threshold} 笔交易全部亏损",
                 "details": [f"{t.get('code', '?')}: {t.get('pnl_pct', 0):.2%}" for t in recent],
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": self._now_iso(),
             })
         return consecutive
 
@@ -108,7 +123,7 @@ class AlertMonitor:
                 "type": "drawdown",
                 "level": "CRITICAL",
                 "message": f"回撤 {drawdown:.1%} 超过阈值 {threshold:.1%}",
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": self._now_iso(),
             })
             return True
         return False
@@ -121,7 +136,7 @@ class AlertMonitor:
                 "type": "data_stale",
                 "level": "WARNING",
                 "message": f"缓存数据已 {cache_age_hours:.0f} 小时未更新（阈值 {threshold_hours:.0f}h）",
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": self._now_iso(),
             })
             return True
         return False
@@ -157,7 +172,7 @@ class AlertMonitor:
                 "type": "northbound_anomaly",
                 "level": "WARNING",
                 "message": f"北向资金{direction}：今日 {latest:.1f}亿（均值 {mean:.1f}亿，标准差 {std:.1f}亿，Z={z_score:.1f}）",
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": self._now_iso(),
             })
             return True
 
@@ -177,7 +192,7 @@ class AlertMonitor:
                     lines.append(f"  - {detail}")
             lines.append("")
 
-        lines.append(f"告警时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        lines.append(f"告警时间：{self._now_iso()[:16].replace('T', ' ')}")
         return "\n".join(lines)
 
     def push_alerts(self) -> bool:
@@ -231,7 +246,7 @@ class AlertMonitor:
             json.dump(
                 {
                     "alert_id": alert_id,
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": self._now_iso(),
                     "reason": reason,
                     "message": message,
                     "alerts": self.alerts,
@@ -249,6 +264,11 @@ class AlertMonitor:
                        northbound_flows: list = None) -> List[Dict]:
         """运行所有检查（P2 #2: 文档与实现对齐 — 现在确实运行 4 项检查）
 
+        §4.2 P1 #2 修复 (2026-06-08, lib-incremental-audit §3):
+        - 旧 9 处 datetime.now() 时间戳 wall-clock, backtest 走实时日期
+        - 修复: current_time 注入 (time 对象) → 全函数时间戳用 current_time
+        - 不传 = 实时模式 (scanner 兼容), 传 = 回测
+
         Args:
             current_time: 注入时间（backtest 用）；None 时用 wall-clock
             northbound_flows: 最近 N 天北向资金净流入列表（亿）；None 跳过北向检查
@@ -257,6 +277,9 @@ class AlertMonitor:
         if self.is_silent_period(current_time=current_time):
             logger.info("In silent period, skipping alert checks")
             return []
+
+        # §4.2 P1 #2 修复: 设当前时间 (time 对象), 让 _now_iso() 走注入
+        self._current_time = current_time
 
         self.alerts = []
 
