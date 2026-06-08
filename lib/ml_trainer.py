@@ -369,14 +369,22 @@ class MLTrainer:
 
         try:
             model_type = manifest.get("model_type", "") if manifest else ""
-            if model_type == "xgboost" or (not model_type and "xgb" in name.lower()):
+            # §4.2 P1-3 修复 (2026-06-08, lib-incremental-audit §1.1):
+            # 旧实现 "name.lower()" 启发式 — manifest 缺 model_type 时按名称猜
+            # 风险: lgbm_5d/ 目录 model_type 缺失 → 走 XGB 路径 → silent corruption
+            # 修复: model_type 缺失时 raise ValueError, 不再启发式
+            if not model_type:
+                raise ValueError(
+                    f"manifest {manifest_path} 缺 model_type 字段 — "
+                    f"无法确定加载 XGB 还是 LGBM, 拒绝启发式"
+                )
+            if model_type == "xgboost":
                 model = xgb.Booster()
                 model.load_model(str(model_path))
-            elif model_type == "lightgbm" or not model_type:
+            elif model_type == "lightgbm":
                 model = lgb.Booster(model_file=str(model_path))
             else:
-                logger.warning(f"未知模型类型: {model_type}，尝试 LGBM")
-                model = lgb.Booster(model_file=str(model_path))
+                raise ValueError(f"未知模型类型: {model_type}（仅支持 xgboost/lightgbm）")
         except Exception as e:
             logger.error(f"模型加载失败 {model_path}: {e}")
             return None, manifest

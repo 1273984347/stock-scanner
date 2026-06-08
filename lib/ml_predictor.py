@@ -120,6 +120,15 @@ class MLPredictor:
         }
 
         if not self.model_available:
+            # §4.2 P1-2 修复 (2026-06-08, lib-incremental-audit §1.1):
+            # 旧实现 silent return result (score=0, consensus=HOLD)
+            # 生产中如果旧模型被加载, model_available=False, 所有预测退化为 HOLD
+            # 风险: caller 看 score=0 误以为 '真信号', 实际是 '模型不可用'
+            # 修复: logger.warning 提醒 + model_available=False 字段保留
+            logger.warning(
+                f"[MLPredictor] 模型 {self.xgb_name} 不可用 — 训练脚本未跑/路径错/版本不匹配, "
+                f"所有预测退化为 HOLD, 禁止根据 score=0 误判"
+            )
             return result
 
         feature_cols = self._get_feature_cols()
