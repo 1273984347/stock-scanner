@@ -191,8 +191,15 @@ class PositionManager:
                        take_profit: float = DEFAULT_TAKE_PROFIT, notes: str = "",
                        atr: float = 0.0, atr_mult: float = 2.0,
                        atr_tp_mult: float = 4.0, trailing_mult: float = 3.0,
-                       regime: str = None, market_data=None):
+                       regime: str = None, market_data=None,
+                       current_date: Optional[str] = None):
         """记录持仓
+
+        Item 16 续 P1-4 修复 (2026-06-08, lib-incremental-audit §3):
+        - 旧实现 buy_date = datetime.now().strftime("%Y-%m-%d") 走 wall-clock
+        - backtest 重放时入场日是当前真实日期, 证伪 holding_days 计算错位
+        - 修复: current_date 接受 (YYYY-MM-DD), 替换 datetime.now()
+        - 不传 = 实时模式 (行为不变)
 
         Args:
             atr: 入场时 ATR 值（0=无ATR，使用固定止损）
@@ -200,6 +207,7 @@ class PositionManager:
             atr_tp_mult: ATR 止盈倍数
             trailing_mult: 移动止盈 ATR 倍数
             regime: 市场状态（可选，传入时自动调整 atr_mult / trailing_mult）
+            current_date: 时间截断 (YYYY-MM-DD)。回测必传。
         """
         # 根据市场状态动态调整参数
         if regime:
@@ -211,9 +219,11 @@ class PositionManager:
         atr_stop_price = buy_price - atr * atr_mult if atr > 0 else 0.0
         atr_take_profit_price = buy_price + atr * atr_tp_mult if atr > 0 else 0.0
         trailing_stop_price = buy_price  # 初始移动止盈 = 入场价
+        # Item 16 续 P1-4 修复: buy_date 用 current_date 替代 datetime.now()
+        buy_date = current_date if current_date else datetime.now().strftime("%Y-%m-%d")
         self.positions[code] = Position(
             code=code, name=name, buy_price=buy_price,
-            shares=shares, buy_date=datetime.now().strftime("%Y-%m-%d"),
+            shares=shares, buy_date=buy_date,
             stop_loss=stop_loss, take_profit=take_profit, notes=notes,
             atr=atr, atr_mult=atr_mult,
             atr_stop_price=atr_stop_price,
@@ -230,8 +240,8 @@ class PositionManager:
             self.positions[code]._key_low = 0.0
         self._save()
         logger.info(f"记录持仓: {code} {name} {shares}股 @ {buy_price} ATR={atr:.4f} stop={atr_stop_price:.2f}" if atr > 0 else f"记录持仓: {code} {name} {shares}股 @ {buy_price}")
-        # 记录到证伪管理器
-        entry_date = datetime.now().strftime("%Y-%m-%d")
+        # 记录到证伪管理器 — 复用上方 buy_date (Item 16 续 P1-4 修复)
+        entry_date = buy_date
         stop_price = atr_stop_price if atr > 0 else buy_price * (1 - stop_loss)
         first_target = atr_take_profit_price if atr > 0 else 0.0
         self._proof_manager.record_entry(code, entry_date, buy_price, stop_price, first_target)
@@ -329,18 +339,30 @@ class PositionManager:
         return None
 
     def check_stop_loss(self, current_prices: Dict[str, float],
-                        max_hold_days: int = 20) -> List[Dict]:
+                        max_hold_days: int = 20,
+                        current_date: Optional[str] = None) -> List[Dict]:
         """检查止损/止盈/移动止盈/持仓天数
+
+        Item 16 续 P1-5 修复 (2026-06-08, lib-incremental-audit §3):
+        - 旧实现 today = datetime.now() + hold_days = (today - buy_dt).days 走 wall-clock
+        - backtest 重放时"持仓 20 天到期"触发错位
+        - 修复: current_date 接受 (YYYY-MM-DD), 替换 datetime.now()
+        - 不传 = 实时模式 (行为不变)
 
         Args:
             current_prices: {code: current_price}
             max_hold_days: 最大持仓天数（默认20天）
+            current_date: 时间截断 (YYYY-MM-DD)。回测必传。
 
         Returns:
             [{"code", "name", "action", "reason", "pnl_pct"}]
         """
         alerts = []
-        today = datetime.now()
+        # Item 16 续 P1-5 修复: today 用 current_date 替代 datetime.now()
+        if current_date:
+            today = datetime.strptime(current_date, "%Y-%m-%d")
+        else:
+            today = datetime.now()
         for code, pos in self.positions.items():
             price = current_prices.get(code)
             if price is None:
