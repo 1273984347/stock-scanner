@@ -69,9 +69,36 @@ class ABTestRunner:
         name : str
             模型名称（如 "xgb_v1", "lgbm_v2"）
         predictor : object
-            预测器对象，需提供 predict(data) 方法
+            预测器对象，提供以下任一方法：
+            - predict(data) — 老接口，返回预测 array
+            - predict_batch(factor_df) — MLPredictor 接口，返回 DataFrame 含 'score' 列
+            - predict_single(factors: dict) — MLPredictor 单条接口
+            P0-9 修复 (2026-06-08): 三种接口 duck-typing 兼容
         """
         self.models[name] = predictor
+
+    @staticmethod
+    def _call_predict(predictor: Any, test_data: Any) -> Any:
+        """P0-9 修复: 兼容多种 predict 接口
+
+        优先级:
+        1. predictor.predict(test_data) — 老接口
+        2. predictor.predict_batch(test_data) — MLPredictor 批量
+        3. predictor.predict_single(row) per row — MLPredictor 单条
+        """
+        if hasattr(predictor, "predict"):
+            return predictor.predict(test_data)
+        if hasattr(predictor, "predict_batch"):
+            return predictor.predict_batch(test_data)
+        if hasattr(predictor, "predict_single"):
+            # 单条接口: 逐行调, 拼成 list
+            if hasattr(test_data, "iterrows"):
+                return [predictor.predict_single(row.to_dict()) for _, row in test_data.iterrows()]
+            if isinstance(test_data, list):
+                return [predictor.predict_single(item) for item in test_data]
+        raise AttributeError(
+            f"Predictor {type(predictor).__name__} has no predict/predict_batch/predict_single method"
+        )
 
     def run(
         self,
@@ -98,7 +125,12 @@ class ABTestRunner:
 
         for name, predictor in self.models.items():
             try:
-                predictions = predictor.predict(test_data)
+                # P0-9 修复 (2026-06-08, lib-incremental-audit §2.2):
+                # 旧实现硬调 predictor.predict(test_data) — MLPredictor 实际接口是
+                # predict_single(factors: dict) / predict_batch(factor_df)
+                # 改 duck-typing: 先 predict() (兼容老 caller), 失败回退 predict_batch
+                # / predict_single 逐行
+                predictions = self._call_predict(predictor, test_data)
                 metrics = self._compute_metrics(predictions, actual_returns)
                 model_metrics[name] = metrics
             except Exception as e:

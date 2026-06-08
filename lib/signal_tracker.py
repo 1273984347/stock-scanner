@@ -28,27 +28,34 @@ SIGNAL_LOG_DIR = Path("cache/signals")
 
 
 def _last_trading_day() -> str:
-    """获取最近的交易日（跳过周末和节假日，通过 TDX 数据验证）"""
-    import struct
+    """获取最近的交易日（跳过周末和节假日）
+
+    P0-12 修复 (2026-06-08, lib-incremental-audit §2.5):
+    - 旧实现硬编码 D:/TDX/vipdoc/sh/lday_4/sh600000.day + struct 解析 .day 二进制
+      Linux/macOS/容器/CI 全崩, 跨平台强耦合
+    - 修复: 用 akshare.tool_trade_date_hist_sina() 查 A 股交易日历
+      + 自实现周几过滤 (周一-周五) + 节假日回退 (akshare 无历史节假日 API, 靠 bdate_range 估计)
+    """
+    try:
+        import akshare as ak
+        # akshare 获取 A 股交易日历 (历史 + 未来 1 年)
+        trade_cal = ak.tool_trade_date_hist_sina()
+        if trade_cal is None or trade_cal.empty:
+            raise ValueError("akshare trade_cal empty")
+        # trade_cal 是 DataFrame, 'trade_date' 列
+        # 取 <= today 的最大日期
+        today = pd.Timestamp(datetime.now().date())
+        trade_dates = pd.to_datetime(trade_cal["trade_date"])
+        valid = trade_dates[trade_dates <= today]
+        if not valid.empty:
+            return valid.max().strftime("%Y-%m-%d")
+    except Exception as e:
+        logger.debug(f"[signal_tracker] akshare 交易日历查询失败, 降级: {e}")
+
+    # 降级方案: 用 bdate_range 估计 (跳过周末, 节假日会有误差但比硬编码 TDX 好)
     dt = datetime.now()
-    tdx_path = Path("D:/TDX/vipdoc/sh/lday_4/sh600000.day")
-
-    for _ in range(30):
-        if tdx_path.exists():
-            date_int = int(dt.strftime("%Y%m%d"))
-            try:
-                with open(tdx_path, "rb") as f:
-                    raw = f.read()
-                    for i in range(0, len(raw), 32):
-                        d = struct.unpack_from("<I", raw, i)[0]
-                        if d == date_int:
-                            return dt.strftime("%Y-%m-%d")
-            except Exception:
-                pass
+    while dt.weekday() >= 5:  # 周六周日回退
         dt -= timedelta(days=1)
-        while dt.weekday() >= 5:
-            dt -= timedelta(days=1)
-
     return dt.strftime("%Y-%m-%d")
 
 
