@@ -38,7 +38,12 @@ class ValueAgent:
     偏好：PE < 15, PB < 2, 股息率 > 3%
     """
 
-    def vote(self, hist_df: pd.DataFrame, code: str = None, data_factors: Dict = None) -> AgentVote:
+    def vote(self, hist_df: pd.DataFrame, code: str = None, data_factors: Dict = None, as_of_date: Optional[str] = None) -> AgentVote:
+        # §4.2 P1 #12 修复 (2026-06-08, lib-incremental-audit §3):
+        # 4 agent 走 hist_df.iloc[-1] 用最新行, 静默走 wall-clock 数据 = 前视偏差
+        # 修复: as_of_date 注入, 过滤 hist_df <= as_of_date
+        if as_of_date and 'date' in hist_df.columns and len(hist_df) > 0:
+            hist_df = hist_df[pd.to_datetime(hist_df['date']) <= pd.to_datetime(as_of_date)].reset_index(drop=True)
         score = 0
         reasons = []
 
@@ -100,7 +105,12 @@ class GrowthAgent:
     偏好：营收增长 > 20%, ROE > 15%, 量价齐升
     """
 
-    def vote(self, hist_df: pd.DataFrame, code: str = None, data_factors: Dict = None) -> AgentVote:
+    def vote(self, hist_df: pd.DataFrame, code: str = None, data_factors: Dict = None, as_of_date: Optional[str] = None) -> AgentVote:
+        # §4.2 P1 #12 修复 (2026-06-08, lib-incremental-audit §3):
+        # 4 agent 走 hist_df.iloc[-1] 用最新行, 静默走 wall-clock 数据 = 前视偏差
+        # 修复: as_of_date 注入, 过滤 hist_df <= as_of_date
+        if as_of_date and 'date' in hist_df.columns and len(hist_df) > 0:
+            hist_df = hist_df[pd.to_datetime(hist_df['date']) <= pd.to_datetime(as_of_date)].reset_index(drop=True)
         score = 0
         reasons = []
 
@@ -156,7 +166,12 @@ class MomentumAgent:
     偏好：20日新高 + 放量突破 + ADX > 25
     """
 
-    def vote(self, hist_df: pd.DataFrame, code: str = None, data_factors: Dict = None) -> AgentVote:
+    def vote(self, hist_df: pd.DataFrame, code: str = None, data_factors: Dict = None, as_of_date: Optional[str] = None) -> AgentVote:
+        # §4.2 P1 #12 修复 (2026-06-08, lib-incremental-audit §3):
+        # 4 agent 走 hist_df.iloc[-1] 用最新行, 静默走 wall-clock 数据 = 前视偏差
+        # 修复: as_of_date 注入, 过滤 hist_df <= as_of_date
+        if as_of_date and 'date' in hist_df.columns and len(hist_df) > 0:
+            hist_df = hist_df[pd.to_datetime(hist_df['date']) <= pd.to_datetime(as_of_date)].reset_index(drop=True)
         score = 0
         reasons = []
 
@@ -218,7 +233,12 @@ class ContrarianAgent:
     偏好：RSI < 30 + 布林带下轨 + 连续下跌后企稳
     """
 
-    def vote(self, hist_df: pd.DataFrame, code: str = None, data_factors: Dict = None) -> AgentVote:
+    def vote(self, hist_df: pd.DataFrame, code: str = None, data_factors: Dict = None, as_of_date: Optional[str] = None) -> AgentVote:
+        # §4.2 P1 #12 修复 (2026-06-08, lib-incremental-audit §3):
+        # 4 agent 走 hist_df.iloc[-1] 用最新行, 静默走 wall-clock 数据 = 前视偏差
+        # 修复: as_of_date 注入, 过滤 hist_df <= as_of_date
+        if as_of_date and 'date' in hist_df.columns and len(hist_df) > 0:
+            hist_df = hist_df[pd.to_datetime(hist_df['date']) <= pd.to_datetime(as_of_date)].reset_index(drop=True)
         score = 0
         reasons = []
 
@@ -284,8 +304,14 @@ class AgentPanel:
             (ContrarianAgent(), 0.8),
         ]
 
-    def vote(self, hist_df: pd.DataFrame, code: str = None, data_factors: Dict = None) -> Dict:
+    def vote(self, hist_df: pd.DataFrame, code: str = None, data_factors: Dict = None, as_of_date: Optional[str] = None) -> Dict:
         """汇总投票
+
+        §4.2 P1 #12 修复 (2026-06-08, lib-incremental-audit §3):
+        - 旧 4 agent 走 hist_df.iloc[-1] 走 wall-clock 最新数据
+        - 修复: as_of_date 注入, panel 透传给 4 agent
+        - 4 agent 内部各自也支持 as_of_date (vote() 签名)
+        """
 
         Returns:
             dict with keys:
@@ -296,7 +322,7 @@ class AgentPanel:
         """
         votes = []
         for agent, weight in self.agents:
-            vote = agent.vote(hist_df, code, data_factors)
+            vote = agent.vote(hist_df, code, data_factors, as_of_date=as_of_date)
             vote.weight = weight
             votes.append(vote)
 
