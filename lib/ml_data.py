@@ -10,7 +10,7 @@
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -33,7 +33,7 @@ FACTOR_COLS: List[str] = [
     "rsi_14",
     "momentum_5",
     "momentum_20",
-    "volatility_20",
+    "volatility_20_annualized_pct",
     "volume_ratio",
     "trend_strength",
     "kdj_j",
@@ -60,8 +60,16 @@ LABEL_COLS: List[str] = [
 ]
 
 LOOKBACK_DAYS: int = 3000  # 获取的历史天数（≈12年，覆盖 2015-至今）
+# P2-config-migration-deferred: LOOKBACK_DAYS / MIN_HISTORY / NUM_TRADING_DAYS
+# 应迁移至 lib/config.py。本次 P2 范围不包含 config.py 改动，故保留模块顶层常量。
 MIN_HISTORY: int = 60     # 最少所需交易日（因子计算下限）
 NUM_TRADING_DAYS = 252    # A股年化交易天数
+
+# CCI 公式常数（Lambert 经典定义）
+CCI_CONSTANT: float = 0.015
+
+# 构建面板时日志输出频率（每 N 只股票输出一次进度）
+LOG_EVERY_N_STOCKS: int = 50
 
 
 class MLDataPipeline:
@@ -85,6 +93,17 @@ class MLDataPipeline:
         benchmark_code: str = "000300",
         cache_path: str = "cache/ml_panel.parquet",
     ):
+        """初始化 ML 数据管道
+
+        Parameters
+        ----------
+        codes : list
+            A 股股票代码列表
+        benchmark_code : str
+            基准指数代码，默认 "000300"（沪深 300）
+        cache_path : str
+            面板 parquet 缓存路径
+        """
         self.codes = list(codes)
         self.benchmark_code = benchmark_code
         self.cache_path = Path(cache_path)
@@ -122,10 +141,6 @@ class MLDataPipeline:
                 logger.warning(f"基准指数数据为空: {symbol}")
                 return pd.DataFrame()
 
-            # 列名标准化
-            df = df.rename(columns={
-                "date": "date",
-            })
             df["date"] = pd.to_datetime(df["date"])
             df = df.sort_values("date").reset_index(drop=True)
             self._benchmark_df = df
@@ -157,6 +172,7 @@ class MLDataPipeline:
             ],
             axis=1,
         ).max(axis=1)
+        # True Range = max(H-L, |H-PrevC|, |L-PrevC|)
         atr = tr.rolling(period).mean()
         atr_safe = atr.replace(0, np.nan)
         plus_di = 100.0 * plus_dm.rolling(period).mean() / atr_safe
@@ -175,7 +191,7 @@ class MLDataPipeline:
         tp_rolling = tp.rolling(period)
         tp_sma = tp_rolling.mean()
         mad = (tp_rolling.apply(lambda x: np.abs(x - x.mean()).mean(), raw=True))
-        denom = 0.015 * mad.replace(0, np.nan)
+        denom = CCI_CONSTANT * mad.replace(0, np.nan)
         cci = (tp - tp_sma) / denom
         return cci
 
@@ -246,7 +262,8 @@ class MLDataPipeline:
         close_pct = close.pct_change()
         result["momentum_5"] = close.pct_change(5) * 100.0
         result["momentum_20"] = close.pct_change(20) * 100.0
-        result["volatility_20"] = close_pct.rolling(20).std() * np.sqrt(NUM_TRADING_DAYS) * 100.0
+        # 年化波动率（单位：百分比）；原名 volatility_20 未声明单位，易与 momentum 混淆
+        result["volatility_20_annualized_pct"] = close_pct.rolling(20).std() * np.sqrt(NUM_TRADING_DAYS) * 100.0
 
         vol5 = volume.rolling(5).mean()
         vol20 = volume.rolling(20).mean()
@@ -496,8 +513,8 @@ class MLDataPipeline:
                 all_chunks.append(df_stock)
                 processed_count += 1
 
-            # 每 50 只股票日志
-            if (i + 1) % 50 == 0:
+            # 每 N 只股票日志
+            if (i + 1) % LOG_EVERY_N_STOCKS == 0:
                 total_rows = sum(len(c) for c in all_chunks)
                 logger.info(
                     f"进度: {i + 1}/{len(self.codes)} 只股票, "
@@ -624,17 +641,18 @@ class MLDataPipeline:
         # 这些样本的标签"穿越"段边界，会让训练/评估不可信
         # 修复：按日期段剔除最末 5 天的样本（覆盖 fwd_5d 越界）
         # 注：fwd_10d/20d 越界在 _compute_forward_returns 阶段已处理为 NaN
-        BUFFER_DAYS = 7  # 7 个日历日 ≈ 5 个 B 频率交易日（覆盖 fwd_5d 越界）
+        BUFFER_TRADING_DAYS = 5  # 5 个 A 股交易日（与 fwd_5d 标签窗口对齐）
+        buffer_offset = pd.tseries.offsets.BDay(BUFFER_TRADING_DAYS)
 
-        # 训练集：剔除 D > train_max_date - BUFFER_DAYS 的样本
+        # 训练集：剔除 D > train_max_date - BUFFER_TRADING_DAYS 的样本
         if len(train_dates) > 0:
             train_max_date = train_dates[-1]
-            train_safe_end = train_max_date - pd.Timedelta(days=BUFFER_DAYS)
+            train_safe_end = train_max_date - buffer_offset
             train = train[train["date"] <= train_safe_end].copy()
-        # 验证集：剔除 D > val_max_date - BUFFER_DAYS 的样本
+        # 验证集：剔除 D > val_max_date - BUFFER_TRADING_DAYS 的样本
         if len(val_dates) > 0:
             val_max_date = val_dates[-1]
-            val_safe_end = val_max_date - pd.Timedelta(days=BUFFER_DAYS)
+            val_safe_end = val_max_date - buffer_offset
             val = val[val["date"] <= val_safe_end].copy()
 
         # 断言：无日期重叠

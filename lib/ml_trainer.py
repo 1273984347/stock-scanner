@@ -20,6 +20,35 @@ from sklearn.model_selection import ParameterGrid, TimeSeriesSplit
 
 logger = logging.getLogger(__name__)
 
+# 训练/搜索默认参数（被 train_* / _grid_search_* 共用）
+# P2-config-migration-deferred: 下列参数应迁移至 lib/config.py，
+# 本次 P2 范围不包含 config.py 改动，故保留模块顶层常量字典。
+DEFAULT_XGB_PARAMS: Dict[str, Any] = {
+    "objective": "rank:ndcg",
+    "eval_metric": "ndcg@5",
+    "learning_rate": 0.1,
+    "max_depth": 6,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "lambda": 1.0,
+    "seed": 42,
+}
+
+DEFAULT_LGBM_PARAMS: Dict[str, Any] = {
+    "objective": "lambdarank",
+    "metric": "ndcg",
+    "learning_rate": 0.1,
+    "num_leaves": 31,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "reg_lambda": 1.0,
+    "seed": 42,
+    "verbose": -1,
+}
+
+# LightGBM lambdarank 标签分级上限（覆盖 0..199 共 200 档）
+MAX_LABEL_GAIN: int = 200
+
 
 class _TimeSeriesSplitWithEmbargo:
     """P0-5: TimeSeriesSplit with embargo gap between train and val.
@@ -56,6 +85,13 @@ class MLTrainer:
     """
 
     def __init__(self, model_dir: Optional[str] = None):
+        """初始化模型训练器
+
+        Parameters
+        ----------
+        model_dir : str, optional
+            模型存储目录，默认 cache/models/
+        """
         self.model_dir = Path(model_dir) if model_dir else MODEL_DIR
         self.model_dir.mkdir(parents=True, exist_ok=True)
 
@@ -95,17 +131,7 @@ class MLTrainer:
         xgb.Booster
             训练完成的 XGBoost 模型
         """
-        params: Dict[str, Any] = {
-            "objective": "rank:ndcg",
-            "eval_metric": "ndcg@5",
-            "learning_rate": 0.1,
-            "max_depth": 6,
-            "subsample": 0.8,
-            "colsample_bytree": 0.8,
-            "lambda": 1.0,
-            "seed": 42,
-            "ndcg_exp_gain": False,
-        }
+        params: Dict[str, Any] = {**DEFAULT_XGB_PARAMS}
 
         if search_params:
             best_params = self._grid_search_xgb(X_train, y_train, group_train)
@@ -163,16 +189,8 @@ class MLTrainer:
             训练完成的 LightGBM 模型
         """
         params: Dict[str, Any] = {
-            "objective": "lambdarank",
-            "metric": "ndcg",
-            "learning_rate": 0.1,
-            "num_leaves": 31,
-            "subsample": 0.8,
-            "colsample_bytree": 0.8,
-            "reg_lambda": 1.0,
-            "seed": 42,
-            "verbose": -1,
-            "label_gain": list(range(200)),
+            **DEFAULT_LGBM_PARAMS,
+            "label_gain": list(range(MAX_LABEL_GAIN)),
         }
 
         if search_params:
@@ -284,7 +302,6 @@ class MLTrainer:
             每组大小数组，如 [3, 5, 2]
         """
         return np.bincount(qid_labels)
-        return manifest
 
     def load_latest(self, name: str) -> Tuple[Optional[Any], Optional[Dict[str, Any]]]:
         """加载指定名称的最新版本模型 + manifest
@@ -370,14 +387,7 @@ class MLTrainer:
         if param_grid is None:
             param_grid = {"max_depth": [4, 6, 8], "learning_rate": [0.05, 0.1]}
 
-        base_params: Dict[str, Any] = {
-            "objective": "rank:ndcg",
-            "eval_metric": "ndcg@5",
-            "subsample": 0.8,
-            "colsample_bytree": 0.8,
-            "lambda": 1.0,
-            "seed": 42,
-        }
+        base_params: Dict[str, Any] = {**DEFAULT_XGB_PARAMS}
 
         best_score = -np.inf
         best_params: Dict[str, Any] = {}
@@ -434,14 +444,8 @@ class MLTrainer:
             param_grid = {"num_leaves": [15, 31, 63], "learning_rate": [0.05, 0.1]}
 
         base_params: Dict[str, Any] = {
-            "objective": "lambdarank",
-            "metric": "ndcg",
-            "subsample": 0.8,
-            "colsample_bytree": 0.8,
-            "reg_lambda": 1.0,
-            "seed": 42,
-            "verbose": -1,
-            "label_gain": list(range(200)),
+            **DEFAULT_LGBM_PARAMS,
+            "label_gain": list(range(MAX_LABEL_GAIN)),
         }
 
         best_score = -np.inf

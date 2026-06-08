@@ -15,8 +15,21 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 # 持久化路径（回测和实盘分离，防止状态污染）
+# P2-config-migration-deferred: 路径应迁移至 lib/config.py，
+# 本次 P2 范围不包含 config.py 改动，故保留模块顶层常量。
 _BAYES_STATE_PATH = Path(__file__).parent.parent / "cache" / "bayesian_state.json"
 _BAYES_BACKTEST_PATH = Path(__file__).parent.parent / "cache" / "bayesian_state_backtest.json"
+
+# 贝叶斯平滑与权重调整阈值
+# P2-config-migration-deferred: 下列常数应迁移至 lib/config.py。
+PRIOR_WIN_RATE: float = 0.5          # 无数据时先验胜率
+MIN_SAMPLES: int = 5                 # 贝叶斯平滑收缩强度 (k)
+HIGH_WIN_THRESHOLD: float = 0.6      # 权重上调起点（高胜率分界）
+LOW_WIN_THRESHOLD: float = 0.4       # 权重下调起点（低胜率分界）
+WEIGHT_SLOPE: float = 2.5            # 权重随胜率变化斜率
+WEIGHT_CEILING: float = 1.5          # 权重上限
+WEIGHT_FLOOR: float = 0.5            # 权重下限
+MIN_DISPLAY_SAMPLES: int = 3         # 摘要展示的最小样本数
 
 
 @dataclass
@@ -56,7 +69,8 @@ class BayesianUpdater:
     """
 
     def __init__(self, state_path: Path = None, mode: str = "live"):
-        """
+        """初始化贝叶斯胜率更新器
+
         Args:
             state_path: 自定义状态文件路径
             mode: "live"（实盘）或 "backtest"（回测），使用不同的状态文件
@@ -70,9 +84,9 @@ class BayesianUpdater:
         # key: "market_state|sector_bucket|signal_type" -> ConditionStats
         self._stats: Dict[str, ConditionStats] = {}
         # 先验：无数据时的默认胜率
-        self._prior_win_rate = 0.5
+        self._prior_win_rate = PRIOR_WIN_RATE
         # 最小样本量：低于此数量时使用先验与观测的加权
-        self._min_samples = 5
+        self._min_samples = MIN_SAMPLES
         self._load()
 
     def _make_key(self, market_state: str, sector_bucket: str, signal_type: str) -> str:
@@ -108,7 +122,7 @@ class BayesianUpdater:
         """获取所有条件的统计摘要"""
         summary = {}
         for key, stats in self._stats.items():
-            if stats.total >= 3:  # 至少3笔才显示
+            if stats.total >= MIN_DISPLAY_SAMPLES:  # 至少 N 笔才显示
                 summary[key] = {
                     "wins": stats.wins,
                     "losses": stats.losses,
@@ -127,10 +141,10 @@ class BayesianUpdater:
         胜率 < 40%: 权重下调（最低 0.5x）
         """
         posterior = self.get_posterior(market_state, sector_bucket, signal_type)
-        if posterior >= 0.6:
-            return min(1.0 + (posterior - 0.6) * 2.5, 1.5)
-        elif posterior <= 0.4:
-            return max(1.0 - (0.4 - posterior) * 2.5, 0.5)
+        if posterior >= HIGH_WIN_THRESHOLD:
+            return min(1.0 + (posterior - HIGH_WIN_THRESHOLD) * WEIGHT_SLOPE, WEIGHT_CEILING)
+        elif posterior <= LOW_WIN_THRESHOLD:
+            return max(1.0 - (LOW_WIN_THRESHOLD - posterior) * WEIGHT_SLOPE, WEIGHT_FLOOR)
         return 1.0
 
     def save(self):
