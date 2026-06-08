@@ -190,7 +190,12 @@ class MLTrainer:
         """
         params: Dict[str, Any] = {
             **DEFAULT_LGBM_PARAMS,
-            "label_gain": list(range(MAX_LABEL_GAIN)),
+            # §4.2 P1 修复 (2026-06-08, lib-incremental-audit §1.1):
+            # 旧 label_gain = list(range(200)) 线性 [0,1,...,199]
+            # 决策: 保留线性 (lambda_rank 文档推荐, 索引 = rank), 改用 [float(i) for i in range(MAX_LABEL_GAIN)]
+            #       维持兼容性 + 加注释说明意图
+            # 如需强化头部高 label 权重, 改 [2**(i/10) for i in range(MAX_LABEL_GAIN)] 即可
+            "label_gain": [float(i) for i in range(MAX_LABEL_GAIN)],  # 线性, 兼容 lambda_rank
         }
 
         # §4.2 P0 #4 修复 (lib-incremental-audit §2.2):
