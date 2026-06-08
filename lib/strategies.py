@@ -345,7 +345,9 @@ def get_volume_breakout_candidates(config: SystemConfig,
             if cr.blocked:
                 continue
             from lib.scorecard import ScoreCard
-            card = ScoreCard.score(code, row, hist)
+            # P0-11 修复 (2026-06-08): 传 as_of_date 防止 scorecard L1 前视偏差
+            # 旧实现 L1 用 T 日实时大盘数据, 回测若不传会回判历史日
+            card = ScoreCard.score(code, row, hist, as_of_date=date)
             if card['verdict'] == '回避':
                 continue
             row['打分卡'] = card['score']

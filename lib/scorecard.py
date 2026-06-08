@@ -11,6 +11,7 @@ L4: 微观形态  (pattern_score)
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
+from typing import Optional
 import logging
 import threading
 
@@ -22,10 +23,15 @@ class MarketFilter:
     """大盘+行业环境过滤"""
 
     @staticmethod
-    def layer1_market_trend(days: int = 60) -> float:
+    def layer1_market_trend(days: int = 60, as_of_date: Optional[str] = None) -> float:
         """L1: 大盘方向 — 沪深300 > 60日均线？
 
         含负面滤网：指数 > 均线但量能萎缩时降分。
+
+        Args:
+            days: 回溯窗口
+            as_of_date: 时间截断 (YYYY-MM-DD)。回测必传, 实时可省略。
+                P0-11 修复 (2026-06-08): 不传 = 走 T 日实时, 回测若不传会前视偏差
 
         Returns:
             1.0 = 上涨趋势（指数 > 均线 + 量能配合）
@@ -33,17 +39,33 @@ class MarketFilter:
             0.0 = 下跌趋势（指数 < 均线）
         """
         try:
-            return MarketFilter._compute_l1(days)
+            return MarketFilter._compute_l1(days, as_of_date=as_of_date)
         except Exception as e:
             logger.warning(f"L1 大盘判断失败: {e}")
             return 0.5
 
     @staticmethod
-    def _compute_l1(days: int = 60) -> float:
-        """L1 核心计算逻辑（供 score 和 get_market_brief 调用）"""
+    def _compute_l1(days: int = 60, as_of_date: Optional[str] = None) -> float:
+        """L1 核心计算逻辑（供 score 和 get_market_brief 调用）
+
+        P0-11 修复 (2026-06-08, lib-incremental-audit §2.1):
+        - 旧实现 ak.stock_zh_index_daily 拉**今日**实时数据
+        - 回测环境若不传 as_of_date，会用 T 日行情回判历史日 → 前视偏差
+        - 修复: as_of_date 截断 idx['date'] <= as_of_date
+        - akshare 不支持历史快照接口, 只能在 DataFrame 层做截断
+        """
         import akshare as ak
         idx = ak.stock_zh_index_daily(symbol="sh000300")
-        if idx.empty or len(idx) < days:
+        if idx.empty:
+            return 0.5
+        # P0-11 修复: as_of_date 截断
+        if as_of_date is not None and "date" in idx.columns:
+            idx = idx[pd.to_datetime(idx["date"]) <= pd.to_datetime(as_of_date)]
+            if len(idx) < days:
+                # 截断后数据不足以回溯, 保守返回 0.5 (震荡)
+                logger.debug(f"L1 as_of_date={as_of_date} 截断后仅 {len(idx)} 行, 不足 {days}")
+                return 0.5
+        elif len(idx) < days:
             return 0.5
         close = idx["close"].values
         volume = idx.get("volume", idx.get("amount"))
@@ -62,13 +84,14 @@ class MarketFilter:
         return 0.5
 
     @classmethod
-    def get_market_brief(cls) -> dict:
+    def get_market_brief(cls, as_of_date: Optional[str] = None) -> dict:
         """预获取市场大盘信息(L1)，供批量评分使用
 
         一次获取市场数据和基准收益，避免 N+1 调用问题。
+        P0-11 修复: 透传 as_of_date
         """
-        l1 = cls._compute_l1()
-        bench_ret = _get_market_return(5)  # 预获取 5 日市场收益
+        l1 = cls._compute_l1(as_of_date=as_of_date)
+        bench_ret = _get_market_return(5, as_of_date=as_of_date)  # 预获取 5 日市场收益
         return {"l1": l1, "bench_ret_5d": bench_ret}
 
     @staticmethod
@@ -213,7 +236,7 @@ class ScoreCard:
     @classmethod
     def score(cls, code: str, row: pd.Series, hist: pd.DataFrame = None,
               market_brief: dict = None, industry_ret: float = None,
-              sector_data: dict = None) -> dict:
+              sector_data: dict = None, as_of_date: Optional[str] = None) -> dict:
         """对一只股票执行四层打分
 
         Args:
@@ -223,14 +246,15 @@ class ScoreCard:
             market_brief: 预获取的市场信息（包含 l1 和 bench_ret_5d）
             industry_ret: 预获取的行业收益率（5日）
             sector_data: 预获取的行业数据（避免 N+1 调用）
+            as_of_date: P0-11 修复 (2026-06-08) — 回测必传, 实时可省略
         """
         # L1 使用传入的预计算值或重新计算
         if market_brief:
-            l1 = market_brief.get("l1", MarketFilter._compute_l1())
+            l1 = market_brief.get("l1", MarketFilter._compute_l1(as_of_date=as_of_date))
             bench_ret_5d = market_brief.get("bench_ret_5d")
         else:
-            l1 = MarketFilter.layer1_market_trend()
-            bench_ret_5d = _get_market_return(5)
+            l1 = MarketFilter.layer1_market_trend(as_of_date=as_of_date)
+            bench_ret_5d = _get_market_return(5, as_of_date=as_of_date)
 
         # L2 使用预获取的行业数据或独立计算
         if sector_data and code in sector_data:
@@ -371,12 +395,20 @@ def _get_stock_return(code: str, days: int = 20) -> float:
     return batch_result.get(code)
 
 
-def _get_market_return(days: int = 20) -> float:
-    """获取沪深300过去 N 日收益率"""
+def _get_market_return(days: int = 20, as_of_date: Optional[str] = None) -> float:
+    """获取沪深300过去 N 日收益率
+
+    P0-11 修复 (2026-06-08): as_of_date 截断防止回测前视偏差
+    """
     try:
         import akshare as ak
         idx = ak.stock_zh_index_daily(symbol="sh000300")
-        if idx.empty or len(idx) < days:
+        if idx.empty:
+            return None
+        # P0-11 修复: as_of_date 截断
+        if as_of_date is not None and "date" in idx.columns:
+            idx = idx[pd.to_datetime(idx["date"]) <= pd.to_datetime(as_of_date)]
+        if len(idx) < days:
             return None
         close = idx["close"].values
         return close[-1] / close[-days] - 1
