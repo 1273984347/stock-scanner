@@ -5,6 +5,10 @@ Walk-Forward Backtest + Factor Audit —— 推进式回测 + 因子时间戳审
 import copy
 import numpy as np
 import pandas as pd
+from pathlib import Path
+import json
+import hashlib
+import time
 from typing import Dict, List, Optional, Tuple, Callable, Any
 from dataclasses import dataclass, field
 from enum import Enum
@@ -15,6 +19,13 @@ logger = logging.getLogger(__name__)
 
 
 class ValidationStatus(str, Enum):
+    """回测窗口的验证状态分类
+
+    - STABLE: 训练/验证 sharpe 偏离度在可接受范围
+    - FRAGILE: 偏离度过大（过拟合嫌疑）
+    - INSUFFICIENT_TRADES: 训练期交易数不足
+    - NO_VALIDATION_TRADES: 验证期无成交
+    """
     STABLE = "stable"
     FRAGILE = "fragile"
     INSUFFICIENT_TRADES = "insufficient_trades"
@@ -22,6 +33,13 @@ class ValidationStatus(str, Enum):
 
 
 class FactorAuditStatus(str, Enum):
+    """因子在回测中的可用状态
+
+    - ENABLED: 启用并参与回测
+    - DISABLED: 显式禁用
+    - UNAVAILABLE: 数据源不可用
+    - LATEST_REVISION_BLOCKED: 严格模式下禁止使用最新修订值（防未来函数）
+    """
     ENABLED = "enabled"
     DISABLED = "disabled"
     UNAVAILABLE = "unavailable"
@@ -30,6 +48,11 @@ class FactorAuditStatus(str, Enum):
 
 @dataclass
 class WalkForwardWindow:
+    """推进式回测的一个时间窗口
+
+    包含训练期、验证期、warmup 期的起止索引与日期字符串。
+    index 字段标识窗口在所有窗口中的顺序。
+    """
     index: int
     train_start: int
     train_end: int
@@ -45,6 +68,10 @@ class WalkForwardWindow:
 
 @dataclass
 class FactorAuditItem:
+    """单个因子的审计条目
+
+    记录因子是否在回测中使用、所需时间戳字段名以及使用规则说明。
+    """
     factor: str
     label: str
     status: FactorAuditStatus
@@ -55,6 +82,10 @@ class FactorAuditItem:
 
 @dataclass
 class WalkForwardRound:
+    """推进式回测单轮结果
+
+    包含该窗口的训练指标、验证指标、扰动信息和诊断信息（如出场原因统计）。
+    """
     window_index: int
     strategy: str
     symbol: str = ""
@@ -67,6 +98,10 @@ class WalkForwardRound:
 
 @dataclass
 class WalkForwardConfig:
+    """推进式回测配置
+
+    控制窗口长度、推进步长、warmup 大小、最小交易数阈值和因子审计严格模式。
+    """
     train_days: int = 180
     validation_days: int = 30
     step_days: int = 30
@@ -83,13 +118,17 @@ class WalkForwardConfig:
 class WalkForwardBacktest:
     """推进式回测引擎 —— 滑动窗口训练+验证，杜绝过拟合"""
 
+    # 触发 FRAGILE 判定的最小 train_sharpe（避免在低 sharpe 噪音上误报）
+    FRAGILE_MIN_TRAIN_SHARPE = 0.5
+    # 触发 FRAGILE 判定的 train/val 偏离度阈值 |train-val|/|train|
+    FRAGILE_DIVERGENCE_RATIO = 0.5
+
     def __init__(self, config: WalkForwardConfig = None):
         self.config = config or WalkForwardConfig()
 
     def create_windows(
         self,
         dates: List,
-        ohlcv_data: Dict[str, pd.DataFrame] = None,
     ) -> List[WalkForwardWindow]:
         """创建推进式窗口"""
         n = len(dates)
@@ -370,9 +409,9 @@ class WalkForwardBacktest:
             return ValidationStatus.FRAGILE
 
         # 自动判定: sharpe 偏离度
-        if train_sharpe > 0.5 and val_sharpe >= 0:
+        if train_sharpe > self.FRAGILE_MIN_TRAIN_SHARPE and val_sharpe >= 0:
             divergence = abs(train_sharpe - val_sharpe) / abs(train_sharpe)
-            if divergence > 0.5:
+            if divergence > self.FRAGILE_DIVERGENCE_RATIO:
                 return ValidationStatus.FRAGILE
 
         return ValidationStatus.STABLE
@@ -622,6 +661,13 @@ class ModuleContributionAnalyzer:
         result = analyzer.compute_contributions()
     """
 
+    # 独立贡献判定的 sharpe 差值阈值（绝对值超过即认为该模块有独立贡献）
+    INDEPENDENT_SHARPE_DELTA = 0.05
+    # 独立贡献判定的 return 差值阈值
+    INDEPENDENT_RETURN_DELTA = 0.05
+    # 收益增量低于该值视为"无用模块"（useless_modules）
+    USELESS_RETURN_DELTA = -0.02
+
     def __init__(self, baseline_metrics: Dict):
         """
         Args:
@@ -673,10 +719,10 @@ class ModuleContributionAnalyzer:
                 "win_rate_delta": metrics.get("win_rate", 0) - baseline.get("win_rate", 0),
             }
 
-            # 独立贡献判断：sharpe 差值 > 0.05 或 return 差值 > 5%
+            # 独立贡献判断：sharpe 差值 > INDEPENDENT_SHARPE_DELTA 或 return 差值 > INDEPENDENT_RETURN_DELTA
             is_independent = (
-                abs(contrib["sharpe_delta"]) > 0.05
-                or abs(contrib["return_delta"]) > 0.05
+                abs(contrib["sharpe_delta"]) > self.INDEPENDENT_SHARPE_DELTA
+                or abs(contrib["return_delta"]) > self.INDEPENDENT_RETURN_DELTA
             )
 
             modules_result.append({
@@ -698,7 +744,7 @@ class ModuleContributionAnalyzer:
             "redundant_modules": redundant,
             "additive_modules": additive,
             "useless_modules": [m["name"] for m in modules_result
-                                if m["contribution"]["return_delta"] < -0.02],
+                                if m["contribution"]["return_delta"] < self.USELESS_RETURN_DELTA],
         }
 
     def get_summary_table(self) -> pd.DataFrame:
@@ -722,12 +768,6 @@ class ModuleContributionAnalyzer:
 
 
 # ========== Walk-forward 结果持久化 ==========
-
-from pathlib import Path
-import json
-import hashlib
-import time
-
 
 def save_walkforward_results(strategy_name: str, summary: Dict, rounds_count: int) -> Path:
     """保存 walk-forward 结果到 cache 目录

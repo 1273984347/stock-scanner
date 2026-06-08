@@ -34,6 +34,28 @@ from lib.broker_data.constraints import TradingConstraints
 logger = logging.getLogger(__name__)
 
 
+# ========== 模块级常量 ==========
+
+# 日波动率默认值（数据不足时回退）
+DEFAULT_DAILY_VOL = 0.02
+# 波动率计算最小历史窗口（不足则回退到 DEFAULT_DAILY_VOL）
+VOLATILITY_MIN_WINDOW = 20
+# 波动率计算主窗口（取最近 N 个交易日）
+VOLATILITY_WINDOW = 60
+# 波动率计算最低有效收益率样本数
+VOLATILITY_MIN_RETS = 10
+
+# 估算流通市值时假设的"日均换手率"（用于 volume → float_shares 反推）
+# 已知 limitation：A 股个股换手率 0.5%-10% 区间，此处取 3% 中性假设
+TYPICAL_DAILY_TURNOVER_RATIO = 0.03
+
+# PaperBroker 风控默认值（应迁移到 config.py，暂留此处）
+# P2-config-migration-deferred
+PAPER_DEFAULT_MAX_SINGLE_WEIGHT = 0.20
+PAPER_DEFAULT_MAX_TOTAL_EXPOSURE = 0.95
+PAPER_DEFAULT_STOP_LOSS_PCT = 0.05
+
+
 # 保留 LRUCache（被 data_layer 等模块使用）
 class LRUCache:
     """线程安全的 LRU 缓存，支持标准字典访问语法"""
@@ -241,7 +263,7 @@ class ABroker:
             date: 日期
 
         Returns:
-            流通市值（元），未知返回 -1
+            流通市值（元）；-1=完全失败 / -2=基于成交量估算 / >=0=精确值
         """
         with self._broker_cache_lock:
             if code in self._market_cap_cache:
@@ -273,12 +295,12 @@ class ABroker:
 
             # 降级方案：使用成交量估算（误差大，标记为估算值）
             # 注：日成交量 ≠ 流通股本，此估算仅用于冲击成本的粗略参考
-            if market_cap_result < 0 and volume > 0:
+            if volume > 0:
                 # P0-2 修复（2026-06-05）：估算时返回 sentinel = -2
                 # 区别于 -1（完全失败）和 >= 0（成功）
                 # 让 _get_dynamic_impact_model 能区分并用最保守 impact_model
                 # 同时打 warning log（不是 debug）让运维可见估算 fallback
-                estimated_float_shares = volume / 0.03 if volume > 0 else 0
+                estimated_float_shares = volume / TYPICAL_DAILY_TURNOVER_RATIO if volume > 0 else 0
                 # 仍可计算一个粗略市值用于指标，但 marker 让上层知道这是估算
                 estimated_market_cap = close * estimated_float_shares
                 # 返回 (-2, estimated_market_cap) 元组以保留估算值 + 标记
@@ -478,6 +500,7 @@ class ABroker:
                 from datetime import datetime, timedelta
                 dt = datetime.strptime(date, "%Y-%m-%d")
                 # 简单推算：周一-周四 +1 天，周五 +3 天（跳过周末）
+                # fallback：仅跳过周末，不识别 A 股法定节假日（已知 limitation）
                 weekday = dt.weekday()
                 if weekday < 4:  # Mon-Thu
                     next_day = dt + timedelta(days=1)
@@ -553,19 +576,19 @@ class ABroker:
         """
         df = market_data.get(code)
         if df is None or df.empty:
-            return 0.02
+            return DEFAULT_DAILY_VOL
 
         target = pd.Timestamp(date)
         hist = df[df["trade_date"] <= target]
-        if hist.empty or len(hist) < 20:
-            return 0.02
+        if hist.empty or len(hist) < VOLATILITY_MIN_WINDOW:
+            return DEFAULT_DAILY_VOL
 
-        recent = hist.tail(60)
+        recent = hist.tail(VOLATILITY_WINDOW)
         if "close" in recent.columns:
             rets = recent["close"].pct_change().dropna()
-            if len(rets) > 10:
+            if len(rets) > VOLATILITY_MIN_RETS:
                 return float(rets.std())
-        return 0.02
+        return DEFAULT_DAILY_VOL
 
     def record_daily_snapshot(self, date: str):
         """记录每日净值"""
@@ -692,7 +715,7 @@ class LiveBrokerABC(abc.ABC):
         self._connected = False
         logger.info("实盘券商已断开")
 
-    def submit_order(self, order: Order, market_data: Dict[str, pd.DataFrame] = None) -> Optional[Trade]:
+    def submit_order(self, order: Order) -> Optional[Trade]:
         """提交订单"""
         if not self._connected:
             logger.error("未连接券商")
@@ -744,8 +767,9 @@ class PaperBroker(LiveBrokerABC):
     """
 
     def __init__(self, account: str = "paper", initial_cash: float = 1_000_000,
-                 max_single_weight: float = 0.20, max_total_exposure: float = 0.95,
-                 stop_loss_pct: float = 0.05, **kwargs):
+                 max_single_weight: float = PAPER_DEFAULT_MAX_SINGLE_WEIGHT,
+                 max_total_exposure: float = PAPER_DEFAULT_MAX_TOTAL_EXPOSURE,
+                 stop_loss_pct: float = PAPER_DEFAULT_STOP_LOSS_PCT, **kwargs):
         super().__init__(account=account, env="paper")
         self.initial_cash = initial_cash
         # P0-1 修复（2026-06-07）：删除 self.cash = initial_cash
@@ -969,6 +993,21 @@ class TDXBroker(LiveBrokerABC):
         self._client_id: int = -1
         # 安全提示：密码在内存中明文存储，生产环境应使用密钥管理服务
 
+    @staticmethod
+    def _is_success(result: dict) -> bool:
+        """TDX 返回值 success 字段归一化判断
+
+        TDX 接口对 success 字段有 2 种返回约定：
+        - 整数 1 (int)
+        - 布尔 True (bool)
+
+        历史实现 3 处重复 `result.get("success") == 1 or result.get("success") == True`，
+        抽到此处统一处理。
+        """
+        if not isinstance(result, dict):
+            return False
+        return result.get("success") == 1 or result.get("success") is True
+
     def _connect(self):
         from pytdx.trade import TdxTradeApi
         self._api = TdxTradeApi()
@@ -984,7 +1023,7 @@ class TDXBroker(LiveBrokerABC):
             jy_password=self._jy_password,
             tx_password=self._tx_password,
         )
-        if result.get("success") == 1 or result.get("success") == True:
+        if self._is_success(result):
             self._client_id = result.get("client_id", 0)
         elif result.get("error") == -1:
             raise ConnectionError("通达信交易服务器连接失败，请确认客户端已开启交易API")
@@ -1021,7 +1060,7 @@ class TDXBroker(LiveBrokerABC):
             price=order.price,
             quantity=order.shares,
         )
-        if result.get("success") == 1 or result.get("success") == True:
+        if self._is_success(result):
             # 解析成交回报
             return Trade(
                 code=order.code,
@@ -1046,7 +1085,7 @@ class TDXBroker(LiveBrokerABC):
         exchange_id = int(parts[0])
         hth = parts[1] if len(parts) > 1 else order_id
         result = self._api.cancel_order(self._client_id, exchange_id, hth)
-        return result.get("success") == 1 or result.get("success") == True
+        return self._is_success(result)
 
     def _query_positions(self) -> Dict[str, dict]:
         if not self._api or self._client_id < 0:
@@ -1072,9 +1111,12 @@ class TDXBroker(LiveBrokerABC):
     def _get_market(self, code: str) -> int:
         """判断市场：0=深圳, 1=上海"""
         code = code.strip().zfill(6)
-        if code.startswith(("6", "5", "9")):
+        if code.startswith(self.SH_PREFIXES):
             return 1  # 上海
         return 0  # 深圳
+
+    # 沪市股票代码前缀（6=沪市主板/科创板，5=沪市基金/ETF，9=沪市B股）
+    SH_PREFIXES = ("6", "5", "9")
 
     def _get_gddm(self, market: int) -> Optional[str]:
         """获取股东代码
