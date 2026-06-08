@@ -22,15 +22,23 @@ import numpy as np
 import pandas as pd
 
 
-def _last_trading_day() -> str:
+def _last_trading_day(as_of_date: Optional[str] = None) -> str:
     """获取最近的交易日（跳过周末和节假日）
 
     Item 16 P1-10 修复 (2026-06-08, lib-incremental-audit §3):
     - 旧实现硬编码 D:/TDX/vipdoc/sh/lday_4/sh600000.day + struct 解析
       Linux/macOS/容器/CI 全崩, 跨平台强耦合
     - 修复: 复用 lib/signal_tracker.py:_last_trading_day (P0-12 已修, 改 akshare)
+
+    §4.2 P1 #3-5 修复 (2026-06-08):
+    - 加 as_of_date 接受 (YYYY-MM-DD), 透传给 signal_tracker
+    - 不传 = 实时模式 (scanner 兼容, 行为不变)
+    - 传 = 回测模式 (as_of_date 即 '今天')
     """
     from lib.signal_tracker import _last_trading_day as _impl
+    if as_of_date:
+        # 回测模式: 直接用 as_of_date (不动 wall-clock)
+        return as_of_date
     return _impl()
 
 logger = logging.getLogger(__name__)
@@ -102,8 +110,14 @@ class PaperTradingRunner:
         )
         self._broker.connect()
 
-    def run_once(self) -> DailyReport:
+    def run_once(self, as_of_date: Optional[str] = None) -> DailyReport:
         """执行一次扫描+交易
+
+        §4.2 P1 #3 修复 (2026-06-08):
+        - as_of_date 接受 (YYYY-MM-DD), 透传给 _last_trading_day
+        - 不传 = 实时模式 (scanner 兼容)
+        - 传 = 回测模式 (所有 _last_trading_day() 返回 as_of_date)
+        """
 
         Returns:
             DailyReport
@@ -238,7 +252,7 @@ class PaperTradingRunner:
 
         return exits
 
-    def _execute_buy(self, signal: Dict) -> Optional[TradeRecord]:
+    def _execute_buy(self, signal: Dict, as_of_date: Optional[str] = None) -> Optional[TradeRecord]:
         """执行买入"""
         if not self._broker:
             return None
@@ -264,7 +278,7 @@ class PaperTradingRunner:
                 direction="BUY",
                 price=price,
                 shares=shares,
-                date=_last_trading_day(),
+                date=_last_trading_day(as_of_date=as_of_date),
             )
 
             t0 = time.time()
@@ -273,7 +287,7 @@ class PaperTradingRunner:
 
             if trade:
                 record = TradeRecord(
-                    date=_last_trading_day(),
+                    date=_last_trading_day(as_of_date=as_of_date),
                     code=code,
                     direction="BUY",
                     price=trade.price,
@@ -290,7 +304,7 @@ class PaperTradingRunner:
 
         return None
 
-    def _execute_sell(self, signal: Dict) -> Optional[TradeRecord]:
+    def _execute_sell(self, signal: Dict, as_of_date: Optional[str] = None) -> Optional[TradeRecord]:
         """执行卖出"""
         if not self._broker:
             return None
@@ -307,7 +321,7 @@ class PaperTradingRunner:
                 direction="SELL",
                 price=signal["price"],
                 shares=holding.shares,
-                date=_last_trading_day(),
+                date=_last_trading_day(as_of_date=as_of_date),
             )
 
             t0 = time.time()
@@ -316,7 +330,7 @@ class PaperTradingRunner:
 
             if trade:
                 record = TradeRecord(
-                    date=_last_trading_day(),
+                    date=_last_trading_day(as_of_date=as_of_date),
                     code=code,
                     direction="SELL",
                     price=trade.price,
@@ -384,7 +398,7 @@ class PaperTradingRunner:
                 })
 
         return DailyReport(
-            date=_last_trading_day(),
+            date=_last_trading_day(as_of_date=as_of_date),
             total_value=round(total_value, 2),
             cash=round(cash, 2),
             market_value=round(market_value, 2),
@@ -438,7 +452,7 @@ class PaperTradingRunner:
     def _save_report(self, report: DailyReport):
         """保存日报"""
         TRADE_LOG_DIR.mkdir(parents=True, exist_ok=True)
-        date_str = _last_trading_day().replace("-", "")
+        date_str = _last_trading_day(as_of_date=as_of_date).replace("-", "")
         report_file = TRADE_LOG_DIR / f"report_{date_str}.json"
 
         data = asdict(report)
