@@ -9,9 +9,53 @@ from datetime import datetime
 import logging
 import threading
 
-from config import HIGH_VOL_POSITION_SCALAR, MEDIUM_VOL_POSITION_SCALAR, LOW_VOL_POSITION_SCALAR, DEFAULT_STOP_LOSS
+# P2-#10 修复: 顶层 config 依赖移除
+# 原代码: from config import HIGH_VOL_POSITION_SCALAR, MEDIUM_VOL_POSITION_SCALAR, LOW_VOL_POSITION_SCALAR, DEFAULT_STOP_LOSS
+# 改为下方 _get_* 工厂函数 + field(default_factory=...) 延迟绑定
 
 logger = logging.getLogger(__name__)
+
+# P2-#6 修复: 行业集中度预警阈值（WARNING 级别）
+# 硬编码 0.25 与 CRITICAL 阈值 `max_industry_exposure` 不同，
+# 需独立配置以保持向后兼容
+INDUSTRY_WARNING_THRESHOLD = 0.25
+
+# P2-#8 修复: 流动性风控参数（避免函数默认值表达式里硬编码）
+LIQUIDITY_MIN_TURNOVER = 50_000_000  # 50M 日均成交额
+LIQUIDITY_MAX_WEIGHT = 0.05          # 流动性受限股票最大仓位
+
+# P2-#9 修复: T+3 逻辑证伪阈值（首止盈位 +3%）
+FIRST_TARGET_PCT = 0.03
+
+
+# ========== P2-#10 修复: config 字段延迟绑定工厂 ==========
+# 原因：原代码在模块顶层 `from config import ...` 把 DEFAULT_STOP_LOSS 等
+# 静态求值进 dataclass 默认值，模块导入后 config 改动不会传播。
+# 改用 field(default_factory=...) 在每次实例化时动态解析，
+# 既保留"未传参则取 config 当前值"的语义，又避免顶层依赖。
+
+def _get_default_stop_loss() -> float:
+    """P2-#10: 延迟绑定 config.DEFAULT_STOP_LOSS"""
+    from config import DEFAULT_STOP_LOSS
+    return DEFAULT_STOP_LOSS
+
+
+def _get_high_vol_position_scalar() -> float:
+    """P2-#10: 延迟绑定 config.HIGH_VOL_POSITION_SCALAR"""
+    from config import HIGH_VOL_POSITION_SCALAR
+    return HIGH_VOL_POSITION_SCALAR
+
+
+def _get_medium_vol_position_scalar() -> float:
+    """P2-#10: 延迟绑定 config.MEDIUM_VOL_POSITION_SCALAR"""
+    from config import MEDIUM_VOL_POSITION_SCALAR
+    return MEDIUM_VOL_POSITION_SCALAR
+
+
+def _get_low_vol_position_scalar() -> float:
+    """P2-#10: 延迟绑定 config.LOW_VOL_POSITION_SCALAR"""
+    from config import LOW_VOL_POSITION_SCALAR
+    return LOW_VOL_POSITION_SCALAR
 
 
 @dataclass
@@ -89,7 +133,7 @@ class ActionExecutor:
 class RiskConfig:
     """风控参数配置"""
     max_drawdown_stop: float = 0.15
-    single_stock_stop_loss: float = DEFAULT_STOP_LOSS
+    single_stock_stop_loss: float = field(default_factory=_get_default_stop_loss)  # P2-#10: 延迟绑定
     single_stock_take_profit: float = 0.30
     max_single_position: float = 0.15
     max_industry_exposure: float = 0.30
@@ -332,7 +376,7 @@ class RiskManager:
                     message=f"行业 {ind} 占比 {w:.1%} 超过 {self.config.max_industry_exposure:.0%} 限制，禁止新开仓",
                     details={"industry": ind, "weight": w, "action": "BLOCK"},
                 ))
-            elif w > 0.25:
+            elif w > INDUSTRY_WARNING_THRESHOLD:
                 alerts.append(RiskAlert(
                     timestamp=datetime.now().isoformat(),
                     rule_name="industry_concentration",
@@ -390,8 +434,14 @@ class RiskManager:
             )
         return None
 
-    def _check_liquidity(self, ctx: dict, min_turnover: float = 50_000_000) -> List[RiskAlert]:
-        """流动性风控：日均成交额 < min_turnover 的股票限制仓位"""
+    def _check_liquidity(self, ctx: dict, min_turnover: float = None) -> List[RiskAlert]:
+        """流动性风控：日均成交额 < min_turnover 的股票限制仓位
+
+        P2-#8 修复: min_turnover 默认值改为 None，从模块级常量 LIQUIDITY_MIN_TURNOVER
+        兜底（避免函数默认值表达式里的硬编码 50_000_000）。
+        """
+        if min_turnover is None:
+            min_turnover = LIQUIDITY_MIN_TURNOVER
         market_data = ctx.get("market_data", {})
         if not market_data:
             return []
@@ -408,7 +458,7 @@ class RiskManager:
                 avg_turnover = float((recent["volume"] * recent["close"]).mean())
 
                 if avg_turnover < min_turnover:
-                    max_weight = min(0.05, avg_turnover / min_turnover * 0.05)
+                    max_weight = min(LIQUIDITY_MAX_WEIGHT, avg_turnover / min_turnover * LIQUIDITY_MAX_WEIGHT)
                     if weight > max_weight:
                         alerts.append(RiskAlert(
                             timestamp=datetime.now().isoformat(),
@@ -463,12 +513,12 @@ class RiskManager:
             var_result = self.compute_var_cvar(market_data, tickers, weights, total_value)
             var95_pct = var_result.get("var_95_pct", 0)
 
-            if var95_pct > 0.05:  # VaR > 5%
+            if var95_pct > self.config.max_var_pct:  # P2-#7 修复: 用 config 字段替代硬编码
                 return [RiskAlert(
                     timestamp=datetime.now().isoformat(),
                     rule_name="var_breach",
                     level="CRITICAL",
-                    message=f"VaR95 = {var95_pct:.1%} 突破 5% 阈值，建议减仓",
+                    message=f"VaR95 = {var95_pct:.1%} 突破 {self.config.max_var_pct:.1%} 阈值，建议减仓",
                     details=var_result,
                 )]
         except Exception as e:
@@ -566,9 +616,9 @@ class VolCorrRiskConfig(RiskConfig):
     vol_regime_long: int = 60
     vol_expansion_threshold: float = 1.5
     vol_contraction_threshold: float = 0.5
-    high_vol_position_scalar: float = HIGH_VOL_POSITION_SCALAR
-    medium_vol_position_scalar: float = MEDIUM_VOL_POSITION_SCALAR
-    low_vol_position_scalar: float = LOW_VOL_POSITION_SCALAR
+    high_vol_position_scalar: float = field(default_factory=_get_high_vol_position_scalar)  # P2-#10: 延迟绑定
+    medium_vol_position_scalar: float = field(default_factory=_get_medium_vol_position_scalar)  # P2-#10: 延迟绑定
+    low_vol_position_scalar: float = field(default_factory=_get_low_vol_position_scalar)  # P2-#10: 延迟绑定
     min_diversification_score: float = 0.3
 
 
@@ -982,14 +1032,14 @@ class ProofInvalidationManager:
 
             # ========== T+1 动量证伪 ==========
             if record.holding_days == 1:
-                price创新的 = high_today > record.entry_price * 1.01
+                price_new_high = high_today > record.entry_price * 1.01
                 volume_ok = volume_today > volume_5d_avg * 1.0
-                if not (price创新的 and volume_ok):
+                if not (price_new_high and volume_ok):
                     return {"action": "REDUCE", "reason": "T+1动量不足，减半仓", "pnl_pct": pnl_pct}
 
             # ========== T+3 逻辑证伪 ==========
             if record.holding_days >= 3:
-                if pnl_pct < 0.03:  # 未触及第一止盈（+3%）
+                if pnl_pct < FIRST_TARGET_PCT:  # P2-#9 修复: 用常量替代硬编码 +3%
                     return {"action": "EXIT", "reason": "T+3逻辑证伪，未触及止盈", "pnl_pct": pnl_pct}
 
         return {"action": "HOLD", "reason": "正常持仓", "pnl_pct": pnl_pct}

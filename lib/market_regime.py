@@ -58,6 +58,50 @@ REGIME_POSITION_SCALAR = {
     RISK_OFF: (0.00, 0.00),       # 极端波动，禁止一切开仓
 }
 
+# P2-#2 修复: 六态判定阈值集中（消除 magic number）
+# 参考：因子.txt V4 修正版
+REGIME_THRESHOLDS = {
+    # RISK_OFF: 极端 ATR 扩张
+    "RISK_OFF_ATR_RATIO": 2.0,
+    "RISK_OFF_BASE_CONFIDENCE": 0.7,
+    "RISK_OFF_CONFIDENCE_SLOPE": 0.2,
+    "RISK_OFF_CONFIDENCE_CAP": 0.95,
+    # TREND_UP: 价格>EMA + EMA向上 + ATR扩张 + Donchian上移
+    "TREND_UP_PRICE_VS_EMA": 0.01,
+    "TREND_UP_EMA_SLOPE": 0.05,
+    "TREND_UP_ATR_RATIO": 1.1,
+    "TREND_UP_BASE_CONFIDENCE": 0.5,
+    "TREND_UP_TREND_WEIGHT": 0.4,
+    "TREND_UP_ATR_WEIGHT": 0.3,
+    # TREND_DOWN: 价格<EMA + EMA向下 + Donchian下移
+    "TREND_DOWN_PRICE_VS_EMA": -0.01,
+    "TREND_DOWN_EMA_SLOPE": -0.05,
+    "TREND_DOWN_BASE_CONFIDENCE": 0.5,
+    "TREND_DOWN_TREND_WEIGHT": 0.4,
+    # HIGH_VOLATILITY: 波动率扩张 + 方向不明确
+    "HIGH_VOL_CONTRACTION": 0.6,
+    "HIGH_VOL_TREND_ABS_MAX": 0.3,
+    "HIGH_VOL_BASE_CONFIDENCE": 0.4,
+    "HIGH_VOL_CONFIDENCE_WEIGHT": 0.4,
+    "HIGH_VOL_CONFIDENCE_CAP": 0.85,
+    # LOW_VOLATILITY: 波动率收缩 + 趋势不明确
+    "LOW_VOL_ATR_RATIO": 0.7,
+    "LOW_VOL_TREND_ABS_MAX": 0.2,
+    "LOW_VOL_BASE_CONFIDENCE": 0.4,
+    "LOW_VOL_INV_ATR_WEIGHT": 0.3,
+    "LOW_VOL_CONFIDENCE_CAP": 0.80,
+    # MEAN_REVERSION: EMA走平 + 震荡 + Donchian收窄 + Keltner反复触碰
+    "MEAN_REV_EMA_SLOPE_ABS": 0.1,
+    "MEAN_REV_TREND_ABS_MAX": 0.4,
+    "MEAN_REV_KELTNER_TOUCHES": 3,
+    "MEAN_REV_BASE_CONFIDENCE": 0.4,
+    "MEAN_REV_INV_CONTRACTION_WEIGHT": 0.3,
+    "MEAN_REV_CONFIDENCE_CAP": 0.80,
+    # Fallback: 根据趋势得分
+    "FALLBACK_TREND_THRESHOLD": 0.3,
+    "FALLBACK_CONFIDENCE": 0.50,
+}
+
 
 def _calculate_donchian(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
     """计算 Donchian 通道"""
@@ -85,11 +129,14 @@ def _detect_trend(df: pd.DataFrame, kc_mid: pd.Series) -> float:
     return float(trend)
 
 
-def _detect_compression(kc_range: pd.Series, atr: pd.Series, lookback: int = 20) -> float:
-    """检测压缩程度
+def _detect_joint_contraction(kc_range: pd.Series, atr: pd.Series, lookback: int = 20) -> float:
+    """检测 ATR 与 Keltner 通道的联合收缩程度
+
+    P2-#3 修复: 原名 `_detect_compression` 误导 — 该函数实际是计算两个 ratio 的
+    均值（ATR 收缩比 + 通道宽度收缩比），并非单纯的"压缩"含义。改名以消除歧义。
 
     Returns:
-        float: 0 (不压缩) ~ 1 (高度压缩)
+        float: 0 (不收缩) ~ 1 (高度收缩)
     """
     if len(kc_range) < lookback or len(atr) < lookback:
         return 0.0
@@ -100,9 +147,9 @@ def _detect_compression(kc_range: pd.Series, atr: pd.Series, lookback: int = 20)
     # 通道宽度收缩比
     range_ratio = kc_range.iloc[-1] / kc_range.iloc[-lookback:].mean()
 
-    # 两者都收缩 = 压缩
-    compression = (1 - atr_ratio) * 0.5 + (1 - range_ratio) * 0.5
-    return float(max(0, min(1, compression)))
+    # 两者都收缩 = 联合收缩
+    contraction = (1 - atr_ratio) * 0.5 + (1 - range_ratio) * 0.5
+    return float(max(0, min(1, contraction)))
 
 
 def _detect_volatility_expansion(atr: pd.Series, lookback: int = 20) -> bool:
@@ -189,8 +236,8 @@ def detect_market_regime(
     atr_mean = atr.iloc[-20:].mean()
     atr_ratio = float(atr.iloc[-1] / atr_mean) if (pd.notna(atr_mean) and atr_mean > 0) else 1.0
 
-    # 5. 压缩程度
-    compression = _detect_compression(kc_range, atr)
+    # 5. 联合收缩程度（ATR + 通道宽度）
+    compression = _detect_joint_contraction(kc_range, atr)
 
     # 6. 波动率扩张
     vol_expanding = _detect_volatility_expansion(atr)
@@ -229,50 +276,79 @@ def detect_market_regime(
         "keltner_touches": keltner_touches,
     }
 
-    # RISK_OFF: 极端波动扩张（ATR ratio > 2.0）
-    if atr_ratio > 2.0:
+    # RISK_OFF: 极端波动扩张
+    T = REGIME_THRESHOLDS
+    if atr_ratio > T["RISK_OFF_ATR_RATIO"]:
         regime = RISK_OFF
-        confidence = min(0.95, 0.7 + (atr_ratio - 2.0) * 0.2)
+        confidence = min(
+            T["RISK_OFF_CONFIDENCE_CAP"],
+            T["RISK_OFF_BASE_CONFIDENCE"]
+            + (atr_ratio - T["RISK_OFF_ATR_RATIO"]) * T["RISK_OFF_CONFIDENCE_SLOPE"]
+        )
 
     # TREND_UP: 价格>EMA + EMA向上 + ATR扩张 + Donchian上移
-    elif (price_vs_ema > 0.01 and
-            ema_slope > 0.05 and
+    elif (price_vs_ema > T["TREND_UP_PRICE_VS_EMA"] and
+            ema_slope > T["TREND_UP_EMA_SLOPE"] and
             dc_slope > 0 and
-            atr_ratio > 1.1):
+            atr_ratio > T["TREND_UP_ATR_RATIO"]):
         regime = TREND_UP
-        confidence = min(0.95, 0.5 + abs(trend_score) * 0.4 + (atr_ratio - 1) * 0.3)
+        confidence = min(
+            T["RISK_OFF_CONFIDENCE_CAP"],
+            T["TREND_UP_BASE_CONFIDENCE"]
+            + abs(trend_score) * T["TREND_UP_TREND_WEIGHT"]
+            + (atr_ratio - 1) * T["TREND_UP_ATR_WEIGHT"]
+        )
 
     # TREND_DOWN: 价格<EMA + EMA向下 + Donchian下移
-    elif (price_vs_ema < -0.01 and
-          ema_slope < -0.05 and
+    elif (price_vs_ema < T["TREND_DOWN_PRICE_VS_EMA"] and
+          ema_slope < T["TREND_DOWN_EMA_SLOPE"] and
           dc_slope < 0):
         regime = TREND_DOWN
-        confidence = min(0.95, 0.5 + abs(trend_score) * 0.4)
+        confidence = min(
+            T["RISK_OFF_CONFIDENCE_CAP"],
+            T["TREND_DOWN_BASE_CONFIDENCE"]
+            + abs(trend_score) * T["TREND_DOWN_TREND_WEIGHT"]
+        )
 
     # HIGH_VOLATILITY: 波动率扩张 + 方向不明确（原 COMPRESSION）
-    elif compression > 0.6 and abs(trend_score) < 0.3:
+    elif compression > T["HIGH_VOL_CONTRACTION"] and abs(trend_score) < T["HIGH_VOL_TREND_ABS_MAX"]:
         regime = HIGH_VOLATILITY
-        confidence = min(0.85, 0.4 + compression * 0.4)
+        confidence = min(
+            T["HIGH_VOL_CONFIDENCE_CAP"],
+            T["HIGH_VOL_BASE_CONFIDENCE"]
+            + compression * T["HIGH_VOL_CONFIDENCE_WEIGHT"]
+        )
 
     # LOW_VOLATILITY: 波动率收缩 + 趋势不明确
-    elif atr_ratio < 0.7 and abs(trend_score) < 0.2:
+    elif atr_ratio < T["LOW_VOL_ATR_RATIO"] and abs(trend_score) < T["LOW_VOL_TREND_ABS_MAX"]:
         regime = LOW_VOLATILITY
-        confidence = min(0.80, 0.4 + (1 - atr_ratio) * 0.3)
+        confidence = min(
+            T["LOW_VOL_CONFIDENCE_CAP"],
+            T["LOW_VOL_BASE_CONFIDENCE"]
+            + (1 - atr_ratio) * T["LOW_VOL_INV_ATR_WEIGHT"]
+        )
 
     # MEAN_REVERSION: EMA走平 + 震荡 + Donchian收窄 + Keltner反复触碰
-    elif abs(ema_slope) < 0.1 and abs(trend_score) < 0.4 and dc_narrow and keltner_touches >= 3:
+    elif (abs(ema_slope) < T["MEAN_REV_EMA_SLOPE_ABS"]
+          and abs(trend_score) < T["MEAN_REV_TREND_ABS_MAX"]
+          and dc_narrow
+          and keltner_touches >= T["MEAN_REV_KELTNER_TOUCHES"]):
         regime = MEAN_REVERSION
-        confidence = min(0.80, 0.4 + (1 - compression) * 0.3)
+        confidence = min(
+            T["MEAN_REV_CONFIDENCE_CAP"],
+            T["MEAN_REV_BASE_CONFIDENCE"]
+            + (1 - compression) * T["MEAN_REV_INV_CONTRACTION_WEIGHT"]
+        )
 
     # Fallback: 根据趋势得分
     else:
-        if trend_score > 0.3:
+        if trend_score > T["FALLBACK_TREND_THRESHOLD"]:
             regime = TREND_UP
-        elif trend_score < -0.3:
+        elif trend_score < -T["FALLBACK_TREND_THRESHOLD"]:
             regime = TREND_DOWN
         else:
             regime = MEAN_REVERSION
-        confidence = 0.50
+        confidence = T["FALLBACK_CONFIDENCE"]
 
     indicators["confidence"] = round(float(confidence), 3)
 
@@ -309,12 +385,16 @@ def detect_market_regime(
 
 
 def _default_regime() -> Dict:
-    """默认状态（数据不足时）— 使用缓存状态或 HIGH_VOLATILITY"""
+    """默认状态（数据不足时）— 使用缓存状态或 HIGH_VOLATILITY
+
+    P2-#4 修复: position_scalar 字段也跟随 _cached_regime（实盘可能给错误风险敞口）
+    """
+    effective_regime = _cached_regime if _cached_regime else HIGH_VOLATILITY
     return {
-        "regime": _cached_regime if _cached_regime else HIGH_VOLATILITY,
+        "regime": effective_regime,
         "confidence": 0.3,
         "indicators": {},
-        "position_scalar": REGIME_POSITION_SCALAR[HIGH_VOLATILITY],
+        "position_scalar": REGIME_POSITION_SCALAR[effective_regime],
         "atr_ratio": 1.0,
         "compression": 0.0,
     }
@@ -339,9 +419,9 @@ HS300_CODE = "000300"  # 沪深300指数代码
 
 
 def detect_market_regime_from_hs300(days: int = 60, use_hysteresis: bool = False, hysteresis_days: int = 3) -> Dict:
-    """获取 HS300 数据，输出 V4 五态体制
+    """获取 HS300 数据，输出 V6 六态体制
 
-    这是市场状态检测的主入口。V4 框架要求：
+    这是市场状态检测的主入口。V6 框架要求：
     - 市场状态由沪深300指数决定，而非个股
     - TREND_DOWN 时禁止开仓
 

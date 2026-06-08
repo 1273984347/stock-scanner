@@ -13,6 +13,7 @@ from factors import (compute_all_signals, calc_volatility_adjusted_limit,
 from lib.constraints import DeterministicConstraints
 from lib.position_size import RiskSizedPosition, PositionSizeConfig
 from lib.technical_signals import calc_composite_verdict
+from lib.market_regime import HS300_CODE  # P2-#11 修复: 统一 HS300 指数代码
 from lib.scorer import (score_fundamental, score_capital_flow,
                          score_news, score_technical, comprehensive_score)
 # P0-2 修复: 删除模块级 _risk_manager 单例（2026-06-07）
@@ -141,17 +142,21 @@ def _batch_get_stock_hist(codes: List[str], days: int = 180,
 
 # ========== 四维评分 ==========
 
-def _compute_base_scores(row: pd.Series, code: str, tech_return_10d: float,
-                         tech_return_20d: float,
+def _compute_base_scores(row: pd.Series, code: str, tech_return_short: float,
+                         tech_return_long: float,
                          fund_flow: Optional[dict] = None,
                          news_sig: Optional[dict] = None) -> dict:
     """提取 fund/cap/news 公共评分逻辑
 
+    P2-#13 修复: 形参名 tech_return_10d/tech_return_20d 改为 tech_return_short/tech_return_long，
+    避免与 quick_score 内部 `pct_chg_proxy/ret_60d_proxy`（实际是当日涨跌幅/60日涨幅）混淆。
+    调用方在传入真实 10/20 日动量时用 full_score 路径。
+
     Args:
         row: 股票实时行情数据
         code: 股票代码
-        tech_return_10d: 10日收益率（用于技术评分）
-        tech_return_20d: 20日收益率（用于技术评分）
+        tech_return_short: 短期收益率（10 日或当日涨跌幅近似，取决于调用方）
+        tech_return_long: 长期收益率（20 日或 60 日涨跌幅近似，取决于调用方）
         fund_flow: 可选，预获取的资金流向数据（避免 N+1）
         news_sig: 可选，预获取的新闻信号数据（避免 N+1）
     """
@@ -181,8 +186,8 @@ def _compute_base_scores(row: pd.Series, code: str, tech_return_10d: float,
         earnings_positive=ns["earnings_positive"],
     )
     tech = score_technical(
-        return_10d=tech_return_10d,
-        return_20d=tech_return_20d,
+        return_10d=tech_return_short,
+        return_20d=tech_return_long,
     )
     return comprehensive_score(fund, cap, news, tech)
 
@@ -240,38 +245,26 @@ def full_score(code: str, hist: pd.DataFrame, factors: dict,
     except Exception as e:
         logger.debug(f"六因子评分失败 [{code}]: {e}")
 
-    # Judge Panel 调整逻辑已删除 (P1-1 修复 2026-06-08)
+    # Judge Panel 调整逻辑已删除 (P1-1 修复 2026-06-08, P2-#12 完全清理 2026-06-08)
     # 原因：原代码用 `getattr(getattr(config, 'factor', None), 'use_judge_panel', False) if 'config' in dir() else False`
     #       'config' 永远不在 dir() 中（实际 import 的是 SystemConfig/get_config），
     #       所以 use_judge_panel 恒为 False，JudgePanel 评估结果永远不影响评分 — 死代码 + 阅读误导
     #       51 个评委 150+ 条未验证条件是系统最大的过拟合来源，仍禁用但代码已清理
-    judge_result = {}
-    if judge_result and judge_result.get("consensus") in ("BUY", "SELL"):
-        judge_bias = 1.0 if judge_result["consensus"] == "BUY" else -1.0
-        judge_strength = abs(judge_result.get("score", 0))
-        adjusted = score_result["score"] * 0.8 + (5 + judge_bias * judge_strength * 5) * 0.2
-        score_result["judge_adjusted"] = True
-        score_result["judge_consensus"] = judge_result["consensus"]
-        score_result["judge_score"] = round(judge_result["score"], 3)
-        adjusted_score = round(min(10, max(0, adjusted)), 1)
-        if adjusted_score >= 8:
-            score_result["rating"] = "强烈买入"
-        elif adjusted_score >= 6:
-            score_result["rating"] = "买入"
-        elif adjusted_score >= 4:
-            score_result["rating"] = "持有"
-        elif adjusted_score >= 2:
-            score_result["rating"] = "谨慎"
-        else:
-            score_result["rating"] = "回避"
-        score_result["score"] = adjusted_score
     return score_result
 
 
 # ========== 策略实现 ==========
 
-def get_zt_candidates(config: SystemConfig) -> pd.DataFrame:
-    """涨停板复盘策略"""
+# P2-#15 修复: 板块评分中缺失维度的中位数（4 维度各 25 分，缺失取 12.5 = 中位）
+MISSING_DIM_MEDIAN = 12.5
+
+def get_zt_candidates(config: SystemConfig, as_of_date: Optional[str] = None) -> pd.DataFrame:
+    """涨停板复盘策略
+
+    P2-#14 修复: 补 as_of_date 参数（接口对齐 volume_breakout/keltner 策略），
+    回测环境可传入 cutoff 日期避免未来函数。None = 使用当前实时数据（默认，向后兼容）。
+    """
+    _ = as_of_date  # 当前实现未使用（涨停板复盘依赖当日池 API），保留参数以备未来扩展
     try:
         df = _retry_api_call(ak.stock_zt_pool_em, date=_safe_signal_date().replace("-", ""))
         if df.empty:
@@ -340,7 +333,7 @@ def get_volume_breakout_candidates(config: SystemConfig,
         stock_hist_data = _batch_get_stock_hist(all_codes, days=180, as_of_date=as_of_date)
         batch_financial = _batch_get_financial_data(all_codes)
         # 预获取 HS300 数据（用于相对强度过滤，避免循环内重复调用）
-        _hs300 = get_index_hist('000300', days=60)
+        _hs300 = get_index_hist(HS300_CODE, days=60)
         candidates = []
         for _, row in df.iterrows():
             code = row["代码"]
@@ -436,13 +429,27 @@ def get_volume_breakout_candidates(config: SystemConfig,
 def _compute_sector_score(sector_df: pd.DataFrame) -> pd.DataFrame:
     """板块综合评分（4 维度）
 
+    P2-#15 修复: 补 Returns: 段，并将缺失维度中位数 12.5 抽为模块级常量 MISSING_DIM_MEDIAN。
+
     Dimensions:
     1. 涨停数 (0-25)
     2. 5日涨幅 (0-25)
     3. 成交额放大 (0-25)
     4. 龙头强度 — 最高连板数 (0-25)
 
-    总分 0-100，缺失维度取中位数 12.5。
+    总分 0-100，缺失维度取中位数 MISSING_DIM_MEDIAN (= 12.5)。
+
+    Args:
+        sector_df: 板块聚合数据（必须含 "涨停数"，其余 3 列可选）
+
+    Returns:
+        pd.DataFrame: 原 sector_df 基础上新增 5 列：
+            - zt_score (0-25)
+            - ret_score (0-25)，缺失则为 MISSING_DIM_MEDIAN
+            - vol_score (0-25)，缺失则为 MISSING_DIM_MEDIAN
+            - leader_score (0-25)，缺失则为 MISSING_DIM_MEDIAN
+            - sector_score (0-100, 1 位小数)
+        按 sector_score 降序排列。
     """
     df = sector_df.copy()
 
@@ -453,19 +460,19 @@ def _compute_sector_score(sector_df: pd.DataFrame) -> pd.DataFrame:
     if "5日涨幅" in df.columns:
         df["ret_score"] = df["5日涨幅"].rank(pct=True) * 25
     else:
-        df["ret_score"] = 12.5
+        df["ret_score"] = MISSING_DIM_MEDIAN
 
     # 成交额放大得分 (0-25)
     if "成交额变化" in df.columns:
         df["vol_score"] = df["成交额变化"].rank(pct=True) * 25
     else:
-        df["vol_score"] = 12.5
+        df["vol_score"] = MISSING_DIM_MEDIAN
 
     # 龙头强度得分 (0-25)
     if "最高连板" in df.columns:
         df["leader_score"] = df["最高连板"].rank(pct=True) * 25
     else:
-        df["leader_score"] = 12.5
+        df["leader_score"] = MISSING_DIM_MEDIAN
 
     df["sector_score"] = (
         df["zt_score"] + df["ret_score"] + df["vol_score"] + df["leader_score"]
@@ -488,8 +495,12 @@ def _is_sector_declining(sector_df: pd.DataFrame) -> bool:
     return bool(sector_df["涨停数"].sum() < 3)
 
 
-def get_hot_board_candidates(config: SystemConfig) -> pd.DataFrame:
-    """热门板块策略 — 四维评分 + 退潮检测"""
+def get_hot_board_candidates(config: SystemConfig, as_of_date: Optional[str] = None) -> pd.DataFrame:
+    """热门板块策略 — 四维评分 + 退潮检测
+
+    P2-#14 修复: 补 as_of_date 参数（接口对齐）。
+    """
+    _ = as_of_date  # 当前实现未使用（依赖当日池 API）
     try:
         df = _retry_api_call(ak.stock_zt_pool_em, date=_safe_signal_date().replace("-", ""))
         if df.empty:
@@ -527,8 +538,12 @@ def get_hot_board_candidates(config: SystemConfig) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def get_lhb_candidates(config: SystemConfig) -> pd.DataFrame:
-    """龙虎榜策略"""
+def get_lhb_candidates(config: SystemConfig, as_of_date: Optional[str] = None) -> pd.DataFrame:
+    """龙虎榜策略
+
+    P2-#14 修复: 补 as_of_date 参数（接口对齐）。
+    """
+    _ = as_of_date  # 当前实现未使用（依赖当日榜 API）
     try:
         df = _retry_api_call(ak.stock_lhb_detail_em)
         if df.empty:
@@ -578,8 +593,13 @@ def get_lhb_candidates(config: SystemConfig) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def get_multi_factor_candidates(config: SystemConfig) -> pd.DataFrame:
-    """多因子选股"""
+def get_multi_factor_candidates(config: SystemConfig, as_of_date: Optional[str] = None) -> pd.DataFrame:
+    """多因子选股
+
+    P2-#14 修复: 补 as_of_date 参数（接口对齐 volume_breakout/keltner 策略），
+    回测环境可传入 cutoff 日期避免未来函数。None = 使用当前实时数据（默认，向后兼容）。
+    """
+    _ = as_of_date  # 当前实现未使用，预留接口
     try:
         df = get_realtime_quotes()
         if df.empty:
