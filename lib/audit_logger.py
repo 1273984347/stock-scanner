@@ -9,6 +9,7 @@
 """
 import json
 import sqlite3
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
@@ -17,6 +18,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent.parent / "cache" / "audit.db"
+
+# §4.2 P1 #11 修复 (2026-06-08, lib-incremental-audit §2.5):
+# 旧实现 log_scan 等模块函数每次新建 conn (sqlite3.connect), 多线程并发
+# 调用可能导致 "database is locked" 错误 / 写入截断
+# 修复: 模块级 Lock (进程级单例), log_scan / get_recent_scans 等关键写入持锁
+_LOG_LOCK = threading.Lock()
 
 
 def _get_db():

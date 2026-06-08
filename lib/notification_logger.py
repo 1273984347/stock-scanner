@@ -2,6 +2,7 @@
 
 import json
 import logging
+import threading
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List
@@ -28,17 +29,23 @@ class NotificationLogger:
 
     def __init__(self):
         NOTIFICATION_DIR.mkdir(parents=True, exist_ok=True)
+        # §4.2 P1 #7 修复 (2026-06-08, lib-incremental-audit §2.5):
+        # 旧实现文件 append 无锁 — 多线程并发写 jsonl 可能丢行 / 截断
+        # 修复: 进程级 Lock (NotificationLogger 是单例, 锁覆盖所有方法)
+        self._lock = threading.Lock()
 
     def log(self, notification: NotificationRecord):
         """记录一条通知"""
         date_str = datetime.now().strftime("%Y%m%d")
         log_file = NOTIFICATION_DIR / f"notifications_{date_str}.jsonl"
 
-        try:
-            with open(log_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(asdict(notification), ensure_ascii=False) + "\n")
-        except Exception as e:
-            logger.debug(f"通知日志写入失败: {e}")
+        # §4.2 P1 #7 修复: 写 jsonl 持锁
+        with self._lock:
+            try:
+                with open(log_file, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(asdict(notification), ensure_ascii=False) + "\n")
+            except Exception as e:
+                logger.debug(f"通知日志写入失败: {e}")
 
     def log_signal(self, code: str, signal: str, confidence: float):
         """记录信号通知"""

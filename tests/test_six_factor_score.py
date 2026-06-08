@@ -116,7 +116,7 @@ class TestScoreStructure:
 
 class TestSixFactorScore:
     def test_strong_buy(self):
-        """所有因子都强 → 强烈买入"""
+        """所有因子都强 → 强烈买入(6F)"""
         factors = {
             "trend_strength": 6.0,
             "momentum_20": 12.0,
@@ -127,10 +127,11 @@ class TestSixFactorScore:
         }
         result = six_factor_score(factors, sector_score=85)
         assert result["score"] >= 80
-        assert result["rating"] == "强烈买入"
+        # E13 6F 评级后缀迁移 (2026-06-08): 6F 加 (6F) 后缀, 4F 保持不变
+        assert result["rating"] == "强烈买入(6F)"
 
     def test_avoid(self):
-        """所有因子都弱 → 回避"""
+        """所有因子都弱 → 回避(6F)"""
         factors = {
             "trend_strength": -5.0,
             "momentum_20": -10.0,
@@ -141,7 +142,8 @@ class TestSixFactorScore:
         }
         result = six_factor_score(factors, sector_score=20)
         assert result["score"] < 40
-        assert result["rating"] == "回避"
+        # E13 6F 评级后缀迁移: 6F 加 (6F) 后缀
+        assert result["rating"] == "回避(6F)"
 
     def test_result_structure(self):
         """返回结果包含所有必要字段"""
@@ -172,7 +174,10 @@ class TestSixFactorScore:
         """空 dict 也能正常返回"""
         result = six_factor_score({})
         assert result["score"] > 0
-        assert result["rating"] in ("强烈买入", "买入", "持有", "谨慎", "回避")
+        # E13 6F 评级后缀迁移: 6F 加 (6F) 后缀
+        assert result["rating"] in (
+            "强烈买入(6F)", "买入(6F)", "持有(6F)", "谨慎(6F)", "回避(6F)"
+        )
 
     def test_complements_comprehensive_score(self):
         """六因子与四维评分可以同时使用"""

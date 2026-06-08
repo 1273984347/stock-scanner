@@ -443,16 +443,20 @@ def six_factor_score(factors: dict, sector_score: float = 50) -> dict:
     )
     total = round(max(0, min(100, total)), 1)
 
+    # E13 6F 评级后缀迁移 (2026-06-08, lib-incremental-audit §4.2):
+    # 旧 6F 与 4F 共用相同中文评级 ("强烈买入" / "买入" / ...) — 下游仓位/风控
+    # 若共用 rating 字符串会产生隐性偏差 (4F 强烈买入 vs 6F 强烈买入 阈值不同)
+    # 修复: 6F 加 "(6F)" 后缀, 4F 保持不变
     if total >= SCORE_6F["rating_strong_buy"]:
-        rating = "强烈买入"
+        rating = "强烈买入(6F)"
     elif total >= SCORE_6F["rating_buy"]:
-        rating = "买入"
+        rating = "买入(6F)"
     elif total >= SCORE_6F["rating_hold"]:
-        rating = "持有"
+        rating = "持有(6F)"
     elif total >= SCORE_6F["rating_cautious"]:
-        rating = "谨慎"
+        rating = "谨慎(6F)"
     else:
-        rating = "回避"
+        rating = "回避(6F)"
 
     return {
         "score": total,

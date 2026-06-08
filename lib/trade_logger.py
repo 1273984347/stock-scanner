@@ -2,6 +2,7 @@
 
 import json
 import logging
+import threading
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional
@@ -48,18 +49,24 @@ class TradeLogger:
 
     def __init__(self):
         TRADE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        # §4.2 P1 #7 修复 (2026-06-08, lib-incremental-audit §2.5):
+        # 旧实现文件 append 无锁 — 多线程并发写 jsonl 可能丢行
+        # 修复: 进程级 Lock
+        self._lock = threading.Lock()
 
     def log_trade(self, entry: TradeLogEntry):
         """记录一笔交易"""
         date_str = datetime.now().strftime("%Y%m%d")
         log_file = TRADE_LOG_DIR / f"trades_{date_str}.jsonl"
 
-        try:
-            with open(log_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(asdict(entry), ensure_ascii=False, default=str) + "\n")
-            logger.debug(f"交易日志: {entry.action} {entry.code} @ {entry.price}")
-        except Exception as e:
-            logger.warning(f"交易日志写入失败: {e}")
+        # §4.2 P1 #7 修复: 写 jsonl 持锁
+        with self._lock:
+            try:
+                with open(log_file, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(asdict(entry), ensure_ascii=False, default=str) + "\n")
+                logger.debug(f"交易日志: {entry.action} {entry.code} @ {entry.price}")
+            except Exception as e:
+                logger.warning(f"交易日志写入失败: {e}")
 
     def get_recent_trades(self, days: int = 7) -> list:
         """获取最近 N 天的交易日志"""
