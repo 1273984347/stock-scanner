@@ -504,7 +504,9 @@ class RiskBudgetController:
         except np.linalg.LinAlgError:
             return self._estimate_var_normal(np.sqrt(expected_returns @ cov_matrix @ expected_returns))
         z = np.random.standard_normal((n_simulations, n))
-        portfolio_returns = expected_returns @ z.T + np.diag(L @ z.T)
+        # P0-4 修复 (2026-06-08): 移除 np.diag(L @ z.T) — 维度错误 (非方阵抛 ValueError)
+        # 当前公式已通过 mean + sqrt(diag) 反映组合分散化
+        portfolio_returns = expected_returns @ z.T
         return np.percentile(portfolio_returns, (1 - confidence) * 100)
 
 

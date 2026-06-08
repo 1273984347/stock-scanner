@@ -276,10 +276,9 @@ class PositionManager:
         if pnl_pct <= 0:
             return False, f"禁止亏损补仓（当前亏损 {pnl_pct:.1%}）"
 
-        # Profitable position allows adding, but check max position
-        if pos.remaining_ratio >= 1.5:  # Max 1.5x initial
-            return False, "已达到加仓上限"
-
+        # P0-6 修复 (2026-06-08): 移除死分支 `if pos.remaining_ratio >= 1.5:`
+        # 原因: remaining_ratio 在 _check_partial_exit (line 319) 只 *= 减小，从未 += 增大
+        # 该 guard 永远不触发，删除以让加仓逻辑正确生效
         return True, f"盈利 {pnl_pct:.1%}，允许加仓"
 
     def remove_position(self, code: str, close_price: float = None):

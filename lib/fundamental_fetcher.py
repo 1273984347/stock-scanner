@@ -170,9 +170,11 @@ def get_financial_data(code: str) -> Optional[pd.Series]:
             logger.warning(f"[fundamental_fetcher] baostock 营收/净资产查询失败: {e}")
 
         # 保存到磁盘缓存
+        # P0-7 修复 (2026-06-08): 写 _disk_cache 持锁（之前 line 175 无锁，多线程并发损坏缓存）
         disk_entry = {k: v for k, v in data_dict.items()}
         disk_entry["_ts"] = now
-        _disk_cache[code] = disk_entry
+        with _disk_cache_lock:
+            _disk_cache[code] = disk_entry
         _save_disk_cache()
 
         data = pd.Series(data_dict)

@@ -409,7 +409,7 @@ class WalkForwardBacktest:
             return ValidationStatus.FRAGILE
 
         # 自动判定: sharpe 偏离度
-        if train_sharpe > self.FRAGILE_MIN_TRAIN_SHARPE and val_sharpe >= 0:
+        if train_sharpe > self.FRAGILE_MIN_TRAIN_SHARPE:
             divergence = abs(train_sharpe - val_sharpe) / abs(train_sharpe)
             if divergence > self.FRAGILE_DIVERGENCE_RATIO:
                 return ValidationStatus.FRAGILE

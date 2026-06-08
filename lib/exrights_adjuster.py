@@ -244,6 +244,17 @@ def check_and_adjust_positions(
                 f"止损→{current.stop_loss:.1%}"
             )
 
+        # P0-5 修复 (2026-06-08): 写入 exrights_date 防止股数倍乘
+        # 旧实现只读不写，下次调用 line 224 `e["date"] > last_adjusted` 仍为 True → 同一事件被应用多次
+        # 现在显式存最后处理日期
+        last_event_date = max(e["date"] for e in new_events)
+        if hasattr(current, "exrights_date"):
+            current.exrights_date = last_event_date
+        else:
+            # Position dataclass 暂未定义该字段，存到 notes 备查
+            note = getattr(current, "notes", None) or ""
+            setattr(current, "notes", f"{note};exrights={last_event_date}")
+
         adjusted_count += 1
 
     if adjusted_count > 0:

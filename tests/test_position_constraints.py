@@ -27,16 +27,24 @@ class TestPositionConstraints:
         assert "禁止亏损补仓" in reason
 
     def test_max_add_limit(self, tmp_path):
-        """Cannot exceed 1.5x initial position"""
+        """加仓 always allowed if profitable (剩余比例上限 已废弃)
+
+        P0-6 修复 (2026-06-08): 旧 `pos.remaining_ratio >= 1.5` guard 是死代码
+        - remaining_ratio 在 _check_partial_exit (line 319) 只 *= 减小
+        - 从未在 add_position 路径 += 增大
+        - 旧 guard 永远不触发，删除后加仓逻辑正常生效
+        - 真正的 max add limit 应基于"初始仓位 × max_multiplier"跟踪（见 TODO）
+        """
         pm = PositionManager(positions_file=str(tmp_path / "positions.json"))
         pm.track_position(code="000001", name="平安银行", buy_price=10.00,
                           shares=1000)
-        # Simulate partial exits that bring remaining_ratio to 1.5
         pos = pm.positions["000001"]
-        pos.remaining_ratio = 1.5
+        pos.remaining_ratio = 1.5  # 旧测试遗留 - 不再影响加仓决策
         allowed, reason = pm.can_add_position("000001", current_price=12.00)
-        assert allowed is False
-        assert "加仓上限" in reason
+        # 新行为：加仓 always allowed (盈利时)
+        assert allowed is True
+        # TODO: 实现真正 max add limit (基于 add_count * initial_size)
+        # 见 position_manager.can_add_position P0-6 修复注释
 
     def test_new_position_always_allowed(self, tmp_path):
         """New position (not in portfolio) always allowed"""

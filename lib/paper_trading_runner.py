@@ -73,6 +73,9 @@ class TradeRecord:
     fill_time_ms: float = 0.0
     signal_confidence: float = 0.0
     signal_source: str = ""
+    # P0-2 修复 (2026-06-08): 记录买入价用于胜率计算
+    # 旧实现胜率恒为 100% (t.price > 0 对所有 SELL 成立)
+    buy_price: float = 0.0  # SELL 时填入场成本价 (来自 holding.cost_price)
 
 
 @dataclass
@@ -341,9 +344,8 @@ class PaperTradingRunner:
                     shares=trade.shares,
                     fill_time_ms=fill_time,
                     signal_source=signal.get("reason", ""),
+                    buy_price=holding.cost_price,  # P0-2 修复
                 )
-                self.trade_history.append(record)
-                logger.info(f"卖出 {code} {holding.shares}股 @ {trade.price:.2f} ({signal.get('reason', '')})")
                 return record
         except Exception as e:
             logger.error(f"卖出 {code} 失败: {e}")
@@ -366,8 +368,14 @@ class PaperTradingRunner:
         cum_return = (total_value / self.initial_cash - 1) if self.initial_cash > 0 else 0
 
         # 胜率
-        winning = sum(1 for t in self.trade_history if t.direction == "SELL" and t.price > 0)
-        total_sells = sum(1 for t in self.trade_history if t.direction == "SELL")
+        # P0-2 修复 (2026-06-08): 旧实现 `t.price > 0` 对所有 SELL 成立，导致胜率恒为 100%
+        # 现用 t.buy_price 比较：sell_price > buy_price 才是真胜利
+        winning = sum(
+            1 for t in self.trade_history
+            if t.direction == "SELL" and t.shares > 0
+            and t.buy_price > 0 and t.price > t.buy_price
+        )
+        total_sells = sum(1 for t in self.trade_history if t.direction == "SELL" and t.shares > 0)
         win_rate = winning / total_sells if total_sells > 0 else 0
 
         # 滑点

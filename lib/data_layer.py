@@ -22,7 +22,7 @@ from lib.data_source_registry import (
     get_stock_hist_multi_source,
     get_circuit_breaker_status,
 )
-from lib.signal_fetcher import get_news_signals
+from lib.news_signal import get_news_signals
 from lib.market_utils import detect_market
 
 logger = logging.getLogger(__name__)
@@ -792,7 +792,7 @@ def _batch_get_news_signals(codes: List[str]) -> Dict[str, dict]:
     Returns:
         Dict[code -> signals dict]，每个 dict 包含 major_positive/earnings_positive/institutional_buy/no_negative
     """
-    from lib.signal_fetcher import get_news_signals as _get_news_signals
+    from lib.news_signal import get_news_signals as _get_news_signals
     results = {}
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {
