@@ -11,6 +11,40 @@ from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+# ========== 综合评分（4 维）权重 ==========
+# 4 维综合评分（0-10 分制）的固定权重 —— 在 comprehensive_score 中复用
+WEIGHTS_4D = {
+    "fundamental": 0.35,
+    "capital_flow": 0.35,
+    "news": 0.20,
+    "technical": 0.10,
+}
+
+# ========== 评分阈值集中常量（避免散落 magic number）==========
+# 4 维综合（0-10 分制）
+SCORE_4D = {
+    "rating_strong_buy": 8.0,
+    "rating_buy": 6.0,
+    "rating_hold": 4.0,
+    "rating_cautious": 2.0,
+}
+# 6 因子（0-100 分制）
+SCORE_6F = {
+    "rating_strong_buy": 80,
+    "rating_buy": 70,
+    "rating_hold": 60,
+    "rating_cautious": 40,
+}
+# 偏移值监控（异常阈值）
+DEVIATION = {
+    "near_trigger_ratio": 0.8,    # 触发阈值 0.8 倍
+    "warning_ratio": 0.6,        # 警告阈值 0.6 倍
+    "mild_ratio": 0.4,           # 轻度 0.4 倍
+    "score_adj_triggered": -2.0,
+    "score_adj_near": -1.5,
+    "score_adj_warning": -1.0,
+}
+
 
 def score_fundamental(pe: float = None, roe: float = None,
                       net_growth: float = None, gross_margin: float = None,
@@ -144,16 +178,18 @@ def comprehensive_score(fundamental: float, capital_flow: float,
         score: 0-10 加权总分
         rating: 强烈买入/买入/持有/谨慎/回避
     """
-    weighted = (fundamental * 0.35 + capital_flow * 0.35 +
-                news * 0.20 + technical * 0.10)
+    weighted = (fundamental * WEIGHTS_4D["fundamental"]
+                + capital_flow * WEIGHTS_4D["capital_flow"]
+                + news * WEIGHTS_4D["news"]
+                + technical * WEIGHTS_4D["technical"])
 
-    if weighted >= 8:
+    if weighted >= SCORE_4D["rating_strong_buy"]:
         rating = "强烈买入"
-    elif weighted >= 6:
+    elif weighted >= SCORE_4D["rating_buy"]:
         rating = "买入"
-    elif weighted >= 4:
+    elif weighted >= SCORE_4D["rating_hold"]:
         rating = "持有"
-    elif weighted >= 2:
+    elif weighted >= SCORE_4D["rating_cautious"]:
         rating = "谨慎"
     else:
         rating = "回避"
@@ -167,7 +203,7 @@ def comprehensive_score(fundamental: float, capital_flow: float,
             "news": round(news, 2),
             "technical": round(technical, 2),
         },
-        "weights": {"fundamental": 0.35, "capital_flow": 0.35, "news": 0.20, "technical": 0.10},
+        "weights": dict(WEIGHTS_4D),
     }
 
 
@@ -225,14 +261,14 @@ def check_anomaly_threshold(deviation: float, board_type: str) -> Dict:
 
     if abs_dev >= threshold:
         level = "triggered"
-        score_adj = -2.0
-    elif abs_dev >= threshold * 0.8:
+        score_adj = DEVIATION["score_adj_triggered"]
+    elif abs_dev >= threshold * DEVIATION["near_trigger_ratio"]:
         level = "near_trigger"
-        score_adj = -1.5
-    elif abs_dev >= threshold * 0.6:
+        score_adj = DEVIATION["score_adj_near"]
+    elif abs_dev >= threshold * DEVIATION["warning_ratio"]:
         level = "warning"
-        score_adj = -1.0
-    elif abs_dev >= threshold * 0.4:
+        score_adj = DEVIATION["score_adj_warning"]
+    elif abs_dev >= threshold * DEVIATION["mild_ratio"]:
         level = "mild"
         score_adj = 0
     else:
@@ -338,7 +374,8 @@ def score_volatility_quality(factors: dict) -> float:
     """波动质量分（0-100）
 
     ATR 太高 = 高风险，太低 = 无机会。
-    最佳区间：年化波动率 15%-35%。
+    最佳区间：基于 20 日波动率（未年化）15%-35%。
+    注：实现读取的是未年化的 20 日窗口波动率，不是年化值。
     """
     vol = factors.get("volatility_20", 25)
     if 15 <= vol <= 35:
@@ -406,13 +443,13 @@ def six_factor_score(factors: dict, sector_score: float = 50) -> dict:
     )
     total = round(max(0, min(100, total)), 1)
 
-    if total >= 80:
+    if total >= SCORE_6F["rating_strong_buy"]:
         rating = "强烈买入"
-    elif total >= 70:
+    elif total >= SCORE_6F["rating_buy"]:
         rating = "买入"
-    elif total >= 60:
+    elif total >= SCORE_6F["rating_hold"]:
         rating = "持有"
-    elif total >= 40:
+    elif total >= SCORE_6F["rating_cautious"]:
         rating = "谨慎"
     else:
         rating = "回避"

@@ -49,6 +49,18 @@ WEIGHT_SUM_TARGET = 1.0
 # 强制 GA 寻找"样本内+样本外都稳健"的权重，而非过拟合噪声。
 OOS_SHARPE_WEIGHT = 0.6
 
+# 数值/算法常量
+EPSILON = 1e-8                                # 浮点比较零阈值（避免除以 0）
+CROSSOVER_ALPHA_RANGE = (0.3, 0.7)            # 算术交叉 alpha uniform 范围
+MIN_DD_FLOOR = 0.001                          # Calmar 公式 max_drawdown 下限
+MIN_TRADES_FOR_NO_PENALTY = 10               # 交易惩罚阈值（<此值按比例惩罚）
+CALMAR_CAP = 5.0                              # Calmar 在 fitness 公式中的上限
+RNG_HASH_MOD = 2**31                          # 染色体 hash → 随机种子的取模基数
+WALK_FORWARD_STABILITY_SHARPE_STD = 0.5       # WF 稳定性判定的 sharpe 标准差阈值
+BAYESIAN_LOCAL_HALF_WIDTH = 0.10              # 贝叶斯精调在 center ± half_width 范围
+MUTATION_EXIT_DAYS_STD = 1.0                  # 出场天数变异高斯 std
+MUTATION_STRATEGY_WEIGHT_STD = 0.05           # 策略权重变异高斯 std
+
 
 @dataclass
 class OptimizerConfig:
@@ -111,7 +123,7 @@ class Individual:
 def _normalize_weights(weights: Dict[str, float]) -> Dict[str, float]:
     """归一化权重到 WEIGHT_SUM_TARGET"""
     total = sum(weights.values())
-    if abs(total) < 1e-8:
+    if abs(total) < EPSILON:
         return weights
     return {k: v / total * WEIGHT_SUM_TARGET for k, v in weights.items()}
 
@@ -183,7 +195,7 @@ def evaluate_fitness(
 
         # 选择股票子集
         if len(symbols) > n_stocks:
-            rng = np.random.default_rng(hash(_weights_hash(weights)) % 2**31)
+            rng = np.random.default_rng(hash(_weights_hash(weights)) % RNG_HASH_MOD)
             selected = rng.choice(symbols, size=n_stocks, replace=False).tolist()
         else:
             selected = symbols
@@ -214,7 +226,7 @@ def evaluate_fitness(
         total_return = result.get("total_return", 0) or 0
 
         # Calmar = total_return / max_drawdown
-        calmar = total_return / max_dd if max_dd > 0.001 else 0
+        calmar = total_return / max_dd if max_dd > MIN_DD_FLOOR else 0
 
         # P0-2: OOS 评估 —— 当 oos_test_days > 0 时启用
         oos_sharpe = 0.0
@@ -249,12 +261,12 @@ def evaluate_fitness(
         # P0-2: 在原公式基础上增加 OOS sharpe 权重。
         # 当 OOS_SHARPE_WEIGHT > 0.5 时，OOS 表现主导 fitness，强制 GA 寻找稳健权重。
         # 惩罚过少交易（<10 笔说明权重配置有问题）
-        trade_penalty = min(1.0, n_trades / 10) if n_trades < 10 else 1.0
+        trade_penalty = min(1.0, n_trades / MIN_TRADES_FOR_NO_PENALTY) if n_trades < MIN_TRADES_FOR_NO_PENALTY else 1.0
 
         is_component = (
             sharpe_weight * sharpe
             + maxdd_weight * (1.0 - min(max_dd, 1.0))  # 回撤越小越好
-            + calmar_weight * min(calmar, 5.0)  # cap Calmar to avoid extreme
+            + calmar_weight * min(calmar, CALMAR_CAP)  # cap Calmar to avoid extreme
         )
         oos_component = OOS_SHARPE_WEIGHT * oos_sharpe if oos_test_days > 0 else 0.0
 
@@ -351,7 +363,7 @@ def _decode_chromosome(
             raw = chromosome[idx:idx + len(STRATEGY_NAMES)]
             clipped = np.clip(raw, lo, hi)
             total = clipped.sum()
-            if total > 1e-8:
+            if total > EPSILON:
                 normalized = clipped / total
             else:
                 normalized = np.ones(len(STRATEGY_NAMES)) / len(STRATEGY_NAMES)
@@ -497,7 +509,7 @@ class GeneticOptimizer:
         """算术交叉（在染色体层面操作）"""
         c1 = self._get_chromosome(p1)
         c2 = self._get_chromosome(p2)
-        alpha = self.rng.uniform(0.3, 0.7)
+        alpha = self.rng.uniform(*CROSSOVER_ALPHA_RANGE)
         child_chromosome = alpha * c1 + (1 - alpha) * c2
 
         # 对因子权重部分做归一化
@@ -527,10 +539,10 @@ class GeneticOptimizer:
                     chromosome[i] += self.rng.normal(0, self.config.mutation_strength)
                 elif i < len(FACTOR_NAMES) + (len(REGIME_NAMES) if self.config.optimize_exit_days else 0):
                     # 出场天数用 ±1 的变异
-                    chromosome[i] += self.rng.normal(0, 1.0)
+                    chromosome[i] += self.rng.normal(0, MUTATION_EXIT_DAYS_STD)
                 else:
                     # 策略权重用 0.05 的变异
-                    chromosome[i] += self.rng.normal(0, 0.05)
+                    chromosome[i] += self.rng.normal(0, MUTATION_STRATEGY_WEIGHT_STD)
 
         # 对因子权重部分做归一化
         raw_weights = dict(zip(FACTOR_NAMES, chromosome[:len(FACTOR_NAMES)]))
@@ -633,12 +645,12 @@ class BayesianRefiner:
             logger.warning("scikit-optimize 未安装，跳过贝叶斯精调。pip install scikit-optimize")
             return Individual(weights=center)
 
-        # 定义搜索空间（围绕 center ± 0.10）
+        # 定义搜索空间（围绕 center ± BAYESIAN_LOCAL_HALF_WIDTH）
         dimensions = []
         for k in FACTOR_NAMES:
             c = center[k]
-            lo = max(WEIGHT_MIN, c - 0.10)
-            hi = min(WEIGHT_MAX, c + 0.10)
+            lo = max(WEIGHT_MIN, c - BAYESIAN_LOCAL_HALF_WIDTH)
+            hi = min(WEIGHT_MAX, c + BAYESIAN_LOCAL_HALF_WIDTH)
             dimensions.append(Real(lo, hi, name=k))
 
         def objective(params):
@@ -720,7 +732,7 @@ def walk_forward_validate(
         "std_sharpe": round(np.std(sharpes), 4),
         "mean_fitness": round(np.mean(fitnesses), 4),
         "std_fitness": round(np.std(fitnesses), 4),
-        "is_stable": np.std(sharpes) < 0.5,  # Sharpe 标准差 < 0.5 算稳定
+        "is_stable": np.std(sharpes) < WALK_FORWARD_STABILITY_SHARPE_STD,  # Sharpe 标准差 < 阈值算稳定
         "min_sharpe": round(min(sharpes), 4),
     }
 
@@ -802,7 +814,7 @@ def run_optimization(
         },
         "optimal_exit_days": best.exit_days_map,
         "optimal_regime_strategy_presets": best.regime_strategy_presets,
-        "baseline_weights": dict(GeneticOptimizer(config, symbols).population[0].weights) if False else {},
+        "baseline_weights": {},
         "ga_history": ga.history[-5:],  # 最后 5 代
         "walk_forward": wf_result,
         "config": {

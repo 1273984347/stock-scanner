@@ -15,17 +15,62 @@ from config import get_config
 from lib.cache import CircuitBreaker, CircuitOpenError
 from lib.broker import LRUCache
 from lib.utils import _safe_float
+from lib.data_cache import get_financial_cache
 from lib.data_source_registry import (
     _normalize_columns, _validate_dataframe, AllDataSourcesFailedError,
     _fetch_from_source, DATA_SOURCE_PRIORITY, _CIRCUIT_BREAKERS,
+    get_stock_hist_multi_source,
+    get_circuit_breaker_status,
 )
+from lib.signal_fetcher import get_news_signals
+from lib.market_utils import detect_market
 
 logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path(__file__).resolve().parent.parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
 
+# ========== 路径配置 ==========
+# P2-config-migration-deferred
+TDX_REF_PATH = Path(os.environ.get("TDX_REF_PATH", "D:/TDX/vipdoc/ref"))
+
+# ========== 实时行情配置 ==========
+# P2-config-migration-deferred
+TDX_HQ_SERVERS = [
+    ("119.147.212.81", 7709),
+    ("112.74.214.43", 7709),
+]
+
+# (market, code) 列表 —— 0=沪, 1=深
+REALTIME_SAMPLE_CODES = [
+    (0, "600519"), (0, "601318"), (0, "600036"), (0, "600276"),
+    (0, "601166"), (0, "600030"), (0, "601398"), (0, "600900"),
+    (0, "601888"), (0, "600809"), (0, "601012"), (0, "600585"),
+    (1, "000858"), (1, "000333"), (1, "002714"), (1, "000651"),
+    (1, "000001"), (1, "002415"), (1, "300750"), (1, "002594"),
+    (0, "601899"), (0, "600050"), (0, "601668"), (0, "600000"),
+    (1, "000568"), (1, "002304"), (1, "300059"), (1, "002475"),
+]
+
+# ========== 缓存 TTL 配置（小时）==========
+# P2-config-migration-deferred
+CACHE_TTL = {
+    "load_default": 2,          # _load_cache 默认 max_age_hours
+    "clean_age_hours": 24,      # clean_cache 默认最大保留时间
+    "clean_max_total_mb": 500,  # clean_cache 默认总大小上限
+    "financial_default": 168,   # get_stock_financial 默认缓存（7天）
+}
+
+# ========== 网络/数据窗口配置 ==========
+# P2-config-migration-deferred
+TDX_CONNECT_TIMEOUT_S = 5      # pytdx 行情服务器连接超时
+NET_INFLOW_WINDOW_DAYS = 5     # 资金流向近 N 日窗口
+
 # ========== API 限流 ==========
+# P2-config-migration-deferred
+RATE_LIMIT_CALLS_PER_SEC = 3.0
+API_RETRY_MAX_ATTEMPTS = 3
+API_RETRY_BASE_WAIT_S = 2.0
 
 class _RateLimiter:
     """线程安全的 API 调用频率限制器"""
@@ -42,10 +87,10 @@ class _RateLimiter:
         if wait > 0:
             time.sleep(wait)
 
-_rate_limiter = _RateLimiter(max_calls_per_second=3.0)
+_rate_limiter = _RateLimiter(max_calls_per_second=RATE_LIMIT_CALLS_PER_SEC)
 
 
-def _retry_api_call(func, *args, max_retries: int = 3, **kwargs):
+def _retry_api_call(func, *args, max_retries: int = API_RETRY_MAX_ATTEMPTS, **kwargs):
     """带重试和限流的 API 调用"""
     last_error = None
     for attempt in range(max_retries):
@@ -55,7 +100,7 @@ def _retry_api_call(func, *args, max_retries: int = 3, **kwargs):
         except Exception as e:
             last_error = e
             if attempt < max_retries - 1:
-                wait = 2.0 * (attempt + 1)
+                wait = API_RETRY_BASE_WAIT_S * (attempt + 1)
                 logger.debug(f"API 调用失败 (尝试 {attempt + 1}/{max_retries})，{wait}s 后重试: {e}")
                 time.sleep(wait)
     raise last_error
@@ -86,7 +131,7 @@ def _cache_path(key: str) -> Path:
     return CACHE_DIR / f"{key}.parquet"
 
 
-def _load_cache(key: str, max_age_hours: int = 2) -> pd.DataFrame:
+def _load_cache(key: str, max_age_hours: int = CACHE_TTL["load_default"]) -> pd.DataFrame:
     path = _cache_path(key)
     if not path.exists():
         return pd.DataFrame()
@@ -123,7 +168,7 @@ def _save_cache(key: str, df: pd.DataFrame):
         df.to_parquet(_cache_path(key), index=False)
 
 
-def clean_cache(max_age_hours: int = 24, max_total_mb: int = 500):
+def clean_cache(max_age_hours: int = CACHE_TTL["clean_age_hours"], max_total_mb: int = CACHE_TTL["clean_max_total_mb"]):
     """清理过期缓存 + LRU 淘汰"""
     if not CACHE_DIR.exists():
         return 0
@@ -171,12 +216,15 @@ def clean_cache(max_age_hours: int = 24, max_total_mb: int = 500):
 
 # ========== 基本面数据获取 ==========
 
-from lib.data_cache import get_financial_cache
-
 _financial_cache = get_financial_cache()  # 统一缓存实例
 
 
 def _to_float(v) -> Optional[float]:
+    """将任意值转为 float，自动剥离千分位逗号和中文字符（亿/万）。
+
+    Returns:
+        转换成功返回 float，失败或输入为 None 返回 None。
+    """
     if v is None:
         return None
     try:
@@ -300,7 +348,6 @@ def _fetch_from_tdx_local(code: str, days: int) -> pd.DataFrame:
 
     code = code.strip().zfill(6)
     # 用 helper 替代手写市场判断（修复 bj 静默丢失：旧代码 ("0","3","2","4","8") 把 4/8 开头都归 sz）
-    from lib.market_utils import detect_market
     market_str = detect_market(code)
     if market_str == "unknown":
         return pd.DataFrame()
@@ -389,12 +436,7 @@ def get_stock_hist(code: str, days: int = 180) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-# 数据源熔断逻辑已移至 lib/data_source_registry.py
-from lib.data_source_registry import (
-    get_stock_hist_multi_source,
-    get_circuit_breaker_status,
-    DATA_SOURCE_PRIORITY,
-)
+# 数据源熔断逻辑已移至 lib/data_source_registry.py（imports 已在文件顶部）
 
 
 # ========== 指数/板块日线（本地 TDX 优先）==========
@@ -538,6 +580,18 @@ def get_xsb_hist(code: str, days: int = 180) -> pd.DataFrame:
 # ========== 实时行情 ==========
 
 def get_realtime_quotes(force: bool = False) -> pd.DataFrame:
+    """获取实时行情（多源：pytdx 本地 → akshare 兜底）。
+
+    优先使用 pytdx 直连行情服务器，失败时回退到 akshare。
+    盘中时段缓存 5 分钟，盘后缓存 30 分钟（force=True 跳过缓存）。
+
+    Args:
+        force: True = 跳过缓存强制刷新。
+
+    Returns:
+        DataFrame，列名含 代码/名称/最新价/开盘价/最高价/最低价/成交量/成交额/涨跌幅。
+        失败返回空 DataFrame。
+    """
     # 扫描期间用缓存（避免每个策略函数重复获取阻塞 30s+）
     # P1-4 修复（2026-06-05）：盘中缩短缓存到 5 分钟，避免盘中价格过期
     # 判断：当前小时在 9:00-15:00 之间 → 缩短缓存
@@ -555,14 +609,14 @@ def get_realtime_quotes(force: bool = False) -> pd.DataFrame:
     try:
         from pytdx.hq import TdxHq_API
         api = TdxHq_API()
-        servers = [("119.147.212.81", 7709), ("112.74.214.43", 7709)]
+        servers = TDX_HQ_SERVERS
         connected = False
         # P1-1 修复（2026-06-05）：不再静默吞所有异常
         # 每次连接失败打 warning log，让运维能诊断限流/网络问题
         last_error = None
         for host, port in servers:
             try:
-                api.connect(host, port, time_out=5)
+                api.connect(host, port, time_out=TDX_CONNECT_TIMEOUT_S)
                 connected = True
                 break
             except Exception as e:
@@ -573,15 +627,7 @@ def get_realtime_quotes(force: bool = False) -> pd.DataFrame:
             logger.warning(f"pytdx 所有服务器连接失败，最后错误: {last_error}")
         if connected:
             # 用 HS300 成分股 + 已知活跃股票作为样本（避免遍历全部 A 股）
-            sample_codes = [
-                (0, '600519'), (0, '601318'), (0, '600036'), (0, '600276'),
-                (0, '601166'), (0, '600030'), (0, '601398'), (0, '600900'),
-                (0, '601888'), (0, '600809'), (0, '601012'), (0, '600585'),
-                (1, '000858'), (1, '000333'), (1, '002714'), (1, '000651'),
-                (1, '000001'), (1, '002415'), (1, '300750'), (1, '002594'),
-                (0, '601899'), (0, '600050'), (0, '601668'), (0, '600000'),
-                (1, '000568'), (1, '002304'), (1, '300059'), (1, '002475'),
-            ]
+            sample_codes = REALTIME_SAMPLE_CODES
             quotes = api.get_security_quotes(sample_codes)
             api.disconnect()
             if quotes:
@@ -657,7 +703,7 @@ def get_stock_fund_flow(code: str) -> dict:
 
     # 2. akshare 兜底
     try:
-        market = "sh" if code.startswith(("6", "5")) else "sz"
+        market = detect_market(code) if detect_market(code) in ("sh", "sz") else "sz"
         df = _retry_api_call(ak.stock_individual_fund_flow, stock=code, market=market)
         if not df.empty:
             latest = df.iloc[-1]
@@ -667,7 +713,7 @@ def get_stock_fund_flow(code: str) -> dict:
                     main_net_ratio = _safe_float(latest[col]) / 100.0
                     break
             net_inflow_5d = 0.0
-            recent = df.tail(5)
+            recent = df.tail(NET_INFLOW_WINDOW_DAYS)
             for col in df.columns:
                 if "主力净流入-净额" in str(col):
                     net_inflow_5d = recent[col].sum()
@@ -680,6 +726,15 @@ def get_stock_fund_flow(code: str) -> dict:
 
 
 def _batch_fund_flow(codes: list) -> dict:
+    """批量获取资金流向（一次 API 调用，覆盖整个市场）。
+
+    Args:
+        codes: 股票代码列表（6 位字符串）。
+
+    Returns:
+        {code: {"main_net_ratio": float, "net_inflow_5d": float}, ...}
+        未命中的 code 保持默认值 {"main_net_ratio": 0, "net_inflow_5d": 0}。
+    """
     result = {c: {"main_net_ratio": 0, "net_inflow_5d": 0} for c in codes}
     try:
         df = _retry_api_call(ak.stock_fund_flow_individual, symbol="即时")
@@ -759,8 +814,7 @@ def _batch_get_news_signals(codes: List[str]) -> Dict[str, dict]:
     return results
 
 
-# 新闻/业绩信号已移至 lib/signal_fetcher.py
-from lib.signal_fetcher import get_news_signals
+# 新闻/业绩信号已移至 lib/signal_fetcher.py（imports 已在文件顶部）
 
 
 # ========== 专项数据获取（期权/债券/宏观） ==========
@@ -894,7 +948,7 @@ def get_stock_financial(code: str) -> pd.DataFrame:
     """
     from lib.data_tdx_fin import GpcwReader
     cache_key = f"fin/cw/{code}"
-    cached = _load_cache(cache_key, max_age_hours=168)  # 财务报表季度更新，缓存7天
+    cached = _load_cache(cache_key, max_age_hours=CACHE_TTL["financial_default"])  # 财务报表季度更新，缓存7天
     if not cached.empty:
         return cached
 
@@ -930,7 +984,7 @@ def _load_block_mapping():
         return
 
     from pathlib import Path
-    block_file = Path("D:/TDX/vipdoc/ref/infoharbor_block.dat")
+    block_file = TDX_REF_PATH / "infoharbor_block.dat"
     if not block_file.exists():
         _block_cache = {}
         _stock_to_blocks_cache = {}
@@ -995,7 +1049,7 @@ def _load_tdxstat():
 
     # tdxstat.cfg: [0]=market [1]=code [2]=div_yield [3]=PE [9]=PE_ttm [10]=PB [11]=total_mv
     # 市值单位：raw/100=亿元；股息率：raw/10=元/股
-    stat_file = Path("D:/TDX/vipdoc/ref/tdxstat.cfg")
+    stat_file = TDX_REF_PATH / "tdxstat.cfg"
     if stat_file.exists():
         with open(stat_file, "r", encoding="gbk", errors="replace") as f:
             for line in f:
@@ -1013,7 +1067,7 @@ def _load_tdxstat():
 
     # tdxstat2.cfg: [0]=market [1]=code [2]=date [3]=total_mv [5]=circ_mv
     # 市值单位：raw/100=亿元
-    stat2_file = Path("D:/TDX/vipdoc/ref/tdxstat2.cfg")
+    stat2_file = TDX_REF_PATH / "tdxstat2.cfg"
     if stat2_file.exists():
         with open(stat2_file, "r", encoding="gbk", errors="replace") as f:
             for line in f:
@@ -1053,7 +1107,7 @@ def _load_fundstk():
         return
 
     from pathlib import Path
-    stk_file = Path("D:/TDX/vipdoc/ref/fundstk.dat")
+    stk_file = TDX_REF_PATH / "fundstk.dat"
     if not stk_file.exists():
         _fundstk_cache = {}
         return
@@ -1115,7 +1169,7 @@ def _load_gbbq():
         return
 
     from pathlib import Path
-    gbbq_file = Path("D:/TDX/vipdoc/ref/gbbq")
+    gbbq_file = TDX_REF_PATH / "gbbq"
     if not gbbq_file.exists():
         _gbbq_cache = {}
         return
