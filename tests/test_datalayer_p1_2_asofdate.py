@@ -27,10 +27,11 @@ def test_get_financial_data_has_as_of_date_param():
         f"_get_financial_data 必须有 as_of_date 参数，当前参数: {list(sig.parameters.keys())}"
 
 
-def test_get_financial_data_warns_when_no_as_of_date():
-    """P1-2: 不传 as_of_date 应打 warning（提示 backtest 风险）
+def test_get_financial_data_raises_when_no_as_of_date():
+    """P0 #1 修复 (2026-06-08): 不传 as_of_date 应 raise NotImplementedError
 
-    backtest 入口若忘记传 as_of_date → logger.warning 记录
+    旧 P1-2 行为是 warning (但被忽略导致 backtest 误用)
+    新 P0 #1 行为: 硬 raise, 防止误用, 强制 caller 显式传 as_of_date 或改用 get_stock_fundamentals_lite()
     """
     from lib import data_layer
     from lib.data_cache import FinancialCache
@@ -38,16 +39,15 @@ def test_get_financial_data_warns_when_no_as_of_date():
     # 用 mock cache 避免网络
     fake_cache = FinancialCache(memory_ttl=300, disk_ttl=604800)
     with patch.object(data_layer, "_financial_cache", fake_cache):
-        with patch.object(data_layer.logger, "warning") as mock_warn:
-            # 调用不带 as_of_date
-            result = data_layer._get_financial_data("600519")
-            # 应至少有一条 warning
-            assert mock_warn.called, \
-                "不带 as_of_date 调用应打 warning（提示可能引入未来信息）"
-            # warning 内容应包含 backtest / 实时 / as_of 等关键词之一
-            warning_msg = " ".join(str(call.args[0]) for call in mock_warn.call_args_list)
-            assert any(kw in warning_msg.lower() for kw in ["backtest", "as_of", "snapshot", "历史"]), \
-                f"warning 应提示 backtest/历史快照风险，实际: {warning_msg}"
+        # 不传 as_of_date → 应 raise
+        with pytest.raises(NotImplementedError) as excinfo:
+            data_layer._get_financial_data("600519")
+        # error msg 应说明 as_of_date 要求
+        assert "as_of_date" in str(excinfo.value), \
+            f"raise msg 应说明 as_of_date 要求，实际: {excinfo.value}"
+        assert "backtest" in str(excinfo.value).lower() or "前视" in str(excinfo.value) or \
+               "实时" in str(excinfo.value), \
+            f"raise msg 应说明回测/前视偏差风险，实际: {excinfo.value}"
 
 
 def test_get_financial_data_no_warning_with_as_of_date():

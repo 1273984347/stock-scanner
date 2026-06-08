@@ -63,12 +63,19 @@ def _to_float(v) -> Optional[float]:
         return None
 
 
-def get_fund_flow(code: str, days: int = 5) -> dict:
+def get_fund_flow(code: str, days: int = 5, as_of_date: Optional[str] = None) -> dict:
     """获取资金流向数据
+
+    P0 #3 修复 (2026-06-08, lib-incremental-audit §2.1):
+    - 旧实现 days=5 是回溯窗口, 但回溯的是"当前日"的最近 5 天
+    - backtest 走此路径 = 拉 T 日实时数据, 用作历史日特征 = 前视偏差
+    - 修复: as_of_date 截断 klines_raw (过滤 <= as_of_date 的行)
+    - 3 秒限流硬编码保留, URL/fields 不变 (东方财富 push2 API 不直接支持历史日期)
 
     Args:
         code: 6位股票代码
         days: 获取最近N日数据（默认5）
+        as_of_date: 时间截断 (YYYY-MM-DD)。回测必传。None = 实时模式 (scanner 兼容)
 
     Returns:
         dict with keys:
@@ -102,6 +109,13 @@ def get_fund_flow(code: str, days: int = 5) -> dict:
         klines_raw = json_data.get("data", {}).get("klines", [])
         if not klines_raw:
             return {}
+
+        # P0 #3 修复: as_of_date 截断
+        if as_of_date is not None:
+            cutoff = as_of_date.replace("-", "")  # YYYYMMDD 格式
+            klines_raw = [line for line in klines_raw if line.split(",")[0] <= cutoff]
+            if not klines_raw:
+                return {}
 
         result = {
             "main_net_inflow": 0.0,
@@ -146,13 +160,12 @@ def get_fund_flow(code: str, days: int = 5) -> dict:
         return {}
 
 
-def get_fund_flow_simple(code: str) -> dict:
+def get_fund_flow_simple(code: str, as_of_date: Optional[str] = None) -> dict:
     """简化版资金流向（兼容现有 score_capital_flow 接口）
 
-    Returns:
-        dict with keys: main_net_ratio, net_inflow_5d
+    P0 #3 修复: 透传 as_of_date
     """
-    flow = get_fund_flow(code, days=5)
+    flow = get_fund_flow(code, days=5, as_of_date=as_of_date)
     if not flow:
         return {"main_net_ratio": 0, "net_inflow_5d": 0}
     return {

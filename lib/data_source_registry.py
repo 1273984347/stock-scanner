@@ -33,13 +33,20 @@ _CIRCUIT_BREAKERS: Dict[str, CircuitBreaker] = {
 }
 
 
-def _fetch_from_source(code: str, days: int, source: str) -> pd.DataFrame:
+def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[str] = None) -> pd.DataFrame:
     """从指定数据源获取数据
+
+    P0-10 修复 (2026-06-08, lib-incremental-audit §2.1):
+    - 旧实现 tushare/akshare 用 datetime.now() 拉**今日**实时数据
+    - 回测环境若不传 as_of_date，会用 T 日行情 = 前视偏差
+    - 修复: as_of_date 透传到 tushare/akshare 端点 (其他数据源行为待补)
+    - 不传 as_of_date 时仍走 datetime.now()（实时模式，行为不变）
 
     Args:
         code: 股票代码
         days: 历史天数
         source: 数据源名称
+        as_of_date: 时间截断 (YYYY-MM-DD)。回测必传。
 
     Returns:
         DataFrame with columns: date/open/high/low/close/volume
@@ -48,6 +55,15 @@ def _fetch_from_source(code: str, days: int, source: str) -> pd.DataFrame:
     if breaker is None:
         logger.warning(f"未知数据源: {source}")
         return pd.DataFrame()
+
+    # P0-10: 透传 as_of_date 端点
+    if as_of_date is not None:
+        end_dt = pd.to_datetime(as_of_date)
+    else:
+        end_dt = datetime.now()
+    start_dt = end_dt - timedelta(days=days)
+    end_str = end_dt.strftime("%Y%m%d")
+    start_str = start_dt.strftime("%Y%m%d")
 
     try:
         if source == "tdx_local_qfq":
@@ -80,9 +96,8 @@ def _fetch_from_source(code: str, days: int, source: str) -> pd.DataFrame:
         if source == "tushare":
             from lib.data_tushare import get_daily, _to_ts_code
             ts_code = _to_ts_code(code)
-            end = datetime.now().strftime("%Y%m%d")
-            start = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
-            df = breaker.call(get_daily, ts_code, start, end)
+            # P0-10: 透传 as_of_date (旧用 datetime.now() 前视)
+            df = breaker.call(get_daily, ts_code, start_str, end_str)
             if df.empty:
                 return pd.DataFrame()
             df = df.rename(columns={
@@ -92,10 +107,9 @@ def _fetch_from_source(code: str, days: int, source: str) -> pd.DataFrame:
             return df
         if source == "akshare":
             import akshare as ak
-            end = datetime.now().strftime("%Y%m%d")
-            start = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+            # P0-10: 透传 as_of_date (旧用 datetime.now() 前视)
             df = breaker.call(ak.stock_zh_a_hist, symbol=code, period="daily",
-                              start_date=start, end_date=end, adjust="qfq")
+                              start_date=start_str, end_date=end_str, adjust="qfq")
             if df.empty:
                 return pd.DataFrame()
             df = df.rename(columns={
@@ -185,23 +199,28 @@ def get_stock_hist_multi_source(
     days: int = 180,
     source: str = "auto",
     prefer_adjusted: bool = False,
+    as_of_date: Optional[str] = None,
 ) -> pd.DataFrame:
     """多数据源自动切换获取个股日线
 
     统一返回列名: date/open/high/low/close/vol
     所有数据源均失败时抛出 AllDataSourcesFailedError
 
+    P0-10 修复 (2026-06-08): 新增 as_of_date 透传到各数据源 (防回测前视)
+
     Args:
         code: 股票代码
         days: 历史天数
         source: 数据源，"auto" 表示自动切换
         prefer_adjusted: 是否优先使用前复权数据（回测时应设为 True）
+        as_of_date: 时间截断 (YYYY-MM-DD)。回测必传, 实时可省略。
+            不传时走 datetime.now() (旧行为)
 
     Returns:
         DataFrame with columns: date/open/high/low/close/volume
     """
     if source != "auto":
-        df = _fetch_from_source(code, days, source)
+        df = _fetch_from_source(code, days, source, as_of_date=as_of_date)
         df = _normalize_columns(df)
         if not _validate_dataframe(df):
             return pd.DataFrame()
@@ -209,7 +228,7 @@ def get_stock_hist_multi_source(
 
     # 北交所股票：强制使用 tdx_local（其他数据源不支持）
     if _is_bj_stock(code):
-        df = _fetch_from_source(code, days, "tdx_local")
+        df = _fetch_from_source(code, days, "tdx_local", as_of_date=as_of_date)
         if not df.empty:
             df = _normalize_columns(df)
             if _validate_dataframe(df):
@@ -221,7 +240,7 @@ def get_stock_hist_multi_source(
     # 选择数据源优先级：prefer_adjusted=True 时前复权数据源优先
     priority = DATA_SOURCE_PRIORITY_ADJUSTED if prefer_adjusted else DATA_SOURCE_PRIORITY
     for src in priority:
-        df = _fetch_from_source(code, days, src)
+        df = _fetch_from_source(code, days, src, as_of_date=as_of_date)
         if not df.empty:
             df = _normalize_columns(df)
             if _validate_dataframe(df):

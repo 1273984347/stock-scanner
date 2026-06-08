@@ -249,17 +249,21 @@ def _get_financial_data(code: str, as_of_date: Optional[str] = None) -> Optional
         as_of_date: 历史快照日期（YYYY-MM-DD）。**backtest 必须传入**
                    防止 look-ahead bias（拉取的是 T 日实时数据，但用作 T-1 日训练特征）
 
-    P1-2 修复（2026-06-07）：增加 as_of_date 参数
-    - 不传 as_of_date → 打 warning，提示仅用于实时扫描
-    - 传入 as_of_date → 数据源应基于 T-1 日快照（待实现，目前仅参数传递）
+    P0 #1 修复 (2026-06-08, lib-incremental-audit §2.1):
+    - 旧实现只 warning as_of_date 缺失, 实际仍拉 T 日实时数据
+    - backtest 走此路径 = 前视偏差（P1-2 修复"待实现"未实现）
+    - 修复: as_of_date 必传, 否则 raise NotImplementedError (强制 caller 传参)
+    - 实时扫描路径 (scanner.py) 不传 as_of_date → caller 改用 get_stock_fundamentals_lite()
+    - 真正历史快照实现需 akshare 历史接口, 本次仅"stamp"防止误用
     """
     if as_of_date is None:
-        # P1-2 修复：不传 as_of_date 视为实时快照，警告 backtest 误用风险
-        # 实时扫描（scanner.py）可忽略此 warning
-        # backtest 训练特征必须传 as_of_date
-        logger.warning(
-            f"[data_layer] _get_financial_data({code}) 未传 as_of_date，"
-            f"将拉取实时快照。backtest 训练特征必须传 as_of_date='YYYY-MM-DD' 防止未来信息泄露"
+        # P0 #1 修复 (2026-06-08): 强制 raise 替代 warning
+        # 旧 warning 被忽略导致 backtest 误用, 现在硬阻断
+        # 实时扫描改用 get_stock_fundamentals_lite() (无 as_of_date 走实时)
+        # backtest 必传 as_of_date='YYYY-MM-DD'
+        raise NotImplementedError(
+            f"_get_financial_data({code}) 必须传 as_of_date, "
+            f"防止 backtest 前视偏差。实时扫描请改用 get_stock_fundamentals_lite() (走实时, 无 as_of_date)"
         )
     # 1. 缓存检查（优先复用 get_stock_fundamentals 的结果）
     cached = _financial_cache.get(code)

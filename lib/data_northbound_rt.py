@@ -40,45 +40,68 @@ class NorthboundMonitor:
         self._cache: Optional[NorthboundFlow] = None
         self._cache_ts: float = 0
 
-    def get_realtime_flow(self) -> Optional[NorthboundFlow]:
+    def get_realtime_flow(self, as_of_date: Optional[str] = None) -> Optional[NorthboundFlow]:
         """获取实时北向资金流向
+
+        P0 #5 修复 (2026-06-08, lib-incremental-audit §2.1):
+        - 旧实现 ak.stock_hsgt_north_net_flow_in_em 拉 T 日实时
+        - backtest 走此路径 = 前视偏差
+        - 修复: as_of_date 截断 (df.iloc[-1] → df[date <= as_of_date].iloc[-1])
+        - 缓存 key 不变 (1 分钟 TTL, 实时模式忽略 as_of_date)
+
+        Args:
+            as_of_date: 时间截断 (YYYY-MM-DD)。回测必传。None = 实时 (行为不变)
 
         Returns:
             NorthboundFlow or None
         """
         import time
-        # 缓存 1 分钟
-        if self._cache and time.time() - self._cache_ts < 60:
+        # 缓存 1 分钟（仅实时模式有效, 回测模式 as_of_date 不同应不走缓存）
+        if as_of_date is None and self._cache and time.time() - self._cache_ts < 60:
             return self._cache
 
         # 尝试 akshare
-        flow = self._fetch_akshare()
-        if flow:
+        flow = self._fetch_akshare(as_of_date=as_of_date)
+        if flow and as_of_date is None:
             self._cache = flow
             self._cache_ts = time.time()
-            return flow
+        return flow
 
-        return None
-
-    def get_daily_flow(self, days: int = 20) -> List[Dict]:
+    def get_daily_flow(self, days: int = 20, as_of_date: Optional[str] = None) -> List[Dict]:
         """获取日线级北向资金流向
+
+        P0 #5 修复: 透传 as_of_date + 截断
 
         Args:
             days: 获取天数
+            as_of_date: 时间截断 (YYYY-MM-DD)。回测必传。None = 实时 (行为不变)
 
         Returns:
             list of {date, total_net}
         """
         try:
             import akshare as ak
+            import pandas as pd
 
             df = ak.stock_hsgt_north_net_flow_in_em(symbol="北上")
             if df is None or df.empty:
                 return []
 
+            # P0 #5 修复: as_of_date 截断
+            if as_of_date is not None:
+                cutoff = as_of_date.replace("-", "")
+                if "日期" in df.columns:
+                    df = df[df["日期"].astype(str).str.replace("-", "") <= cutoff]
+                elif "date" in df.columns:
+                    df = df[df["date"].astype(str).str.replace("-", "") <= cutoff]
+                # 截断后取最后 days 行
+                df = df.tail(days)
+            else:
+                df = df.tail(days)
+
             cols = df.columns.tolist()
             result = []
-            for _, row in df.tail(days).iterrows():
+            for _, row in df.iterrows():
                 date_val = str(row.get("日期", row.get("date", row.iloc[0])))
                 net_flow = 0.0
                 for key in ("净流入", "value"):
@@ -126,8 +149,10 @@ class NorthboundMonitor:
 
         return []
 
-    def _fetch_akshare(self) -> Optional[NorthboundFlow]:
+    def _fetch_akshare(self, as_of_date: Optional[str] = None) -> Optional[NorthboundFlow]:
         """从 akshare 获取北向资金数据（最新一条）
+
+        P0 #5 修复 (2026-06-08): as_of_date 截断
 
         akshare stock_hsgt_north_net_flow_in_em 返回列名可能为：
         - 日期 / date
@@ -139,6 +164,16 @@ class NorthboundMonitor:
             df = ak.stock_hsgt_north_net_flow_in_em(symbol="北上")
             if df is None or df.empty:
                 return None
+
+            # P0 #5 修复: as_of_date 截断 (取 <= as_of_date 的最后一行)
+            if as_of_date is not None:
+                cutoff = as_of_date.replace("-", "")
+                if "日期" in df.columns:
+                    df = df[df["日期"].astype(str).str.replace("-", "") <= cutoff]
+                elif "date" in df.columns:
+                    df = df[df["date"].astype(str).str.replace("-", "") <= cutoff]
+                if df.empty:
+                    return None
 
             latest = df.iloc[-1]
             cols = df.columns.tolist()

@@ -30,8 +30,18 @@ def _to_float(v) -> Optional[float]:
         return None
 
 
-def get_fund_flow_estimate(code: str) -> dict:
+def get_fund_flow_estimate(code: str, as_of_date: Optional[str] = None) -> dict:
     """获取资金流向估算（多源优先）
+
+    P0 #2 修复 (2026-06-08, lib-incremental-audit §2.1):
+    - 旧实现无 as_of_date 参数, 3 个数据源 (东方财富/腾讯估算/akshare) 全部走 T 日实时
+    - backtest 用作特征 = 前视偏差
+    - 修复: 加 as_of_date: Optional[str] = None 参数, 透传到 data_eastmoney_fund.get_fund_flow
+    - 不传 = 实时模式 (scanner 兼容), 传 = 回测 (data_eastmoney_fund 内部 filter 截断)
+
+    Args:
+        code: 6位股票代码
+        as_of_date: 时间截断 (YYYY-MM-DD)。回测必传。
 
     Returns:
         dict with keys: main_net_ratio, net_inflow_5d, source
@@ -39,7 +49,8 @@ def get_fund_flow_estimate(code: str) -> dict:
     # 1. 东方财富（最准确）
     try:
         from lib.data_eastmoney_fund import get_fund_flow
-        flow = get_fund_flow(code, days=5)
+        # P0 #2 修复: 透传 as_of_date
+        flow = get_fund_flow(code, days=5, as_of_date=as_of_date)
         if flow and flow.get("main_net_inflow", 0) != 0:
             return {
                 "main_net_ratio": flow.get("main_net_ratio", 0),

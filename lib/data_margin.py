@@ -113,12 +113,20 @@ def get_margin_stock(code: str, start_date: str = None, end_date: str = None) ->
     return pd.DataFrame()
 
 
-def get_margin_indicator(code: str, lookback_days: int = 20) -> Dict:
+def get_margin_indicator(code: str, lookback_days: int = 20, as_of_date: Optional[str] = None) -> Dict:
     """计算个股融资融券指标
+
+    P0 #4 修复 (2026-06-08, lib-incremental-audit §2.1):
+    - 旧实现 end_date = datetime.now().strftime("%Y%m%d") 静默用 wall-clock
+    - 旧实现 start_date = (datetime.now() - timedelta(days=lookback_days * 2))
+    - backtest 走 data_layer.get_margin_indicator 路径 → 拉 T 日数据 = 前视偏差
+    - 修复: as_of_date 接受 (YYYY-MM-DD), 替换 datetime.now() 端点
+    - 不传 = 实时模式 (scanner 兼容), 传 = 回测
 
     Args:
         code: 股票代码
         lookback_days: 回溯天数
+        as_of_date: 时间截断 (YYYY-MM-DD)。回测必传。
 
     Returns:
         dict with keys:
@@ -129,8 +137,10 @@ def get_margin_indicator(code: str, lookback_days: int = 20) -> Dict:
         - short_balance: 融券余额（做空力量）
         - short_ratio: 融券/融资比（做空比例）
     """
-    end_date = datetime.now().strftime("%Y%m%d")
-    start_date = (datetime.now() - timedelta(days=lookback_days * 2)).strftime("%Y%m%d")
+    # P0 #4 修复: as_of_date 端点
+    end_date = (as_of_date.replace("-", "") if as_of_date else datetime.now().strftime("%Y%m%d"))
+    end_dt = datetime.strptime(end_date, "%Y%m%d")
+    start_date = (end_dt - timedelta(days=lookback_days * 2)).strftime("%Y%m%d")
 
     df = get_margin_stock(code, start_date, end_date)
     if df.empty:
