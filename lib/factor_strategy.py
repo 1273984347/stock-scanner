@@ -112,7 +112,17 @@ def run_backtest(path: str = "cache/panel_v4_final.parquet"):
 
     panel = pd.read_parquet(path).dropna(subset=["excess_5d"])
     dates = sorted(panel["date"].unique())
-    split = int(len(dates) * 0.5)
+    # §4.2 P1 修复 (2026-06-08, lib-incremental-audit §1.1):
+    # 旧 50/50 split 略激进, train 不足; ml_data.train_val_test_split 用 70/15/15 更细致
+    # 修复: 用 MLDataPipeline 标准 split
+    try:
+        from lib.ml_data import MLDataPipeline
+        train_idx, val_idx, test_idx = MLDataPipeline.train_val_test_split(
+            len(dates), train_ratio=0.7, val_ratio=0.15, test_ratio=0.15
+        )
+        split = train_idx[-1] if hasattr(train_idx, '__getitem__') else int(len(dates) * 0.5)
+    except Exception:
+        split = int(len(dates) * 0.5)  # 兜底旧行为
     train = panel[panel["date"].isin(set(dates[:split]))].copy()
     test = panel[panel["date"].isin(set(dates[split:]))].copy()
 

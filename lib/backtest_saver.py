@@ -101,6 +101,7 @@ def _compute_metrics(nav: np.ndarray, trades: Optional[List[Dict]] = None) -> Di
         avg_loss = float(np.mean(loss_pnls)) if loss_pnls else 0.0
         # win/loss ratio (avg_win / abs(avg_loss)) — 经典 Kelly/期望值公式
         win_loss_ratio = (avg_win / abs(avg_loss)) if (wins and losses and avg_loss != 0) else 0.0
+        # 注: 0.0 在 caller 表示 '数据缺失' (非 '极小值'), 与 None 区分需 caller 文档化
         # profit factor (gross_profit / |gross_loss|) — 全赢时定义为 inf
         if total_loss_pnl < 0 and total_win_pnl > 0:
             profit_factor = total_win_pnl / abs(total_loss_pnl)
