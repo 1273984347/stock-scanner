@@ -266,6 +266,10 @@ class MLTrainer:
             "model_type": model_type,
             "version": version,
             "train_date": datetime.now().isoformat(),
+            # P0 #15 修复 (2026-06-08, lib-incremental-audit §1):
+            # 加 train_data_end_date 字段 (训练数据最后日期)
+            # ml_predictor.is_model_stale 用此字段做 stale 检查 (不再用 wall-clock train_date)
+            "train_data_end_date": metadata.get("train_data_end_date", datetime.now().date().isoformat()),
             "feature_cols": metadata.get("feature_cols", []),
             "val_ic": metadata.get("val_ic", None),
             "n_samples": metadata.get("n_samples", 0),

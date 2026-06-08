@@ -236,8 +236,13 @@ class MLPredictor:
     def is_model_stale(self) -> bool:
         """检查训练好的模型是否已过期
 
-        取 XGBoost 和 LightGBM 中较新的训练日期，
-        超过 7 天即认为过期。
+        P0 #15 修复 (2026-06-08, lib-incremental-audit §1):
+        - 旧实现用 manifest.train_date (模型保存到磁盘的 wall-clock 时间, line 268 `datetime.now().isoformat()`)
+        - backtest 训练时 train_date 是回测当时 wall-clock, cache 永远是'最近训练', stale 检查永远 False
+        - 生产: 旧模型被加载时 train_date 是 1 周前 → stale=True → predict 不可用, 但模型可能仍有效 (数据没变)
+        - 修复: 加 manifest.train_data_end_date 字段 (训练数据最后日期)
+          stale 检查改用 data_age = today - train_data_end_date > 7d
+          实时回测都能正确判断 (回测: train_data_end_date = 回测当时; 生产: = 上次训练时)
 
         Returns
         -------
@@ -247,17 +252,23 @@ class MLPredictor:
         if not self.model_available:
             return True
 
-        latest_dt: Optional[datetime] = None
+        latest_data_end: Optional[datetime] = None
+        latest_train: Optional[datetime] = None
         for manifest in (self.xgb_manifest, self.lgbm_manifest):
             if manifest is None:
                 continue
-            date_str = manifest.get("train_date")
-            if not date_str:
-                continue
+            # P0 #15 修复: 优先用 train_data_end_date (数据截止), 回退 train_date (向后兼容)
+            data_end_str = manifest.get("train_data_end_date")
+            train_str = manifest.get("train_date")
             try:
-                dt = datetime.fromisoformat(date_str)
-                if latest_dt is None or dt > latest_dt:
-                    latest_dt = dt
+                if data_end_str:
+                    dt = datetime.fromisoformat(data_end_str)
+                    if latest_data_end is None or dt > latest_data_end:
+                        latest_data_end = dt
+                if train_str:
+                    dt = datetime.fromisoformat(train_str)
+                    if latest_train is None or dt > latest_train:
+                        latest_train = dt
             except (ValueError, TypeError):
                 continue
 
