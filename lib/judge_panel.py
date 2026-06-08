@@ -97,21 +97,19 @@ class JudgePanel:
         self.results: List[VoteResult] = []
 
     def evaluate_all(self) -> Dict:
-        """执行所有评委评估"""
+        """执行所有评委评估
+
+        §4.2 P0 修复 (2026-06-08, lib-incremental-audit §2.3):
+        - 旧 6 组硬编码规则 (经典价值/成长/宏观对冲/技术趋势/中国价投/A股游资)
+          已被 06-08 早间 (commit 938933d) 设 weight=0 禁用
+        - 6 个 _evaluate_xxx 方法体 仍有 150+ if/elif 硬编码规则
+        - 评估: 6 方法已 weight=0 等价于无操作, 但仍被调用 (计算浪费 + 过拟合隐患)
+        - 修复: evaluate_all 不再调 6 _evaluate_xxx, 仅靠 evaluate_with_ml 加 ML 投票
+        - 6 _evaluate_xxx 方法保留 (供未来重构 / walk-forward 验证后启用)
+        """
         self.results = []
-        groups = {
-            "经典价值": self._evaluate_value,
-            "成长": self._evaluate_growth,
-            "宏观对冲": self._evaluate_macro,
-            "技术趋势": self._evaluate_technical,
-            "中国价投": self._evaluate_cn_value,
-            "A股游资": self._evaluate_hot_money,
-        }
-
-        for group, func in groups.items():
-            votes = func()
-            self.results.extend(votes)
-
+        # §4.2 修复: 6 组硬编码规则禁用 (weight=0)
+        # 实际投票仅来自 ML (evaluate_with_ml 调 _evaluate_ml)
         return self.get_summary()
 
     def evaluate_with_ml(self, ml_prediction: dict = None) -> dict:
@@ -158,7 +156,7 @@ class JudgePanel:
     def get_summary(self) -> Dict:
         """获取投票汇总"""
         if not self.results:
-            return {"consensus": "HOLD", "score": 0, "bullish_pct": 0}
+            return {"consensus": "HOLD", "score": 0, "bullish_pct": 0, "total_votes": 0}
 
         # 按评委权重加权（跳过 ABSTAIN）
         total_weight = 0

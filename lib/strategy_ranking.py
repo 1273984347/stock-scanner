@@ -160,46 +160,10 @@ class StrategyRanker:
                 norm_drawdowns[i] * weights["drawdown"]
             )
 
-    def _get_default_ranking(self) -> List[Dict]:
-        """获取默认排行（无历史数据时）"""
-        return [
-            {
-                "rank": 1,
-                "name": "均衡策略",
-                "sharpe": 1.2,
-                "calmar": 0.8,
-                "win_rate": 0.45,
-                "profit_loss_ratio": 2.1,
-                "max_drawdown": 0.15,
-                "total_return": 0.25,
-                "trades": 150,
-                "composite_score": 0.75
-            },
-            {
-                "rank": 2,
-                "name": "激进策略",
-                "sharpe": 1.0,
-                "calmar": 0.6,
-                "win_rate": 0.40,
-                "profit_loss_ratio": 2.5,
-                "max_drawdown": 0.25,
-                "total_return": 0.35,
-                "trades": 200,
-                "composite_score": 0.65
-            },
-            {
-                "rank": 3,
-                "name": "保守策略",
-                "sharpe": 0.9,
-                "calmar": 0.9,
-                "win_rate": 0.50,
-                "profit_loss_ratio": 1.8,
-                "max_drawdown": 0.10,
-                "total_return": 0.15,
-                "trades": 100,
-                "composite_score": 0.60
-            }
-        ]
+    # P0 #2.3 修复 (2026-06-08, lib-incremental-audit §2.3):
+    # _get_default_ranking 函数已删 (40 行硬编码假策略 均衡/激进/保守)
+    # 06-06 P1-9 修复已让 get_ranking 走 [] 返回路径
+    # 此函数无 caller, 保留只增噪音
 
 
 # 单例

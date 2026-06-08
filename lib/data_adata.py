@@ -20,16 +20,18 @@ def _to_adata_code(code: str) -> str:
     return code
 
 
-def get_kline(code: str, days: int = 180, period: str = "daily") -> pd.DataFrame:
+def get_kline(code: str, days: int = 180, period: str = "daily", as_of_date: Optional[str] = None) -> pd.DataFrame:
     """获取 K 线数据
+
+    §4.2 P0 修复 (2026-06-08, lib-incremental-audit §4.2):
+    - 旧实现 end = datetime.now() 走 wall-clock
+    - 修复: as_of_date 接受, 替换 datetime.now()
 
     Args:
         code: 股票代码（如 "000001"）
         days: 获取天数
         period: daily/weekly/monthly
-
-    Returns:
-        DataFrame with columns: date, open, close, high, low, volume, amount, ...
+        as_of_date: 时间截断 (YYYY-MM-DD)。回测必传。
     """
     try:
         import adata.stock.market as mkt

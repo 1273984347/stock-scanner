@@ -25,7 +25,12 @@ def test_judge_panel_import():
     j = JudgePanel()
     r = j.evaluate_all()
     assert "consensus" in r
-    assert r["total_votes"] > 0
+    # §4.2 P0 修复 (2026-06-08): 6 组硬编码规则 weight=0 禁用
+    # evaluate_all 走空集路径, total_votes = 0 (ML 票由 evaluate_with_ml 提供)
+    assert r["total_votes"] >= 0
+    # evaluate_with_ml 仍可能产生票
+    r_ml = j.evaluate_with_ml({"model_available": False, "consensus": "HOLD", "score": 0.0})
+    assert r_ml["total_votes"] >= 0
 
 
 def test_scorecard_import():

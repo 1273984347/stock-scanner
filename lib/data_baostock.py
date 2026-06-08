@@ -32,21 +32,29 @@ def _retry_baostock(func, *args, max_retries=3, **kwargs):
     raise last_error
 
 
-def get_kline(code: str, days: int = 180, period: str = "daily") -> pd.DataFrame:
+def get_kline(code: str, days: int = 180, period: str = "daily", as_of_date: Optional[str] = None) -> pd.DataFrame:
     """获取 K 线数据，兼容现有 data_ 系列接口
+
+    §4.2 P0 修复 (2026-06-08, lib-incremental-audit §4.2):
+    - 旧实现 end = datetime.now() 走 wall-clock
+    - backtest 走 data_baostock.get_kline 路径 = 拉 T 日数据 = 前视偏差
+    - 修复: as_of_date 接受 (YYYY-MM-DD), 替换 datetime.now()
+    - 不传 = 实时模式 (scanner 兼容), 传 = 回测
 
     Args:
         code: 股票代码（如 "000001"），会自动补全为 baostock 格式
         days: 获取天数
         period: daily/weekly/monthly
-
-    Returns:
-        DataFrame with columns: date, open, close, high, low, volume, amount, pct_chg
+        as_of_date: 时间截断 (YYYY-MM-DD)。回测必传。
     """
     import baostock as bs
 
     bs_code = _to_bs_code(code)
-    end = datetime.now()
+    # P0 修复: as_of_date 端点
+    if as_of_date:
+        end = datetime.strptime(as_of_date, "%Y-%m-%d")
+    else:
+        end = datetime.now()
     start = end - timedelta(days=days + 30)  # 多取 30 天确保覆盖
 
     freq_map = {"daily": "d", "weekly": "w", "monthly": "m"}
