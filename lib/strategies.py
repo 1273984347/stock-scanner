@@ -140,6 +140,45 @@ def _batch_get_stock_hist(codes: List[str], days: int = 180,
     return results
 
 
+def batch_quick_score(rows: List[pd.Series], max_workers: int = 10,
+                      batch_flows: Optional[Dict[str, dict]] = None,
+                      batch_news: Optional[Dict[str, dict]] = None) -> Dict[str, dict]:
+    """批量并行快速评分（解决 N+1 调用问题）
+
+    2026-06-09 来自 wip/pipeline-refactor WIP commit 5c5d728 的 N+1 fix。
+    与 _batch_get_financial_data / _batch_get_stock_hist 同模式 (ThreadPoolExecutor)，
+    不依赖 P0-2/P0-3 修复，独立可应用。
+
+    Args:
+        rows: 股票实时行情数据列表 (pd.Series 形式)
+        max_workers: 并行工作线程数
+        batch_flows: 可选预获取的资金流 Dict[code -> fund_flow_dict]，
+                     与 master 的 _batch_fund_flow 输出兼容
+        batch_news: 可选预获取的新闻信号 Dict[code -> news_sig_dict]，
+                    与 master 的 _batch_get_news_signals 输出兼容
+
+    Returns:
+        Dict[code -> score_result]，只包含成功评分的股票
+    """
+    results = {}
+    batch_flows = batch_flows or {}
+    batch_news = batch_news or {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(quick_score, row,
+                           fund_flow=batch_flows.get(str(row.get("代码", ""))),
+                           news_sig=batch_news.get(str(row.get("代码", "")))): str(row.get("代码", ""))
+            for row in rows if row.get("代码") is not None
+        }
+        for future in as_completed(futures):
+            code = futures[future]
+            try:
+                results[code] = future.result()
+            except Exception:
+                results[code] = {"score": None, "rating": "error"}
+    return results
+
+
 # ========== 四维评分 ==========
 
 def _compute_base_scores(row: pd.Series, code: str, tech_return_short: float,
@@ -287,17 +326,13 @@ def get_zt_candidates(config: SystemConfig, as_of_date: Optional[str] = None) ->
             codes = [str(c) for c in result["代码"]]
             batch_flows = _batch_fund_flow(codes)
             batch_news = _batch_get_news_signals(codes)
-            scores = []
-            for _, cand in result.iterrows():
-                code = str(cand["代码"])
-                rt_row = row_map.get(code)
-                if rt_row is not None:
-                    sc = quick_score(rt_row,
-                                   fund_flow=batch_flows.get(code),
-                                   news_sig=batch_news.get(code))
-                    scores.append(sc["score"])
-                else:
-                    scores.append(None)
+            # 并行批量评分 (N+1 fix from wip, 2026-06-09)
+            rt_rows = [pd.Series({"代码": code, **row_map[code]})
+                       for code in codes if row_map.get(code) is not None]
+            score_results = batch_quick_score(
+                rt_rows, batch_flows=batch_flows, batch_news=batch_news
+            )
+            scores = [score_results.get(code, {}).get("score") for code in codes]
             result["综合评分"] = scores
         return result
     except Exception as e:
@@ -574,17 +609,13 @@ def get_lhb_candidates(config: SystemConfig, as_of_date: Optional[str] = None) -
             codes = [str(c) for c in result["代码"]]
             batch_flows = _batch_fund_flow(codes)
             batch_news = _batch_get_news_signals(codes)
-            scores = []
-            for _, cand in result.iterrows():
-                code = str(cand.get("代码", ""))
-                rt_row = row_map.get(code)
-                if rt_row is not None:
-                    sc = quick_score(rt_row,
-                                   fund_flow=batch_flows.get(code),
-                                   news_sig=batch_news.get(code))
-                    scores.append(sc["score"])
-                else:
-                    scores.append(None)
+            # 并行批量评分 (N+1 fix from wip, 2026-06-09)
+            rt_rows = [pd.Series({"代码": code, **row_map[code]})
+                       for code in codes if row_map.get(code) is not None]
+            score_results = batch_quick_score(
+                rt_rows, batch_flows=batch_flows, batch_news=batch_news
+            )
+            scores = [score_results.get(code, {}).get("score") for code in codes]
             result["综合评分"] = scores
         result["策略"] = "龙虎榜"
         result["entry_timing"] = "次日开盘"
