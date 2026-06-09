@@ -1,5 +1,6 @@
 """数据层：多源数据获取、缓存、限流"""
 import os
+import json
 import akshare as ak
 import pandas as pd
 import numpy as np
@@ -90,8 +91,28 @@ class _RateLimiter:
 _rate_limiter = _RateLimiter(max_calls_per_second=RATE_LIMIT_CALLS_PER_SEC)
 
 
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """检测异常是否由 API 限流引起
+
+    限流特征: API 返 HTML 错误页 (rate-limit warning) 而非 JSON, 导致
+    pd.DataFrame() 或 json.loads() 抛 JSONDecodeError,
+    错误消息含 "Can not decode value starting with '<'" 或 "Expecting value"。
+
+    区分限流 vs 真实错误: 限流需要更长 backoff (翻倍), 真实错误重试无意义。
+    """
+    if isinstance(exc, json.JSONDecodeError):
+        return True
+    msg = str(exc)
+    return "Can not decode" in msg or "Expecting value" in msg
+
+
 def _retry_api_call(func, *args, max_retries: int = API_RETRY_MAX_ATTEMPTS, **kwargs):
-    """带重试和限流的 API 调用"""
+    """带重试和限流的 API 调用
+
+    2026-06-09 增强: 区分 rate-limit 错误 (HTML/JSON decode 失败) vs 真实错误。
+    - rate-limit: backoff 翻倍 (等待限流窗口过去)
+    - 真实错误: 正常指数 backoff
+    """
     last_error = None
     for attempt in range(max_retries):
         try:
@@ -100,8 +121,13 @@ def _retry_api_call(func, *args, max_retries: int = API_RETRY_MAX_ATTEMPTS, **kw
         except Exception as e:
             last_error = e
             if attempt < max_retries - 1:
-                wait = API_RETRY_BASE_WAIT_S * (attempt + 1)
-                logger.debug(f"API 调用失败 (尝试 {attempt + 1}/{max_retries})，{wait}s 后重试: {e}")
+                # 限流错误 → 翻倍 backoff, 真实错误 → 正常 backoff
+                if _is_rate_limit_error(e):
+                    wait = API_RETRY_BASE_WAIT_S * (2 ** (attempt + 1))  # 翻倍
+                    logger.info(f"API 限流 (尝试 {attempt + 1}/{max_retries}), {wait}s 后重试: {type(e).__name__}")
+                else:
+                    wait = API_RETRY_BASE_WAIT_S * (attempt + 1)
+                    logger.debug(f"API 调用失败 (尝试 {attempt + 1}/{max_retries})，{wait}s 后重试: {e}")
                 time.sleep(wait)
     raise last_error
 
