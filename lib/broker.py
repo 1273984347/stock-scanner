@@ -859,8 +859,83 @@ class PaperBroker(LiveBrokerABC):
         """无实际连接需要断开"""
         pass
 
+    def _check_position_limits(self, order: Order, exec_px: float,
+                              lot_size: int) -> bool:
+        """风控仓位检查 (D5.1 拆分, 2026-06-09)
+
+        检查单票仓位上限 + 总仓位上限, 必要时缩减 order.shares。
+        P0-4 修复: 缩量基线用 lot_size (非硬编码 100), 与 ABroker 二次 floor 一致。
+        P1-1 修复: last_price() 显式拿价格, 无值退化为 cost_price。
+        P1-2 修复: 用 _exec_price_estimate 而非 order.price 估值 (大单占用更准)。
+
+        Args:
+            order: 待检查订单 (会就地修改 order.shares 如需缩量)
+            exec_px: 估算的实际成交价
+            lot_size: ABroker.lot_size
+
+        Returns:
+            True = 订单可继续 (可能已缩量), False = 风控阻断, 终止下单
+        """
+        if order.direction != "BUY":
+            return True  # SELL 不受仓位上限约束
+
+        total_value = self._broker.total_value
+        if total_value <= 0:
+            return True  # 无账户价值时跳过检查 (避免除 0)
+
+        # 单票仓位限制
+        existing = self._broker.holdings.get(order.code)
+        if existing:
+            last_px = self._broker.last_price(existing.code, default=existing.cost_price)
+            existing_value = existing.shares * last_px
+        else:
+            existing_value = 0
+        new_value = existing_value + exec_px * order.shares
+        if new_value / total_value > self._max_single_weight:
+            logger.warning(
+                f"PaperBroker 风控: {order.code} 仓位 {new_value/total_value:.1%} 超过 {self._max_single_weight:.0%} 上限"
+            )
+            max_new_value = total_value * self._max_single_weight - existing_value
+            if max_new_value <= 0:
+                return False
+            order.shares = int(max_new_value / order.price / lot_size) * lot_size
+            if order.shares <= 0:
+                return False
+
+        # 总仓位限制
+        total_market_value = self._broker.total_market_value
+        if (total_market_value + exec_px * order.shares) / total_value > self._max_total_exposure:
+            max_buy_value = total_value * self._max_total_exposure - total_market_value
+            if max_buy_value <= 0:
+                logger.warning("PaperBroker 风控: 总仓位已达上限")
+                return False
+            order.shares = int(max_buy_value / order.price / lot_size) * lot_size
+            if order.shares <= 0:
+                return False
+
+        return True
+
+    def _ensure_market_data(self, code: str) -> None:
+        """确保指定 code 的 market_data 已加载 (D5.1 拆分)
+
+        无 _market_data[code] 时, 尝试从 data_layer 拉 5 天 K 线回填。
+        失败静默 (df 空) — 下游会返 None (优雅降级)。
+        """
+        if code in self._market_data:
+            return
+        logger.warning(f"无市场数据，使用实时行情: {code}")
+        from lib.data_layer import get_stock_hist_multi_source
+        try:
+            df = get_stock_hist_multi_source(code, days=5, source="auto")
+        except Exception as e:
+            logger.debug(f"[broker] 历史数据获取失败 [{code}]: {e}")
+            df = pd.DataFrame()
+        if not df.empty:
+            df = df.rename(columns={"date": "trade_date"})
+            self._market_data[code] = df
+
     def _place_order(self, order: Order) -> Optional[Trade]:
-        """通过本地 ABroker 执行订单（含风控检查）
+        """通过本地 ABroker 执行订单 (orchestrator, D5.1 拆分后 ~30 行)
 
         P0-4 修复（2026-06-08）：
         风控缩量使用 self._broker.lot_size 而非硬编码 100，
@@ -868,60 +943,24 @@ class PaperBroker(LiveBrokerABC):
         旧实现硬编码 100，当内部 ABroker.lot_size 被覆写为非 100 值时，
         PaperBroker 缩量结果（如 100）会被 ABroker 二次 floor 到 0，
         订单被静默丢弃。
+
+        D5.1 拆分 (2026-06-09):
+        - 风控检查抽到 _check_position_limits (35 行 → 30 行)
+        - market_data 回填抽到 _ensure_market_data (10 行 → 12 行)
+        - _place_order 现只做 orchestrator: lot_size → 风控 → 回填 → submit
         """
         # P0-4：缩量基线用 self._broker.lot_size，与 ABroker.submit_order 统一
         lot_size = self._broker.lot_size
-        # 风控检查：买入时验证仓位限制
+
+        # 风控检查（仅 BUY 受仓位约束, SELL 跳过）
         if order.direction == "BUY":
-            total_value = self._broker.total_value
-            if total_value > 0:
-                # P1-2 修复：用 _exec_price_estimate 估算实际成交价
-                # 旧版用 order.price 估值不足，大单实际占用突破单票上限
-                exec_px = self._exec_price_estimate(order, self._market_data, order.date)
-                # 单票仓位限制
-                existing = self._broker.holdings.get(order.code)
-                # P1-1 修复：用 last_price() 显式拿价格，无值时退化为 cost_price
-                # 旧版 _last_prices.get() 私有访问 + 无值时退化为 0 导致 first-buy 仓位检查失效
-                if existing:
-                    last_px = self._broker.last_price(existing.code, default=existing.cost_price)
-                    existing_value = existing.shares * last_px
-                else:
-                    existing_value = 0
-                new_value = existing_value + exec_px * order.shares
-                if new_value / total_value > self._max_single_weight:
-                    logger.warning(f"PaperBroker 风控: {order.code} 仓位 {new_value/total_value:.1%} 超过 {self._max_single_weight:.0%} 上限")
-                    # 缩减到限额内
-                    max_new_value = total_value * self._max_single_weight - existing_value
-                    if max_new_value <= 0:
-                        return None
-                    # P0-4：用 lot_size 替代硬编码 100
-                    order.shares = int(max_new_value / order.price / lot_size) * lot_size
-                    if order.shares <= 0:
-                        return None
+            # P1-2: 用 _exec_price_estimate 而非 order.price 估值
+            exec_px = self._exec_price_estimate(order, self._market_data, order.date)
+            if not self._check_position_limits(order, exec_px, lot_size):
+                return None  # 风控阻断, 终止下单
 
-                # 总仓位限制
-                total_market_value = self._broker.total_market_value
-                if (total_market_value + exec_px * order.shares) / total_value > self._max_total_exposure:
-                    max_buy_value = total_value * self._max_total_exposure - total_market_value
-                    if max_buy_value <= 0:
-                        logger.warning("PaperBroker 风控: 总仓位已达上限")
-                        return None
-                    # P0-4：用 lot_size 替代硬编码 100
-                    order.shares = int(max_buy_value / order.price / lot_size) * lot_size
-                    if order.shares <= 0:
-                        return None
-
-        if not self._market_data:
-            logger.warning("无市场数据，使用实时行情")
-            from lib.data_layer import get_stock_hist_multi_source
-            try:
-                df = get_stock_hist_multi_source(order.code, days=5, source="auto")
-            except Exception as e:
-                logger.debug(f"[broker] 历史数据获取失败 [{order.code}]: {e}")
-                df = pd.DataFrame()
-            if not df.empty:
-                df = df.rename(columns={"date": "trade_date"})
-                self._market_data[order.code] = df
+        # market_data 回填 (无则拉 5 天)
+        self._ensure_market_data(order.code)
 
         if order.code in self._market_data:
             trade = self._broker.submit_order(
