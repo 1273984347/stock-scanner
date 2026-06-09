@@ -251,6 +251,7 @@ class BrokerConfig:
     集中以下 magic number:
     - missing_days_threshold: 持仓无行情天数阈值, 触发强制清理 (退市检测)
     - 板块涨跌停幅度: ST / 主板 / 创业板 / 科创板 / 北交所 / 默认
+    - 退市清理动作: 强制平仓 / 释放 position_count 槽位 / 记录退市 set
     """
     # 退市检测：连续无行情 N 天 → 强制清理持仓 (P0-3 触发)
     missing_days_threshold: int = 60
@@ -263,6 +264,12 @@ class BrokerConfig:
     limit_pct_star: float = 0.20     # 科创板 (68 开头) ±20%
     limit_pct_bse: float = 0.30     # 北交所 (8/4 开头) ±30%
     limit_pct_default: float = 0.10 # 默认 (兜底)
+
+    # 退市清理动作 (2026-06-09 D3.2 集中)
+    force_close_on_delisting: bool = True  # 强制从 holdings 移除 (强平)
+    release_position_slot: bool = True    # 释放 position_count 槽位
+    record_delisted_set: bool = True      # 记录到 _delisted_codes set
+    book_cash_on_delisting: bool = False  # 现金不入账 (无对手盘, P0-3 决策)
 
 
 @dataclass

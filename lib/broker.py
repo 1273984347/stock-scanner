@@ -205,14 +205,24 @@ class ABroker:
                     continue
             self._missing_days[code] = self._missing_days.get(code, 0) + 1
             if self._missing_days[code] >= BrokerConfig().missing_days_threshold:
+                cfg = BrokerConfig()
                 with self._broker_cache_lock:
+                    # 退市清理 (D3.2 集中到 BrokerConfig)
+                    # 仅在首次触发时执行 (避免每次都 log/pop)
                     if code not in self._delisted_codes:
-                        self._delisted_codes.add(code)
-                        logger.warning(f"{date} {code} 连续 {self._missing_days[code]} 天无行情，疑似退市，强制清理持仓")
-                        # P0-3：从 holdings 强制移除（强平至现金）
-                        # 现金不入账（已无对手盘），但释放 position_count 槽位
-                        self.holdings.pop(code, None)
-                        self._missing_days.pop(code, None)
+                        if cfg.record_delisted_set:
+                            self._delisted_codes.add(code)
+                        logger.warning(
+                            f"{date} {code} 连续 {self._missing_days[code]} 天无行情，"
+                            f"疑似退市 (force_close={cfg.force_close_on_delisting}, "
+                            f"book_cash={cfg.book_cash_on_delisting})"
+                        )
+                        if cfg.force_close_on_delisting:
+                            # P0-3：从 holdings 强制移除（强平至现金）
+                            # 现金是否入账由 cfg.book_cash_on_delisting 决定
+                            self.holdings.pop(code, None)
+                        if cfg.release_position_slot:
+                            self._missing_days.pop(code, None)
 
     def get_delisted_codes(self) -> set:
         """获取疑似退市的股票代码"""

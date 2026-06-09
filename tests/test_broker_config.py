@@ -8,6 +8,7 @@
 - _missing_days 阈值走 BrokerConfig (60 → 自定义 30)
 - 板块涨跌停 4 个 magic 走 BrokerConfig (默认 + 自定义)
 - ABroker.get_limit_pct 行为不变 (8 板块)
+- D3.2: 退市清理 4 个 flag (force_close / release_slot / record_set / book_cash)
 """
 import os, sys
 sys.path.insert(0, '.')
@@ -121,3 +122,58 @@ def test_missing_days_threshold_easy_to_change():
     src = inspect.getsource(broker_mod.ABroker)
     # 在 broker 中 引用了 BrokerConfig (不是直接 magic 60)
     assert "BrokerConfig" in src or "missing_days_threshold" in src
+
+
+# ─────────────────────────────────────────────────────────────
+# D3.2: 退市清理 flag 测试 (2026-06-09)
+# ─────────────────────────────────────────────────────────────
+
+def test_delisting_cleanup_flags_defaults():
+    """D3.2 退市清理 4 个 flag 默认值"""
+    cfg = BrokerConfig()
+    assert cfg.force_close_on_delisting is True   # 默认强制平仓
+    assert cfg.release_position_slot is True     # 默认释放 position_count
+    assert cfg.record_delisted_set is True       # 默认记录 _delisted_codes
+    assert cfg.book_cash_on_delisting is False   # 默认现金不入账 (P0-3 决策, 无对手盘)
+
+
+def test_delisting_cleanup_broker_uses_flags():
+    """broker.py 应引用 D3.2 4 个 flag, 不再用裸 hard-coded 行为"""
+    import inspect
+    src = inspect.getsource(broker_mod.ABroker)
+    for flag in ["force_close_on_delisting", "release_position_slot",
+                 "record_delisted_set", "book_cash_on_delisting"]:
+        assert flag in src, f"broker.py 应引用 BrokerConfig().{flag}"
+
+
+def test_delisting_cleanup_force_close_disabled_keeps_holdings():
+    """force_close_on_delisting=False → holdings 保留, 不强制平仓"""
+    from lib.broker import ABroker
+
+    # 创建 ABroker 实例
+    broker = ABroker(initial_cash=100000)
+
+    # mock BrokerConfig 改 force_close 为 False
+    custom = BrokerConfig(
+        missing_days_threshold=2,  # 快速触发
+        force_close_on_delisting=False,
+        release_position_slot=False,
+        record_delisted_set=False,
+        book_cash_on_delisting=False,
+    )
+
+    # 模拟持仓 (放 600519 在 holdings, 但 market_data 不含 600519 → 触发无行情)
+    broker.holdings["600519"] = "dummy_holding"
+    fake_market_data = {"000001": pd.DataFrame({"close": [10]})}
+
+    with patch.object(broker_mod, "BrokerConfig", return_value=custom):
+        # 调用 update_market_prices 多次直到触发退市 (missing_days >= 2)
+        for i in range(3):
+            broker.update_market_prices(fake_market_data, f"2026-06-0{i+1}")
+
+    # 关键: holdings["600519"] 应保留 (因为 force_close=False)
+    assert "600519" in broker.holdings, \
+        f"force_close_on_delisting=False 时, holdings 应保留, 实际: {list(broker.holdings.keys())}"
+    # 同时 _delisted_codes 不应被记录 (record_delisted_set=False)
+    assert "600519" not in broker._delisted_codes, \
+        "record_delisted_set=False 时, _delisted_codes 不应被记录"
