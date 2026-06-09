@@ -56,7 +56,11 @@ def retry_api_call(func, *args, max_retries: int = 3, **kwargs):
 safe_float = _safe_float
 
 
-# ========== 数据缓存 ==========
+# ========== 数据缓存（带命中率统计）==========
+
+_cache_stats = {"hits": 0, "misses": 0, "expired": 0, "errors": 0}
+_stats_lock = threading.Lock()
+
 
 def _cache_path(key: str) -> Path:
     return CACHE_DIR / f"{key}.parquet"
@@ -76,20 +80,33 @@ def load_cache(key: str, max_age_hours: int = 2) -> pd.DataFrame | None:
     - 返回 None 作为显式错误标记（之前是返回空 df，调用方无法区分 miss vs error）
     - **不删除失败的文件**（保留现场，运维需人工诊断/手动删除）
       - 这与 data_layer._load_cache P1-2 修复一致：PermissionError/IO 错误保留文件
+
+    命中率统计（2026-06-09 cherry-pick from wip/pipeline-refactor WIP）：
+    - hits: 加载成功次数
+    - misses: 文件不存在次数
+    - expired: 文件过期被删除次数
+    - errors: 加载失败次数
     """
     path = _cache_path(key)
     if not path.exists():
         # 缓存未命中，预期行为（debug 级别，避免日志噪音）
         logger.debug(f"[cache] 缓存未命中 [{key}]（文件不存在）")
+        with _stats_lock:
+            _cache_stats["misses"] += 1
         return pd.DataFrame()
     mtime = datetime.fromtimestamp(path.stat().st_mtime)
     if datetime.now() - mtime > timedelta(hours=max_age_hours):
         # 缓存过期，删除并视为未命中
         path.unlink(missing_ok=True)
         logger.debug(f"[cache] 缓存过期 [{key}]（已删除）")
+        with _stats_lock:
+            _cache_stats["expired"] += 1
         return pd.DataFrame()
     try:
-        return pd.read_parquet(path)
+        df = pd.read_parquet(path)
+        with _stats_lock:
+            _cache_stats["hits"] += 1
+        return df
     except Exception as e:
         # P2-5 修复（2026-06-07）：从 logger.debug 升级到 logger.error
         # 失败时保留文件（不动 unlink），让运维诊断 PermissionError/IO 错误/损坏原因
@@ -97,12 +114,31 @@ def load_cache(key: str, max_age_hours: int = 2) -> pd.DataFrame | None:
             f"[cache] 缓存加载失败 [{key}]: {type(e).__name__}: {e}（文件保留，路径: {path}）",
             exc_info=True,
         )
+        with _stats_lock:
+            _cache_stats["errors"] += 1
         return None  # 显式错误标记：None = 加载失败（与空 DataFrame 的 cache miss 区分）
 
 
 def save_cache(key: str, df: pd.DataFrame):
     if not df.empty:
         df.to_parquet(_cache_path(key), index=False)
+
+
+def get_cache_stats() -> dict:
+    """返回缓存命中率统计（线程安全）
+
+    返回字典包含 4 个计数器: hits / misses / expired / errors。
+    调用方可用 hits / (hits + misses) 计算命中率。
+    """
+    with _stats_lock:
+        return _cache_stats.copy()
+
+
+def reset_cache_stats() -> None:
+    """重置缓存命中率统计（线程安全）— 主要用于测试"""
+    with _stats_lock:
+        for k in _cache_stats:
+            _cache_stats[k] = 0
 
 
 # ========== 熔断器 ==========
