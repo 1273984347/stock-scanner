@@ -245,6 +245,27 @@ class CacheConfig:
 
 
 @dataclass
+class BrokerConfig:
+    """Broker / Paper Trading 配置 (2026-06-09 magic number 集中)
+
+    集中以下 magic number:
+    - missing_days_threshold: 持仓无行情天数阈值, 触发强制清理 (退市检测)
+    - 板块涨跌停幅度: ST / 主板 / 创业板 / 科创板 / 北交所 / 默认
+    """
+    # 退市检测：连续无行情 N 天 → 强制清理持仓 (P0-3 触发)
+    missing_days_threshold: int = 60
+
+    # 板块涨跌停幅度 (A 股规则)
+    # 来源: 上交所/深交所交易规则 + 北交所/科创板特定规则
+    limit_pct_st: float = 0.05       # ST/*ST ±5%
+    limit_pct_main: float = 0.10     # 主板 (60/00 开头) ±10%
+    limit_pct_chinext: float = 0.20  # 创业板 (30 开头) ±20%
+    limit_pct_star: float = 0.20     # 科创板 (68 开头) ±20%
+    limit_pct_bse: float = 0.30     # 北交所 (8/4 开头) ±30%
+    limit_pct_default: float = 0.10 # 默认 (兜底)
+
+
+@dataclass
 class SystemConfig:
     """系统全局配置"""
     factor: FactorConfig = field(default_factory=FactorConfig)

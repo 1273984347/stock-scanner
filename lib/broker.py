@@ -24,6 +24,7 @@ import akshare as ak
 
 from config import (
     COMMISSION_RATE, STAMP_DUTY_RATE, MIN_COMMISSION, SLIPPAGE_RATE,
+    BrokerConfig,
 )
 
 # 从拆分模块导入
@@ -203,7 +204,7 @@ class ABroker:
                         self._missing_days[code] = 0
                     continue
             self._missing_days[code] = self._missing_days.get(code, 0) + 1
-            if self._missing_days[code] >= 60:
+            if self._missing_days[code] >= BrokerConfig().missing_days_threshold:
                 with self._broker_cache_lock:
                     if code not in self._delisted_codes:
                         self._delisted_codes.add(code)
@@ -254,13 +255,18 @@ class ABroker:
         - 科创板（68 开头）: 20%
         - 北交所（8/4 开头）: 30%
         """
+        cfg = BrokerConfig()
         if name and isinstance(name, str) and "ST" in name.upper():
-            return 0.05
-        if code.startswith("30") or code.startswith("68"):
-            return 0.20
+            return cfg.limit_pct_st
+        if code.startswith("30"):
+            return cfg.limit_pct_chinext
+        if code.startswith("68"):
+            return cfg.limit_pct_star
         if code.startswith("8") or code.startswith("4"):
-            return 0.30
-        return 0.10
+            return cfg.limit_pct_bse
+        if code.startswith("60") or code.startswith("00"):
+            return cfg.limit_pct_main
+        return cfg.limit_pct_default
 
     def _get_market_cap(self, code: str, market_data: Dict[str, pd.DataFrame], date: str) -> float:
         """获取股票流通市值
