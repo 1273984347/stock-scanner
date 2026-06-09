@@ -21,9 +21,11 @@ import pytest
 @pytest.fixture
 def mock_reportlab_font():
     """Mock reportlab.pdfbase.ttfonts.TTFont + pdfmetrics.registerFont"""
+    # CI 无 reportlab 时 lib.pdf_report.TTFont/pdfmetrics 属性不存在 (try/except import),
+    # patch 默认 AttributeError。create=True 让 patch 在属性缺失时创建 mock 属性。
     with patch("lib.pdf_report.HAS_REPORTLAB", True), \
-         patch("lib.pdf_report.TTFont") as mock_ttfont, \
-         patch("lib.pdf_report.pdfmetrics") as mock_metrics:
+         patch("lib.pdf_report.TTFont", create=True) as mock_ttfont, \
+         patch("lib.pdf_report.pdfmetrics", create=True) as mock_metrics:
         mock_ttfont.return_value = MagicMock()
         yield mock_ttfont, mock_metrics
 
