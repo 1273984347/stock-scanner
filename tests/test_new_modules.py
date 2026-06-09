@@ -175,9 +175,12 @@ class TestTDXBatch:
         assert result[-1] > 0
 
     def test_batch_read_closes(self):
-        from lib.tdx_batch import batch_read_closes, TDX_DATA_PATH
-        if not TDX_DATA_PATH.exists():
-            pytest.skip(f"TDX 本地数据 {TDX_DATA_PATH} 不可用（CI 环境无 D:/TDX）")
+        from lib.tdx_batch import batch_read_closes
+        from lib.market_utils import get_tdx_path
+        # CI 环境有 D:\TDX\vipdoc 目录但无 600519.day 股票文件, 必须检查具体文件
+        test_path = get_tdx_path("600519", prefer_qfq=True)
+        if test_path is None or not test_path.exists():
+            pytest.skip(f"TDX 股票文件 {test_path} 不可用（CI 环境）")
         result = batch_read_closes(["600519", "000858"], days=30)
         # 至少应该读到一只
         assert len(result) >= 1
