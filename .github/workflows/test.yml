@@ -15,6 +15,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install OpenMP (macOS only)
+        # xgboost/lightgbm wheel 依赖 libomp.dylib (OpenMP runtime), macOS runner 默认不装
+        if: matrix.os == 'macos-latest'
+        run: brew install libomp
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
