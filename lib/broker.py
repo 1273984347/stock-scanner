@@ -35,6 +35,40 @@ from lib.broker_data.constraints import TradingConstraints
 logger = logging.getLogger(__name__)
 
 
+# ========== 入参校验 (2026-06-09 D5.2) ==========
+
+def validate_order(order: Order) -> None:
+    """校验 Order 入参合法性
+
+    D5.2 (2026-06-09): 防止 paper trading 收到非法订单导致下游崩溃。
+    LiveBrokerABC.submit_order 在最早期调用, 失败抛 ValueError
+    (由 submit_order 的 except 兜底返 None, 不会 crash)。
+
+    校验规则:
+    - code: 非空字符串
+    - direction: 必须在 {"BUY", "SELL"}
+    - price: > 0
+    - shares: > 0 且为 int
+    - date: 非空字符串 (YYYY-MM-DD 格式由调用方保证)
+
+    Args:
+        order: 待校验的 Order dataclass 实例
+
+    Raises:
+        ValueError: 任一字段非法, 错误消息含具体字段名 + 实际值
+    """
+    if not order.code or not isinstance(order.code, str):
+        raise ValueError(f"order.code 必须是非空字符串, 实际: {order.code!r}")
+    if order.direction not in ("BUY", "SELL"):
+        raise ValueError(f"order.direction 必须是 'BUY' 或 'SELL', 实际: {order.direction!r}")
+    if not isinstance(order.price, (int, float)) or order.price <= 0:
+        raise ValueError(f"order.price 必须 > 0, 实际: {order.price!r}")
+    if not isinstance(order.shares, int) or order.shares <= 0:
+        raise ValueError(f"order.shares 必须是 > 0 的整数, 实际: {order.shares!r}")
+    if not order.date or not isinstance(order.date, str):
+        raise ValueError(f"order.date 必须是非空字符串 (YYYY-MM-DD), 实际: {order.date!r}")
+
+
 # ========== 模块级常量 ==========
 
 # 日波动率默认值（数据不足时回退）
@@ -750,7 +784,11 @@ class LiveBrokerABC(abc.ABC):
             logger.error("未连接券商")
             return None
         try:
+            validate_order(order)  # D5.2: 入参校验, 失败 raise ValueError
             return self._place_order(order)
+        except ValueError as e:
+            logger.error(f"订单非法: {e}")
+            return None
         except Exception as e:
             logger.error(f"下单失败: {e}")
             return None
