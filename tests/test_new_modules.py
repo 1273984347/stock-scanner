@@ -175,7 +175,9 @@ class TestTDXBatch:
         assert result[-1] > 0
 
     def test_batch_read_closes(self):
-        from lib.tdx_batch import batch_read_closes
+        from lib.tdx_batch import batch_read_closes, TDX_DATA_PATH
+        if not TDX_DATA_PATH.exists():
+            pytest.skip(f"TDX 本地数据 {TDX_DATA_PATH} 不可用（CI 环境无 D:/TDX）")
         result = batch_read_closes(["600519", "000858"], days=30)
         # 至少应该读到一只
         assert len(result) >= 1
