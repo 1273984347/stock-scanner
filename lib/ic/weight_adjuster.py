@@ -50,9 +50,9 @@ WEIGHT_MIN_RATIO = 0.20   # 最低 preset × 20%
 WEIGHT_MAX_RATIO = 1.50   # 最高 preset × 150%
 IC_MIN_DAYS = 20          # 动态调权最低 IC 天数
 IC_EMERGENCY_THRESHOLD = -0.10  # 紧急阈值
-IC_DECAY_CONSECUTIVE = 5   # 连续负 IC 天数（触发降权）
-IC_ELIMINATE_CONSECUTIVE = 10  # 连续负 IC 天数（触发降至下限）
-IC_UP_THRESHOLD = 0.02     # 上浮阈值
+IC_DECAY_CONSECUTIVE = 3   # 连续负 IC 天数（触发降权）— 2026-06-09 调严: 5→3, 响应更灵敏
+IC_ELIMINATE_CONSECUTIVE = 7  # 连续负 IC 天数（触发降至下限）— 2026-06-09 调严: 10→7, 加快淘汰
+IC_UP_THRESHOLD = 0.01     # 上浮阈值 — 2026-06-09 调宽: 0.02→0.01, IC>1% 即可升权
 IC_IR_THRESHOLD = 0.5      # IR 阈值
 
 def is_ic_sufficient(ic_stats: Dict) -> bool:
