@@ -62,6 +62,11 @@ class MLPredictor:
             except Exception:
                 xgb_name = "xgb_20d_v1"  # 兜底向后兼容
 
+        # 存 self.* 给 predict_single 错误日志用 (line 142)
+        # 修 9 jobs 9/9 fail: __init__ 没存, model 加载失败时 AttributeError
+        self.xgb_name = xgb_name
+        self.lgbm_name = lgbm_name
+
         self._load_models(xgb_name, lgbm_name)
 
     # ============================================================
