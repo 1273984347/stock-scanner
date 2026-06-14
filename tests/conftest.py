@@ -70,6 +70,30 @@ def _mock_akshare_stock_individual_info_em(symbol="000001"):
     })
 
 
+def _mock_akshare_stock_fund_flow_individual(symbol="即时"):
+    """ak.stock_fund_flow_individual() → 空 DataFrame，触发 _batch_fund_flow 默认值路径
+
+    注：真实 API 在 py_mini_racer 上 Python 3.11 wheel 触发 native crash
+    (Windows 0x80000003 / macOS Trace/BPT trap)，必须 mock 阻断。
+    """
+    return pd.DataFrame(columns=["代码", "主力净流入-净额", "主力净流入-净占比", "成交额"])
+
+
+def _mock_akshare_stock_individual_fund_flow(stock="000001", market="sh"):
+    """ak.stock_individual_fund_flow() → 空 DataFrame，触发默认 0 流入"""
+    return pd.DataFrame(columns=["日期", "主力净流入-净额", "主力净流入-净占比"])
+
+
+def _mock_akshare_stock_zt_pool_em(date=""):
+    """ak.stock_zt_pool_em() → 空涨停池 DataFrame，触发"无候选股"分支"""
+    return pd.DataFrame(columns=["代码", "名称", "涨跌幅", "封板资金"])
+
+
+def _mock_akshare_stock_lhb_detail_em(*args, **kwargs):
+    """ak.stock_lhb_detail_em() → 空龙虎榜 DataFrame"""
+    return pd.DataFrame(columns=["代码", "名称", "上榜日", "买入金额", "卖出金额"])
+
+
 @pytest.fixture(autouse=True)
 def _mock_akshare_by_default(request, monkeypatch):
     """默认 mock akshare 慢 API（避免 35+ min hang）
@@ -92,6 +116,21 @@ def _mock_akshare_by_default(request, monkeypatch):
         monkeypatch.setattr(
             "akshare.stock_individual_info_em",
             _mock_akshare_stock_individual_info_em
+        )
+        # S34 扩展：阻断 py_mini_racer V8 native crash 路径 (Python 3.11 wheel)
+        monkeypatch.setattr(
+            "akshare.stock_fund_flow_individual",
+            _mock_akshare_stock_fund_flow_individual
+        )
+        monkeypatch.setattr(
+            "akshare.stock_individual_fund_flow",
+            _mock_akshare_stock_individual_fund_flow
+        )
+        monkeypatch.setattr(
+            "akshare.stock_zt_pool_em", _mock_akshare_stock_zt_pool_em
+        )
+        monkeypatch.setattr(
+            "akshare.stock_lhb_detail_em", _mock_akshare_stock_lhb_detail_em
         )
     except ImportError:
         pass  # akshare 未装，不 mock
