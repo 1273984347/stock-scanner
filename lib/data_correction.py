@@ -53,6 +53,7 @@ class DataCorrection:
                 json.dump(self._corrections, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.error(f"Failed to save corrections: {e}")
+            raise  # 修正记录丢失会导致数据不一致
 
     def detect_anomalies(self, data: List[Dict]) -> List[Dict]:
         """检测数据异常"""
