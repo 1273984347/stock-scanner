@@ -196,6 +196,8 @@ class SignalTracker:
         )
         self.signals.append(record)
         self._save_history()
+        # Borrow 1.1b: cache 失效, 让下次 get_cached_tracker() 重建
+        invalidate_tracker_cache()
 
     def record_batch(self, signals: List[Dict], date: str = None):
         """批量记录信号"""
@@ -337,3 +339,86 @@ class SignalTracker:
         cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
         recent = [s for s in self.signals if s.date >= cutoff]
         return [asdict(s) for s in recent[-50:]]
+
+
+# ============================================================================
+# Borrow 1 借鉴 (TradingAgents memory.py get_past_context)
+# P0-3 修复: module-level cache 避免 dashboard 100 RPS 反复 _load_history
+# ============================================================================
+
+def build_past_context(
+    ticker: str,
+    signals: List[SignalRecord],
+    n_same: int = 5,
+    n_cross: int = 3,
+) -> str:
+    """从 SignalTracker.signals 构建 past context string (AgentPanel/LLM prompt 注入用).
+
+    输出格式仿 TradingMemoryLog.get_past_context (lib/llm_utils/memory.py:95-131):
+    - "History {ticker} (newest first):"
+    - "{date} {signal} conf={confidence} 5d_return={actual_return_5d} ..."
+    - "Recent cross-ticker lessons:"
+    无历史返回空字符串.
+
+    Borrow 1 vs TradingMemoryLog.get_past_context:
+    - TradingAgents 数据源: markdown log (含 reflection prose)
+    - stock-scanner 数据源: SignalRecord dataclass (结构化字段 + actual_return_*)
+    - 输出格式借鉴但不复用 lib/llm_utils/memory.py 的 markdown parser 依赖
+    """
+    if not signals:
+        return ""
+
+    # 过滤 same-ticker 历史 (audit P2-2 警告: actual_return_5d=0 视为待回填跳过)
+    same_ticker = [
+        s for s in reversed(signals)
+        if s.code == ticker and s.actual_return_5d != 0
+    ][:n_same]
+
+    # 过滤 cross-ticker lessons (is_correct=False 提供反思价值)
+    cross_ticker = [
+        s for s in reversed(signals)
+        if s.code != ticker and s.is_correct is False and s.actual_return_5d != 0
+    ][:n_cross]
+
+    parts = []
+    if same_ticker:
+        parts.append(f"History {ticker} (newest first):")
+        for s in same_ticker:
+            parts.append(
+                f"  {s.date} {s.signal} conf={s.confidence:.2f} "
+                f"5d_return={s.actual_return_5d:+.2%} correct={s.is_correct}"
+            )
+    if cross_ticker:
+        parts.append("\nRecent cross-ticker lessons:")
+        for s in cross_ticker:
+            parts.append(
+                f"  {s.code} {s.date} {s.signal} 5d_return={s.actual_return_5d:+.2%}"
+            )
+    return "\n".join(parts)
+
+
+# Module-level cache (P0-3 修复): 避免 dashboard 100 RPS 时反复 _load_history
+_tracker_cache = {"tracker": None, "loaded_at": 0.0}
+
+
+def get_cached_tracker(ttl_seconds: int = 30) -> "SignalTracker":
+    """返回 cached SignalTracker instance, ttl_seconds 内复用, 过期重建.
+
+    实证 (P0-3): dashboard 100 RPS 投票 + SignalTracker._load_history 每次读 disk
+    + parse JSON × N records → 性能 regression. 30s TTL 平衡 freshness 和性能.
+    """
+    import time as _time
+    now = _time.time()
+    cached = _tracker_cache["tracker"]
+    if cached is not None and (now - _tracker_cache["loaded_at"]) < ttl_seconds:
+        return cached
+    tracker = SignalTracker()
+    _tracker_cache["tracker"] = tracker
+    _tracker_cache["loaded_at"] = now
+    return tracker
+
+
+def invalidate_tracker_cache() -> None:
+    """让 cache 失效 (e.g. record_signal 后). 由 SignalTracker.record_signal 内部调用."""
+    _tracker_cache["tracker"] = None
+    _tracker_cache["loaded_at"] = 0.0

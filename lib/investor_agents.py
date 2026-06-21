@@ -311,11 +311,10 @@ class AgentPanel:
         - 旧 4 agent 走 hist_df.iloc[-1] 走 wall-clock 最新数据
         - 修复: as_of_date 注入, panel 透传给 4 agent
         - 4 agent 内部各自也支持 as_of_date (vote() 签名)
-        """
 
         Returns:
             dict with keys:
-            - signal: "bullish" / "bearish" / "neutral"
+            - signal: bullish / bearish / neutral
             - confidence: [0, 1]
             - votes: list of AgentVote
             - consensus: 一致性描述
@@ -367,7 +366,7 @@ class AgentPanel:
         else:
             consensus = "分歧"
 
-        return {
+        result = {
             "signal": signal,
             "confidence": round(confidence, 3),
             "votes": votes,
@@ -375,3 +374,19 @@ class AgentPanel:
             "bullish_pct": round(bullish_pct, 3),
             "bearish_pct": round(bearish_pct, 3),
         }
+        # Borrow 1: inject past context (TradingAgents memory.py pattern)
+        return self._inject_past_context(code, result)
+
+    def _inject_past_context(self, code, result):
+        # Borrow 1: inject past context from SignalTracker (TradingAgents pattern)
+        if code is None:
+            return result
+        try:
+            from lib.signal_tracker import get_cached_tracker, build_past_context
+            tracker = get_cached_tracker(ttl_seconds=30)
+            past_context = build_past_context(code, tracker.signals, n_same=5, n_cross=3)
+            if past_context:
+                result["past_context"] = past_context
+        except Exception as e:
+            logger.debug(f"[AgentPanel] past context injection failed: {e}")
+        return result
