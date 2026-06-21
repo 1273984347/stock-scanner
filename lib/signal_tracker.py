@@ -14,6 +14,7 @@
 
 import json
 import logging
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
@@ -25,6 +26,18 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 SIGNAL_LOG_DIR = Path("cache/signals")
+
+# 跨平台文件锁 (Borrow 2 借鉴 position_manager.py:23-33)
+try:
+    import portalocker
+    _HAS_PORTALOCKER = True
+except ImportError:
+    _HAS_PORTALOCKER = False
+    if sys.platform != "win32":
+        import fcntl
+        _HAS_FCNTL = True
+    else:
+        _HAS_FCNTL = False
 
 
 def _last_trading_day() -> str:
@@ -95,10 +108,77 @@ class SignalTracker:
                 logger.warning(f"加载信号历史失败: {e}")
 
     def _save_history(self):
-        """保存信号历史"""
+        """保存信号历史 (Borrow 2 atomic write: tmp + replace + 跨平台文件锁)
+
+        治本 (P0-2): 防崩溃损坏 JSON + 5 进程并发覆盖 (api.py 4 endpoint + cron).
+        模板来自 position_manager.py:134-169 `_save` 模式 (跨平台 portalocker/fcntl).
+        """
         history_file = SIGNAL_LOG_DIR / "signal_history.json"
-        with open(history_file, "w", encoding="utf-8") as f:
-            json.dump([asdict(s) for s in self.signals], f, indent=2, ensure_ascii=False, default=str)
+        self._acquire_lock("w")
+        try:
+            # 原子写入: 先写 .tmp 再 replace (Borrow 2 P0-2 治本)
+            tmp_file = history_file.with_suffix(".tmp")
+            tmp_file.write_text(
+                json.dumps([asdict(s) for s in self.signals], indent=2, ensure_ascii=False, default=str),
+                encoding="utf-8",
+            )
+            tmp_file.replace(history_file)  # os.replace() 原子 rename
+        except IOError:
+            # 锁获取失败已在 _acquire_lock 中记录, 不重复处理
+            raise
+        except Exception as e:
+            logger.error(f"保存信号历史失败: {e}")
+        finally:
+            self._release_lock()
+
+    def _acquire_lock(self, mode: str = "r") -> None:
+        """获取文件锁 (fail-fast: 失败时抛 IOError)
+
+        Borrow 2: 跨平台文件锁, 模板 position_manager.py:76-102.
+        锁超时 30s (vs position_manager 5s) 避免 cache miss 死循环 (P2-4).
+        """
+        history_file = SIGNAL_LOG_DIR / "signal_history.json"
+        if not history_file.exists():
+            history_file.parent.mkdir(parents=True, exist_ok=True)
+            history_file.touch(exist_ok=True)
+        try:
+            if _HAS_PORTALOCKER:
+                self._lock_file = portalocker.Lock(
+                    str(history_file), timeout=30,
+                    fail_when_locked=False  # 30s 等待, 不 fail-fast
+                )
+                self._lock_file.acquire()
+            elif _HAS_FCNTL:
+                self._lock_file = open(history_file, "r+" if mode == "r" else "w")
+                fcntl.flock(
+                    self._lock_file.fileno(),
+                    fcntl.LOCK_EX if mode == "w" else fcntl.LOCK_SH,
+                )
+            else:
+                logger.warning("无可用文件锁库 (portalocker/fcntl), 并发写入可能冲突")
+                self._lock_file = None
+        except Exception as e:
+            logger.error(f"获取信号历史文件锁失败: {e}")
+            if getattr(self, "_lock_file", None):
+                try:
+                    self._lock_file.close()
+                except Exception as inner_e:
+                    logger.debug(f"[signal_tracker] 文件锁关闭异常: {inner_e}")
+                self._lock_file = None
+            raise IOError(f"无法获取信号历史文件锁: {history_file}") from e
+
+    def _release_lock(self) -> None:
+        """释放文件锁 (Borrow 2 跨平台)"""
+        try:
+            if _HAS_PORTALOCKER and getattr(self, "_lock_file", None):
+                self._lock_file.release()
+                self._lock_file = None
+            elif _HAS_FCNTL and getattr(self, "_lock_file", None):
+                fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_UN)
+                self._lock_file.close()
+                self._lock_file = None
+        except Exception as e:
+            logger.warning(f"释放信号历史文件锁异常: {e}")
 
     def record_signal(self, code: str, signal: str, confidence: float,
                       date: str = None, source: str = "ic_score", ic_score: float = 0):

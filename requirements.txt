@@ -14,3 +14,5 @@ pytest-cov>=4.0.0
 streamlit>=1.28.0
 httpx>=0.24.0
 networkx>=3.0
+# Borrow 2: 跨平台文件锁 (signal_tracker.py + position_manager.py)
+portalocker>=2.0.0  # Windows 优先; Linux fallback fcntl (内置); 无锁 graceful degradation
