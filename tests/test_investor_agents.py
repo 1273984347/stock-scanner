@@ -165,9 +165,16 @@ class TestBorrow1Helpers:
     def test_invalidate_tracker_cache_after_record_signal(
         self, isolated_signal_dir, seed_history
     ):
-        """Borrow 1.1b: record_signal 末尾 invalidate cache."""
-        get_cached_tracker(ttl_seconds=30)
+        """Borrow 1.1b: record_signal 末尾 invalidate cache, 下次 get_cached_tracker 重建."""
+        invalidate_tracker_cache()
+        cached_before = get_cached_tracker(ttl_seconds=30)
+        codes_before = {s.code for s in cached_before.signals}
+        # record 新 signal → 应触发 invalidate_tracker_cache
         t = SignalTracker()
         t.record_signal("600519", "bullish", 0.8, "2026-06-22")
+        # cache 被 invalidate, 下次 get_cached_tracker 重建 (读最新 disk)
         t2 = get_cached_tracker(ttl_seconds=30)
-        assert t2 is not None
+        codes_after = {s.code for s in t2.signals}
+        # 验证: 新 record 在重建后的 tracker 中
+        assert "2026-06-22" in {s.date for s in t2.signals if s.code == "600519"}, \
+            "record_signal 应 invalidate cache, 重建后新 record 可见"
