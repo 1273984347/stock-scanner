@@ -81,6 +81,31 @@ def run_daily_scan(push_feishu: bool = True, extra_symbols: list = None):
             f"盈亏比{eval_result['profit_loss_ratio']:.2f}"
         )
 
+    # Borrow 1 production caller: 多风格投票 + past_context 注入
+    try:
+        from lib.panel_decision import get_panel_decision, format_panel_decision
+        from lib.data_layer import get_stock_hist_multi_source
+        from lib.strategies import get_data_factors
+        if report.signals:
+            for s in report.signals[:5]:  # 只对 top 5 候选股投票 (避免性能 regression)
+                code = s.get("code", "")
+                if not code:
+                    continue
+                try:
+                    hist_df = get_stock_hist_multi_source(code, days=60)
+                    if hist_df.empty:
+                        continue
+                    factors = get_data_factors(code) if hasattr(get_data_factors, '__call__') else {}
+                    decision = get_panel_decision(code, hist_df, data_factors=factors)
+                    if "past_context" in decision:
+                        logger.info(f"{code} 多风格投票: {decision['signal']} ({decision['confidence']:.0%}) 含历史反思")
+                    else:
+                        logger.info(f"{code} 多风格投票: {decision['signal']} ({decision['confidence']:.0%})")
+                except Exception as e:
+                    logger.debug(f"{code} panel vote 失败: {e}")
+    except Exception as e:
+        logger.debug(f"panel_decision 导入失败: {e}")
+
     # 财报预警：持仓股财报前3天推送
     try:
         from lib.data_earnings import get_upcoming_earnings
