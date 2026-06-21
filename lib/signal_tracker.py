@@ -107,6 +107,18 @@ class SignalTracker:
             except Exception as e:
                 logger.warning(f"加载信号历史失败: {e}")
 
+    def _apply_rotation(self, max_signals: int = 5000) -> None:
+        """保留所有 pending (actual_return_5d=0) + 最近 max_signals 条已定型.
+
+        Borrow 4: 防止 signal_history.json 无限增长.
+        pending (待回填) 永远保留, resolved (已有 actual_return) 超限时 drop 最老.
+        """
+        pending = [s for s in self.signals if s.actual_return_5d == 0]
+        resolved = [s for s in self.signals if s.actual_return_5d != 0]
+        if len(resolved) <= max_signals:
+            return
+        self.signals = pending + resolved[-max_signals:]
+
     def _save_history(self):
         """保存信号历史 (Borrow 2 atomic write: tmp + replace + 跨平台文件锁)
 
@@ -114,6 +126,7 @@ class SignalTracker:
         模板来自 position_manager.py:134-169 `_save` 模式 (跨平台 portalocker/fcntl).
         """
         history_file = SIGNAL_LOG_DIR / "signal_history.json"
+        self._apply_rotation()  # Borrow 4: rotation 在 write 之前
         self._acquire_lock("w")
         try:
             # 原子写入: 先写 .tmp 再 replace (Borrow 2 P0-2 治本)
@@ -128,6 +141,7 @@ class SignalTracker:
             raise
         except Exception as e:
             logger.error(f"保存信号历史失败: {e}")
+            raise  # re-raise 让 record_signal 能捕获并回滚 in-memory
         finally:
             self._release_lock()
 
@@ -174,15 +188,22 @@ class SignalTracker:
                 self._lock_file.release()
                 self._lock_file = None
             elif _HAS_FCNTL and getattr(self, "_lock_file", None):
-                fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_UN)
-                self._lock_file.close()
-                self._lock_file = None
+                try:
+                    fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_UN)
+                finally:
+                    self._lock_file.close()
+                    self._lock_file = None
         except Exception as e:
             logger.warning(f"释放信号历史文件锁异常: {e}")
 
     def record_signal(self, code: str, signal: str, confidence: float,
-                      date: str = None, source: str = "ic_score", ic_score: float = 0):
-        """记录一条信号"""
+                      date: str = None, source: str = "ic_score", ic_score: float = 0,
+                      skip_save: bool = False):
+        """记录一条信号
+
+        Args:
+            skip_save: True 时只 append in-memory 不写盘 (record_batch 批量写用)
+        """
         if date is None:
             date = _last_trading_day()
 
@@ -195,12 +216,18 @@ class SignalTracker:
             ic_score=ic_score,
         )
         self.signals.append(record)
-        self._save_history()
+        if not skip_save:
+            try:
+                self._save_history()
+            except Exception:
+                self.signals.pop()  # P1-5: 回滚 in-memory, 保持与 disk 一致
+                raise
         # Borrow 1.1b: cache 失效, 让下次 get_cached_tracker() 重建
         invalidate_tracker_cache()
 
     def record_batch(self, signals: List[Dict], date: str = None):
-        """批量记录信号"""
+        """批量记录信号 (P2-4: 批量写一次, 不是每条都 lock+rename)"""
+        snapshot = list(self.signals)  # 快照, 失败时 restore
         for s in signals:
             self.record_signal(
                 code=s.get("code", ""),
@@ -209,7 +236,14 @@ class SignalTracker:
                 date=date,
                 source=s.get("source", "ic_score"),
                 ic_score=s.get("ic_score", 0),
+                skip_save=True,
             )
+        try:
+            self._save_history()
+        except Exception:
+            self.signals = snapshot  # P2-4: 回滚全部
+            raise
+        invalidate_tracker_cache()
 
     def update_actual_returns(self):
         """更新信号的实际收益率（需要事后数据）"""
@@ -422,3 +456,26 @@ def invalidate_tracker_cache() -> None:
     """让 cache 失效 (e.g. record_signal 后). 由 SignalTracker.record_signal 内部调用."""
     _tracker_cache["tracker"] = None
     _tracker_cache["loaded_at"] = 0.0
+
+
+# ============================================================================
+# Borrow 3: LLM reflection prose (仿 TradingAgents memory.py:14-29)
+# ============================================================================
+
+def build_reflection_prompt(signals: List[SignalRecord], ticker: str) -> str:
+    """生成反思 prompt, 供 LLM 生成 2-3 句 narrative insight.
+
+    仿 TradingAgents memory.py:14-29 Reflector._get_log_reflection_prompt:
+    - 输入: past context (build_past_context 输出)
+    - 输出: prompt string, 供 _call_deepseek / _call_kimi 调用
+    - 无历史返回空字符串
+    """
+    past = build_past_context(ticker, signals)
+    if not past:
+        return ""
+    return (
+        f"你是量化分析师, 回顾对 {ticker} 的历史判断.\n"
+        f"{past}\n"
+        f"写 2-3 句反思: 方向判断对了吗? 哪个维度对了/错了? 下次类似情况怎么改?\n"
+        f"要求: 具体引用数据 (如 5d_return=+5%), 不要泛泛而谈."
+    )

@@ -382,11 +382,15 @@ class AgentPanel:
         if code is None:
             return result
         try:
-            from lib.signal_tracker import get_cached_tracker, build_past_context
+            from lib.signal_tracker import get_cached_tracker, build_past_context, build_reflection_prompt
             tracker = get_cached_tracker(ttl_seconds=30)
             past_context = build_past_context(code, tracker.signals, n_same=5, n_cross=3)
             if past_context:
                 result["past_context"] = past_context
+                # Borrow 3: 生成反思 prompt (供 LLM 生成 narrative insight)
+                reflection_prompt = build_reflection_prompt(tracker.signals, code)
+                if reflection_prompt:
+                    result["reflection_prompt"] = reflection_prompt
         except Exception as e:
             logger.debug(f"[AgentPanel] past context injection failed: {e}")
         return result

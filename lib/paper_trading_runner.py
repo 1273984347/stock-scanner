@@ -117,7 +117,6 @@ class PaperTradingRunner:
         - as_of_date 接受 (YYYY-MM-DD), 透传给 _last_trading_day
         - 不传 = 实时模式 (scanner 兼容)
         - 传 = 回测模式 (所有 _last_trading_day() 返回 as_of_date)
-        """
 
         Returns:
             DailyReport
@@ -156,7 +155,7 @@ class PaperTradingRunner:
         return report
 
     def _scan_candidates(self) -> List[Dict]:
-        """扫描候选股（优先使用 TDX 本地数据，速度快 10 倍）"""
+        """扫描候选股 (优先使用 TDX 本地数据, 速度快 10 倍)"""
         try:
             from config import get_config
             from factors import compute_all_signals, compute_ic_weighted_score

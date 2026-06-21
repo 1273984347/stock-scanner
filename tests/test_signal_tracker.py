@@ -246,3 +246,78 @@ class TestBorrow2AtomicWrite:
                 json.loads(content)  # 应该是 valid JSON 或空
             except json.JSONDecodeError:
                 pytest.fail("history_file 在 lock 失败后损坏")
+
+
+# ============================================================================
+# P1-5 + P2-4 + Borrow 3 + Borrow 4 测试
+# ============================================================================
+
+class TestP1_5RecordSignalRollback:
+    """P1-5: record_signal 失败时回滚 in-memory."""
+
+    def test_record_signal_save_failure_rolls_back(self, fresh_tracker, isolated_signal_dir):
+        """_save_history 抛异常时 self.signals 应回滚到 append 前状态."""
+        initial_count = len(fresh_tracker.signals)
+        with patch.object(SignalTracker, "_save_history", side_effect=IOError("disk full")):
+            with pytest.raises(IOError):
+                fresh_tracker.record_signal("600519", "bullish", 0.8, "2026-05-30")
+        assert len(fresh_tracker.signals) == initial_count, "in-memory 应回滚"
+
+
+class TestP2_4RecordBatchPerformance:
+    """P2-4: record_batch 批量写一次, 不是每条都 lock+rename."""
+
+    def test_record_batch_single_save(self, fresh_tracker, isolated_signal_dir):
+        """record_batch 只调一次 _save_history (不是 N 次)."""
+        signals = [{"code": f"{i:06d}", "signal": "bullish", "confidence": 0.7} for i in range(50)]
+        with patch.object(SignalTracker, "_save_history", wraps=fresh_tracker._save_history) as mock_save:
+            fresh_tracker.record_batch(signals, date="2026-05-30")
+        assert mock_save.call_count == 1, f"record_batch 应只调一次 _save_history, 实际 {mock_save.call_count} 次"
+
+    def test_record_batch_failure_rolls_back_all(self, fresh_tracker, isolated_signal_dir):
+        """record_batch _save_history 失败时回滚全部 (snapshot restore)."""
+        initial_count = len(fresh_tracker.signals)
+        signals = [{"code": f"{i:06d}", "signal": "bullish", "confidence": 0.7} for i in range(50)]
+        with patch.object(SignalTracker, "_save_history", side_effect=IOError("disk full")):
+            with pytest.raises(IOError):
+                fresh_tracker.record_batch(signals, date="2026-05-30")
+        assert len(fresh_tracker.signals) == initial_count, "record_batch 应回滚全部"
+
+
+class TestBorrow3Reflection:
+    """Borrow 3: build_reflection_prompt 生成反思 prompt."""
+
+    def test_build_reflection_prompt_empty_signals(self):
+        from lib.signal_tracker import build_reflection_prompt
+        assert build_reflection_prompt([], "600519") == ""
+
+    def test_build_reflection_prompt_returns_prompt(self, isolated_signal_dir):
+        from lib.signal_tracker import build_reflection_prompt, SignalTracker
+        t = SignalTracker()
+        t.record_signal("600519", "bullish", 0.7, "2026-05-01")
+        t.signals[-1].actual_return_5d = 0.05
+        t.signals[-1].is_correct = True
+        prompt = build_reflection_prompt(t.signals, "600519")
+        assert "600519" in prompt
+        assert "反思" in prompt
+        assert len(prompt) > 50
+
+
+class TestBorrow4Rotation:
+    """Borrow 4: _apply_rotation 自动清理老条目."""
+
+    def test_apply_rotation_keeps_pending_and_recent(self, fresh_tracker, isolated_signal_dir):
+        """seed 6000 条 resolved + 10 条 pending, rotation 后 pending 全保留 + resolved <= 5000."""
+        # seed 10 pending (actual_return_5d=0)
+        for i in range(10):
+            fresh_tracker.record_signal(f"PEND{i:04d}", "bullish", 0.7, "2026-06-01", skip_save=True)
+        # seed 6000 resolved
+        for i in range(6000):
+            fresh_tracker.record_signal(f"RES{i:04d}", "bullish", 0.7, "2026-05-01", skip_save=True)
+            fresh_tracker.signals[-1].actual_return_5d = 0.05
+        # rotation
+        fresh_tracker._apply_rotation(max_signals=5000)
+        pending_count = sum(1 for s in fresh_tracker.signals if s.actual_return_5d == 0)
+        resolved_count = sum(1 for s in fresh_tracker.signals if s.actual_return_5d != 0)
+        assert pending_count == 10, f"pending 应全保留, 实际 {pending_count}"
+        assert resolved_count <= 5000, f"resolved 应 <= 5000, 实际 {resolved_count}"
