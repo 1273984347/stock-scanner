@@ -308,13 +308,18 @@ class TestBorrow4Rotation:
 
     def test_apply_rotation_keeps_pending_and_recent(self, fresh_tracker, isolated_signal_dir):
         """seed 6000 条 resolved + 10 条 pending, rotation 后 pending 全保留 + resolved <= 5000."""
-        # seed 10 pending (actual_return_5d=0)
+        # seed 10 pending (actual_return_5d=0, 手动 append 避免 _last_trading_day 干扰)
         for i in range(10):
-            fresh_tracker.record_signal(f"PEND{i:04d}", "bullish", 0.7, "2026-06-01", skip_save=True)
+            fresh_tracker.signals.append(SignalRecord(
+                date="2026-06-01", code=f"PEND{i:04d}", signal="bullish",
+                confidence=0.7, source="test"
+            ))
         # seed 6000 resolved
         for i in range(6000):
-            fresh_tracker.record_signal(f"RES{i:04d}", "bullish", 0.7, "2026-05-01", skip_save=True)
-            fresh_tracker.signals[-1].actual_return_5d = 0.05
+            fresh_tracker.signals.append(SignalRecord(
+                date="2026-05-01", code=f"RES{i:04d}", signal="bullish",
+                confidence=0.7, source="test", actual_return_5d=0.05
+            ))
         # rotation
         fresh_tracker._apply_rotation(max_signals=5000)
         pending_count = sum(1 for s in fresh_tracker.signals if s.actual_return_5d == 0)
