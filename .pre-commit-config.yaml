@@ -1,0 +1,26 @@
+# .pre-commit-config.yaml — pre-commit hook config (stock-scanner, FIXED 2026-07-04)
+# Mirror of builderpulse, with R2 G fix
+
+repos:
+  # Pre-check: ensure gitleaks binary is available (R2 G fix)
+  - repo: local
+    hooks:
+      - id: gitleaks-required
+        name: verify gitleaks binary present
+        description: Fail loudly if gitleaks is not installed
+        entry: bash hooks/check-gitleaks-present.sh
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+  # Main check: scan staged changes
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks secret scanner
+        description: Scan staged changes for secrets using local gitleaks binary
+        entry: bash -c 'gitleaks protect --staged --redact --no-banner'
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        require_serial: false

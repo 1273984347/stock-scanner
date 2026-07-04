@@ -1,0 +1,128 @@
+# .gitleaks.toml — pre-commit secret scanner config (stock-scanner)
+# Mirror of builderpulse config, generated 2026-07-04
+# See knowledge/tools/git-history-analyzer/ for the canonical pattern set
+
+title = "stock-scanner secret scanner config"
+
+[[rules]]
+id = "aws-access-key"
+description = "AWS Access Key ID"
+regex = '''AKIA[0-9A-Z]{16}'''
+tags = ["aws", "secret", "P0"]
+
+[[rules]]
+id = "github-pat"
+description = "GitHub Personal Access Token"
+regex = '''gh[pousr]_[A-Za-z0-9_]{36,}'''
+tags = ["github", "secret", "P0"]
+
+[[rules]]
+id = "openai-api-key"
+description = "OpenAI API Key"
+regex = '''sk-[A-Za-z0-9]{20,}'''
+tags = ["openai", "ai", "secret", "P0"]
+
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API Key"
+regex = '''sk-ant-[A-Za-z0-9_\-]{20,}'''
+tags = ["anthropic", "ai", "secret", "P0"]
+
+[[rules]]
+id = "google-api-key"
+description = "Google API Key"
+regex = '''AIza[0-9A-Za-z_\-]{35}'''
+tags = ["google", "secret", "P1"]
+
+[[rules]]
+id = "stripe-live-key"
+description = "Stripe Live API Key"
+regex = '''sk_live_[0-9a-zA-Z]{24,}'''
+tags = ["stripe", "payment", "secret", "P0"]
+
+[[rules]]
+id = "slack-token"
+description = "Slack Token"
+regex = '''xox[baprs]-[0-9]+-[0-9]+-[0-9]+-[a-fA-F0-9]+'''
+tags = ["slack", "secret", "P1"]
+
+[[rules]]
+id = "private-key-block"
+description = "PEM Private Key Block"
+regex = '''-----BEGIN (?:RSA|EC|DSA|OPENSSH|PGP) PRIVATE KEY-----'''
+tags = ["key", "P0"]
+
+[[rules]]
+id = "jwt-token"
+description = "JSON Web Token"
+regex = '''eyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}'''
+tags = ["jwt", "secret", "P1"]
+
+[[rules]]
+id = "postgresql-url-pwd"
+description = "PostgreSQL connection string with password"
+regex = '''postgres(?:ql)?://[^\s:'\"]+:[^\s@'\"]+@[^\s'\"]+'''
+tags = ["database", "postgres", "P0"]
+
+[[rules]]
+id = "mysql-url-pwd"
+description = "MySQL connection string with password"
+regex = '''mysql://[^\s:'\"]+:[^\s@'\"]+@[^\s'\"]+'''
+tags = ["database", "mysql", "P0"]
+
+[[rules]]
+id = "mongodb-url-pwd"
+description = "MongoDB connection string with password"
+regex = '''mongodb(?:\+srv)?://[^\s:'\"]+:[^\s@'\"]+@[^\s'\"]+'''
+tags = ["database", "mongodb", "P0"]
+
+[allowlist]
+description = "global allowlist"
+paths = [
+    '''tests/fixtures/.*''',
+    '''tests/testdata/.*''',
+    '''.*_test\.py$''',
+    '''.*test_.*\.py$''',
+    '''docs/superpowers/specs/.*''',
+    '''docs/.*\.md$''',
+    '''.*-lock\.json$''',
+    '''.*-lock\.yaml$''',
+    '''poetry\.lock$''',
+    '''Pipfile\.lock$''',
+    '''\.git/hooks/.*''',
+    # Audit storage (H17 v3 .bak files)
+    '''backups/.*''',
+    '''.*\.bak-pre-.*''',
+    # Python bytecode
+    '''.*__pycache__/.*''',
+    '''.*\.pyc$''',
+    # Build artifacts
+    '''dist/.*''',
+    '''build/.*''',
+    '''\.venv/.*''',
+    '''node_modules/.*''',
+]
+
+regexes = [
+    '''^AKIA[A-Z0-9]{16}$''',
+    '''user:pass''',
+    '''sk-\.\.\.''',
+    # Env var templates (best practice)
+    '''postgres(?:ql)?://\$\{[^}]+\}:\$\{[^}]+\}@''',
+    '''mysql://\$\{[^}]+\}:\$\{[^}]+\}@''',
+    '''mongodb(?:\+srv)?://\$\{[^}]+\}:\$\{[^}]+\}@''',
+    '''postgres(?:ql)?://<[^>]+>:<[^>]+>@''',
+    '''mysql://<[^>]+>:<[^>]+>@''',
+    '''mongodb(?:\+srv)?://<[^>]+>:<[^>]+>@''',
+]
+
+stopwords = [
+    "placeholder",
+    "example",
+    "your-key-here",
+    "REPLACE_ME",
+    "<your-",
+]
+
+[extend]
+useDefault = true
