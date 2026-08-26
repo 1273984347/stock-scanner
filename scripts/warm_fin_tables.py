@@ -9,8 +9,14 @@ A/B 回测 ON 分支冷启动需数百只股票，串行不可行。
     $env:PYTHONPATH="<项目根>"
     python scripts/warm_fin_tables.py --dry-run     # 仅枚举规模
     python scripts/warm_fin_tables.py --workers 8   # 并行预热
+    python scripts/warm_fin_tables.py --workers 6 --delay 1.5   # 温和模式（防新浪限流）
+
+注意：新浪接口对突发并发敏感，workers 过大时会静默降级到东财逐期（慢 ~13 倍）。
+日志出现"财报数据改用东财逐期接口"即为限流信号，应降低 workers / 加大 delay 重跑。
 """
 import argparse
+import logging
+import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -51,8 +57,12 @@ def collect_targets():
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--workers", type=int, default=8, help="并发线程数")
+    ap.add_argument("--delay", type=float, default=0.0,
+                    help="每任务前随机延迟上限秒数（防数据源限流），0 关闭")
     ap.add_argument("--dry-run", action="store_true", help="仅枚举规模不抓取")
     args = ap.parse_args()
+    # INFO 级可见"改用东财逐期"降级日志，作为限流金丝
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     blocks, codes = collect_targets()
     todo = [c for c in codes if not (_TABLES_CACHE_DIR / f"{c}.pkl").exists()]
@@ -66,6 +76,8 @@ def main():
     failures = []
 
     def worker(code):
+        if args.delay > 0:
+            time.sleep(random.uniform(0.2, args.delay))
         t0 = time.time()
         try:
             _fetch_raw_tables(code)

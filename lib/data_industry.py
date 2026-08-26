@@ -121,13 +121,52 @@ def _ak_to_ts_format(df: Optional[pd.DataFrame], col_map: dict) -> pd.DataFrame:
     return out.sort_values("end_date").reset_index(drop=True)
 
 
-def _fetch_from_akshare(code: str):
-    """akshare 财报表：新浪批量接口（单请求全报告期，~3s/股）→ 东财逐期接口降级
+def _fetch_from_em_datacenter(code: str):
+    """东财 datacenter-web F10 接口：每表单请求拉全报告期（~1s/表，pageSize=500 免翻页）
 
-    两源均为合并报表披露值；YoY 为同比比值，分子分母单位相消，跨源可混用。
+    与 akshare 东财逐期接口同源同 schema（复用 _AK_*_MAP），数值口径一致。
+    """
+    import requests
+
+    ts_code = _to_ts_code(code)
+    code6, market = ts_code.split(".")
+    url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+    out = []
+    for rpt, col_map in [
+        ("RPT_F10_FINANCE_GBALANCE", _AK_BS_MAP),
+        ("RPT_F10_FINANCE_GINCOME", _AK_INC_MAP),
+        ("RPT_F10_FINANCE_GCASHFLOW", _AK_CF_MAP),
+    ]:
+        params = {
+            "reportName": rpt,
+            "columns": "ALL",
+            "filter": f'(SECUCODE="{code6}.{market}")',
+            "pageSize": "500",
+            "pageNumber": "1",
+            "source": "WEB",
+            "client": "WEB",
+        }
+        r = requests.get(url, params=params, timeout=20)
+        rows = ((r.json().get("result") or {}).get("data")) or []
+        out.append(_ak_to_ts_format(pd.DataFrame(rows), col_map))
+    return tuple(out)
+
+
+def _fetch_from_akshare(code: str):
+    """东财财报表：datacenter 批量接口（单请求全报告期）→ 新浪 → 东财逐期降级
+
+    三源均为合并报表披露值；YoY 为同比比值，分子分母单位相消，跨源可混用。
     """
     ts_code = _to_ts_code(code)
     code6, market = ts_code.split(".")
+    try:
+        bs, inc, cf = _fetch_from_em_datacenter(code)
+        if not bs.empty:
+            return bs, inc, cf
+        logger.info(f"datacenter 无财报数据 {code}，降级新浪接口")
+    except Exception as e:
+        logger.info(f"datacenter 财报获取失败 {code}: {e}，降级新浪接口")
+
     try:
         import akshare as ak
         sina_symbol = f"{market.lower()}{code6}"
