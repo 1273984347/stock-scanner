@@ -171,6 +171,44 @@ class RiskConfig:
 
 
 @dataclass
+class CycleWarningConfig:
+    """A股周期过热/顶部预警配置（默认关闭；回测经 run_rebalance_backtest(top_warning_enabled=True) 开启）"""
+    enabled: bool = False                     # 出厂默认关闭
+    pctile_high: float = 0.85                 # 过热分位阈值（≥0.85 = 过热）
+    window_quarters: int = 40                 # 分位窗口：10 年季度
+    min_obs: int = 32                         # 最少有效观测数（低于此值指标计中性 0.5）
+    hot_count_exit: int = 3                   # 过热指标数 ≥3 且破位 → exit_all
+    hot_count_reduce: int = 2                 # 过热指标数 =2 且破位 → reduce_half
+    breakdown_mode: str = "ma20_60"           # 破位定义："ma20_60" 或 "ma60_200"
+    cooldown_days: int = 60                   # exit_all 后该行业冷却交易日数
+    max_stocks_per_block: int = 30            # 每板块聚合股票数上限
+    cache_ttl_days: int = 7                   # 行业财务序列缓存天数（自然日）
+
+
+@dataclass
+class PolicyPackageConfig:
+    """政策大礼包检测配置（底部确认信号，不预测政策）"""
+    min_matched_terms: int = 3                # 政策词去重命中 ≥3 = 触发
+    window_days: int = 10                     # 新闻回溯窗口（自然日）
+    boost: float = 0.15                       # 底部确认时 macro_score 加成
+    drawdown_threshold: float = 0.25          # 沪深300 自 250 交易日高点回撤阈值
+    dedup_days: int = 60                      # 两次加成最小间隔（自然日）
+
+
+@dataclass
+class MacroCycleConfig:
+    """宏观周期调整配置（PMI/PPI → macro_score 加成，合计 clip 到 [-0.25, +0.25]）"""
+    pmi_threshold: float = 50.0               # PMI 荣枯线
+    pmi_pos_weight: float = 0.10              # PMI ≥ 50 → +0.10
+    pmi_neg_weight: float = 0.10              # PMI < 50 → -0.10
+    ppi_low_pct: float = 0.20                 # PPI 同比 5 年分位 < 0.20 = 底部区
+    ppi_high_pct: float = 0.80                # PPI 同比 5 年分位 > 0.80 = 顶部区
+    ppi_bottom_boost: float = 0.10            # 底部区 + 连续 2 期回升 → +0.10
+    ppi_top_penalty: float = 0.05             # 顶部区 + 连续 2 期回落 → -0.05
+    clip_range: float = 0.25                  # 合计 clip 到 [-0.25, +0.25]
+
+
+@dataclass
 class MLConfig:
     """机器学习配置（当前为占位符）"""
     # 注：原 use_ml/ml_weight/enable_xgb/enable_lgbm/enable_sentiment/weekly_retrain_day/model_dir

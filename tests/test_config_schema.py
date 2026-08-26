@@ -91,3 +91,41 @@ def test_apply_overrides_rejects_bool_for_int_field():
 
     assert cfg.risk.max_hold_days == original_max_hold, \
         f"bool 错给 int 应被拒绝，实际 {cfg.risk.max_hold_days}"
+
+
+def test_cycle_warning_config_defaults():
+    from config import CycleWarningConfig
+    c = CycleWarningConfig()
+    assert c.pctile_high == 0.85
+    assert c.window_quarters == 40
+    assert c.min_obs == 32
+    assert c.hot_count_exit == 3
+    assert c.hot_count_reduce == 2
+    assert c.breakdown_mode == "ma20_60"
+    assert c.cooldown_days == 60
+    assert c.max_stocks_per_block == 30
+    assert c.cache_ttl_days == 7
+    assert c.enabled is False
+
+
+def test_policy_package_config_defaults():
+    from config import PolicyPackageConfig
+    p = PolicyPackageConfig()
+    assert p.min_matched_terms == 3
+    assert p.window_days == 10
+    assert p.boost == 0.15
+    assert p.drawdown_threshold == 0.25
+    assert p.dedup_days == 60
+
+
+def test_macro_cycle_config_defaults():
+    from config import MacroCycleConfig
+    m = MacroCycleConfig()
+    assert m.pmi_threshold == 50.0
+    assert m.pmi_pos_weight == 0.10
+    assert m.pmi_neg_weight == 0.10
+    assert m.ppi_low_pct == 0.20
+    assert m.ppi_high_pct == 0.80
+    assert m.ppi_bottom_boost == 0.10
+    assert m.ppi_top_penalty == 0.05
+    assert m.clip_range == 0.25
