@@ -47,14 +47,14 @@ def test_detect_top_warning_exit_all_end_to_end():
     assert r.action == "exit_all" and r.block == "白酒"
 
 
-def test_detect_top_warning_reduce_half_when_two_hot():
+def test_detect_top_warning_reduce_half_when_one_hot():
     from lib.cycle_heat import HotResult
     closes = [10.0] * 50 + [9.0] * 10
-    hot2 = HotResult(block="白酒", hot_count=2,
-                     hot_indicators=["inventory_yoy", "capex_yoy"],
-                     inventory_pct=0.9, capex_pct=0.9, debt_pct=0.2,
+    hot1 = HotResult(block="白酒", hot_count=1,
+                     hot_indicators=["inventory_yoy"],
+                     inventory_pct=0.9, capex_pct=0.2, debt_pct=0.2,
                      n_obs=40, as_of="20240101")
-    with patch("lib.cycle_heat.get_block_cycle_heat", return_value=hot2), \
+    with patch("lib.cycle_heat.get_block_cycle_heat", return_value=hot1), \
          patch("lib.data_layer.get_stock_blocks", return_value=["白酒"]):
         r = tw.detect_top_warning("600519", price_df=_prices(closes))
     assert r is not None and r.action == "reduce_half"

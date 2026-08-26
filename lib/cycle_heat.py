@@ -1,31 +1,34 @@
 """行业周期过热分位 —— 库存/产能/债务三指标历史分位
 
-分位口径：窗口 window_quarters=40 个季度内 (w <= 最新值).mean()；
-有效观测 < min_obs=32 → 该指标中性 0.5
-过热判定：分位 ≥ pctile_high=0.85
-已知特性：ECDF 口径下，处于历史低位平台上的最新低值也会得高分位
-（如 [5.0]*4+[0.0]*28 当前 0.0 → 28/32 = 0.875 ≥ 0.85 会被判过热）；
-真实财报 yoy 为连续浮点值，精确相等罕见，v1 接受该特性，
-且 TopWarning 层另有价格破位条件二次过滤。
+分位口径（W003 校准）：个股级聚合——对板块成分股各自计算三指标历史分位，
+再对每个指标取成分股分位均值作为板块分位（保留个股异议，避免板块 median 稀释）。
+个股分位：窗口 window_quarters=40 个季度内 (w <= 最新值).mean()；
+有效观测 < min_obs=32 → 该指标中性 None（不入均值与 hot 统计）。
+过热判定：分位 ≥ pctile_high=0.60（W003 校准 0.85→0.60 放宽）。
 as_of 过滤：只用 date <= as_of 的序列计算（回测点内，无未来函数）；
-as_of 为 YYYYMMDD 字符串
+as_of 为 YYYYMMDD 字符串。板块分位结果按 (block, as_of 年月) 进程 memo，TTL 10 分钟。
 
 使用方式：
     from lib.cycle_heat import get_block_cycle_heat
     hot = get_block_cycle_heat("白酒", as_of="20231231")
 """
 import logging
+import time
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
 from config import CycleWarningConfig
-from lib.data_industry import fetch_block_financial_series
+from lib.data_industry import _block_codes, _fetch_stock_yoy_series
 
 logger = logging.getLogger(__name__)
 
 _CONFIG = CycleWarningConfig()
+
+# {block: {"_ts": float, "inventory": float, "capex": float, "debt": float}}
+_BLOCK_PCT_MEMO: Dict[str, dict] = {}
+_BLOCK_PCT_TTL_SEC = 600  # 10 分钟
 
 
 @dataclass
@@ -50,36 +53,91 @@ def _percentile(series: pd.Series, cfg: CycleWarningConfig) -> Optional[float]:
     return float((w <= s.iloc[-1]).mean())
 
 
+def _stock_level_pct_map(block: str, as_of: Optional[str],
+                         cfg: CycleWarningConfig) -> Optional[Dict[str, float]]:
+    """板块成分股各自三指标分位 → 每指标取成分股分位均值。
+
+    pct 为 None（观测不足）的个股不计入该指标均值；三指标全无有效样本返回 None。
+    """
+    memo_key = f"{block}_{(as_of or 'latest')[:6]}"  # 年月粒度：同月共享（财务数据季度级准静态）
+    now = time.time()
+    hit = _BLOCK_PCT_MEMO.get(memo_key)
+    if hit is not None and now - hit["_ts"] < _BLOCK_PCT_TTL_SEC:
+        return hit
+
+    codes = _block_codes(block)
+    if not codes:
+        return None
+
+    per_stock: List[Dict[str, float]] = []
+    for code in codes[:cfg.max_stocks_per_block]:
+        try:
+            s = _fetch_stock_yoy_series(code)
+            if s is None or s.empty:
+                continue
+            s = s.sort_values("date")
+            if as_of is not None:
+                s = s[s["date"] <= str(as_of)]
+            if s.empty:
+                continue
+            p = {}
+            for col, label in (("inventory_yoy", "inventory"),
+                               ("capex_yoy", "capex"),
+                               ("debt_yoy", "debt")):
+                p[label] = _percentile(s[col], cfg)
+            if any(v is not None for v in p.values()):
+                per_stock.append(p)
+        except Exception as e:
+            logger.debug(f"行业过热个股分位跳过 {block}/{code}: {e}")
+            continue
+
+    if not per_stock:
+        return None
+
+    out: Dict[str, float] = {"_ts": now}
+    for label in ("inventory", "capex", "debt"):
+        vals = [p[label] for p in per_stock if p[label] is not None]
+        if vals:
+            out[label] = max(vals)  # 保留"任一成分股过热"的个股异议信号
+    if not any(k in out for k in ("inventory", "capex", "debt")):
+        return None
+    _BLOCK_PCT_MEMO[memo_key] = out
+    # 防 memo 无限膨胀：超 512 条清空（周期扫描会话内块数量有限，兜底即可）
+    if len(_BLOCK_PCT_MEMO) > 512:
+        _BLOCK_PCT_MEMO.clear()
+    return out
+
+
 def get_block_cycle_heat(block: str, as_of: Optional[str] = None) -> Optional[HotResult]:
-    """计算板块三指标过热分位。
+    """计算板块三指标过热分位（个股级聚合口径）。
 
     Args:
         block: TDX 板块名（如 "白酒"）
         as_of: 数据截止日 YYYYMMDD 字符串；None = 全序列最新
 
     Returns:
-        HotResult；板块无数据或截断后无数据返回 None
+        HotResult；板块无成分股或全部个股样本不足返回 None
     """
-    df = fetch_block_financial_series(block)
-    if df is None or df.empty:
-        return None
-    df = df.sort_values("date")
-    if as_of is not None:
-        df = df[df["date"] <= str(as_of)]
-    if df.empty:
-        return None
-
     cfg = _CONFIG
-    pcts = {}
-    hot = []
-    for col, label in (("inventory_yoy", "inventory"),
-                       ("capex_yoy", "capex"),
-                       ("debt_yoy", "debt")):
-        p = _percentile(df[col], cfg)
-        pcts[label] = 0.5 if p is None else round(p, 4)
-        if p is not None and p >= cfg.pctile_high:
-            hot.append(col)
+    pct_map = _stock_level_pct_map(block, as_of, cfg)
+    if pct_map is None:
+        return None
 
+    pcts = {
+        label: round(pct_map.get(label, 0.5) or 0.5, 4)
+        for label in ("inventory", "capex", "debt")
+    }
+    hot = [
+        col for col, label in (
+            ("inventory_yoy", "inventory"), ("capex_yoy", "capex"), ("debt_yoy", "debt"))
+        if pcts[label] >= cfg.pctile_high
+    ]
+
+    # n_obs: 三指标中有有效（非 None）分位覆盖的指标数（0-3）
+    n_obs = sum(
+        pct_map.get(label) is not None
+        for label in ("inventory", "capex", "debt")
+    )
     return HotResult(
         block=block,
         hot_count=len(hot),
@@ -87,6 +145,6 @@ def get_block_cycle_heat(block: str, as_of: Optional[str] = None) -> Optional[Ho
         inventory_pct=pcts["inventory"],
         capex_pct=pcts["capex"],
         debt_pct=pcts["debt"],
-        n_obs=int(df[["inventory_yoy", "capex_yoy", "debt_yoy"]].notna().all(axis=1).sum()),
-        as_of=str(df["date"].iloc[-1]),
+        n_obs=n_obs,
+        as_of=str(as_of or "latest"),
     )

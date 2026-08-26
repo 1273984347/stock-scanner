@@ -75,7 +75,7 @@ def check_price_breakdown(df: pd.DataFrame, mode: str = None) -> bool:
 
 
 def _resolve_action(hot_count: int, breakdown: bool) -> str:
-    """action 映射（唯一权威）：≥3 且破位 exit_all；==2 且破位 reduce_half；其余 hold"""
+    """action 映射（唯一权威）：≥2 且破位 exit_all；≥1 且破位 reduce_half；其余 hold"""
     if breakdown and hot_count >= _CONFIG.hot_count_exit:
         return "exit_all"
     if breakdown and hot_count >= _CONFIG.hot_count_reduce:

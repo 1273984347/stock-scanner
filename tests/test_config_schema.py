@@ -96,11 +96,11 @@ def test_apply_overrides_rejects_bool_for_int_field():
 def test_cycle_warning_config_defaults():
     from config import CycleWarningConfig
     c = CycleWarningConfig()
-    assert c.pctile_high == 0.85
+    assert c.pctile_high == 0.60
     assert c.window_quarters == 40
     assert c.min_obs == 32
-    assert c.hot_count_exit == 3
-    assert c.hot_count_reduce == 2
+    assert c.hot_count_exit == 2
+    assert c.hot_count_reduce == 1
     assert c.breakdown_mode == "ma20_60"
     assert c.cooldown_days == 60
     assert c.max_stocks_per_block == 30

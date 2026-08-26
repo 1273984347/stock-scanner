@@ -174,11 +174,11 @@ class RiskConfig:
 class CycleWarningConfig:
     """A股周期过热/顶部预警配置（默认关闭；回测经 run_rebalance_backtest(top_warning_enabled=True) 开启）"""
     enabled: bool = False                     # 出厂默认关闭
-    pctile_high: float = 0.85                 # 过热分位阈值（≥0.85 = 过热）
+    pctile_high: float = 0.60                 # 过热分位阈值（≥0.60 = 过热；W003 校准 0.85→0.60 放宽）
     window_quarters: int = 40                 # 分位窗口：10 年季度
     min_obs: int = 32                         # 最少有效观测数（低于此值指标计中性 0.5）
-    hot_count_exit: int = 3                   # 过热指标数 ≥3 且破位 → exit_all
-    hot_count_reduce: int = 2                 # 过热指标数 =2 且破位 → reduce_half
+    hot_count_exit: int = 2                   # 过热指标数 ≥2 且破位 → exit_all（W003 校准 3→2）
+    hot_count_reduce: int = 1                 # 过热指标数 ≥1 且破位 → reduce_half（W003 校准 2→1）
     breakdown_mode: str = "ma20_60"           # 破位定义："ma20_60" 或 "ma60_200"
     cooldown_days: int = 60                   # exit_all 后该行业冷却交易日数
     max_stocks_per_block: int = 30            # 每板块聚合股票数上限
