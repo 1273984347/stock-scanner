@@ -87,7 +87,9 @@ def test_data_tushare_sets_denied_flag_on_permission_error():
 
 
 def test_akshare_fallback_produces_normalized_series():
-    """Tushare 财报权限被拒时降级 akshare 东财接口，输出归一化 YYYYMMDD 序列"""
+    """Tushare 财报权限被拒 + datacenter 不可用时降级 akshare 东财逐期接口，输出归一化 YYYYMMDD 序列"""
+    import tempfile
+    from pathlib import Path
     import lib.data_industry as di
     import lib.data_tushare as dt
 
@@ -114,7 +116,10 @@ def test_akshare_fallback_produces_normalized_series():
         stock_profit_sheet_by_report_em=_rec(ak_inc),
         stock_cash_flow_sheet_by_report_em=_rec(ak_cf))
     with patch.object(dt, "_FIN_ACCESS_DENIED", True), \
-         patch.dict(sys.modules, {"akshare": fake_ak}):
+         patch.dict(sys.modules, {"akshare": fake_ak}), \
+         patch.object(di, "_fetch_from_em_datacenter",
+                      side_effect=RuntimeError("mock datacenter down")), \
+         patch.object(di, "_TABLES_CACHE_DIR", Path(tempfile.mkdtemp())):
         s = di._fetch_stock_yoy_series("600000")
     assert seen_symbols == ["SH600000", "SH600000", "SH600000"]  # 东财 symbol 格式：市场前缀+6位代码
     assert not s.empty

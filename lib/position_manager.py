@@ -74,19 +74,25 @@ class PositionManager:
         self._load()
 
     def _acquire_lock(self, mode="r"):
-        """获取文件锁（fail-fast：失败时抛出异常）"""
-        if not self.file.exists():
-            self.file.parent.mkdir(parents=True, exist_ok=True)
-            self.file.touch(exist_ok=True)
+        """获取文件锁（fail-fast：失败时抛出异常）
+
+        W003 修复: 锁文件与数据文件分离 (portalocker 锁数据文件时,
+        Windows 默认不共享 DELETE, 后续 tmp.replace(数据文件) 必然 WinError 5).
+        """
+        # 锁对象 = 同目录 .lock 文件 (不锁数据文件本身)
+        lock_target = self.file.with_suffix(".lock")
+        if not lock_target.exists():
+            lock_target.parent.mkdir(parents=True, exist_ok=True)
+            lock_target.touch(exist_ok=True)
         try:
             if _HAS_PORTALOCKER:
                 self._lock_file = portalocker.Lock(
-                    self.file, timeout=5,
+                    lock_target, timeout=5,
                     fail_when_locked=True if mode == "r" else False
                 )
                 self._lock_file.acquire()
             elif _HAS_FCNTL:
-                self._lock_file = open(self.file, "r+" if mode == "r" else "w")
+                self._lock_file = open(lock_target, "r+" if mode == "r" else "w")
                 fcntl.flock(self._lock_file.fileno(),
                            fcntl.LOCK_EX if mode == "w" else fcntl.LOCK_SH)
             else:
@@ -99,7 +105,7 @@ class PositionManager:
                 except Exception as e:
                     logger.debug(f"[position_manager] 文件锁关闭异常: {e}")
                 self._lock_file = None
-            raise IOError(f"无法获取文件锁: {self.file}") from e
+            raise IOError(f"无法获取文件锁: {lock_target}") from e
 
     def _release_lock(self):
         """释放文件锁"""

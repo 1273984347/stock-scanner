@@ -194,7 +194,7 @@ class TestBorrow2AtomicWrite:
         """mock portalocker, 验证 _acquire_lock + _release_lock 调用配对.
 
         Skip if portalocker 未装 (Linux CI 默认无 portalocker, 走 fcntl fallback).
-        Mock 模式: 用 sys.modules patch + _HAS_PORTALOCKER=True, 让 _acquire_lock 走 portalocker 分支.
+        Mock 模式: 用 patch("lib.signal_tracker.portalocker") + _HAS_PORTALOCKER=True, 让 _acquire_lock 走 portalocker 分支.
         """
         pytest.importorskip("portalocker", reason="portalocker not installed in this env")
 
@@ -206,7 +206,7 @@ class TestBorrow2AtomicWrite:
         mock_lock = MagicMock()
         mock_pl.Lock.return_value = mock_lock
         with patch("lib.signal_tracker._HAS_PORTALOCKER", True), \
-             patch.dict("sys.modules", {"portalocker": mock_pl}):
+             patch("lib.signal_tracker.portalocker", mock_pl):
             fresh_tracker.record_signal("600519", "bullish", 0.8, "2026-05-30")
 
         # 验证 Lock 被 acquire + release 配对调用
@@ -233,7 +233,7 @@ class TestBorrow2AtomicWrite:
         mock_lock.acquire.side_effect = TimeoutError("lock timeout (mock)")
         mock_pl.Lock.return_value = mock_lock
         with patch("lib.signal_tracker._HAS_PORTALOCKER", True), \
-             patch.dict("sys.modules", {"portalocker": mock_pl}):
+             patch("lib.signal_tracker.portalocker", mock_pl):
             # 验证: lock 失败抛 IOError 给 caller
             with pytest.raises(IOError, match="无法获取信号历史文件锁"):
                 fresh_tracker.record_signal("600519", "bullish", 0.8, "2026-05-30")

@@ -26,6 +26,8 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 SIGNAL_LOG_DIR = Path("cache/signals")
+# W003 修复: 锁文件与数据文件分离 (portalocker 锁数据文件时 Windows 无法 replace 覆盖)
+SIGNAL_LOCK_FILE = SIGNAL_LOG_DIR / "signal_history.lock"
 
 # 跨平台文件锁 (Borrow 2 借鉴 position_manager.py:23-33)
 try:
@@ -150,20 +152,22 @@ class SignalTracker:
 
         Borrow 2: 跨平台文件锁, 模板 position_manager.py:76-102.
         锁超时 30s (vs position_manager 5s) 避免 cache miss 死循环 (P2-4).
+        锁文件与数据文件分离 (W003 修复): portalocker 直接锁数据文件时,
+        Windows 默认不共享 DELETE, 后续 tmp.replace(数据文件) 必然 WinError 5.
         """
-        history_file = SIGNAL_LOG_DIR / "signal_history.json"
-        if not history_file.exists():
-            history_file.parent.mkdir(parents=True, exist_ok=True)
-            history_file.touch(exist_ok=True)
+        lock_target = SIGNAL_LOCK_FILE
+        if not lock_target.exists():
+            lock_target.parent.mkdir(parents=True, exist_ok=True)
+            lock_target.touch(exist_ok=True)
         try:
             if _HAS_PORTALOCKER:
                 self._lock_file = portalocker.Lock(
-                    str(history_file), timeout=30,
+                    str(lock_target), timeout=30,
                     fail_when_locked=False  # 30s 等待, 不 fail-fast
                 )
                 self._lock_file.acquire()
             elif _HAS_FCNTL:
-                self._lock_file = open(history_file, "r+" if mode == "r" else "w")
+                self._lock_file = open(lock_target, "r+" if mode == "r" else "w")
                 fcntl.flock(
                     self._lock_file.fileno(),
                     fcntl.LOCK_EX if mode == "w" else fcntl.LOCK_SH,
@@ -179,7 +183,7 @@ class SignalTracker:
                 except Exception as inner_e:
                     logger.debug(f"[signal_tracker] 文件锁关闭异常: {inner_e}")
                 self._lock_file = None
-            raise IOError(f"无法获取信号历史文件锁: {history_file}") from e
+            raise IOError(f"无法获取信号历史文件锁: {lock_target}") from e
 
     def _release_lock(self) -> None:
         """释放文件锁 (Borrow 2 跨平台)"""
