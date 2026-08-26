@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path("cache") / "industry"
 _TTL_SECONDS = CycleWarningConfig().cache_ttl_days * 24 * 3600
+_TABLES_CACHE_DIR = CACHE_DIR / "tables"   # 逐股财报表磁盘缓存（不同板块成分股重叠，跨板块复用）
+_BLOCK_SERIES_MEMO: dict = {}              # 进程内板块序列备忘录（含 None 负结果，避免日循环反复重建）
 
 
 def _to_ts_code(code: str) -> str:
@@ -129,6 +131,30 @@ def _fetch_from_akshare(code: str):
 
 
 def _fetch_raw_tables(code: str):
+    """双源获取三张财报表（带逐股磁盘缓存，TTL 与板块缓存一致）"""
+    import pickle
+
+    _TABLES_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    f = _TABLES_CACHE_DIR / f"{code}.pkl"
+    if f.exists() and time.time() - f.stat().st_mtime < _TTL_SECONDS:
+        try:
+            with open(f, "rb") as fh:
+                cached = pickle.load(fh)
+            if isinstance(cached, tuple) and len(cached) == 3:
+                return cached
+        except Exception as e:
+            logger.debug(f"财报表缓存读取失败 {code}: {e}")
+
+    result = _fetch_raw_tables_remote(code)
+    try:
+        with open(f, "wb") as fh:
+            pickle.dump(result, fh)
+    except Exception as e:
+        logger.debug(f"财报表缓存写入失败 {code}: {e}")
+    return result
+
+
+def _fetch_raw_tables_remote(code: str):
     """双源获取三张财报表：Tushare（权限正常且有数据）→ akshare 东财降级
 
     降级触发条件：Tushare 财报权限已被拒（is_fin_access_denied）或资产负债表为空。
@@ -161,8 +187,13 @@ def fetch_block_financial_series(block: str) -> Optional[pd.DataFrame]:
         except Exception as e:
             logger.warning(f"行业缓存读取失败 {block}: {e}")
 
+    # 进程内备忘录（含 None 负结果）：日循环中同一板块反复请求时避免重复冷构建
+    if block in _BLOCK_SERIES_MEMO:
+        return _BLOCK_SERIES_MEMO[block]
+
     codes = _block_codes(block)
     if not codes:
+        _BLOCK_SERIES_MEMO[block] = None
         return None
 
     max_stocks = CycleWarningConfig().max_stocks_per_block
@@ -177,6 +208,7 @@ def fetch_block_financial_series(block: str) -> Optional[pd.DataFrame]:
             continue
 
     if not frames:
+        _BLOCK_SERIES_MEMO[block] = None
         return None
 
     stacked = pd.concat(frames, ignore_index=True)
@@ -184,6 +216,7 @@ def fetch_block_financial_series(block: str) -> Optional[pd.DataFrame]:
     agg = grouped[["inventory_yoy", "revenue_yoy", "capex_yoy", "debt_yoy"]].median()
     agg["n_stocks"] = grouped.size()
     result = agg.reset_index().sort_values("date")
+    _BLOCK_SERIES_MEMO[block] = result
 
     try:
         result.to_parquet(cache_file)
