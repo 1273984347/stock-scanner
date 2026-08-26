@@ -12,6 +12,16 @@
 
 ## [Unreleased]
 
+### v1.3.1（2026-08-26）：W003 Windows 文件锁修复
+
+> **来源**：六文档批次交叉核验时发现 pytest 26 failed + 9 errors（WinError 5 拒绝访问），用户指示先修文件锁再推进 A/B 判定
+> - **执行（根因）**：portalocker 直接锁数据文件（signal_history.json / positions.json），Windows 默认不共享 DELETE 句柄，后续 `tmp.replace(数据文件)`（os.replace→MoveFileExW）必然 WinError 5——最小复现脚本实证（锁持有时报错、释放后成功）
+> - **执行（修复）**：lib/signal_tracker.py 与 lib/position_manager.py（同缺陷，模板来源，_save 吞异常致静默失败）锁对象改为同目录 `.lock` 文件（`with_suffix(".lock")`），数据文件可自由原子替换；两文件保持并发串行化语义
+> - **执行（测试假红修正）**：test_signal_tracker 的 `patch.dict("sys.modules", {"portalocker": mock})` 对已绑定名字无效 → 改 `patch("lib.signal_tracker.portalocker")`；test_data_industry 隔离 datacenter 网络（mock 降级）+ pkl 缓存（patch _TABLES_CACHE_DIR 到临时目录，今日预热后 600000 缓存命中导致 fallback 断言失效）
+> - **文件**：lib/signal_tracker.py、lib/position_manager.py、tests/test_signal_tracker.py、tests/test_data_industry.py
+> - **验证**：全量 pytest 26 failed + 9 errors → **1146 passed / 0 failed / 12 skipped**
+> - **状态**：已完成
+
 ### v1.3（2026-08-26）：W001 六文档治理体系建立 + W002 A 股周期顶部预警（进行中）
 
 > **来源**：用户学习 xiyouji 六文档体系后批准移植（docs/superpowers/specs/2026-08-26-six-docs-governance-design.md）

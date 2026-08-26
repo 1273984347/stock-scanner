@@ -1,6 +1,6 @@
 # A股盘后选股工具
 
-> **当前版本 v1.3（2026-08-26）**：W001 六文档治理体系落地 + W002 A 股周期顶部预警（进行中）· 详见 [CHANGELOG.md](CHANGELOG.md) 与 [交接文档.md](交接文档.md)。
+> **当前版本 v1.3.1（2026-08-26）**：W003 Windows 文件锁修复（pytest 全绿归零）· W002 A 股周期顶部预警（进行中）· 详见 [CHANGELOG.md](CHANGELOG.md) 与 [交接文档.md](交接文档.md)。
 > **维护契约**：版本行由人工维护，须与 `git rev-parse --short HEAD` 核对；项目变更一律进 CHANGELOG；本文件禁止追加里程碑/批次速记段。
 
 整合 quant-system + ai-hedge-fund + cryptoquant-ai 的 A 股适用版选股系统。
