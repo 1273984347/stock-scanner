@@ -46,7 +46,7 @@ stock-scanner/
 ├── dashboard.py / notifier.py       # Streamlit Dashboard / 飞书推送
 ├── trading_journal.py               # 交易日志
 ├── backtest/                        # 回测模块（core/engine/full/rebalance/stress）
-├── lib/                             # 核心业务模块（87+ 个：数据层/策略/风控/ML/回测）
+├── lib/                             # 核心业务模块（110+ 个：数据层/策略/风控/ML/回测）
 ├── scripts/                         # 工具脚本（daily_scan/update_tdx_data/backtest_charts 等）
 ├── tests/                           # 测试套件（60+ 测试）
 ├── reporter/                        # 报告生成（图表/飞书推送/IC 报告）
