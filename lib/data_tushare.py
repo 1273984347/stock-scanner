@@ -193,3 +193,52 @@ def get_macro_pmi() -> pd.DataFrame:
     except Exception as e:
         logger.error(f"获取 PMI 失败: {e}")
         return pd.DataFrame()
+
+
+def get_balancesheet(ts_code: str, start_date: str = "20150101",
+                     end_date: str = None) -> pd.DataFrame:
+    """获取资产负债表（Tushare pro.balancesheet）
+
+    Returns:
+        pd.DataFrame: 列含 ts_code/end_date/inventory/st_borr/lt_borr/bond_payable；
+        失败或 pro 不可用返回空 DataFrame
+    """
+    pro = _get_pro()
+    if pro is None:
+        return pd.DataFrame()
+    try:
+        return pro.balancesheet(
+            ts_code=ts_code, start_date=start_date, end_date=end_date,
+            fields="ts_code,end_date,inventory,st_borr,lt_borr,bond_payable",
+        )
+    except Exception as e:
+        logger.error(f"获取资产负债表失败 {ts_code}: {e}")
+        return pd.DataFrame()
+
+
+def get_income(ts_code: str, start_date: str = "20150101",
+               end_date: str = None) -> pd.DataFrame:
+    """获取利润表（Tushare pro.income），列含 ts_code/end_date/revenue"""
+    pro = _get_pro()
+    if pro is None:
+        return pd.DataFrame()
+    try:
+        return pro.income(ts_code=ts_code, start_date=start_date, end_date=end_date,
+                          fields="ts_code,end_date,revenue")
+    except Exception as e:
+        logger.error(f"获取利润表失败 {ts_code}: {e}")
+        return pd.DataFrame()
+
+
+def get_cashflow(ts_code: str, start_date: str = "20150101",
+                 end_date: str = None) -> pd.DataFrame:
+    """获取现金流量表（Tushare pro.cashflow），列含 ts_code/end_date/c_pay_acq_const_fiolta"""
+    pro = _get_pro()
+    if pro is None:
+        return pd.DataFrame()
+    try:
+        return pro.cashflow(ts_code=ts_code, start_date=start_date, end_date=end_date,
+                            fields="ts_code,end_date,c_pay_acq_const_fiolta")
+    except Exception as e:
+        logger.error(f"获取现金流量表失败 {ts_code}: {e}")
+        return pd.DataFrame()
