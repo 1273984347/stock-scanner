@@ -26,10 +26,11 @@
 
 > **来源**：用户学习 xiyouji 六文档体系后批准移植（docs/superpowers/specs/2026-08-26-six-docs-governance-design.md）
 > - **执行（W001 已完成）**：根目录新增 AGENTS.md / CHANGELOG.md / STRUCTURE.md / 交接文档.md / 新Agent启动Prompt.md；README.md 增补维护契约 + 现役版本行；CLAUDE.md 加桥接；docs/NEXT_SESSION_PLAN.md 归档
-> - **执行（W002 进行中）**：A 股周期顶部预警优化（feature/cycle-top-warning 分支）——Phase 0 数据地基 G0 修复 / Phase 1 cycle_heat 三指标历史分位 / Phase 2 top_warning + DynamicExitManager 集成 / Phase 3 run_rebalance_backtest 集成 + 财报数据源东财 datacenter 批量提速（lib/data_industry.py，1180 只 24min 零失败预热）
+> - **执行（W002 进行中）**：A 股周期顶部预警优化（feature/cycle-top-warning 分支）——Phase 0 数据地基 G0 修复（探针 5/5 PASS）/ Phase 1 cycle_heat 三指标历史分位 / Phase 2 top_warning + DynamicExitManager 集成（exit_all/reduce_half）/ Phase 3 run_rebalance_backtest 集成 + 财报数据源东财 datacenter 批量提速（1180 只 24min 零失败预热）+ **个股级分位聚合 + 阈值校准（d431b2e）修复零触发 → A/B G2 判定 PASS**
+> - **执行（G2 判定）**：A/B 回测 md 0.1695→0.0704（改善 58.5% ≥10% 门槛）、wr 0.2993→0.2523（成本 4.7pp ≤5pp 预算）→ G2_pass=true exit 0（cache/top_warning_ab_20260827_010123.json）
 > - **文件**：根目录六文档、docs/superpowers/specs+plans、lib/data_industry.py、lib/cycle_heat.py、lib/top_warning.py、scripts/warm_fin_tables.py 等
-> - **验证**：六文档维护契约齐全、版本行/W 编号交叉一致；W002 代码 pytest 全绿（60 tests PASS）
-> - **状态**：W001 已落地；W002 进行中（A/B 回测与 G2 闸门待跑）
+> - **验证**：六文档维护契约齐全、版本行/W 编号交叉一致；W002 代码 pytest 全绿（校准后全量 1149 passed / 0 failed）
+> - **状态**：W001 已落地；W002 进行中（Phase 0-3 完成 + G2 判定 PASS，Phase 4-7 待推进）
 
 ### v1.2（2026-08-24~08-25）：财报数据链工程强化
 
