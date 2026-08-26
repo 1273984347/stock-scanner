@@ -1,6 +1,8 @@
 # CLAUDE.md — Stock Scanner (个人量化选股系统)
 
 > 最后更新：2026-05-30 | 本次更新：新增 21 个模块 + V6 自适应交易系统（多周期KDJ/统一板块评分/动态权重管理/策略-状态映射），60 个测试全部通过
+>
+> 文档治理（2026-08-26）：本项目采用六文档体系——详细 Agent 指南见 [AGENTS.md](AGENTS.md)（本文档为其精简桥接），时间线见 [CHANGELOG.md](CHANGELOG.md)，状态快照见 [交接文档.md](交接文档.md)，结构见 [STRUCTURE.md](STRUCTURE.md)，新 session 启动包见 [新Agent启动Prompt.md](新Agent启动Prompt.md)。冲突时以 AGENTS.md §7 优先级为准。
 
 ## 工作流
 
