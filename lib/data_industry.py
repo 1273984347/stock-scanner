@@ -64,12 +64,7 @@ def _yoy_by_quarter(ts: Optional[pd.DataFrame], value_col: str) -> pd.DataFrame:
 
 def _fetch_stock_yoy_series(code: str) -> pd.DataFrame:
     """单只股票的 4 指标季度 yoy 序列（列: date, inventory_yoy, revenue_yoy, capex_yoy, debt_yoy）"""
-    from lib.data_tushare import get_balancesheet, get_income, get_cashflow
-
-    ts_code = _to_ts_code(code)
-    bs = get_balancesheet(ts_code)
-    inc = get_income(ts_code)
-    cf = get_cashflow(ts_code)
+    bs, inc, cf = _fetch_raw_tables(code)
 
     if bs is None or bs.empty:
         return pd.DataFrame()
@@ -95,6 +90,65 @@ def _fetch_stock_yoy_series(code: str) -> pd.DataFrame:
     for key in ("revenue_yoy", "capex_yoy", "debt_yoy"):
         merged = merged.merge(renamed[key], on="date", how="outer")
     return merged.sort_values("date")
+
+
+# akshare 东财财报接口 → Tushare 同款列名映射（跨源聚合要求 end_date 归一化为 YYYYMMDD）
+_AK_BS_MAP = {"REPORT_DATE": "end_date", "INVENTORY": "inventory",
+              "SHORT_LOAN": "st_borr", "LONG_LOAN": "lt_borr", "BOND_PAYABLE": "bond_payable"}
+_AK_INC_MAP = {"REPORT_DATE": "end_date", "TOTAL_OPERATE_INCOME": "revenue"}
+_AK_CF_MAP = {"REPORT_DATE": "end_date", "CONSTRUCT_LONG_ASSET": "c_pay_acq_const_fiolta"}
+
+
+def _ak_to_ts_format(df: Optional[pd.DataFrame], col_map: dict) -> pd.DataFrame:
+    """东财原始表 → 与 Tushare 包装函数同列名、同日期格式的 DataFrame；缺列返回空表"""
+    if df is None or df.empty:
+        return pd.DataFrame()
+    out = df.rename(columns=col_map)
+    keep = list(col_map.values())
+    if any(c not in out.columns for c in keep):
+        return pd.DataFrame()
+    out = out[keep].copy()
+    out["end_date"] = pd.to_datetime(out["end_date"]).dt.strftime("%Y%m%d")
+    return out.sort_values("end_date").reset_index(drop=True)
+
+
+def _fetch_from_akshare(code: str):
+    """akshare 东财财报接口（免费无积分门槛）→ (bs, inc, cf) 三元组"""
+    ts_code = _to_ts_code(code)
+    code6, market = ts_code.split(".")
+    symbol = f"{market}{code6}"
+    try:
+        import akshare as ak
+        bs = _ak_to_ts_format(ak.stock_balance_sheet_by_report_em(symbol=symbol), _AK_BS_MAP)
+        inc = _ak_to_ts_format(ak.stock_profit_sheet_by_report_em(symbol=symbol), _AK_INC_MAP)
+        cf = _ak_to_ts_format(ak.stock_cash_flow_sheet_by_report_em(symbol=symbol), _AK_CF_MAP)
+        return bs, inc, cf
+    except Exception as e:
+        logger.warning(f"akshare 财报获取失败 {code}: {e}")
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+
+def _fetch_raw_tables(code: str):
+    """双源获取三张财报表：Tushare（权限正常且有数据）→ akshare 东财降级
+
+    降级触发条件：Tushare 财报权限已被拒（is_fin_access_denied）或资产负债表为空。
+    """
+    from lib import data_tushare as dt
+
+    if not dt.is_fin_access_denied():
+        ts_code = _to_ts_code(code)
+        bs = dt.get_balancesheet(ts_code)
+        inc = dt.get_income(ts_code)
+        cf = dt.get_cashflow(ts_code)
+        if not bs.empty and "inventory" in bs.columns:
+            return bs, inc, cf
+
+    bs, inc, cf = _fetch_from_akshare(code)
+    if isinstance(bs, pd.DataFrame) and not bs.empty:
+        logger.info(f"财报数据改用 akshare {code}")
+    else:
+        logger.debug(f"Tushare 与 akshare 均无财报数据 {code}")
+    return bs, inc, cf
 
 
 def fetch_block_financial_series(block: str) -> Optional[pd.DataFrame]:

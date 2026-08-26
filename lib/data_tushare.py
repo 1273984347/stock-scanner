@@ -23,8 +23,11 @@ def _get_pro():
             if not token:
                 logger.error("TUSHARE_TOKEN 环境变量未设置")
                 return None
-            ts.set_token(token)
-            _pro = ts.pro_api()
+            try:
+                ts.set_token(token)   # 仅写本地缓存；沙箱/只读环境下可能被拒
+            except Exception as e:
+                logger.warning(f"tushare token 缓存写入失败（不影响 API 调用）: {e}")
+            _pro = ts.pro_api(token)  # 显式传 token，不依赖本地缓存文件
         except ImportError:
             logger.error("tushare 未安装，请运行: pip install tushare")
             return None
@@ -195,6 +198,40 @@ def get_macro_pmi() -> pd.DataFrame:
         return pd.DataFrame()
 
 
+# 财报三表接口权限不足时置位（本次进程内不再重复请求 Tushare，由上层改走备用源）
+_FIN_ACCESS_DENIED = False
+
+_PERMISSION_MARKERS = ("没有接口", "访问权限", "doc_id=108")
+
+
+def is_fin_access_denied() -> bool:
+    """Tushare 财报三表是否已被判定为无权限"""
+    return _FIN_ACCESS_DENIED
+
+
+def _fin_request(api_name: str, ts_code: str, start_date: str,
+                 end_date: str, fields: str, err_label: str) -> pd.DataFrame:
+    """财报三表共用请求层：权限被拒时置位标志供数据源降级判断"""
+    global _FIN_ACCESS_DENIED
+    if _FIN_ACCESS_DENIED:
+        return pd.DataFrame()
+    pro = _get_pro()
+    if pro is None:
+        return pd.DataFrame()
+    try:
+        return getattr(pro, api_name)(
+            ts_code=ts_code, start_date=start_date, end_date=end_date, fields=fields,
+        )
+    except Exception as e:
+        msg = str(e)
+        if any(m in msg for m in _PERMISSION_MARKERS):
+            _FIN_ACCESS_DENIED = True
+            logger.warning(f"Tushare {err_label}接口权限不足（{ts_code}），后续财报请求将改用备用数据源")
+        else:
+            logger.error(f"获取{err_label}失败 {ts_code}: {e}")
+        return pd.DataFrame()
+
+
 def get_balancesheet(ts_code: str, start_date: str = "20150101",
                      end_date: str = None) -> pd.DataFrame:
     """获取资产负债表（Tushare pro.balancesheet）
@@ -203,42 +240,25 @@ def get_balancesheet(ts_code: str, start_date: str = "20150101",
         pd.DataFrame: 列含 ts_code/end_date/inventory/st_borr/lt_borr/bond_payable；
         失败或 pro 不可用返回空 DataFrame
     """
-    pro = _get_pro()
-    if pro is None:
-        return pd.DataFrame()
-    try:
-        return pro.balancesheet(
-            ts_code=ts_code, start_date=start_date, end_date=end_date,
-            fields="ts_code,end_date,inventory,st_borr,lt_borr,bond_payable",
-        )
-    except Exception as e:
-        logger.error(f"获取资产负债表失败 {ts_code}: {e}")
-        return pd.DataFrame()
+    return _fin_request(
+        "balancesheet", ts_code, start_date, end_date,
+        "ts_code,end_date,inventory,st_borr,lt_borr,bond_payable", "资产负债表",
+    )
 
 
 def get_income(ts_code: str, start_date: str = "20150101",
                end_date: str = None) -> pd.DataFrame:
     """获取利润表（Tushare pro.income），列含 ts_code/end_date/revenue"""
-    pro = _get_pro()
-    if pro is None:
-        return pd.DataFrame()
-    try:
-        return pro.income(ts_code=ts_code, start_date=start_date, end_date=end_date,
-                          fields="ts_code,end_date,revenue")
-    except Exception as e:
-        logger.error(f"获取利润表失败 {ts_code}: {e}")
-        return pd.DataFrame()
+    return _fin_request(
+        "income", ts_code, start_date, end_date,
+        "ts_code,end_date,revenue", "利润表",
+    )
 
 
 def get_cashflow(ts_code: str, start_date: str = "20150101",
                  end_date: str = None) -> pd.DataFrame:
     """获取现金流量表（Tushare pro.cashflow），列含 ts_code/end_date/c_pay_acq_const_fiolta"""
-    pro = _get_pro()
-    if pro is None:
-        return pd.DataFrame()
-    try:
-        return pro.cashflow(ts_code=ts_code, start_date=start_date, end_date=end_date,
-                            fields="ts_code,end_date,c_pay_acq_const_fiolta")
-    except Exception as e:
-        logger.error(f"获取现金流量表失败 {ts_code}: {e}")
-        return pd.DataFrame()
+    return _fin_request(
+        "cashflow", ts_code, start_date, end_date,
+        "ts_code,end_date,c_pay_acq_const_fiolta", "现金流量表",
+    )
