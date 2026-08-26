@@ -176,17 +176,43 @@ class DynamicExitManager:
         self._current_regime = "MEAN_REVERSION"  # 默认
         # P2 #10: 显式初始化避免 getattr 防御式访问 + 不一致（line 184 用 0 fallback）
         self._current_vol: float = 0.3
+        # 顶部预警状态（默认无预警 = 不影响任何既有行为）
+        self._top_action: str = "hold"
+        self._top_block: str = ""
 
     def update_market_state(self, regime: str, annualized_vol: float):
         """更新市场状态"""
         self._current_regime = regime
         self._current_vol = annualized_vol
 
+    def apply_top_warning(self, result) -> None:
+        """应用顶部预警（来自 lib.top_warning.TopWarningResult）
+
+        action=exit_all → get_position_pct()=0 且 get_exit_days()=0
+        action=reduce_half → get_position_pct() 折半
+        action=hold 或 result=None → 恢复默认（无影响）
+        """
+        if result is None:
+            self._top_action = "hold"
+            self._top_block = ""
+            return
+        self._top_action = result.action
+        self._top_block = result.block
+
+    def get_top_warning_state(self) -> Dict:
+        """当前顶部预警状态"""
+        return {"action": self._top_action, "block": self._top_block}
+
     def get_position_pct(self) -> float:
-        """获取建议仓位比例"""
+        """获取建议仓位比例（顶部预警 exit_all → 0；reduce_half → 折半）"""
         lb_mult = self.loss_breaker.get_position_multiplier()
         vol_pct = self.position_sizer.get_position_pct(self._current_vol)
-        return vol_pct * lb_mult
+        pct = vol_pct * lb_mult
+        if self._top_action == "exit_all":
+            return 0.0
+        if self._top_action == "reduce_half":
+            return pct * 0.5
+        return pct
 
     def get_exit_levels(self) -> list:
         """获取当前止盈档位"""
@@ -216,6 +242,7 @@ class DynamicExitManager:
             "current_vol": self._current_vol,
             "current_regime": self._current_regime,
             "exit_days": self.get_exit_days(),
+            "top_warning": self.get_top_warning_state(),
         }
 
     def get_exit_days(self) -> int:
@@ -229,6 +256,8 @@ class DynamicExitManager:
         - TREND_DOWN: 0天（不开仓）
         - RISK_OFF: 0天（禁止一切开仓）
         """
+        if self._top_action == "exit_all":
+            return 0
         # P2 #4: 不再内联 dict 默认值 — 改用模块顶层 DEFAULT_EXIT_DAYS_MAP
         return self._exit_days_map.get(self._current_regime, DEFAULT_EXIT_DAYS_FALLBACK)
 

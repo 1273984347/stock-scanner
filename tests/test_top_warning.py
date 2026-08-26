@@ -88,3 +88,33 @@ def test_service_cooldown_logic():
     assert svc.is_block_cooling("白酒", "2024-05-01") is True
     assert svc.is_block_cooling("白酒", "2024-07-01") is False
     assert svc.is_block_cooling("银行", "2024-05-01") is False
+
+
+def test_dynamic_exit_manager_applies_exit_all():
+    from lib.dynamic_exit import DynamicExitManager
+    from lib.top_warning import TopWarningResult
+    mgr = DynamicExitManager()
+    mgr.update_market_state("TREND_UP", 0.2)
+    before = mgr.get_position_pct()
+    assert before > 0
+    mgr.apply_top_warning(TopWarningResult(
+        block="白酒", code="600519", triggered=True, hot_count=3,
+        hot_indicators=["inventory_yoy", "capex_yoy", "debt_yoy"],
+        breakdown=True, action="exit_all", reasoning="", as_of="20240101"))
+    assert mgr.get_position_pct() == 0.0
+    assert mgr.get_exit_days() == 0
+    assert mgr.get_top_warning_state()["action"] == "exit_all"
+
+
+def test_dynamic_exit_manager_reduce_half():
+    from lib.dynamic_exit import DynamicExitManager
+    from lib.top_warning import TopWarningResult
+    mgr = DynamicExitManager()
+    mgr.update_market_state("TREND_UP", 0.2)
+    base = mgr.get_position_pct()
+    assert base > 0
+    mgr.apply_top_warning(TopWarningResult(
+        block="白酒", code="600519", triggered=True, hot_count=2,
+        hot_indicators=["inventory_yoy", "capex_yoy"], breakdown=True,
+        action="reduce_half", reasoning="", as_of="20240101"))
+    assert abs(mgr.get_position_pct() - base * 0.5) < 1e-9
