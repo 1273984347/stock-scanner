@@ -1120,6 +1120,7 @@ def run_rebalance_backtest(
     factor_config=None,
     max_workers: int = 8,
     exit_days_map: dict = None,
+    top_warning_enabled: bool = False,
 ) -> Optional[Dict]:
     """月频调仓回测（从 rebalance.py 迁入）
 
@@ -1198,6 +1199,14 @@ def run_rebalance_backtest(
     # 动态退出管理器（根据市场状态调整出场天数）
     from lib.dynamic_exit import DynamicExitManager
     dynamic_exit = DynamicExitManager(exit_days_map=exit_days_map)
+    # 顶部预警服务（默认关闭；开启时点内计算，无未来函数）
+    top_svc = None
+    top_cooldown_days = 0
+    if top_warning_enabled:
+        from config import CycleWarningConfig as _CWC
+        from lib.top_warning import TopWarningService
+        top_svc = TopWarningService()
+        top_cooldown_days = _CWC().cooldown_days
     if disable_loss_breaker:
         # No-op loss breaker for factor comparison
         class _NoOpBreaker:
@@ -1282,6 +1291,34 @@ def run_rebalance_backtest(
 
             buy_price = buy_prices.get(code, holding.cost_price)
             pnl_pct = (current_price - buy_price) / buy_price if buy_price > 0 else 0
+
+            # 顶部预警：exit_all → 清仓并设置行业冷却（只用当日之前的价格数据，点内计算）
+            if top_svc is not None:
+                warn = None
+                dfx = market_data.get(code)
+                if dfx is not None:
+                    hist_x = dfx[dfx["trade_date"] < date]
+                    if len(hist_x) >= 60:
+                        warn = top_svc.get_warning(
+                            code, as_of=date_str.replace("-", ""),
+                            price_df=hist_x.tail(250))
+                if warn is not None and warn.action == "exit_all":
+                    order = Order(code=code, direction="SELL", price=current_price,
+                                  shares=holding.shares, date=date_str, reason="顶部预警")
+                    trade = broker.submit_order(order, market_data, date_str)
+                    if trade:
+                        loss_breaker.record_trade(code, pnl_pct, date_str)
+                        trade_log.append({"date": date_str, "code": code, "action": "SELL",
+                                          "reason": "顶部预警", "pnl": pnl_pct})
+                        cooldown_idx = min(i + top_cooldown_days, len(trade_dates) - 1)
+                        cd = trade_dates[cooldown_idx]
+                        top_svc.mark_exit(
+                            warn.block,
+                            str(cd.date()) if hasattr(cd, "date") else str(cd))
+                    buy_prices.pop(code, None)
+                    buy_dates.pop(code, None)
+                    stop_prices.pop(code, None)
+                    continue
 
             # ATR 止损
             stop_price = stop_prices.get(code)
@@ -1382,6 +1419,14 @@ def run_rebalance_backtest(
         # 按 IC 评分排序，取 Top 3
         candidates.sort(key=lambda x: x[1], reverse=True)
         for sym, ic_score, hist in candidates[:3]:
+            # 顶部预警：行业冷却中或 exit_all → 跳过买入（hist 为当日之前数据，点内）
+            if top_svc is not None:
+                warn = top_svc.get_warning(sym, as_of=date_str.replace("-", ""),
+                                           price_df=hist.tail(250))
+                if warn is not None and warn.action == "exit_all":
+                    continue
+                if warn is not None and top_svc.is_block_cooling(warn.block, date_str):
+                    continue
             current_price = hist["close"].iloc[-1]
             atr_val = _compute_atr_for_position(hist)
             loss_mult = loss_breaker.get_position_multiplier()
