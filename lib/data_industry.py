@@ -100,6 +100,13 @@ _AK_BS_MAP = {"REPORT_DATE": "end_date", "INVENTORY": "inventory",
 _AK_INC_MAP = {"REPORT_DATE": "end_date", "TOTAL_OPERATE_INCOME": "revenue"}
 _AK_CF_MAP = {"REPORT_DATE": "end_date", "CONSTRUCT_LONG_ASSET": "c_pay_acq_const_fiolta"}
 
+# 新浪财经三大报表（单请求拉取全部报告期，比东财逐期快约 13 倍）
+_SINA_BS_MAP = {"报告日": "end_date", "存货": "inventory",
+                "短期借款": "st_borr", "长期借款": "lt_borr", "应付债券": "bond_payable"}
+_SINA_INC_MAP = {"报告日": "end_date", "营业总收入": "revenue"}
+_SINA_CF_MAP = {"报告日": "end_date",
+                "购建固定资产、无形资产和其他长期资产所支付的现金": "c_pay_acq_const_fiolta"}
+
 
 def _ak_to_ts_format(df: Optional[pd.DataFrame], col_map: dict) -> pd.DataFrame:
     """东财原始表 → 与 Tushare 包装函数同列名、同日期格式的 DataFrame；缺列返回空表"""
@@ -115,15 +122,32 @@ def _ak_to_ts_format(df: Optional[pd.DataFrame], col_map: dict) -> pd.DataFrame:
 
 
 def _fetch_from_akshare(code: str):
-    """akshare 东财财报接口（免费无积分门槛）→ (bs, inc, cf) 三元组"""
+    """akshare 财报表：新浪批量接口（单请求全报告期，~3s/股）→ 东财逐期接口降级
+
+    两源均为合并报表披露值；YoY 为同比比值，分子分母单位相消，跨源可混用。
+    """
     ts_code = _to_ts_code(code)
     code6, market = ts_code.split(".")
+    try:
+        import akshare as ak
+        sina_symbol = f"{market.lower()}{code6}"
+        bs = _ak_to_ts_format(ak.stock_financial_report_sina(stock=sina_symbol, symbol="资产负债表"), _SINA_BS_MAP)
+        inc = _ak_to_ts_format(ak.stock_financial_report_sina(stock=sina_symbol, symbol="利润表"), _SINA_INC_MAP)
+        cf = _ak_to_ts_format(ak.stock_financial_report_sina(stock=sina_symbol, symbol="现金流量表"), _SINA_CF_MAP)
+        if not bs.empty:
+            return bs, inc, cf
+        logger.debug(f"sina 无财报数据 {code}，降级东财逐期接口")
+    except Exception as e:
+        logger.debug(f"sina 财报获取失败 {code}: {e}，降级东财逐期接口")
+
     symbol = f"{market}{code6}"
     try:
         import akshare as ak
         bs = _ak_to_ts_format(ak.stock_balance_sheet_by_report_em(symbol=symbol), _AK_BS_MAP)
         inc = _ak_to_ts_format(ak.stock_profit_sheet_by_report_em(symbol=symbol), _AK_INC_MAP)
         cf = _ak_to_ts_format(ak.stock_cash_flow_sheet_by_report_em(symbol=symbol), _AK_CF_MAP)
+        if isinstance(bs, pd.DataFrame) and not bs.empty:
+            logger.info(f"财报数据改用东财逐期接口 {code}")
         return bs, inc, cf
     except Exception as e:
         logger.warning(f"akshare 财报获取失败 {code}: {e}")
@@ -146,11 +170,14 @@ def _fetch_raw_tables(code: str):
             logger.debug(f"财报表缓存读取失败 {code}: {e}")
 
     result = _fetch_raw_tables_remote(code)
-    try:
-        with open(f, "wb") as fh:
-            pickle.dump(result, fh)
-    except Exception as e:
-        logger.debug(f"财报表缓存写入失败 {code}: {e}")
+    # 三表全空视为获取失败，不落盘（避免限流假阴性被长期缓存）；板块层 parquet/memo 兜底防重复构建
+    all_empty = all(x is None or (hasattr(x, "empty") and x.empty) for x in result)
+    if not all_empty:
+        try:
+            with open(f, "wb") as fh:
+                pickle.dump(result, fh)
+        except Exception as e:
+            logger.debug(f"财报表缓存写入失败 {code}: {e}")
     return result
 
 
