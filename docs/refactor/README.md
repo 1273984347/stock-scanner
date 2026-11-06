@@ -106,7 +106,51 @@ finally:
 
 ---
 
-## 五、已知限制
+## 五、CI 门禁接入（2026-11-07 完成）
+
+```yaml
+- name: Contract snapshot check (API 契约漂移门禁)
+  # 契约与 Python 小版本无关 —— 只在 3.12 上跑，覆盖 3 个 OS 而非 9 个 job
+  # 放在 pytest 之前：门禁须能快速失败，不受全量测试耗时影响
+  if: matrix.python-version == '3.12'
+  env:
+    SKIP_HS300_PREFETCH: '1'
+  run: python scripts/contract_snapshot.py --check
+```
+
+**三平台验证结果**（run `42290016850`）：
+
+| Job | 契约步骤 | 说明 |
+|---|---|---|
+| `test (ubuntu-latest, 3.12)` | ✅ success | Linux |
+| `test (macos-latest, 3.12)` | ✅ success | macOS |
+| `test (windows-latest, 3.12)` | ✅ success | Windows（修复前为 failure） |
+| `test (*, 3.10)` / `test (*, 3.11)` | skipped | 条件生效 |
+
+矩阵仍是 **9 个 job（未新增）**；契约检查只在 3.12 × 3 OS 执行。
+
+> ⚠️ **该门禁的结论必须取「步骤级」**：仓库既有 pytest 在三平台均有 3 个失败
+> （`tests/test_signal_tracker.py::TestBorrow2AtomicWrite`，portalocker 跨平台），
+> 会让 workflow **整体** conclusion 变成 failure，但与契约门禁无关。
+> 把契约步骤放在 `Run tests` **之前**，正是为了让门禁能独立跑完并独立出结论。
+
+### 跨平台编码（踩过的坑）
+
+Windows CI 的 `stdout` 默认 **cp1252/cp936**（非 UTF-8），脚本里任何中文 `print` 都会
+直接抛 `UnicodeEncodeError` 让门禁崩溃；**本地终端是 UTF-8 ⇒ 本地永远测不出来**。
+现采用双保险：① 全部门禁输出为**纯 ASCII**（中文说明在本文件与代码注释里）
+② 入口处 `sys.stdout/stderr.reconfigure(encoding="utf-8", errors="replace")`。
+
+本地复现（不必等 CI）：
+
+```powershell
+$env:PYTHONIOENCODING='cp1252'
+python scripts/contract_snapshot.py --check   # 修复前崩溃；修复后 exit 0
+```
+
+---
+
+## 六、已知限制
 
 1. **导入副作用**：`python scripts/contract_snapshot.py` 会 `import api`，触发
    `后台预获取沪深300数据`（写入 `cache/`，已 gitignore，**不污染工作树** —— 实测导入前后

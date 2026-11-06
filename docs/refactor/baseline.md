@@ -48,6 +48,33 @@
 
 ---
 
+## 二·0、CI 基线（2026-11-07 实测，run `42289383981` / ubuntu-latest 3.12）
+
+| 指标 | 读数 |
+|---|---|
+| pytest 用例总数 | 1,132（**1,117 passed + 3 failed + 12 skipped**） |
+| pytest 耗时（CI 干净环境） | **110.69s** |
+| 失败用例 | 全部集中在 `tests/test_signal_tracker.py::TestBorrow2AtomicWrite`（3 个） |
+| 本地全量耗时 | **> 28 min 未结束**（被主动取消） |
+
+**本地 vs CI 相差 15 倍以上** —— CI 环境无本地 TDX 数据、无预取缓存，110s 跑完；
+本地跑 28 分钟未完 ⇒ 本地存在走真实数据/网络路径的慢用例。Phase 0 剩余项需定位这些用例
+（`pytest --durations=20`），否则本地开发与 CI 的行为差异无法解释。
+
+### 既有 CI 红（非本次引入，已存在）
+
+3.10 / 3.11 的 job 同样失败在 `Run tests`，与契约门禁无关：
+- `test_concurrent_save_history_no_data_loss` —— 并发写入丢失 400 条 records
+- `test_portalocker_lock_acquired_and_released` —— 断言 `portalocker.Lock must be called`
+- `test_portalocker_timeout_returns_gracefully` —— 期望抛 `OSError` 但未抛
+
+根因方向：项目在 `.pre-commit-config.yaml` 注明 portalocker 为「Windows 优先，Linux fallback fcntl」，
+而这 3 条断言 **portalocker 必被调用** ⇒ Linux 上的 fcntl fallback 与测试断言不匹配。
+**属 Phase 0 待修的既有问题**，与契约快照工具无关；在此之前，
+CI 的整体结论不可用于判断契约门禁，**必须看步骤级结论**。
+
+---
+
 ## 三、覆盖率基线（⏳ 待补 —— Phase 0 剩余项）
 
 > 目标：CI 增加 `pytest --cov`，产出按模块分解的覆盖率基线，**先只报不卡**。
@@ -90,6 +117,8 @@
 |---|---|---:|---:|---:|---|
 | 0 | 契约快照覆盖端点数 | — | 68 | 68 | ✅ 完成 |
 | 0 | 尺子自证（判红能力） | — | 3 路验证 | 3 路通过 | ✅ 完成 |
+| 0 | **CI 门禁三平台可用** | — | ubuntu/macos/windows 全绿 | 3/3 success | ✅ 完成 |
+| 0 | CI job 数增量 | 9 | 9（不新增） | 9 | ✅ 完成 |
 | 0 | 覆盖率基线入库 | — | 按模块分解 | — | ⏳ 待补 |
 | 0 | 对拍框架可用 | — | 3 条链路 | — | ⏳ 待补 |
 | 0 | 零测试数据模块契约测试 | — | ≥5 | 0 | ⏳ 待补 |
