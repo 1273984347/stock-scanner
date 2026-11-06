@@ -23,15 +23,6 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install xgboost lightgbm scikit-learn
-      - name: Warm up matplotlib and akshare (diagnostic pre-warm)
-        # 带 coverage 时 test_backtest_charts_cleanup::test_temp_charts_cleans_up_on_exit
-        # 在三平台偶发失败：KeyError: 'packaging'（matplotlib 自身不引用 packaging，
-        # 疑似 py_mini_racer -> pkg_resources -> importlib.metadata 的元数据查找，
-        # 且只在首次触发图表路径时发生）。
-        # 这里**真正画一张图并保存** + import akshare，把这两条可疑路径提前到
-        # 测试之前：要么提前暴露根因（步骤会红），要么消除测试内的偶发。
-        if: matrix.python-version == '3.12'
-        run: python -c "import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt; import io; f,a=plt.subplots(); a.plot([1,2,3]); b=io.BytesIO(); f.savefig(b, format='png'); plt.close('all'); import akshare; print('prewarm ok')"
       - name: Contract snapshot check (API 契约漂移门禁)
         # 契约与 Python 小版本无关 —— 只在 3.12 上跑，覆盖 3 个 OS 而非 9 个 job
         # 放在 pytest 之前：门禁须能快速失败，不受全量测试耗时影响

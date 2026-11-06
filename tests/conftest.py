@@ -9,6 +9,28 @@ import pandas as pd
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 
+# ============================================================================
+# matplotlib 必须在**任何 patch.dict("sys.modules", ...) 之前**完成 import
+#
+# 根因（2026-11-07 实测）：unittest.mock.patch.dict 退出时会
+#   sys.modules.clear() + update(进入时的快照)
+# => **作用域内新 import 的模块会被删除**。
+# 若 matplotlib 恰好在某次 patch.dict 作用域内首次 import，则它处于半初始化
+# 状态却被移出 sys.modules => 之后再 import 会抛
+#   "ImportError: cannot load module more than once per process"（本地）
+# 或 KeyError: 'packaging'（CI 上带 coverage 时偶发，三平台轮流出现）。
+#
+# 覆盖率只是放大器（import 时序窗口变长），不是根因；
+# 在 pytest 进程外做预热**无效**（pytest 进程内的 sys.modules 仍会被撤销）。
+#
+# 修法：在 conftest 模块顶层完成 import —— 此时任何 patch.dict 作用域都还没开始，
+# 它的快照里已含 matplotlib/packaging，退出时 clear+restore 会**保留**它们。
+# ============================================================================
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot  # noqa: F401  (确保子模块也完成初始化)
+
 
 # 加载日志配置
 logging.config.fileConfig(os.path.join(os.path.dirname(__file__), "logging.conf"), disable_existing_loggers=False)
