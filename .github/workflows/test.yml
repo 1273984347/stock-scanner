@@ -23,6 +23,12 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install xgboost lightgbm scikit-learn
+      - name: Warm up matplotlib font cache
+        # matplotlib 首次 import 要构建字体缓存（扫描系统字体），
+        # 在 macOS arm64 上放到测试里做会偶发失败（KeyError: 'packaging'）；
+        # 提前预热既降风险也加速 CI（只建一次缓存）
+        if: matrix.python-version == '3.12'
+        run: python -c "import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot; matplotlib.pyplot.close('all')"
       - name: Contract snapshot check (API 契约漂移门禁)
         # 契约与 Python 小版本无关 —— 只在 3.12 上跑，覆盖 3 个 OS 而非 9 个 job
         # 放在 pytest 之前：门禁须能快速失败，不受全量测试耗时影响
