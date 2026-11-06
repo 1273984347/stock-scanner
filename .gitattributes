@@ -1,0 +1,2 @@
+# 契约基线按 LF 存储，保证三平台（Windows/macOS/Linux）检出内容一致
+docs/refactor/contracts/*.json text eol=lf

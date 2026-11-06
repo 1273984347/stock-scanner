@@ -1,0 +1,2667 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-06T20:32:13+00:00",
+  "app_version": "3.0.0",
+  "auth_mechanism": "APIKeyHeader via Depends 链（本项目不使用 FastAPI SecurityRequirement，\n                            故 OpenAPI 中不存在 apiKey security scheme；鉴权只能靠依赖名识别）",
+  "source": {
+    "commit": "a7c2265",
+    "branch": "master",
+    "api_py_sha256": "e5e1965db13873597b1f067b24445644cb2d92e008f76ab67297fbaccbb1856e"
+  },
+  "counts": {
+    "total_routes": 78,
+    "http_api": 68,
+    "http_non_api": 3,
+    "websocket": 1,
+    "static_mount": 2,
+    "framework_builtin": 4,
+    "methods": {
+      "GET": 49,
+      "POST": 15,
+      "DELETE": 3,
+      "PATCH": 1
+    },
+    "async_true": 68,
+    "async_false": 0,
+    "auth_required": 65
+  },
+  "routes": [
+    {
+      "path": "/",
+      "method": "GET",
+      "handler": "index",
+      "async": true,
+      "auth_required": false,
+      "dependencies": [],
+      "auth_dependencies": [],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "page_or_asset"
+    },
+    {
+      "path": "/api/ab-test/presets",
+      "method": "GET",
+      "handler": "ab_test_presets",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/ab-test/run",
+      "method": "POST",
+      "handler": "ab_test_run",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/alerts/check",
+      "method": "POST",
+      "handler": "check_alerts",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/alerts/rules",
+      "method": "GET",
+      "handler": "get_alert_rules",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/alerts/rules",
+      "method": "POST",
+      "handler": "create_alert_rule",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/alerts/rules/{rule_id}",
+      "method": "DELETE",
+      "handler": "delete_alert_rule",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "rule_id",
+          "in": "path",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/alerts/rules/{rule_id}",
+      "method": "PATCH",
+      "handler": "update_alert_rule",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "rule_id",
+          "in": "path",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/attribution",
+      "method": "GET",
+      "handler": "return_attribution",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/audit",
+      "method": "GET",
+      "handler": "audit_history",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/audit/{scan_id}",
+      "method": "GET",
+      "handler": "audit_detail",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "scan_id",
+          "in": "path",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/backtest",
+      "method": "POST",
+      "handler": "run_backtest",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "confidence_threshold",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "max_hold_days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "preset",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "risk_per_trade_pct",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "stop_loss_atr_mult",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "symbols",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "take_profit_atr_mult",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/backtest/compare",
+      "method": "POST",
+      "handler": "compare_strategies",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "symbols",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/backup/create",
+      "method": "POST",
+      "handler": "backup_create",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/backup/list",
+      "method": "GET",
+      "handler": "backup_list",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/backup/restore",
+      "method": "POST",
+      "handler": "backup_restore",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/backup/{backup_file}",
+      "method": "DELETE",
+      "handler": "backup_delete",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "backup_file",
+          "in": "path",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/dashboard",
+      "method": "GET",
+      "handler": "dashboard",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "preset",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/errors",
+      "method": "POST",
+      "handler": "report_frontend_error",
+      "async": true,
+      "auth_required": false,
+      "dependencies": [],
+      "auth_dependencies": [],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/export/config",
+      "method": "GET",
+      "handler": "export_config",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "preset",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/export/pdf",
+      "method": "POST",
+      "handler": "export_pdf",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/export/pdf/status",
+      "method": "GET",
+      "handler": "export_pdf_status",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/export/positions",
+      "method": "GET",
+      "handler": "export_positions",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/export/positions/excel",
+      "method": "GET",
+      "handler": "export_positions_excel",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/export/trades",
+      "method": "GET",
+      "handler": "export_trades",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/export/trades/excel",
+      "method": "GET",
+      "handler": "export_trades_excel",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/exposures",
+      "method": "GET",
+      "handler": "factor_exposures",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "preset",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/factor-contribution",
+      "method": "GET",
+      "handler": "factor_contribution",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/factor-eval",
+      "method": "GET",
+      "handler": "factor_evaluation",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "n_stocks",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/factor-ic-history",
+      "method": "GET",
+      "handler": "factor_ic_history",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/factor-scatter",
+      "method": "GET",
+      "handler": "factor_scatter",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "n_stocks",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "x_factor",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "y_factor",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/factor-weights",
+      "method": "GET",
+      "handler": "factor_weights",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "preset",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/health",
+      "method": "GET",
+      "handler": "health",
+      "async": true,
+      "auth_required": false,
+      "dependencies": [],
+      "auth_dependencies": [],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/import/config",
+      "method": "POST",
+      "handler": "import_config",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/kline/{code}",
+      "method": "GET",
+      "handler": "kline_data",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "code",
+          "in": "path",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/market",
+      "method": "GET",
+      "handler": "market_overview",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/notifications",
+      "method": "GET",
+      "handler": "get_notifications",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "end_date",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "keyword",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "start_date",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "type",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/notifications/stats",
+      "method": "GET",
+      "handler": "get_notification_stats",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/position-distribution",
+      "method": "GET",
+      "handler": "position_distribution",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/position/{code}",
+      "method": "GET",
+      "handler": "position_detail",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "code",
+          "in": "path",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/positions",
+      "method": "GET",
+      "handler": "positions",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/regime-history",
+      "method": "GET",
+      "handler": "regime_history",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/reports",
+      "method": "GET",
+      "handler": "report_history",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/risk",
+      "method": "GET",
+      "handler": "risk_assessment",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/risk-exposure",
+      "method": "GET",
+      "handler": "risk_exposure",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/risk/correlation",
+      "method": "GET",
+      "handler": "risk_correlation",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/sankey/flow",
+      "method": "GET",
+      "handler": "sankey_flow",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/scan",
+      "method": "GET",
+      "handler": "scan",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "preset",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/scan/status",
+      "method": "GET",
+      "handler": "scan_status",
+      "async": true,
+      "auth_required": false,
+      "dependencies": [],
+      "auth_dependencies": [],
+      "params": [
+        {
+          "name": "preset",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/score/{code}",
+      "method": "GET",
+      "handler": "stock_score",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "code",
+          "in": "path",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/sector-flow",
+      "method": "GET",
+      "handler": "sector_flow",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "top_n",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/sector-heatmap",
+      "method": "GET",
+      "handler": "sector_heatmap",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "top_n",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/settings",
+      "method": "GET",
+      "handler": "get_settings",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/settings",
+      "method": "POST",
+      "handler": "save_settings",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/signals",
+      "method": "GET",
+      "handler": "signal_accuracy",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/signals/accuracy-trend",
+      "method": "GET",
+      "handler": "signals_accuracy_trend",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/stock/{code}",
+      "method": "GET",
+      "handler": "stock_detail",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "code",
+          "in": "path",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/strategy/history",
+      "method": "GET",
+      "handler": "strategy_history",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/strategy/ranking",
+      "method": "GET",
+      "handler": "strategy_ranking",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/strategy/recommend",
+      "method": "GET",
+      "handler": "strategy_recommend",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "symbols",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/strategy/save",
+      "method": "POST",
+      "handler": "strategy_save",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/strategy/snapshot",
+      "method": "POST",
+      "handler": "strategy_snapshot_save",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/strategy/snapshot/{snapshot_id}",
+      "method": "DELETE",
+      "handler": "strategy_snapshot_delete",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "snapshot_id",
+          "in": "path",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/strategy/snapshot/{snapshot_id}/apply",
+      "method": "POST",
+      "handler": "strategy_snapshot_apply",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "snapshot_id",
+          "in": "path",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/strategy/snapshots",
+      "method": "GET",
+      "handler": "strategy_snapshots_list",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/trade-history",
+      "method": "GET",
+      "handler": "trade_history",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "code",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "sort_by",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/treemap/factors",
+      "method": "GET",
+      "handler": "treemap_factors",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/treemap/sectors",
+      "method": "GET",
+      "handler": "treemap_sectors",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/walkforward",
+      "method": "POST",
+      "handler": "run_walkforward",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [
+        {
+          "name": "step_days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "symbols",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "train_days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        },
+        {
+          "name": "validation_days",
+          "in": "query",
+          "required": false,
+          "type": "",
+          "default": null
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "422": {
+          "description": "Validation Error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HTTPValidationError"
+              }
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/favicon.svg",
+      "method": "GET",
+      "handler": "favicon",
+      "async": true,
+      "auth_required": false,
+      "dependencies": [],
+      "auth_dependencies": [],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "page_or_asset"
+    },
+    {
+      "path": "/sw.js",
+      "method": "GET",
+      "handler": "service_worker",
+      "async": true,
+      "auth_required": false,
+      "dependencies": [],
+      "auth_dependencies": [],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "page_or_asset"
+    },
+    {
+      "path": "/ws",
+      "method": "WEBSOCKET",
+      "handler": "websocket_endpoint",
+      "async": true,
+      "auth_required": false,
+      "dependencies": [],
+      "security_schemes": [],
+      "params": [],
+      "responses": {},
+      "status_code": null,
+      "category": "websocket"
+    }
+  ]
+}

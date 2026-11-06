@@ -23,5 +23,13 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install xgboost lightgbm scikit-learn
+      - name: Contract snapshot check (API 契约漂移门禁)
+        # 契约与 Python 小版本无关 —— 只在 3.12 上跑，覆盖 3 个 OS 而非 9 个 job
+        # 放在 pytest 之前：门禁须能快速失败，不受全量测试耗时影响
+        if: matrix.python-version == '3.12'
+        env:
+          # 跳过 api 模块 import 期的 akshare 行情预取，保证门禁零网络副作用
+          SKIP_HS300_PREFETCH: '1'
+        run: python scripts/contract_snapshot.py --check
       - name: Run tests
         run: pytest tests/ -v --tb=short

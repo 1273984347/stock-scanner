@@ -236,7 +236,10 @@ def _prefetch_hs300():
         logger.warning(f"预获取沪深300失败（不影响使用）: {e}")
 
 
-threading.Thread(target=_prefetch_hs300, daemon=True).start()
+# 预取走 akshare 网络源。契约快照 / CI 等无网或无需预取的场景，
+# 可设 SKIP_HS300_PREFETCH=1 跳过 —— 默认行为完全不变。
+if os.environ.get("SKIP_HS300_PREFETCH", "").strip().lower() not in ("1", "true", "yes"):
+    threading.Thread(target=_prefetch_hs300, daemon=True).start()
 
 STATIC_DIR = Path(__file__).parent / "static"
 CACHE_DIR = Path(__file__).parent / "cache"
