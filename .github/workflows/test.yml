@@ -45,6 +45,13 @@ jobs:
         # 单一阈值硬卡必然误判）。该平台尚无基线时只报告不阻断。
         if: matrix.python-version == '3.12'
         run: python scripts/coverage_baseline.py --check --coverage-file coverage.json
+      - name: Dual-run diff (行为漂移门禁)
+        # 同一份注入数据下比对 3 条链路的**实际结果**（比契约快照更深：
+        # 契约快照只看路径+schema，这里看数值与字段内容）。
+        # 基线来自 docs/refactor/dual-run-baseline.json（由旧实现 --capture 生成），
+        # Phase N 改动后本步骤即判定"行为是否改变"。
+        if: matrix.python-version == '3.12'
+        run: python scripts/dual_run_diff.py --check --out docs/refactor/dual-run-baseline.json
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4

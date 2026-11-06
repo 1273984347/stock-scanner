@@ -1,0 +1,3156 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-06T23:31:05+00:00",
+  "constraints": {
+    "as_of_date": "2026-05-30",
+    "data_sources": [
+      "tdx_local_qfq",
+      "tdx_local"
+    ],
+    "seed": 42,
+    "tolerance": 1e-09,
+    "network": "blocked (loopback allowed)"
+  },
+  "chains": {
+    "score": {
+      "ok": true,
+      "result": {
+        "code": "600519",
+        "combined": {},
+        "constraints": {
+          "blocked": false,
+          "passed": true,
+          "score_adjustment": 0.0,
+          "violations": []
+        },
+        "factors": {
+          "adx": 47.19,
+          "cci": -75.29,
+          "kdj_fast_j": 32.36392170446255,
+          "kdj_j": 32.36,
+          "kdj_medium_j": 16.436798753329086,
+          "kdj_resonance_score": 15.0,
+          "kdj_slow_j": 7.794530936500735,
+          "mfi": 39.24,
+          "momentum_20": -12.170491487900303,
+          "momentum_5": 2.013131089189102,
+          "rsi_14": 32.96626040515872,
+          "trend_strength": -4.626465421791148,
+          "trix": -0.5255,
+          "volatility_20": 33.21714425451512,
+          "volume_ratio": 1.2527185331124406,
+          "williams_r": -74.69
+        },
+        "judge_panel": {
+          "bullish_pct": 0,
+          "consensus": "HOLD",
+          "score": 0,
+          "total_votes": 0
+        },
+        "macro_gate": {},
+        "ml_prediction": {},
+        "regime": {},
+        "score": {
+          "breakdown": {
+            "capital_flow": 4.0,
+            "fundamental": 2.0,
+            "news": 2.0,
+            "technical": 5.0
+          },
+          "rating": "谨慎",
+          "score": 3.0,
+          "weights": {
+            "capital_flow": 0.35,
+            "fundamental": 0.35,
+            "news": 0.2,
+            "technical": 0.1
+          },
+          "六因子明细": {
+            "momentum": 20,
+            "sector": 50.0,
+            "structure": 80,
+            "trend": 20,
+            "volatility": 80,
+            "volume": 60
+          },
+          "六因子评分": 49.0,
+          "六因子评级": "谨慎(6F)"
+        },
+        "technical": {
+          "signals": {
+            "ADX_DMI": "bearish",
+            "Bollinger": "neutral",
+            "CCI": "neutral",
+            "KDJ": "bullish",
+            "KDJ_turn": "neutral",
+            "MACD": "bearish",
+            "MA_Cross": "bearish",
+            "MFI": "neutral",
+            "OBV": "bullish",
+            "ROC": "bearish",
+            "RSI": "neutral",
+            "TRIX": "bearish",
+            "Williams_R": "neutral"
+          },
+          "summary": {
+            "bearish_count": 5,
+            "bearish_pct": 38.5,
+            "bullish_count": 2,
+            "bullish_pct": 15.4,
+            "neutral_count": 6,
+            "total_indicators": 13,
+            "verdict": "bearish"
+          },
+          "verdict": "bearish"
+        }
+      }
+    },
+    "scan": {
+      "ok": true,
+      "result": {
+        "alpha_analysis": {},
+        "factor_health": {
+          "coverage": {},
+          "degenerate_factors": [],
+          "last_evaluation": null,
+          "need_full_evaluation": true,
+          "recommendation": "建议运行完整因子评估（python run.py --evaluate）"
+        },
+        "index_signal": {
+          "bull_market": true
+        },
+        "macro_filter": {
+          "index_ma20": null,
+          "index_trend": "UNKNOWN",
+          "position_mult": 1.0,
+          "shibor": null,
+          "shibor_regime": "UNKNOWN",
+          "v4_position_scalar": [
+            0.5,
+            1.0
+          ],
+          "v4_regime": "TREND_UP"
+        },
+        "ml_ranking": {},
+        "portfolio": {
+          "details": [
+            {
+              "code": "600519",
+              "name": "股票A",
+              "score": 0.0,
+              "sector": "",
+              "weight": 0.5
+            },
+            {
+              "code": "000001",
+              "name": "股票B",
+              "score": 0.0,
+              "sector": "",
+              "weight": 0.5
+            }
+          ],
+          "expected_return": 0.0,
+          "expected_vol": 7.0155,
+          "n_positions": 2,
+          "sector_exposure": {},
+          "sharpe_ratio": 0.0,
+          "turnover": 0.0,
+          "weights": {
+            "000001": 0.5,
+            "600519": 0.5
+          }
+        },
+        "preset": "balanced",
+        "results": {
+          "多因子选股": {
+            "__df__": true,
+            "columns": [
+              "代码",
+              "名称",
+              "涨跌幅",
+              "60日涨跌幅",
+              "评分"
+            ],
+            "dtypes": {
+              "代码": "object",
+              "名称": "object",
+              "涨跌幅": "float64",
+              "60日涨跌幅": "float64",
+              "评分": "float64"
+            },
+            "shape": [
+              2,
+              5
+            ],
+            "records": [
+              {
+                "代码": "600519",
+                "名称": "股票A",
+                "涨跌幅": 1.5,
+                "60日涨跌幅": 10.0,
+                "评分": 80.0
+              },
+              {
+                "代码": "000001",
+                "名称": "股票B",
+                "涨跌幅": -0.5,
+                "60日涨跌幅": -2.0,
+                "评分": 60.0
+              }
+            ]
+          },
+          "涨停板复盘": {
+            "__df__": true,
+            "columns": [
+              "代码",
+              "名称",
+              "涨跌幅",
+              "60日涨跌幅",
+              "评分",
+              "_strategy_weight"
+            ],
+            "dtypes": {
+              "代码": "object",
+              "名称": "object",
+              "涨跌幅": "float64",
+              "60日涨跌幅": "float64",
+              "评分": "float64",
+              "_strategy_weight": "float64"
+            },
+            "shape": [
+              2,
+              6
+            ],
+            "records": [
+              {
+                "代码": "600519",
+                "名称": "股票A",
+                "涨跌幅": 1.5,
+                "60日涨跌幅": 10.0,
+                "评分": 80.0,
+                "_strategy_weight": 0.8
+              },
+              {
+                "代码": "000001",
+                "名称": "股票B",
+                "涨跌幅": -0.5,
+                "60日涨跌幅": -2.0,
+                "评分": 60.0,
+                "_strategy_weight": 0.8
+              }
+            ]
+          },
+          "热门板块": {
+            "__df__": true,
+            "columns": [
+              "代码",
+              "名称",
+              "涨跌幅",
+              "60日涨跌幅",
+              "评分",
+              "_strategy_weight"
+            ],
+            "dtypes": {
+              "代码": "object",
+              "名称": "object",
+              "涨跌幅": "float64",
+              "60日涨跌幅": "float64",
+              "评分": "float64",
+              "_strategy_weight": "float64"
+            },
+            "shape": [
+              2,
+              6
+            ],
+            "records": [
+              {
+                "代码": "600519",
+                "名称": "股票A",
+                "涨跌幅": 1.5,
+                "60日涨跌幅": 10.0,
+                "评分": 80.0,
+                "_strategy_weight": 0.7
+              },
+              {
+                "代码": "000001",
+                "名称": "股票B",
+                "涨跌幅": -0.5,
+                "60日涨跌幅": -2.0,
+                "评分": 60.0,
+                "_strategy_weight": 0.7
+              }
+            ]
+          },
+          "量价突破": {
+            "__df__": true,
+            "columns": [
+              "代码",
+              "名称",
+              "涨跌幅",
+              "60日涨跌幅",
+              "评分"
+            ],
+            "dtypes": {
+              "代码": "object",
+              "名称": "object",
+              "涨跌幅": "float64",
+              "60日涨跌幅": "float64",
+              "评分": "float64"
+            },
+            "shape": [
+              2,
+              5
+            ],
+            "records": [
+              {
+                "代码": "600519",
+                "名称": "股票A",
+                "涨跌幅": 1.5,
+                "60日涨跌幅": 10.0,
+                "评分": 80.0
+              },
+              {
+                "代码": "000001",
+                "名称": "股票B",
+                "涨跌幅": -0.5,
+                "60日涨跌幅": -2.0,
+                "评分": 60.0
+              }
+            ]
+          },
+          "龙虎榜": {
+            "__df__": true,
+            "columns": [
+              "代码",
+              "名称",
+              "涨跌幅",
+              "60日涨跌幅",
+              "评分",
+              "_strategy_weight"
+            ],
+            "dtypes": {
+              "代码": "object",
+              "名称": "object",
+              "涨跌幅": "float64",
+              "60日涨跌幅": "float64",
+              "评分": "float64",
+              "_strategy_weight": "float64"
+            },
+            "shape": [
+              2,
+              6
+            ],
+            "records": [
+              {
+                "代码": "600519",
+                "名称": "股票A",
+                "涨跌幅": 1.5,
+                "60日涨跌幅": 10.0,
+                "评分": 80.0,
+                "_strategy_weight": 0.5
+              },
+              {
+                "代码": "000001",
+                "名称": "股票B",
+                "涨跌幅": -0.5,
+                "60日涨跌幅": -2.0,
+                "评分": 60.0,
+                "_strategy_weight": 0.5
+              }
+            ]
+          }
+        },
+        "risk_check": {
+          "alerts": [],
+          "macro_gate": {
+            "multiplier": 1.0,
+            "regime": "NEUTRAL",
+            "sentiment_mult": 1.0,
+            "shibor_mult": 1.0,
+            "state": "ALLOW_FULL"
+          },
+          "recommendation": "风控通过，可正常交易",
+          "risk_budget": {
+            "cash": 0.35,
+            "equity": 0.65,
+            "max_positions": 8.0
+          },
+          "strategy_exposure": {
+            "多因子选股": 2,
+            "涨停板复盘": 2,
+            "热门板块": 2,
+            "量价突破": 2,
+            "龙虎榜": 2
+          },
+          "total_candidates": 10
+        }
+      }
+    },
+    "backtest": {
+      "ok": true,
+      "result": {
+        "benchmark": null,
+        "cost_summary": {
+          "cost_ratio": 0.0004916681134951462,
+          "total_commission": 1095.379293865,
+          "total_cost": 2154.252283905,
+          "total_impact_cost": 0.0,
+          "total_stamp_tax": 1058.87299004,
+          "total_turnover": 4381517.17546
+        },
+        "delisted_codes": [],
+        "exit_reasons": {
+          "other": 0,
+          "stop_loss": 1,
+          "take_profit": 0,
+          "timeout": 14
+        },
+        "metrics": "PerformanceMetrics(total_return=np.float64(0.004564332416095329), annual_return=np.float64(0.004440698587652392), annual_volatility=np.float64(0.013690801442481268), sharpe_ratio=np.float64(-1.8607937337780638), sortino_ratio=np.float64(-2.107592737190126), calmar_ratio=np.float64(0.3456437915347602), max_drawdown=np.float64(-0.0128476156563796), max_drawdown_duration=48, win_rate=0.22007722007722008, profit_loss_ratio=np.float64(1.2720879189884213), daily_var_95=np.float64(-0.0014265208336448954), daily_var_99=np.float64(-0.002372518618390378), information_ratio=0.0, tracking_error=0.0, excess_return=0.0, turnover_rate=0.0)",
+        "perf_df": {
+          "__df__": true,
+          "columns": [
+            "trade_date",
+            "cash",
+            "market_value",
+            "total_value",
+            "position_count",
+            "daily_return",
+            "cumulative_return"
+          ],
+          "dtypes": {
+            "trade_date": "object",
+            "cash": "float64",
+            "market_value": "float64",
+            "total_value": "float64",
+            "position_count": "int64",
+            "daily_return": "float64",
+            "cumulative_return": "float64"
+          },
+          "shape": [
+            260,
+            7
+          ],
+          "records": [
+            {
+              "trade_date": "2025-05-01",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": null,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-02",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-05",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-06",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-07",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-08",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-09",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-12",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-13",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-14",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-15",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-16",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-19",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-20",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-21",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-22",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-23",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-26",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-27",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-28",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-29",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-05-30",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-02",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-03",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-04",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-05",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-06",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-09",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-10",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-11",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-12",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-13",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-16",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-17",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-18",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-19",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-20",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-23",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-24",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-25",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-26",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-27",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-06-30",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-01",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-02",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-03",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-04",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-07",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-08",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-09",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-10",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-11",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-14",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-15",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-16",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-17",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-18",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-21",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-22",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-23",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-24",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-25",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-28",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-29",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-30",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-07-31",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-08-01",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-08-04",
+              "cash": 1000000.0,
+              "market_value": 0.0,
+              "total_value": 1000000.0,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.0
+            },
+            {
+              "trade_date": "2025-08-05",
+              "cash": 846161.22323833,
+              "market_value": 153800.32668,
+              "total_value": 999961.54991833,
+              "position_count": 1,
+              "daily_return": -3.845008166991626e-05,
+              "cumulative_return": -3.845008166991626e-05
+            },
+            {
+              "trade_date": "2025-08-06",
+              "cash": 846161.22323833,
+              "market_value": 152838.14,
+              "total_value": 998999.36323833,
+              "position_count": 1,
+              "daily_return": -0.0009622236775790327,
+              "cumulative_return": -0.0010006367616699485
+            },
+            {
+              "trade_date": "2025-08-07",
+              "cash": 846161.22323833,
+              "market_value": 154120.54,
+              "total_value": 1000281.76323833,
+              "position_count": 1,
+              "daily_return": 0.0012836845019030818,
+              "cumulative_return": 0.00028176323833006833
+            },
+            {
+              "trade_date": "2025-08-08",
+              "cash": 846161.22323833,
+              "market_value": 154533.4,
+              "total_value": 1000694.62323833,
+              "position_count": 1,
+              "daily_return": 0.0004127437039973536,
+              "cumulative_return": 0.0006946232383300277
+            },
+            {
+              "trade_date": "2025-08-11",
+              "cash": 846161.22323833,
+              "market_value": 157716.16,
+              "total_value": 1003877.38323833,
+              "position_count": 1,
+              "daily_return": 0.003180550715562225,
+              "cumulative_return": 0.00387738323833009
+            },
+            {
+              "trade_date": "2025-08-12",
+              "cash": 846161.22323833,
+              "market_value": 160082.02000000002,
+              "total_value": 1006243.24323833,
+              "position_count": 1,
+              "daily_return": 0.0023567220852891424,
+              "cumulative_return": 0.006243243238329921
+            },
+            {
+              "trade_date": "2025-08-13",
+              "cash": 846161.22323833,
+              "market_value": 159173.56,
+              "total_value": 1005334.7832383299,
+              "position_count": 1,
+              "daily_return": -0.0009028234535781721,
+              "cumulative_return": 0.005334783238329921
+            },
+            {
+              "trade_date": "2025-08-14",
+              "cash": 846161.22323833,
+              "market_value": 160237.41999999998,
+              "total_value": 1006398.64323833,
+              "position_count": 1,
+              "daily_return": 0.0010582146542004178,
+              "cumulative_return": 0.0063986432383300595
+            },
+            {
+              "trade_date": "2025-08-15",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": -0.00048394742210977615,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-08-18",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-08-19",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-08-20",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-08-21",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-08-22",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-08-25",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-08-26",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-08-27",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-08-28",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-08-29",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-01",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-02",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-03",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-04",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-05",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-08",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-09",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-10",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-11",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-12",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-15",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-16",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-17",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-18",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-19",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-22",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-23",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-24",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-25",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-26",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-29",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-09-30",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-10-01",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-10-02",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-10-03",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-10-06",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-10-07",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-10-08",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-10-09",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-10-10",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-10-13",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-10-14",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-10-15",
+              "cash": 1005911.59920932,
+              "market_value": 0.0,
+              "total_value": 1005911.59920932,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.00591159920931994
+            },
+            {
+              "trade_date": "2025-10-16",
+              "cash": 915249.7328276751,
+              "market_value": 90639.20657999998,
+              "total_value": 1005888.9394076751,
+              "position_count": 1,
+              "daily_return": -2.2526633217889724e-05,
+              "cumulative_return": 0.005888939407675098
+            },
+            {
+              "trade_date": "2025-10-17",
+              "cash": 915249.7328276751,
+              "market_value": 89859.51,
+              "total_value": 1005109.2428276751,
+              "position_count": 1,
+              "daily_return": -0.0007751318753530523,
+              "cumulative_return": 0.005109242827675109
+            },
+            {
+              "trade_date": "2025-10-20",
+              "cash": 915249.7328276751,
+              "market_value": 89170.77,
+              "total_value": 1004420.5028276751,
+              "position_count": 1,
+              "daily_return": -0.0006852389478205767,
+              "cumulative_return": 0.0044205028276751435
+            },
+            {
+              "trade_date": "2025-10-21",
+              "cash": 915249.7328276751,
+              "market_value": 89533.08,
+              "total_value": 1004782.812827675,
+              "position_count": 1,
+              "daily_return": 0.0003607154563054493,
+              "cumulative_return": 0.004782812827675009
+            },
+            {
+              "trade_date": "2025-10-22",
+              "cash": 915249.7328276751,
+              "market_value": 92033.23999999999,
+              "total_value": 1007282.972827675,
+              "position_count": 1,
+              "daily_return": 0.0024882591223511774,
+              "cumulative_return": 0.007282972827675094
+            },
+            {
+              "trade_date": "2025-10-23",
+              "cash": 915249.7328276751,
+              "market_value": 90850.37,
+              "total_value": 1006100.1028276751,
+              "position_count": 1,
+              "daily_return": -0.0011743174777186782,
+              "cumulative_return": 0.006100102827675036
+            },
+            {
+              "trade_date": "2025-10-24",
+              "cash": 915249.7328276751,
+              "market_value": 90016.68000000001,
+              "total_value": 1005266.4128276751,
+              "position_count": 1,
+              "daily_return": -0.0008286352398303443,
+              "cumulative_return": 0.005266412827675149
+            },
+            {
+              "trade_date": "2025-10-27",
+              "cash": 1005313.5501857351,
+              "market_value": 0.0,
+              "total_value": 1005313.5501857351,
+              "position_count": 0,
+              "daily_return": 4.689041378336256e-05,
+              "cumulative_return": 0.005313550185735094
+            },
+            {
+              "trade_date": "2025-10-28",
+              "cash": 1005313.5501857351,
+              "market_value": 0.0,
+              "total_value": 1005313.5501857351,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.005313550185735094
+            },
+            {
+              "trade_date": "2025-10-29",
+              "cash": 827620.5299937251,
+              "market_value": 177648.60804,
+              "total_value": 1005269.1380337251,
+              "position_count": 1,
+              "daily_return": -4.417741310835943e-05,
+              "cumulative_return": 0.005269138033725085
+            },
+            {
+              "trade_date": "2025-10-30",
+              "cash": 827620.5299937251,
+              "market_value": 176338.11000000002,
+              "total_value": 1003958.6399937251,
+              "position_count": 1,
+              "daily_return": -0.0013036290386505556,
+              "cumulative_return": 0.003958639993725033
+            },
+            {
+              "trade_date": "2025-10-31",
+              "cash": 827620.5299937251,
+              "market_value": 176458.13,
+              "total_value": 1004078.6599937251,
+              "position_count": 1,
+              "daily_return": 0.00011954675742487098,
+              "cumulative_return": 0.004078659993725031
+            },
+            {
+              "trade_date": "2025-11-03",
+              "cash": 827620.5299937251,
+              "market_value": 174027.13,
+              "total_value": 1001647.6599937251,
+              "position_count": 1,
+              "daily_return": -0.00242112505410208,
+              "cumulative_return": 0.0016476599937251812
+            },
+            {
+              "trade_date": "2025-11-04",
+              "cash": 827620.5299937251,
+              "market_value": 175020.1,
+              "total_value": 1002640.6299937251,
+              "position_count": 1,
+              "daily_return": 0.0009913366143201596,
+              "cumulative_return": 0.002640629993725163
+            },
+            {
+              "trade_date": "2025-11-05",
+              "cash": 827620.5299937251,
+              "market_value": 176994.48,
+              "total_value": 1004615.0099937251,
+              "position_count": 1,
+              "daily_return": 0.0019691801239016815,
+              "cumulative_return": 0.0046150099937252165
+            },
+            {
+              "trade_date": "2025-11-06",
+              "cash": 827620.5299937251,
+              "market_value": 177299.8,
+              "total_value": 1004920.329993725,
+              "position_count": 1,
+              "daily_return": 0.0003039174180783366,
+              "cumulative_return": 0.004920329993725048
+            },
+            {
+              "trade_date": "2025-11-07",
+              "cash": 827620.5299937251,
+              "market_value": 177252.54,
+              "total_value": 1004873.0699937252,
+              "position_count": 1,
+              "daily_return": -4.702860375027651e-05,
+              "cumulative_return": 0.004873069993725165
+            },
+            {
+              "trade_date": "2025-11-10",
+              "cash": 1005894.9024397901,
+              "market_value": 0.0,
+              "total_value": 1005894.9024397901,
+              "position_count": 0,
+              "daily_return": 0.0010168771326226622,
+              "cumulative_return": 0.005894902439790073
+            },
+            {
+              "trade_date": "2025-11-11",
+              "cash": 1005894.9024397901,
+              "market_value": 0.0,
+              "total_value": 1005894.9024397901,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.005894902439790073
+            },
+            {
+              "trade_date": "2025-11-12",
+              "cash": 1005894.9024397901,
+              "market_value": 0.0,
+              "total_value": 1005894.9024397901,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.005894902439790073
+            },
+            {
+              "trade_date": "2025-11-13",
+              "cash": 1005894.9024397901,
+              "market_value": 0.0,
+              "total_value": 1005894.9024397901,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.005894902439790073
+            },
+            {
+              "trade_date": "2025-11-14",
+              "cash": 1005894.9024397901,
+              "market_value": 0.0,
+              "total_value": 1005894.9024397901,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.005894902439790073
+            },
+            {
+              "trade_date": "2025-11-17",
+              "cash": 1005894.9024397901,
+              "market_value": 0.0,
+              "total_value": 1005894.9024397901,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.005894902439790073
+            },
+            {
+              "trade_date": "2025-11-18",
+              "cash": 859152.64052341,
+              "market_value": 146705.58552000002,
+              "total_value": 1005858.2260434101,
+              "position_count": 1,
+              "daily_return": -3.6461459632652904e-05,
+              "cumulative_return": 0.005858226043410131
+            },
+            {
+              "trade_date": "2025-11-19",
+              "cash": 859152.64052341,
+              "market_value": 148083.78,
+              "total_value": 1007236.4205234101,
+              "position_count": 1,
+              "daily_return": 0.0013701677277335733,
+              "cumulative_return": 0.007236420523410114
+            },
+            {
+              "trade_date": "2025-11-20",
+              "cash": 859152.64052341,
+              "market_value": 148480.41,
+              "total_value": 1007633.0505234101,
+              "position_count": 1,
+              "daily_return": 0.0003937804391485056,
+              "cumulative_return": 0.007633050523410123
+            },
+            {
+              "trade_date": "2025-11-21",
+              "cash": 859152.64052341,
+              "market_value": 147391.4,
+              "total_value": 1006544.0405234101,
+              "position_count": 1,
+              "daily_return": -0.001080760500495992,
+              "cumulative_return": 0.006544040523410066
+            },
+            {
+              "trade_date": "2025-11-24",
+              "cash": 859152.64052341,
+              "market_value": 146365.44,
+              "total_value": 1005518.0805234101,
+              "position_count": 1,
+              "daily_return": -0.0010192897267231604,
+              "cumulative_return": 0.005518080523410074
+            },
+            {
+              "trade_date": "2025-11-25",
+              "cash": 859152.64052341,
+              "market_value": 149696.69,
+              "total_value": 1008849.3305234101,
+              "position_count": 1,
+              "daily_return": 0.0033129687715469647,
+              "cumulative_return": 0.008849330523410082
+            },
+            {
+              "trade_date": "2025-11-26",
+              "cash": 859152.64052341,
+              "market_value": 149212.31,
+              "total_value": 1008364.95052341,
+              "position_count": 1,
+              "daily_return": -0.00048013116066480954,
+              "cumulative_return": 0.00836495052341002
+            },
+            {
+              "trade_date": "2025-11-27",
+              "cash": 859152.64052341,
+              "market_value": 148156.06,
+              "total_value": 1007308.70052341,
+              "position_count": 1,
+              "daily_return": -0.0010474878162431978,
+              "cumulative_return": 0.007308700523410039
+            },
+            {
+              "trade_date": "2025-11-28",
+              "cash": 1006350.3824960551,
+              "market_value": 0.0,
+              "total_value": 1006350.3824960551,
+              "position_count": 0,
+              "daily_return": -0.0009513647870379449,
+              "cumulative_return": 0.006350382496055129
+            },
+            {
+              "trade_date": "2025-12-01",
+              "cash": 858275.4882248552,
+              "market_value": 148037.8848,
+              "total_value": 1006313.3730248552,
+              "position_count": 1,
+              "daily_return": -3.677592997797241e-05,
+              "cumulative_return": 0.00631337302485524
+            },
+            {
+              "trade_date": "2025-12-02",
+              "cash": 858275.4882248552,
+              "market_value": 147624.36,
+              "total_value": 1005899.8482248551,
+              "position_count": 1,
+              "daily_return": -0.00041093044282713986,
+              "cumulative_return": 0.00589984822485512
+            },
+            {
+              "trade_date": "2025-12-03",
+              "cash": 858275.4882248552,
+              "market_value": 151194.41999999998,
+              "total_value": 1009469.9082248551,
+              "position_count": 1,
+              "daily_return": 0.003549120726382693,
+              "cumulative_return": 0.00946990822485505
+            },
+            {
+              "trade_date": "2025-12-04",
+              "cash": 858275.4882248552,
+              "market_value": 149819.54,
+              "total_value": 1008095.0282248552,
+              "position_count": 1,
+              "daily_return": -0.0013619821539976318,
+              "cumulative_return": 0.008095028224855305
+            },
+            {
+              "trade_date": "2025-12-05",
+              "cash": 858275.4882248552,
+              "market_value": 150810.27000000002,
+              "total_value": 1009085.7582248552,
+              "position_count": 1,
+              "daily_return": 0.0009827744133850125,
+              "cumulative_return": 0.009085758224855134
+            },
+            {
+              "trade_date": "2025-12-08",
+              "cash": 858275.4882248552,
+              "market_value": 150191.47,
+              "total_value": 1008466.9582248551,
+              "position_count": 1,
+              "daily_return": -0.0006132283554259876,
+              "cumulative_return": 0.008466958224855103
+            },
+            {
+              "trade_date": "2025-12-09",
+              "cash": 858275.4882248552,
+              "market_value": 152321.91,
+              "total_value": 1010597.3982248552,
+              "position_count": 1,
+              "daily_return": 0.0021125531011447762,
+              "cumulative_return": 0.010597398224855281
+            },
+            {
+              "trade_date": "2025-12-10",
+              "cash": 858275.4882248552,
+              "market_value": 153567.7,
+              "total_value": 1011843.1882248551,
+              "position_count": 1,
+              "daily_return": 0.001232726308407539,
+              "cumulative_return": 0.011843188224855083
+            },
+            {
+              "trade_date": "2025-12-11",
+              "cash": 845775.8745563552,
+              "market_value": 163969.68,
+              "total_value": 1009745.5545563551,
+              "position_count": 1,
+              "daily_return": -0.002073081770881946,
+              "cumulative_return": 0.009745554556355174
+            },
+            {
+              "trade_date": "2025-12-12",
+              "cash": 845775.8745563552,
+              "market_value": 164326.96,
+              "total_value": 1010102.8345563551,
+              "position_count": 1,
+              "daily_return": 0.0003538317137301572,
+              "cumulative_return": 0.010102834556355189
+            },
+            {
+              "trade_date": "2025-12-15",
+              "cash": 845775.8745563552,
+              "market_value": 163765.13999999998,
+              "total_value": 1009541.0145563552,
+              "position_count": 1,
+              "daily_return": -0.0005562007953840986,
+              "cumulative_return": 0.009541014556355254
+            },
+            {
+              "trade_date": "2025-12-16",
+              "cash": 845775.8745563552,
+              "market_value": 162327.19999999998,
+              "total_value": 1008103.0745563551,
+              "position_count": 1,
+              "daily_return": -0.0014243502534980745,
+              "cumulative_return": 0.008103074556355061
+            },
+            {
+              "trade_date": "2025-12-17",
+              "cash": 845775.8745563552,
+              "market_value": 162389.22,
+              "total_value": 1008165.0945563552,
+              "position_count": 1,
+              "daily_return": 6.152148680560465e-05,
+              "cumulative_return": 0.008165094556355168
+            },
+            {
+              "trade_date": "2025-12-18",
+              "cash": 845775.8745563552,
+              "market_value": 162054.2,
+              "total_value": 1007830.0745563551,
+              "position_count": 1,
+              "daily_return": -0.0003323066844993505,
+              "cumulative_return": 0.007830074556355093
+            },
+            {
+              "trade_date": "2025-12-19",
+              "cash": 845775.8745563552,
+              "market_value": 162683.08000000002,
+              "total_value": 1008458.9545563553,
+              "position_count": 1,
+              "daily_return": 0.0006239940798322685,
+              "cumulative_return": 0.008458954556355147
+            },
+            {
+              "trade_date": "2025-12-22",
+              "cash": 1008425.6395934152,
+              "market_value": 0.0,
+              "total_value": 1008425.6395934152,
+              "position_count": 0,
+              "daily_return": -3.303551700295504e-05,
+              "cumulative_return": 0.008425639593415246
+            },
+            {
+              "trade_date": "2025-12-23",
+              "cash": 1008425.6395934152,
+              "market_value": 0.0,
+              "total_value": 1008425.6395934152,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.008425639593415246
+            },
+            {
+              "trade_date": "2025-12-24",
+              "cash": 1008425.6395934152,
+              "market_value": 0.0,
+              "total_value": 1008425.6395934152,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.008425639593415246
+            },
+            {
+              "trade_date": "2025-12-25",
+              "cash": 1008425.6395934152,
+              "market_value": 0.0,
+              "total_value": 1008425.6395934152,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.008425639593415246
+            },
+            {
+              "trade_date": "2025-12-26",
+              "cash": 1008425.6395934152,
+              "market_value": 0.0,
+              "total_value": 1008425.6395934152,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.008425639593415246
+            },
+            {
+              "trade_date": "2025-12-29",
+              "cash": 1008425.6395934152,
+              "market_value": 0.0,
+              "total_value": 1008425.6395934152,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.008425639593415246
+            },
+            {
+              "trade_date": "2025-12-30",
+              "cash": 1008425.6395934152,
+              "market_value": 0.0,
+              "total_value": 1008425.6395934152,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.008425639593415246
+            },
+            {
+              "trade_date": "2025-12-31",
+              "cash": 852446.5468664903,
+              "market_value": 155940.1077,
+              "total_value": 1008386.6545664903,
+              "position_count": 1,
+              "daily_return": -3.865929761626141e-05,
+              "cumulative_return": 0.008386654566490348
+            },
+            {
+              "trade_date": "2026-01-01",
+              "cash": 852446.5468664903,
+              "market_value": 157701.57,
+              "total_value": 1010148.1168664903,
+              "position_count": 1,
+              "daily_return": 0.0017468123879100794,
+              "cumulative_return": 0.010148116866490309
+            },
+            {
+              "trade_date": "2026-01-02",
+              "cash": 852446.5468664903,
+              "market_value": 157649.05000000002,
+              "total_value": 1010095.5968664903,
+              "position_count": 1,
+              "daily_return": -5.199237529929235e-05,
+              "cumulative_return": 0.01009559686649042
+            },
+            {
+              "trade_date": "2026-01-05",
+              "cash": 852446.5468664903,
+              "market_value": 159889.47,
+              "total_value": 1012336.0168664902,
+              "position_count": 1,
+              "daily_return": 0.0022180276866368143,
+              "cumulative_return": 0.01233601686649033
+            },
+            {
+              "trade_date": "2026-01-06",
+              "cash": 852446.5468664903,
+              "market_value": 160580.16,
+              "total_value": 1013026.7068664903,
+              "position_count": 1,
+              "daily_return": 0.0006822734630522742,
+              "cumulative_return": 0.013026706866490212
+            },
+            {
+              "trade_date": "2026-01-07",
+              "cash": 852446.5468664903,
+              "market_value": 160999.93000000002,
+              "total_value": 1013446.4768664903,
+              "position_count": 1,
+              "daily_return": 0.0004143720961695685,
+              "cumulative_return": 0.013446476866490364
+            },
+            {
+              "trade_date": "2026-01-08",
+              "cash": 852446.5468664903,
+              "market_value": 162001.19,
+              "total_value": 1014447.7368664902,
+              "position_count": 1,
+              "daily_return": 0.0009879752141384035,
+              "cumulative_return": 0.014447736866490146
+            },
+            {
+              "trade_date": "2026-01-09",
+              "cash": 852446.5468664903,
+              "market_value": 160664.27000000002,
+              "total_value": 1013110.8168664903,
+              "position_count": 1,
+              "daily_return": -0.0013178796219995847,
+              "cumulative_return": 0.013110816866490183
+            },
+            {
+              "trade_date": "2026-01-12",
+              "cash": 1011375.2673816002,
+              "market_value": 0.0,
+              "total_value": 1011375.2673816002,
+              "position_count": 0,
+              "daily_return": -0.0017130894824102239,
+              "cumulative_return": 0.011375267381600329
+            },
+            {
+              "trade_date": "2026-01-13",
+              "cash": 877171.3596703202,
+              "market_value": 134170.36512,
+              "total_value": 1011341.7247903201,
+              "position_count": 1,
+              "daily_return": -3.3165326819739605e-05,
+              "cumulative_return": 0.011341724790320251
+            },
+            {
+              "trade_date": "2026-01-14",
+              "cash": 877171.3596703202,
+              "market_value": 132261.47,
+              "total_value": 1009432.8296703201,
+              "position_count": 1,
+              "daily_return": -0.0018874877533563428,
+              "cumulative_return": 0.009432829670320109
+            },
+            {
+              "trade_date": "2026-01-15",
+              "cash": 877171.3596703202,
+              "market_value": 132662.86,
+              "total_value": 1009834.2196703202,
+              "position_count": 1,
+              "daily_return": 0.00039763913774337745,
+              "cumulative_return": 0.009834219670320055
+            },
+            {
+              "trade_date": "2026-01-16",
+              "cash": 877171.3596703202,
+              "market_value": 131231.75999999998,
+              "total_value": 1008403.1196703202,
+              "position_count": 1,
+              "daily_return": -0.001417163304752278,
+              "cumulative_return": 0.008403119670320258
+            },
+            {
+              "trade_date": "2026-01-19",
+              "cash": 877171.3596703202,
+              "market_value": 130961.38,
+              "total_value": 1008132.7396703202,
+              "position_count": 1,
+              "daily_return": -0.00026812689759270203,
+              "cumulative_return": 0.008132739670320133
+            },
+            {
+              "trade_date": "2026-01-20",
+              "cash": 877171.3596703202,
+              "market_value": 130817.39,
+              "total_value": 1007988.7496703202,
+              "position_count": 1,
+              "daily_return": -0.0001428284136938407,
+              "cumulative_return": 0.00798874967032015
+            },
+            {
+              "trade_date": "2026-01-21",
+              "cash": 877171.3596703202,
+              "market_value": 130979.2,
+              "total_value": 1008150.5596703201,
+              "position_count": 1,
+              "daily_return": 0.00016052758530582523,
+              "cumulative_return": 0.00815055967032019
+            },
+            {
+              "trade_date": "2026-01-22",
+              "cash": 877171.3596703202,
+              "market_value": 131315.25,
+              "total_value": 1008486.6096703202,
+              "position_count": 1,
+              "daily_return": 0.0003333331482848756,
+              "cumulative_return": 0.008486609670320222
+            },
+            {
+              "trade_date": "2026-01-23",
+              "cash": 1007957.3037899202,
+              "market_value": 0.0,
+              "total_value": 1007957.3037899202,
+              "position_count": 0,
+              "daily_return": -0.0005248516691491734,
+              "cumulative_return": 0.0079573037899201
+            },
+            {
+              "trade_date": "2026-01-26",
+              "cash": 854207.3865575802,
+              "market_value": 153711.48936,
+              "total_value": 1007918.8759175802,
+              "position_count": 1,
+              "daily_return": -3.812450407914003e-05,
+              "cumulative_return": 0.007918875917580115
+            },
+            {
+              "trade_date": "2026-01-27",
+              "cash": 854207.3865575802,
+              "market_value": 150329.79,
+              "total_value": 1004537.1765575802,
+              "position_count": 1,
+              "daily_return": -0.0033551304978998164,
+              "cumulative_return": 0.004537176557580347
+            },
+            {
+              "trade_date": "2026-01-28",
+              "cash": 854207.3865575802,
+              "market_value": 149779.88999999998,
+              "total_value": 1003987.2765575802,
+              "position_count": 1,
+              "daily_return": -0.000547416275706647,
+              "cumulative_return": 0.003987276557580133
+            },
+            {
+              "trade_date": "2026-01-29",
+              "cash": 854207.3865575802,
+              "market_value": 149588.14,
+              "total_value": 1003795.5265575802,
+              "position_count": 1,
+              "daily_return": -0.00019098847612641912,
+              "cumulative_return": 0.0037955265575801977
+            },
+            {
+              "trade_date": "2026-01-30",
+              "cash": 854207.3865575802,
+              "market_value": 152104.03,
+              "total_value": 1006311.4165575802,
+              "position_count": 1,
+              "daily_return": 0.002506376979610536,
+              "cumulative_return": 0.006311416557580163
+            },
+            {
+              "trade_date": "2026-02-02",
+              "cash": 854207.3865575802,
+              "market_value": 152149.14,
+              "total_value": 1006356.5265575802,
+              "position_count": 1,
+              "daily_return": 4.4827077639864044e-05,
+              "cumulative_return": 0.006356526557580233
+            },
+            {
+              "trade_date": "2026-02-03",
+              "cash": 854207.3865575802,
+              "market_value": 152039.94,
+              "total_value": 1006247.3265575801,
+              "position_count": 1,
+              "daily_return": -0.00010851025170333095,
+              "cumulative_return": 0.006247326557580202
+            },
+            {
+              "trade_date": "2026-02-04",
+              "cash": 854207.3865575802,
+              "market_value": 151982.35,
+              "total_value": 1006189.7365575802,
+              "position_count": 1,
+              "daily_return": -5.723245019395584e-05,
+              "cumulative_return": 0.006189736557580261
+            },
+            {
+              "trade_date": "2026-02-05",
+              "cash": 1006138.6426100652,
+              "market_value": 0.0,
+              "total_value": 1006138.6426100652,
+              "position_count": 0,
+              "daily_return": -5.077963495214721e-05,
+              "cumulative_return": 0.006138642610065137
+            },
+            {
+              "trade_date": "2026-02-06",
+              "cash": 1006138.6426100652,
+              "market_value": 0.0,
+              "total_value": 1006138.6426100652,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.006138642610065137
+            },
+            {
+              "trade_date": "2026-02-09",
+              "cash": 1006138.6426100652,
+              "market_value": 0.0,
+              "total_value": 1006138.6426100652,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.006138642610065137
+            },
+            {
+              "trade_date": "2026-02-10",
+              "cash": 1006138.6426100652,
+              "market_value": 0.0,
+              "total_value": 1006138.6426100652,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.006138642610065137
+            },
+            {
+              "trade_date": "2026-02-11",
+              "cash": 1006138.6426100652,
+              "market_value": 0.0,
+              "total_value": 1006138.6426100652,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.006138642610065137
+            },
+            {
+              "trade_date": "2026-02-12",
+              "cash": 1006138.6426100652,
+              "market_value": 0.0,
+              "total_value": 1006138.6426100652,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.006138642610065137
+            },
+            {
+              "trade_date": "2026-02-13",
+              "cash": 1006138.6426100652,
+              "market_value": 0.0,
+              "total_value": 1006138.6426100652,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.006138642610065137
+            },
+            {
+              "trade_date": "2026-02-16",
+              "cash": 1006138.6426100652,
+              "market_value": 0.0,
+              "total_value": 1006138.6426100652,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.006138642610065137
+            },
+            {
+              "trade_date": "2026-02-17",
+              "cash": 1006138.6426100652,
+              "market_value": 0.0,
+              "total_value": 1006138.6426100652,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.006138642610065137
+            },
+            {
+              "trade_date": "2026-02-18",
+              "cash": 1006138.6426100652,
+              "market_value": 0.0,
+              "total_value": 1006138.6426100652,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.006138642610065137
+            },
+            {
+              "trade_date": "2026-02-19",
+              "cash": 829783.1958678402,
+              "market_value": 176311.3689,
+              "total_value": 1006094.5647678402,
+              "position_count": 1,
+              "daily_return": -4.380891495292527e-05,
+              "cumulative_return": 0.006094564767840094
+            },
+            {
+              "trade_date": "2026-02-20",
+              "cash": 829783.1958678402,
+              "market_value": 176776.2,
+              "total_value": 1006559.3958678402,
+              "position_count": 1,
+              "daily_return": 0.00046201531772238624,
+              "cumulative_return": 0.0065593958678400455
+            },
+            {
+              "trade_date": "2026-02-23",
+              "cash": 829783.1958678402,
+              "market_value": 177715.05,
+              "total_value": 1007498.2458678402,
+              "position_count": 1,
+              "daily_return": 0.000932731842606005,
+              "cumulative_return": 0.007498245867840314
+            },
+            {
+              "trade_date": "2026-02-24",
+              "cash": 829783.1958678402,
+              "market_value": 177269.4,
+              "total_value": 1007052.5958678402,
+              "position_count": 1,
+              "daily_return": -0.0004423332763384691,
+              "cumulative_return": 0.007052595867840239
+            },
+            {
+              "trade_date": "2026-02-25",
+              "cash": 753544.0048338402,
+              "market_value": 251154.786,
+              "total_value": 1004698.7908338401,
+              "position_count": 2,
+              "daily_return": -0.0023373208545991453,
+              "cumulative_return": 0.004698790833840061
+            },
+            {
+              "trade_date": "2026-02-26",
+              "cash": 753544.0048338402,
+              "market_value": 252321.24,
+              "total_value": 1005865.2448338402,
+              "position_count": 2,
+              "daily_return": 0.0011609987099039376,
+              "cumulative_return": 0.0058652448338401
+            },
+            {
+              "trade_date": "2026-02-27",
+              "cash": 753544.0048338402,
+              "market_value": 252909.59999999998,
+              "total_value": 1006453.6048338402,
+              "position_count": 2,
+              "daily_return": 0.0005849292467572376,
+              "cumulative_return": 0.006453604833840165
+            },
+            {
+              "trade_date": "2026-03-02",
+              "cash": 930640.0149349902,
+              "market_value": 77474.52,
+              "total_value": 1008114.5349349902,
+              "position_count": 1,
+              "daily_return": 0.0016502798471513813,
+              "cumulative_return": 0.008114534934990258
+            },
+            {
+              "trade_date": "2026-03-03",
+              "cash": 930640.0149349902,
+              "market_value": 77237.64,
+              "total_value": 1007877.6549349902,
+              "position_count": 1,
+              "daily_return": -0.00023497330094068847,
+              "cumulative_return": 0.007877654934990153
+            },
+            {
+              "trade_date": "2026-03-04",
+              "cash": 930640.0149349902,
+              "market_value": 78103.2,
+              "total_value": 1008743.2149349902,
+              "position_count": 1,
+              "daily_return": 0.0008587947116018846,
+              "cumulative_return": 0.008743214934990196
+            },
+            {
+              "trade_date": "2026-03-05",
+              "cash": 930640.0149349902,
+              "market_value": 78318.6,
+              "total_value": 1008958.6149349902,
+              "position_count": 1,
+              "daily_return": 0.00021353303478122143,
+              "cumulative_return": 0.008958614934990283
+            },
+            {
+              "trade_date": "2026-03-06",
+              "cash": 930640.0149349902,
+              "market_value": 79585.68,
+              "total_value": 1010225.6949349903,
+              "position_count": 1,
+              "daily_return": 0.0012558295070226322,
+              "cumulative_return": 0.010225694934990148
+            },
+            {
+              "trade_date": "2026-03-09",
+              "cash": 910370.4922119252,
+              "market_value": 99142.05,
+              "total_value": 1009512.5422119253,
+              "position_count": 1,
+              "daily_return": -0.000705934056756341,
+              "cumulative_return": 0.009512542211925323
+            },
+            {
+              "trade_date": "2026-03-10",
+              "cash": 910370.4922119252,
+              "market_value": 101014.5,
+              "total_value": 1011384.9922119252,
+              "position_count": 1,
+              "daily_return": 0.0018548060788796672,
+              "cumulative_return": 0.011384992211925127
+            },
+            {
+              "trade_date": "2026-03-11",
+              "cash": 910370.4922119252,
+              "market_value": 100671.45,
+              "total_value": 1011041.9422119252,
+              "position_count": 1,
+              "daily_return": -0.0003391883433525589,
+              "cumulative_return": 0.011041942211925226
+            },
+            {
+              "trade_date": "2026-03-12",
+              "cash": 910370.4922119252,
+              "market_value": 101156.09999999999,
+              "total_value": 1011526.5922119252,
+              "position_count": 1,
+              "daily_return": 0.00047935696805989636,
+              "cumulative_return": 0.011526592211925202
+            },
+            {
+              "trade_date": "2026-03-13",
+              "cash": 910370.4922119252,
+              "market_value": 100344.0,
+              "total_value": 1010714.4922119252,
+              "position_count": 1,
+              "daily_return": -0.0008028459224429518,
+              "cumulative_return": 0.010714492211925108
+            },
+            {
+              "trade_date": "2026-03-16",
+              "cash": 910370.4922119252,
+              "market_value": 100866.59999999999,
+              "total_value": 1011237.0922119252,
+              "position_count": 1,
+              "daily_return": 0.0005170599650314855,
+              "cumulative_return": 0.011237092211925148
+            },
+            {
+              "trade_date": "2026-03-17",
+              "cash": 910370.4922119252,
+              "market_value": 101740.05,
+              "total_value": 1012110.5422119253,
+              "position_count": 1,
+              "daily_return": 0.0008637440287020404,
+              "cumulative_return": 0.012110542211925202
+            },
+            {
+              "trade_date": "2026-03-18",
+              "cash": 910370.4922119252,
+              "market_value": 102632.4,
+              "total_value": 1013002.8922119252,
+              "position_count": 1,
+              "daily_return": 0.0008816724683549104,
+              "cumulative_return": 0.013002892211925188
+            },
+            {
+              "trade_date": "2026-03-19",
+              "cash": 875807.4230420503,
+              "market_value": 135908.19999999998,
+              "total_value": 1011715.6230420503,
+              "position_count": 1,
+              "daily_return": -0.0012707457992189308,
+              "cumulative_return": 0.011715623042050316
+            },
+            {
+              "trade_date": "2026-03-20",
+              "cash": 875807.4230420503,
+              "market_value": 136480.8,
+              "total_value": 1012288.2230420504,
+              "position_count": 1,
+              "daily_return": 0.0005659693168307278,
+              "cumulative_return": 0.012288223042050461
+            },
+            {
+              "trade_date": "2026-03-23",
+              "cash": 875807.4230420503,
+              "market_value": 135016.8,
+              "total_value": 1010824.2230420504,
+              "position_count": 1,
+              "daily_return": -0.001446228422573692,
+              "cumulative_return": 0.01082422304205033
+            },
+            {
+              "trade_date": "2026-03-24",
+              "cash": 875807.4230420503,
+              "market_value": 135811.4,
+              "total_value": 1011618.8230420504,
+              "position_count": 1,
+              "daily_return": 0.0007860911738033494,
+              "cumulative_return": 0.011618823042050419
+            },
+            {
+              "trade_date": "2026-03-25",
+              "cash": 875807.4230420503,
+              "market_value": 135229.0,
+              "total_value": 1011036.4230420503,
+              "position_count": 1,
+              "daily_return": -0.0005757109167351393,
+              "cumulative_return": 0.011036423042050325
+            },
+            {
+              "trade_date": "2026-03-26",
+              "cash": 875807.4230420503,
+              "market_value": 134847.80000000002,
+              "total_value": 1010655.2230420504,
+              "position_count": 1,
+              "daily_return": -0.00037703883985995557,
+              "cumulative_return": 0.010655223042050466
+            },
+            {
+              "trade_date": "2026-03-27",
+              "cash": 875807.4230420503,
+              "market_value": 135442.4,
+              "total_value": 1011249.8230420504,
+              "position_count": 1,
+              "daily_return": 0.0005883311998431395,
+              "cumulative_return": 0.011249823042050355
+            },
+            {
+              "trade_date": "2026-03-30",
+              "cash": 875134.7476040503,
+              "market_value": 134562.0,
+              "total_value": 1009696.7476040503,
+              "position_count": 1,
+              "daily_return": -0.001535797982468945,
+              "cumulative_return": 0.00969674760405037
+            },
+            {
+              "trade_date": "2026-03-31",
+              "cash": 875134.7476040503,
+              "market_value": 135296.0,
+              "total_value": 1010430.7476040503,
+              "position_count": 1,
+              "daily_return": 0.0007269509402121344,
+              "cumulative_return": 0.010430747604050383
+            },
+            {
+              "trade_date": "2026-04-01",
+              "cash": 875134.7476040503,
+              "market_value": 133069.4,
+              "total_value": 1008204.1476040503,
+              "position_count": 1,
+              "daily_return": -0.002203614651751007,
+              "cumulative_return": 0.008204147604050416
+            },
+            {
+              "trade_date": "2026-04-02",
+              "cash": 875134.7476040503,
+              "market_value": 132047.40000000002,
+              "total_value": 1007182.1476040503,
+              "position_count": 1,
+              "daily_return": -0.0010136835902021524,
+              "cumulative_return": 0.007182147604050337
+            },
+            {
+              "trade_date": "2026-04-03",
+              "cash": 875134.7476040503,
+              "market_value": 133088.6,
+              "total_value": 1008223.3476040503,
+              "position_count": 1,
+              "daily_return": 0.0010337752733970973,
+              "cumulative_return": 0.008223347604050302
+            },
+            {
+              "trade_date": "2026-04-06",
+              "cash": 875134.7476040503,
+              "market_value": 133195.4,
+              "total_value": 1008330.1476040503,
+              "position_count": 1,
+              "daily_return": 0.0001059289097538052,
+              "cumulative_return": 0.008330147604050264
+            },
+            {
+              "trade_date": "2026-04-07",
+              "cash": 875134.7476040503,
+              "market_value": 132484.4,
+              "total_value": 1007619.1476040503,
+              "position_count": 1,
+              "daily_return": -0.0007051261947185195,
+              "cumulative_return": 0.007619147604050358
+            },
+            {
+              "trade_date": "2026-04-08",
+              "cash": 875134.7476040503,
+              "market_value": 130782.6,
+              "total_value": 1005917.3476040503,
+              "position_count": 1,
+              "daily_return": -0.0016889317794790415,
+              "cumulative_return": 0.0059173476040503825
+            },
+            {
+              "trade_date": "2026-04-09",
+              "cash": 1003189.0204148503,
+              "market_value": 0.0,
+              "total_value": 1003189.0204148503,
+              "position_count": 0,
+              "daily_return": -0.0027122776992547504,
+              "cumulative_return": 0.003189020414850363
+            },
+            {
+              "trade_date": "2026-04-10",
+              "cash": 1003189.0204148503,
+              "market_value": 0.0,
+              "total_value": 1003189.0204148503,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.003189020414850363
+            },
+            {
+              "trade_date": "2026-04-13",
+              "cash": 1003189.0204148503,
+              "market_value": 0.0,
+              "total_value": 1003189.0204148503,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.003189020414850363
+            },
+            {
+              "trade_date": "2026-04-14",
+              "cash": 1003189.0204148503,
+              "market_value": 0.0,
+              "total_value": 1003189.0204148503,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.003189020414850363
+            },
+            {
+              "trade_date": "2026-04-15",
+              "cash": 1003189.0204148503,
+              "market_value": 0.0,
+              "total_value": 1003189.0204148503,
+              "position_count": 0,
+              "daily_return": 0.0,
+              "cumulative_return": 0.003189020414850363
+            },
+            {
+              "trade_date": "2026-04-16",
+              "cash": 839917.1922397453,
+              "market_value": 163231.02042,
+              "total_value": 1003148.2126597452,
+              "position_count": 1,
+              "daily_return": -4.067803203045006e-05,
+              "cumulative_return": 0.0031482126597452975
+            },
+            {
+              "trade_date": "2026-04-17",
+              "cash": 839917.1922397453,
+              "market_value": 164295.16999999998,
+              "total_value": 1004212.3622397452,
+              "position_count": 1,
+              "daily_return": 0.0010608099247653158,
+              "cumulative_return": 0.004212362239745193
+            },
+            {
+              "trade_date": "2026-04-20",
+              "cash": 839917.1922397453,
+              "market_value": 162384.56,
+              "total_value": 1002301.7522397453,
+              "position_count": 1,
+              "daily_return": -0.001902595578228583,
+              "cumulative_return": 0.0023017522397452694
+            },
+            {
+              "trade_date": "2026-04-21",
+              "cash": 839917.1922397453,
+              "market_value": 161497.31,
+              "total_value": 1001414.5022397453,
+              "position_count": 1,
+              "daily_return": -0.0008852124602369837,
+              "cumulative_return": 0.0014145022397453744
+            },
+            {
+              "trade_date": "2026-04-22",
+              "cash": 839917.1922397453,
+              "market_value": 163173.4,
+              "total_value": 1003090.5922397453,
+              "position_count": 1,
+              "daily_return": 0.001673722515752818,
+              "cumulative_return": 0.0030905922397452823
+            },
+            {
+              "trade_date": "2026-04-23",
+              "cash": 839917.1922397453,
+              "market_value": 164613.28,
+              "total_value": 1004530.4722397453,
+              "position_count": 1,
+              "daily_return": 0.0014354436290593409,
+              "cumulative_return": 0.004530472239745231
+            },
+            {
+              "trade_date": "2026-04-24",
+              "cash": 839917.1922397453,
+              "market_value": 165261.07,
+              "total_value": 1005178.2622397454,
+              "position_count": 1,
+              "daily_return": 0.0006448684414279704,
+              "cumulative_return": 0.005178262239745379
+            },
+            {
+              "trade_date": "2026-04-27",
+              "cash": 851820.5324160953,
+              "market_value": 152401.2,
+              "total_value": 1004221.7324160952,
+              "position_count": 1,
+              "daily_return": -0.0009516021780243689,
+              "cumulative_return": 0.004221732416095136
+            },
+            {
+              "trade_date": "2026-04-28",
+              "cash": 851820.5324160953,
+              "market_value": 154198.56,
+              "total_value": 1006019.0924160953,
+              "position_count": 1,
+              "daily_return": 0.0017898039267441046,
+              "cumulative_return": 0.0060190924160952175
+            },
+            {
+              "trade_date": "2026-04-29",
+              "cash": 851820.5324160953,
+              "market_value": 152743.80000000002,
+              "total_value": 1004564.3324160953,
+              "position_count": 1,
+              "daily_return": -0.0014460560549662826,
+              "cumulative_return": 0.004564332416095329
+            }
+          ]
+        },
+        "report": "============================================================\n                    回测绩效报告\n============================================================\n\n【收益指标】\n  累计收益率:          0.46%\n  年化收益率:          0.44%\n  年化波动率:          1.37%\n\n【风险调整收益】\n  夏普比率:            -1.86\n  索提诺比率:          -2.11\n  卡玛比率:             0.35\n\n【风险指标】\n  最大回撤:           -1.28%\n  最大回撤持续:           48 天\n  日 VaR (95%):       -0.14%\n  日 VaR (99%):       -0.24%\n\n【交易统计】\n  胜率:               22.01%\n  盈亏比:               1.27\n\n============================================================",
+        "survivorship_bias_warning": "回测数据仅含当前交易股票，收益可能被高估",
+        "trade_count": 31,
+        "trades": [
+          {
+            "amount": 153800.32668,
+            "code": "000001",
+            "commission": 38.45008167,
+            "date": "2025-08-05",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 109.85737619999999,
+            "reason": "因子买入",
+            "shares": 1400,
+            "stamp_tax": 0
+          },
+          {
+            "amount": 159870.27868,
+            "code": "000001",
+            "commission": 39.967569669999996,
+            "date": "2025-08-15",
+            "direction": "SELL",
+            "impact_cost": 0.0,
+            "price": 114.19305619999999,
+            "reason": "超时",
+            "shares": 1400,
+            "stamp_tax": 79.93513933999999
+          },
+          {
+            "amount": 90639.20657999998,
+            "code": "600519",
+            "commission": 22.659801644999998,
+            "date": "2025-10-16",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 69.72246659999999,
+            "reason": "因子买入",
+            "shares": 1300,
+            "stamp_tax": 0
+          },
+          {
+            "amount": 90131.41592,
+            "code": "600519",
+            "commission": 22.53285398,
+            "date": "2025-10-27",
+            "direction": "SELL",
+            "impact_cost": 0.0,
+            "price": 69.3318584,
+            "reason": "超时",
+            "shares": 1300,
+            "stamp_tax": 45.06570796
+          },
+          {
+            "amount": 177648.60804,
+            "code": "000001",
+            "commission": 44.41215201,
+            "date": "2025-10-29",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 104.4991812,
+            "reason": "因子买入",
+            "shares": 1700,
+            "stamp_tax": 0
+          },
+          {
+            "amount": 178408.17858,
+            "code": "000001",
+            "commission": 44.602044645,
+            "date": "2025-11-10",
+            "direction": "SELL",
+            "impact_cost": 0.0,
+            "price": 104.9459874,
+            "reason": "超时",
+            "shares": 1700,
+            "stamp_tax": 89.20408929
+          },
+          {
+            "amount": 146705.58552000002,
+            "code": "000001",
+            "commission": 36.67639638000001,
+            "date": "2025-11-18",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 112.85045040000001,
+            "reason": "因子买入",
+            "shares": 1300,
+            "stamp_tax": 0
+          },
+          {
+            "amount": 147308.22314000002,
+            "code": "000001",
+            "commission": 36.827055785000006,
+            "date": "2025-11-28",
+            "direction": "SELL",
+            "impact_cost": 0.0,
+            "price": 113.3140178,
+            "reason": "超时",
+            "shares": 1300,
+            "stamp_tax": 73.65411157000001
+          },
+          {
+            "amount": 148037.8848,
+            "code": "000001",
+            "commission": 37.0094712,
+            "date": "2025-12-01",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 113.87529599999999,
+            "reason": "因子买入",
+            "shares": 1300,
+            "stamp_tax": 0
+          },
+          {
+            "amount": 151953.04488,
+            "code": "000001",
+            "commission": 37.98826122,
+            "date": "2025-12-11",
+            "direction": "SELL",
+            "impact_cost": 0.0,
+            "price": 116.8869576,
+            "reason": "超时",
+            "shares": 1300,
+            "stamp_tax": 75.97652244
+          },
+          {
+            "amount": 164297.61936,
+            "code": "000001",
+            "commission": 41.07440484000001,
+            "date": "2025-12-11",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 117.3554424,
+            "reason": "因子买入",
+            "shares": 1400,
+            "stamp_tax": 0
+          },
+          {
+            "amount": 162771.84391999998,
+            "code": "000001",
+            "commission": 40.692960979999995,
+            "date": "2025-12-22",
+            "direction": "SELL",
+            "impact_cost": 0.0,
+            "price": 116.2656028,
+            "reason": "超时",
+            "shares": 1400,
+            "stamp_tax": 81.38592195999999
+          },
+          {
+            "amount": 155940.1077,
+            "code": "000001",
+            "commission": 38.985026925,
+            "date": "2025-12-31",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 119.953929,
+            "reason": "因子买入",
+            "shares": 1300,
+            "stamp_tax": 0
+          },
+          {
+            "amount": 159048.00652,
+            "code": "000001",
+            "commission": 39.76200163,
+            "date": "2026-01-12",
+            "direction": "SELL",
+            "impact_cost": 0.0,
+            "price": 122.3446204,
+            "reason": "超时",
+            "shares": 1300,
+            "stamp_tax": 79.52400326
+          },
+          {
+            "amount": 134170.36512,
+            "code": "000001",
+            "commission": 33.54259128,
+            "date": "2026-01-13",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 121.97305920000001,
+            "reason": "因子买入",
+            "shares": 1100,
+            "stamp_tax": 0
+          },
+          {
+            "amount": 130884.1072,
+            "code": "000001",
+            "commission": 32.7210268,
+            "date": "2026-01-23",
+            "direction": "SELL",
+            "impact_cost": 0.0,
+            "price": 118.985552,
+            "reason": "超时",
+            "shares": 1100,
+            "stamp_tax": 65.4420536
+          },
+          {
+            "amount": 153711.48936,
+            "code": "000001",
+            "commission": 38.42787234,
+            "date": "2026-01-26",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 118.23960720000001,
+            "reason": "因子买入",
+            "shares": 1300,
+            "stamp_tax": 0
+          },
+          {
+            "amount": 152045.29002000001,
+            "code": "000001",
+            "commission": 38.011322505,
+            "date": "2026-02-05",
+            "direction": "SELL",
+            "impact_cost": 0.0,
+            "price": 116.9579154,
+            "reason": "超时",
+            "shares": 1300,
+            "stamp_tax": 76.02264501
+          },
+          {
+            "amount": 176311.3689,
+            "code": "000001",
+            "commission": 44.077842225,
+            "date": "2026-02-19",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 117.5409126,
+            "reason": "因子买入",
+            "shares": 1500,
+            "stamp_tax": 0
+          },
+          {
+            "amount": 76220.136,
+            "code": "600519",
+            "commission": 19.055034,
+            "date": "2026-02-25",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 63.51678,
+            "reason": "因子买入",
+            "shares": 1200,
+            "stamp_tax": 0
+          },
+          {
+            "amount": 177228.9318,
+            "code": "000001",
+            "commission": 44.30723295,
+            "date": "2026-03-02",
+            "direction": "SELL",
+            "impact_cost": 0.0,
+            "price": 118.1526212,
+            "reason": "超时",
+            "shares": 1500,
+            "stamp_tax": 88.6144659
+          },
+          {
+            "amount": 79155.01272,
+            "code": "600519",
+            "commission": 19.78875318,
+            "date": "2026-03-09",
+            "direction": "SELL",
+            "impact_cost": 0.0,
+            "price": 65.9625106,
+            "reason": "超时",
+            "shares": 1200,
+            "stamp_tax": 39.57750636
+          },
+          {
+            "amount": 99340.33410000001,
+            "code": "600519",
+            "commission": 24.835083525,
+            "date": "2026-03-09",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 66.2268894,
+            "reason": "因子买入",
+            "shares": 1500,
+            "stamp_tax": 0
+          },
+          {
+            "amount": 101727.28769999999,
+            "code": "600519",
+            "commission": 25.431821924999998,
+            "date": "2026-03-19",
+            "direction": "SELL",
+            "impact_cost": 0.0,
+            "price": 67.8181918,
+            "reason": "超时",
+            "shares": 1500,
+            "stamp_tax": 50.863643849999995
+          },
+          {
+            "amount": 136180.0164,
+            "code": "600519",
+            "commission": 34.0450041,
+            "date": "2026-03-19",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 68.0900082,
+            "reason": "因子买入",
+            "shares": 2000,
+            "stamp_tax": 0
+          },
+          {
+            "amount": 134292.87600000002,
+            "code": "600519",
+            "commission": 33.57321900000001,
+            "date": "2026-03-30",
+            "direction": "SELL",
+            "impact_cost": 0.0,
+            "price": 67.146438,
+            "reason": "超时",
+            "shares": 2000,
+            "stamp_tax": 67.14643800000002
+          },
+          {
+            "amount": 134831.124,
+            "code": "600519",
+            "commission": 33.707781000000004,
+            "date": "2026-03-30",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 67.41556200000001,
+            "reason": "因子买入",
+            "shares": 2000,
+            "stamp_tax": 0
+          },
+          {
+            "amount": 128150.3856,
+            "code": "600519",
+            "commission": 32.0375964,
+            "date": "2026-04-09",
+            "direction": "SELL",
+            "impact_cost": 0.0,
+            "price": 64.0751928,
+            "reason": "ATR止损",
+            "shares": 2000,
+            "stamp_tax": 64.0751928
+          },
+          {
+            "amount": 163231.02042,
+            "code": "000001",
+            "commission": 40.807755105,
+            "date": "2026-04-16",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 125.5623234,
+            "reason": "因子买入",
+            "shares": 1300,
+            "stamp_tax": 0
+          },
+          {
+            "amount": 164771.0974,
+            "code": "000001",
+            "commission": 41.19277435,
+            "date": "2026-04-27",
+            "direction": "SELL",
+            "impact_cost": 0.0,
+            "price": 126.746998,
+            "reason": "超时",
+            "shares": 1300,
+            "stamp_tax": 82.3855487
+          },
+          {
+            "amount": 152706.0024,
+            "code": "000001",
+            "commission": 38.1765006,
+            "date": "2026-04-27",
+            "direction": "BUY",
+            "impact_cost": 0.0,
+            "price": 127.255002,
+            "reason": "因子买入",
+            "shares": 1200,
+            "stamp_tax": 0
+          }
+        ]
+      }
+    }
+  }
+}
