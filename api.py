@@ -97,7 +97,9 @@ def _verify_api_key_on_startup():
 
 # ========== 安全常量 ==========
 
-ALLOWED_PRESETS = {"balanced", "aggressive", "conservative"}
+# 抽离到 lib/scan_task_registry.py（RF-01 Phase 1）：ALLOWED_PRESETS 是跨端点
+# 共享的 preset 集合，与 _scan_tasks 必须同处一个模块。
+from lib.scan_task_registry import ALLOWED_PRESETS
 
 
 def _validate_stock_code(code: str) -> str:
@@ -149,7 +151,11 @@ async def track_performance(request: Request, call_next):
     return response
 
 
-_perf_metrics: list = []
+# 性能指标缓冲已抽离到 lib/perf_metrics.py（RF-01 Phase 1）—— 跨端点共享状态，
+# 拆分后仍须是**同一个对象**（只能原地 append/clear，不要重新赋值）。
+# 注意 _perf_file 刻意留在本模块：它的路径基准是 Path(__file__).parent，
+# 搬到 lib/ 会改变落盘目录 => 行为漂移。
+from lib.perf_metrics import _perf_metrics
 _perf_file = Path(__file__).parent / "cache" / "perf_baseline.json"
 
 
@@ -396,7 +402,9 @@ async def health():
 
 import threading
 
-_scan_tasks: dict = {}  # preset -> {"status": "running"|"done"|"error", "started_at": float, "error": str}
+# 扫描任务状态机已抽离到 lib/scan_task_registry.py（RF-01 Phase 1）——
+# /api/scan 与 /api/scan/status 共享同一份状态，拆分后必须仍是**同一个对象**。
+from lib.scan_task_registry import _scan_tasks
 
 
 def _run_scan_background(preset: str):

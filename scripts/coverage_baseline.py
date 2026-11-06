@@ -116,6 +116,7 @@ def do_check(args) -> int:
               "--coverage-file <file>   to establish it.")
         return 0
 
+    allow = {m.strip() for m in (args.allow_modules or "").split(",") if m.strip()}
     cur_total = cov["total_pct"]
     base_total = base["total_pct"]
     delta_total = round(cur_total - base_total, 2)
@@ -125,6 +126,8 @@ def do_check(args) -> int:
     for name, m in cov["modules"].items():
         b = base_modules.get(name)
         if not b:
+            continue
+        if name in allow:
             continue
         d = round(m["pct"] - b["pct"], 2)
         if d < -args.module_threshold:
@@ -140,6 +143,8 @@ def do_check(args) -> int:
             print(f"       {d:+7.2f}pp  {name}  ({b}% -> {c}%)")
         return 1
 
+    if len(regressions) >= 5:
+        print("[WARN] many modules regressed at once - signature of a CROSS-ENVIRONMENT\n               comparison (baseline built on CI, checked locally). Coverage depends on\n               which code paths are reachable in the current env (local has no TDX\n               data). Verify on the CI runner, or use a locally-built baseline.")
     if regressions:
         print(f"[FAIL] {len(regressions)} module(s) regressed beyond "
               f"-{args.module_threshold}pp:")
@@ -160,6 +165,9 @@ def main(argv=None) -> int:
     ap.add_argument("--check", action="store_true", help="compare against baseline (gate)")
     ap.add_argument("--threshold", type=float, default=0.5,
                     help="max allowed total coverage drop in percentage points")
+    ap.add_argument("--allow-modules", default="",
+                    help="comma-separated modules exempt from per-module regression check "
+                         "(use when code was MOVED between modules)")
     ap.add_argument("--module-threshold", type=float, default=2.0,
                     help="max allowed per-module coverage drop in percentage points")
     args = ap.parse_args(argv)

@@ -29,21 +29,19 @@ REGIME_MULTIPLIER = {
 }
 
 # 评分权重默认值（兜底用 — 历史硬编码值）
-_DEFAULT_OPP_SCORE_WEIGHTS: Dict[str, float] = {
-    "regime": 0.30,
-    "alpha": 0.25,
-    "sector": 0.20,
-    "trend": 0.15,
-    "volume": 0.10,
-}
+# 权重状态已抽离到 lib/scoring_weights.py（RF-01 Phase 1）—— 全局可变状态
+# 不该埋在某一个评分器实现里。以下 import 绑定的是**函数**，
+# 因此运行时始终读到同一份状态（不是拷贝）。
+from lib.scoring_weights import (
+    get_opp_score_weights,
+    set_opp_score_weights,
+    reset_opp_score_weights,
+)
 
-# 模块级缓存：set_opp_score_weights() 设置后，compute_opportunity_score() 立即读取
-# 设为 None 表示「下次计算时从 config 拉取最新值」
-_active_weights: Optional[Dict[str, float]] = None
+# 模块级缓存已移至 lib/scoring_weights.py（_active_weights）
 
 # 兼容旧 import：WEIGHTS 是动态属性，返回当前生效的权重
 # 注意：WEIGHTS 不再是 dict 字面量，需通过 WEIGHTS["x"] 访问的元素依然可用
-
 
 class _WeightsProxy:
     """权重代理：保持 `from ... import WEIGHTS; WEIGHTS["regime"]` 旧用法兼容"""
@@ -75,57 +73,7 @@ class _WeightsProxy:
     def __repr__(self):
         return repr(get_opp_score_weights())
 
-
 WEIGHTS = _WeightsProxy()
-
-
-def get_opp_score_weights(source_config=None) -> Dict[str, float]:
-    """获取当前生效的机会评分权重
-
-    优先级：
-    1. 模块级缓存 `_active_weights`（被 set_opp_score_weights 设置过）
-    2. source_config.opp_score_weights（调用方传入的 FactorConfig）
-    3. config.FactorConfig().opp_score_weights（默认 FactorConfig 的默认值）
-    4. _DEFAULT_OPP_SCORE_WEIGHTS（兜底）
-
-    Args:
-        source_config: 可选，传入 FactorConfig 实例时从中读取 opp_score_weights
-
-    Returns:
-        dict: 当前生效的权重字典
-    """
-    if _active_weights is not None:
-        return dict(_active_weights)
-
-    if source_config is not None and hasattr(source_config, 'opp_score_weights'):
-        return dict(source_config.opp_score_weights)
-
-    # 尝试从 config 模块拉取默认值（避免循环导入：失败时兜底）
-    try:
-        from config import FactorConfig
-        return dict(FactorConfig().opp_score_weights)
-    except Exception as e:
-        logger.debug(f"从 config 拉取 opp_score_weights 失败，使用兜底: {e}")
-        return dict(_DEFAULT_OPP_SCORE_WEIGHTS)
-
-
-def set_opp_score_weights(weights: Dict[str, float]) -> None:
-    """设置机会评分权重（覆盖默认值）
-
-    Args:
-        weights: 5 项权重 dict（regime/alpha/sector/trend/volume）
-    """
-    global _active_weights
-    if not isinstance(weights, dict):
-        raise TypeError(f"weights 必须是 dict，实际 {type(weights).__name__}")
-    _active_weights = dict(weights)
-
-
-def reset_opp_score_weights() -> None:
-    """重置为从 config 读取（清除 set_opp_score_weights 的覆盖）"""
-    global _active_weights
-    _active_weights = None
-
 
 def _normalize_trend(trend_strength: float) -> float:
     """趋势强度归一化到 0-100
@@ -134,14 +82,12 @@ def _normalize_trend(trend_strength: float) -> float:
     """
     return float(np.tanh(trend_strength / 5) * 50 + 50)
 
-
 def _normalize_volume(volume_ratio: float) -> float:
     """成交量比归一化到 0-100
 
     volume_ratio = 5日均量 / 20日均量，通常在 [0.5, 3.0]
     """
     return float(min(volume_ratio / 2, 1.0) * 100)
-
 
 def compute_opportunity_score(
     regime: str,
@@ -209,7 +155,6 @@ def compute_opportunity_score(
         },
         "weights": weights,
     }
-
 
 def score_from_signals(signal_result: dict, alpha_posterior: float = 0.5) -> Dict:
     """从 compute_all_signals 的结果直接计算机会分
