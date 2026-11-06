@@ -248,9 +248,15 @@ python scripts/pytest_duration_baseline.py --verify --repeat 3 --top 8 --out doc
 | `test_scorecard.py::test_score_structure` | 188.07s | **0.04s** | ~4700× |
 | `test_pipeline_core_steps.py::test_fetch_stock_data_handles_empty` | 96.43s | <0.01s | — |
 | **失败清单** | 34（本地既有） | **34（同一批）** | **零新增** |
+| **CI 上（ubuntu-latest, 3.12）** | 110.69s / 3 failed / 1117 passed / 12 skipped / 193 warnings | **88.07s / 3 failed / 1117 passed / 12 skipped / 47 warnings** | 失败数与通过数**完全不变**，耗时提速 20%，warnings 少 76% |
 
 全量结果：`1,085 passed, 25 failed, 13 skipped, 9 errors in 63.07s`。
 （CI 参考：`ubuntu-latest, 3.12` 上 110.69s / 3 failed / 12 skipped）
+
+**CI 上同样提速**：`ubuntu-latest, 3.12` 从 **110.69s → 88.07s（20%）**，
+失败数与通过数**完全不变**（3 failed / 1117 passed / 12 skipped），warnings 从 193 降到 47
+⇒ 禁网在 CI 上同样有效（那些"快速失败但仍要走重试退避"的路径现在立即失败），
+且**没有引入任何新失败**。
 
 **日志放大同时塌陷**：治理后开日志 69.3s vs 关日志 63.07s ⇒ 放大从 **62% 降到约 10%**
 （日志文件仅 0.9 MB）。原因：**放大主源就是网络调用产生的 DEBUG 日志** ——
