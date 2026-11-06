@@ -37,11 +37,9 @@ jobs:
         if: matrix.python-version == '3.12'
         env:
           SKIP_HS300_PREFETCH: '1'
-        run: |
-          pytest tests/ -v --tb=short \
-            --cov=lib --cov=api --cov=config --cov=factors --cov=scanner \
-            --cov=paper_trading --cov=trading_journal --cov=dashboard \
-            --cov-report=json:coverage.json --cov-report=term
+        # 单行命令：Windows runner 默认 shell 是 PowerShell，bash 的反斜杠续行符
+        # 会直接触发 ParserError（实测已踩）=> 不用续行符，零 shell 依赖
+        run: pytest tests/ -v --tb=short --cov=lib --cov=api --cov=config --cov=factors --cov=scanner --cov=paper_trading --cov=trading_journal --cov=dashboard --cov-report=json:coverage.json --cov-report=term
       - name: Coverage baseline gate
         # 按平台与自己的历史基线比对（分支覆盖在三平台本就不同，
         # 单一阈值硬卡必然误判）。该平台尚无基线时只报告不阻断。
