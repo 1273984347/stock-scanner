@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-06T23:31:05+00:00",
+  "generated_at": "2026-11-06T23:39:52+00:00",
   "constraints": {
     "as_of_date": "2026-05-30",
     "data_sources": [
@@ -172,11 +172,11 @@
               "评分"
             ],
             "dtypes": {
-              "代码": "object",
-              "名称": "object",
-              "涨跌幅": "float64",
-              "60日涨跌幅": "float64",
-              "评分": "float64"
+              "代码": "string",
+              "名称": "string",
+              "涨跌幅": "float",
+              "60日涨跌幅": "float",
+              "评分": "float"
             },
             "shape": [
               2,
@@ -210,12 +210,12 @@
               "_strategy_weight"
             ],
             "dtypes": {
-              "代码": "object",
-              "名称": "object",
-              "涨跌幅": "float64",
-              "60日涨跌幅": "float64",
-              "评分": "float64",
-              "_strategy_weight": "float64"
+              "代码": "string",
+              "名称": "string",
+              "涨跌幅": "float",
+              "60日涨跌幅": "float",
+              "评分": "float",
+              "_strategy_weight": "float"
             },
             "shape": [
               2,
@@ -251,12 +251,12 @@
               "_strategy_weight"
             ],
             "dtypes": {
-              "代码": "object",
-              "名称": "object",
-              "涨跌幅": "float64",
-              "60日涨跌幅": "float64",
-              "评分": "float64",
-              "_strategy_weight": "float64"
+              "代码": "string",
+              "名称": "string",
+              "涨跌幅": "float",
+              "60日涨跌幅": "float",
+              "评分": "float",
+              "_strategy_weight": "float"
             },
             "shape": [
               2,
@@ -291,11 +291,11 @@
               "评分"
             ],
             "dtypes": {
-              "代码": "object",
-              "名称": "object",
-              "涨跌幅": "float64",
-              "60日涨跌幅": "float64",
-              "评分": "float64"
+              "代码": "string",
+              "名称": "string",
+              "涨跌幅": "float",
+              "60日涨跌幅": "float",
+              "评分": "float"
             },
             "shape": [
               2,
@@ -329,12 +329,12 @@
               "_strategy_weight"
             ],
             "dtypes": {
-              "代码": "object",
-              "名称": "object",
-              "涨跌幅": "float64",
-              "60日涨跌幅": "float64",
-              "评分": "float64",
-              "_strategy_weight": "float64"
+              "代码": "string",
+              "名称": "string",
+              "涨跌幅": "float",
+              "60日涨跌幅": "float",
+              "评分": "float",
+              "_strategy_weight": "float"
             },
             "shape": [
               2,
@@ -418,13 +418,13 @@
             "cumulative_return"
           ],
           "dtypes": {
-            "trade_date": "object",
-            "cash": "float64",
-            "market_value": "float64",
-            "total_value": "float64",
-            "position_count": "int64",
-            "daily_return": "float64",
-            "cumulative_return": "float64"
+            "trade_date": "string",
+            "cash": "float",
+            "market_value": "float",
+            "total_value": "float",
+            "position_count": "int",
+            "daily_return": "float",
+            "cumulative_return": "float"
           },
           "shape": [
             260,

@@ -179,6 +179,30 @@ def pinned_environment():
 
 # ---------------------------------------------------------------- 规范化
 
+def _semantic_dtype(d) -> str:
+    """把 pandas 的**实现细节 dtype** 归一为**语义 dtype**。
+
+    为什么需要：字符串列在不同 pandas 版本下推断结果不同
+    （本地 Windows 推断为 object，CI Linux 推断为 str）⇒ 直接比对 dtype
+    会跨环境假红，而 dtype 本身是 pandas 实现细节、不是行为契约。
+
+    归一规则：object/str/string -> string；float* -> float；int*/uint* -> int；
+    bool* -> bool；datetime* -> datetime；其余保留原名。
+    真正的类型变化（如 float -> string）仍会被检出。
+    """
+    s = str(d)
+    if s in ("object", "str", "string"):
+        return "string"
+    for prefix, name in (
+        ("float", "float"), ("int", "int"), ("uint", "int"),
+        ("bool", "bool"), ("datetime", "datetime"), ("timedelta", "timedelta"),
+        ("period", "period"), ("complex", "complex"),
+    ):
+        if s.startswith(prefix):
+            return name
+    return s
+
+
 def normalize(obj, key=None):
     """把任意结果转成可 JSON 化 + 可逐字段比对的结构。
 
@@ -195,7 +219,7 @@ def normalize(obj, key=None):
         return {
             "__df__": True,
             "columns": [str(c) for c in obj.columns],
-            "dtypes": {str(c): str(obj.dtypes[c]) for c in obj.columns},
+            "dtypes": {str(c): _semantic_dtype(obj.dtypes[c]) for c in obj.columns},
             "shape": list(obj.shape),
             "records": [
                 {str(c): normalize(v, str(c)) for c, v in row.items()}
@@ -206,7 +230,7 @@ def normalize(obj, key=None):
         return {
             "__series__": True,
             "name": str(obj.name) if obj.name is not None else "",
-            "dtype": str(obj.dtype),
+            "dtype": _semantic_dtype(obj.dtype),
             "values": {str(k): normalize(v, str(k)) for k, v in obj.items()},
         }
     if isinstance(obj, dict):
