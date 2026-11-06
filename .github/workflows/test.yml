@@ -31,5 +31,28 @@ jobs:
           # 跳过 api 模块 import 期的 akshare 行情预取，保证门禁零网络副作用
           SKIP_HS300_PREFETCH: '1'
         run: python scripts/contract_snapshot.py --check
+      - name: Run tests (with coverage baseline)
+        # 只在 3.12 上带覆盖率跑：覆盖率高才能给出可比的基线，
+        # 且**替换**普通测试步骤（不额外再跑一遍，避免 CI 时间翻倍）
+        if: matrix.python-version == '3.12'
+        env:
+          SKIP_HS300_PREFETCH: '1'
+        run: |
+          pytest tests/ -v --tb=short \
+            --cov=lib --cov=api --cov=config --cov=factors --cov=scanner \
+            --cov=paper_trading --cov=trading_journal --cov=dashboard \
+            --cov-report=json:coverage.json --cov-report=term
+      - name: Coverage baseline gate
+        # 按平台与自己的历史基线比对（分支覆盖在三平台本就不同，
+        # 单一阈值硬卡必然误判）。该平台尚无基线时只报告不阻断。
+        if: matrix.python-version == '3.12'
+        run: python scripts/coverage_baseline.py --check --coverage-file coverage.json
+      - name: Upload coverage report
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.os }}
+          path: coverage.json
       - name: Run tests
+        if: matrix.python-version != '3.12'
         run: pytest tests/ -v --tb=short

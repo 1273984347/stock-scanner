@@ -1,0 +1,718 @@
+{
+  "schema_version": 1,
+  "platforms": {
+    "win32": {
+      "total_pct": 43.09,
+      "total_statements": 21719,
+      "covered_lines": 9359,
+      "modules": {
+        "api.py": {
+          "pct": 17.21,
+          "statements": 1824,
+          "covered_lines": 314
+        },
+        "factors.py": {
+          "pct": 52.07,
+          "statements": 893,
+          "covered_lines": 465
+        },
+        "lib/__init__.py": {
+          "pct": 100.0,
+          "statements": 0,
+          "covered_lines": 0
+        },
+        "lib/ab_testing.py": {
+          "pct": 34.97,
+          "statements": 143,
+          "covered_lines": 50
+        },
+        "lib/alert_monitor.py": {
+          "pct": 73.64,
+          "statements": 129,
+          "covered_lines": 95
+        },
+        "lib/alpha.py": {
+          "pct": 15.68,
+          "statements": 236,
+          "covered_lines": 37
+        },
+        "lib/alpha_classifier.py": {
+          "pct": 94.37,
+          "statements": 71,
+          "covered_lines": 67
+        },
+        "lib/alpha_factory.py": {
+          "pct": 85.29,
+          "statements": 170,
+          "covered_lines": 145
+        },
+        "lib/alpha_feedback.py": {
+          "pct": 96.12,
+          "statements": 129,
+          "covered_lines": 124
+        },
+        "lib/analyzer.py": {
+          "pct": 71.43,
+          "statements": 105,
+          "covered_lines": 75
+        },
+        "lib/anomaly_detector.py": {
+          "pct": 98.15,
+          "statements": 108,
+          "covered_lines": 106
+        },
+        "lib/attribution.py": {
+          "pct": 84.62,
+          "statements": 91,
+          "covered_lines": 77
+        },
+        "lib/audit_logger.py": {
+          "pct": 22.86,
+          "statements": 70,
+          "covered_lines": 16
+        },
+        "lib/backtest_saver.py": {
+          "pct": 84.06,
+          "statements": 69,
+          "covered_lines": 58
+        },
+        "lib/backtest_unified.py": {
+          "pct": 57.81,
+          "statements": 64,
+          "covered_lines": 37
+        },
+        "lib/bayesian_updater.py": {
+          "pct": 95.6,
+          "statements": 91,
+          "covered_lines": 87
+        },
+        "lib/black_litterman.py": {
+          "pct": 30.65,
+          "statements": 62,
+          "covered_lines": 19
+        },
+        "lib/broker.py": {
+          "pct": 75.0,
+          "statements": 624,
+          "covered_lines": 468
+        },
+        "lib/broker_data/__init__.py": {
+          "pct": 100.0,
+          "statements": 4,
+          "covered_lines": 4
+        },
+        "lib/broker_data/constraints.py": {
+          "pct": 20.99,
+          "statements": 81,
+          "covered_lines": 17
+        },
+        "lib/broker_data/datatypes.py": {
+          "pct": 100.0,
+          "statements": 29,
+          "covered_lines": 29
+        },
+        "lib/broker_data/impact.py": {
+          "pct": 75.56,
+          "statements": 45,
+          "covered_lines": 34
+        },
+        "lib/cache.py": {
+          "pct": 48.86,
+          "statements": 176,
+          "covered_lines": 86
+        },
+        "lib/capital_allocator.py": {
+          "pct": 93.85,
+          "statements": 65,
+          "covered_lines": 61
+        },
+        "lib/constraints.py": {
+          "pct": 91.51,
+          "statements": 212,
+          "covered_lines": 194
+        },
+        "lib/cost_filter.py": {
+          "pct": 28.07,
+          "statements": 57,
+          "covered_lines": 16
+        },
+        "lib/data_adata.py": {
+          "pct": 13.0,
+          "statements": 100,
+          "covered_lines": 13
+        },
+        "lib/data_ashare.py": {
+          "pct": 26.85,
+          "statements": 108,
+          "covered_lines": 29
+        },
+        "lib/data_baostock.py": {
+          "pct": 13.24,
+          "statements": 68,
+          "covered_lines": 9
+        },
+        "lib/data_bond.py": {
+          "pct": 11.63,
+          "statements": 86,
+          "covered_lines": 10
+        },
+        "lib/data_cache.py": {
+          "pct": 59.14,
+          "statements": 93,
+          "covered_lines": 55
+        },
+        "lib/data_correction.py": {
+          "pct": 74.31,
+          "statements": 109,
+          "covered_lines": 81
+        },
+        "lib/data_delisted.py": {
+          "pct": 9.86,
+          "statements": 142,
+          "covered_lines": 14
+        },
+        "lib/data_earnings.py": {
+          "pct": 37.31,
+          "statements": 67,
+          "covered_lines": 25
+        },
+        "lib/data_eastmoney_fin.py": {
+          "pct": 15.49,
+          "statements": 71,
+          "covered_lines": 11
+        },
+        "lib/data_eastmoney_fund.py": {
+          "pct": 36.96,
+          "statements": 92,
+          "covered_lines": 34
+        },
+        "lib/data_fund_enhanced.py": {
+          "pct": 18.98,
+          "statements": 137,
+          "covered_lines": 26
+        },
+        "lib/data_fund_flow.py": {
+          "pct": 34.44,
+          "statements": 90,
+          "covered_lines": 31
+        },
+        "lib/data_layer.py": {
+          "pct": 33.91,
+          "statements": 749,
+          "covered_lines": 254
+        },
+        "lib/data_level2.py": {
+          "pct": 50.0,
+          "statements": 64,
+          "covered_lines": 32
+        },
+        "lib/data_macro.py": {
+          "pct": 7.69,
+          "statements": 156,
+          "covered_lines": 12
+        },
+        "lib/data_margin.py": {
+          "pct": 30.51,
+          "statements": 118,
+          "covered_lines": 36
+        },
+        "lib/data_northbound_rt.py": {
+          "pct": 20.79,
+          "statements": 101,
+          "covered_lines": 21
+        },
+        "lib/data_options.py": {
+          "pct": 9.32,
+          "statements": 118,
+          "covered_lines": 11
+        },
+        "lib/data_quality.py": {
+          "pct": 34.41,
+          "statements": 93,
+          "covered_lines": 32
+        },
+        "lib/data_scjy.py": {
+          "pct": 61.11,
+          "statements": 18,
+          "covered_lines": 11
+        },
+        "lib/data_sector.py": {
+          "pct": 9.17,
+          "statements": 109,
+          "covered_lines": 10
+        },
+        "lib/data_sina_fin.py": {
+          "pct": 17.24,
+          "statements": 116,
+          "covered_lines": 20
+        },
+        "lib/data_source_registry.py": {
+          "pct": 30.77,
+          "statements": 130,
+          "covered_lines": 40
+        },
+        "lib/data_tdx.py": {
+          "pct": 26.72,
+          "statements": 378,
+          "covered_lines": 101
+        },
+        "lib/data_tdx_fin.py": {
+          "pct": 21.33,
+          "statements": 150,
+          "covered_lines": 32
+        },
+        "lib/data_tdx_fin_adapter.py": {
+          "pct": 21.05,
+          "statements": 304,
+          "covered_lines": 64
+        },
+        "lib/data_tdx_fin_analysis.py": {
+          "pct": 20.41,
+          "statements": 49,
+          "covered_lines": 10
+        },
+        "lib/data_tdx_gp.py": {
+          "pct": 19.77,
+          "statements": 86,
+          "covered_lines": 17
+        },
+        "lib/data_tencent.py": {
+          "pct": 12.33,
+          "statements": 73,
+          "covered_lines": 9
+        },
+        "lib/data_tushare.py": {
+          "pct": 14.29,
+          "statements": 133,
+          "covered_lines": 19
+        },
+        "lib/data_westock.py": {
+          "pct": 20.45,
+          "statements": 88,
+          "covered_lines": 18
+        },
+        "lib/dcf.py": {
+          "pct": 100.0,
+          "statements": 37,
+          "covered_lines": 37
+        },
+        "lib/dynamic_exit.py": {
+          "pct": 96.34,
+          "statements": 82,
+          "covered_lines": 79
+        },
+        "lib/dynamic_weight_manager.py": {
+          "pct": 100.0,
+          "statements": 62,
+          "covered_lines": 62
+        },
+        "lib/evaluator.py": {
+          "pct": 22.47,
+          "statements": 316,
+          "covered_lines": 71
+        },
+        "lib/exrights_adjuster.py": {
+          "pct": 6.56,
+          "statements": 122,
+          "covered_lines": 8
+        },
+        "lib/factor_monitor.py": {
+          "pct": 17.71,
+          "statements": 96,
+          "covered_lines": 17
+        },
+        "lib/factor_optimizer.py": {
+          "pct": 33.18,
+          "statements": 437,
+          "covered_lines": 145
+        },
+        "lib/factor_strategy.py": {
+          "pct": 13.16,
+          "statements": 114,
+          "covered_lines": 15
+        },
+        "lib/fill_rate.py": {
+          "pct": 30.0,
+          "statements": 30,
+          "covered_lines": 9
+        },
+        "lib/fundamental.py": {
+          "pct": 7.32,
+          "statements": 82,
+          "covered_lines": 6
+        },
+        "lib/fundamental_fetcher.py": {
+          "pct": 17.07,
+          "statements": 123,
+          "covered_lines": 21
+        },
+        "lib/ic/__init__.py": {
+          "pct": 41.18,
+          "statements": 17,
+          "covered_lines": 7
+        },
+        "lib/ic/ic_calculator.py": {
+          "pct": 70.13,
+          "statements": 77,
+          "covered_lines": 54
+        },
+        "lib/ic/ic_reporter.py": {
+          "pct": 15.49,
+          "statements": 71,
+          "covered_lines": 11
+        },
+        "lib/ic/panel_builder.py": {
+          "pct": 18.18,
+          "statements": 66,
+          "covered_lines": 12
+        },
+        "lib/ic/weight_adjuster.py": {
+          "pct": 70.93,
+          "statements": 86,
+          "covered_lines": 61
+        },
+        "lib/indicators.py": {
+          "pct": 97.35,
+          "statements": 113,
+          "covered_lines": 110
+        },
+        "lib/investor_agents.py": {
+          "pct": 80.72,
+          "statements": 223,
+          "covered_lines": 180
+        },
+        "lib/judge_panel.py": {
+          "pct": 14.94,
+          "statements": 348,
+          "covered_lines": 52
+        },
+        "lib/judge_strategies.py": {
+          "pct": 40.66,
+          "statements": 182,
+          "covered_lines": 74
+        },
+        "lib/kg_neo4j.py": {
+          "pct": 74.22,
+          "statements": 128,
+          "covered_lines": 95
+        },
+        "lib/kg_store.py": {
+          "pct": 93.89,
+          "statements": 131,
+          "covered_lines": 123
+        },
+        "lib/lhb_analyzer.py": {
+          "pct": 20.83,
+          "statements": 48,
+          "covered_lines": 10
+        },
+        "lib/llm_analysis.py": {
+          "pct": 9.09,
+          "statements": 132,
+          "covered_lines": 12
+        },
+        "lib/llm_utils/__init__.py": {
+          "pct": 100.0,
+          "statements": 4,
+          "covered_lines": 4
+        },
+        "lib/llm_utils/memory.py": {
+          "pct": 93.09,
+          "statements": 188,
+          "covered_lines": 175
+        },
+        "lib/llm_utils/rating.py": {
+          "pct": 100.0,
+          "statements": 17,
+          "covered_lines": 17
+        },
+        "lib/llm_utils/structured.py": {
+          "pct": 100.0,
+          "statements": 21,
+          "covered_lines": 21
+        },
+        "lib/market_regime.py": {
+          "pct": 84.56,
+          "statements": 149,
+          "covered_lines": 126
+        },
+        "lib/market_utils.py": {
+          "pct": 92.73,
+          "statements": 55,
+          "covered_lines": 51
+        },
+        "lib/ml_ab_test.py": {
+          "pct": 28.0,
+          "statements": 100,
+          "covered_lines": 28
+        },
+        "lib/ml_backtest.py": {
+          "pct": 24.32,
+          "statements": 111,
+          "covered_lines": 27
+        },
+        "lib/ml_data.py": {
+          "pct": 46.42,
+          "statements": 321,
+          "covered_lines": 149
+        },
+        "lib/ml_monitor.py": {
+          "pct": 15.58,
+          "statements": 77,
+          "covered_lines": 12
+        },
+        "lib/ml_predictor.py": {
+          "pct": 50.0,
+          "statements": 172,
+          "covered_lines": 86
+        },
+        "lib/ml_trainer.py": {
+          "pct": 29.1,
+          "statements": 244,
+          "covered_lines": 71
+        },
+        "lib/model_registry.py": {
+          "pct": 11.93,
+          "statements": 176,
+          "covered_lines": 21
+        },
+        "lib/multi_market_validator.py": {
+          "pct": 23.86,
+          "statements": 88,
+          "covered_lines": 21
+        },
+        "lib/multi_period_kdj.py": {
+          "pct": 100.0,
+          "statements": 114,
+          "covered_lines": 114
+        },
+        "lib/news_signal.py": {
+          "pct": 55.29,
+          "statements": 85,
+          "covered_lines": 47
+        },
+        "lib/northbound_sector.py": {
+          "pct": 8.89,
+          "statements": 90,
+          "covered_lines": 8
+        },
+        "lib/notification_logger.py": {
+          "pct": 42.86,
+          "statements": 56,
+          "covered_lines": 24
+        },
+        "lib/opportunity_scorer.py": {
+          "pct": 84.21,
+          "statements": 76,
+          "covered_lines": 64
+        },
+        "lib/panel_decision.py": {
+          "pct": 100.0,
+          "statements": 19,
+          "covered_lines": 19
+        },
+        "lib/paper_trading_runner.py": {
+          "pct": 20.3,
+          "statements": 266,
+          "covered_lines": 54
+        },
+        "lib/partial_exit.py": {
+          "pct": 50.0,
+          "statements": 194,
+          "covered_lines": 97
+        },
+        "lib/pdf_report.py": {
+          "pct": 34.17,
+          "statements": 199,
+          "covered_lines": 68
+        },
+        "lib/pipeline.py": {
+          "pct": 22.78,
+          "statements": 562,
+          "covered_lines": 128
+        },
+        "lib/pipeline_core/__init__.py": {
+          "pct": 100.0,
+          "statements": 2,
+          "covered_lines": 2
+        },
+        "lib/pipeline_core/steps.py": {
+          "pct": 68.18,
+          "statements": 132,
+          "covered_lines": 90
+        },
+        "lib/pipeline_modules/__init__.py": {
+          "pct": 100.0,
+          "statements": 2,
+          "covered_lines": 2
+        },
+        "lib/pipeline_modules/optimizer.py": {
+          "pct": 7.21,
+          "statements": 111,
+          "covered_lines": 8
+        },
+        "lib/pipeline_modules/risk_checker.py": {
+          "pct": 51.55,
+          "statements": 97,
+          "covered_lines": 50
+        },
+        "lib/portfolio.py": {
+          "pct": 11.6,
+          "statements": 181,
+          "covered_lines": 21
+        },
+        "lib/portfolio_manager.py": {
+          "pct": 84.48,
+          "statements": 58,
+          "covered_lines": 49
+        },
+        "lib/portfolio_optimizer.py": {
+          "pct": 44.84,
+          "statements": 339,
+          "covered_lines": 152
+        },
+        "lib/position_manager.py": {
+          "pct": 53.94,
+          "statements": 343,
+          "covered_lines": 185
+        },
+        "lib/position_size.py": {
+          "pct": 87.98,
+          "statements": 208,
+          "covered_lines": 183
+        },
+        "lib/pump_dump_detector.py": {
+          "pct": 81.97,
+          "statements": 61,
+          "covered_lines": 50
+        },
+        "lib/rebalance_scheduler.py": {
+          "pct": 28.46,
+          "statements": 130,
+          "covered_lines": 37
+        },
+        "lib/risk_manager.py": {
+          "pct": 46.03,
+          "statements": 567,
+          "covered_lines": 261
+        },
+        "lib/risk_parity.py": {
+          "pct": 25.0,
+          "statements": 52,
+          "covered_lines": 13
+        },
+        "lib/scorecard.py": {
+          "pct": 57.94,
+          "statements": 252,
+          "covered_lines": 146
+        },
+        "lib/scorer.py": {
+          "pct": 83.87,
+          "statements": 186,
+          "covered_lines": 156
+        },
+        "lib/sector_rotation.py": {
+          "pct": 27.21,
+          "statements": 136,
+          "covered_lines": 37
+        },
+        "lib/sector_score.py": {
+          "pct": 46.67,
+          "statements": 120,
+          "covered_lines": 56
+        },
+        "lib/sentiment.py": {
+          "pct": 84.8,
+          "statements": 125,
+          "covered_lines": 106
+        },
+        "lib/signal_tracker.py": {
+          "pct": 60.84,
+          "statements": 286,
+          "covered_lines": 174
+        },
+        "lib/slippage_model.py": {
+          "pct": 33.33,
+          "statements": 15,
+          "covered_lines": 5
+        },
+        "lib/stock_pool.py": {
+          "pct": 20.0,
+          "statements": 195,
+          "covered_lines": 39
+        },
+        "lib/strategies.py": {
+          "pct": 36.6,
+          "statements": 459,
+          "covered_lines": 168
+        },
+        "lib/strategy_ranking.py": {
+          "pct": 84.81,
+          "statements": 79,
+          "covered_lines": 67
+        },
+        "lib/strategy_regime_mapper.py": {
+          "pct": 100.0,
+          "statements": 39,
+          "covered_lines": 39
+        },
+        "lib/strategy_snapshot.py": {
+          "pct": 40.74,
+          "statements": 81,
+          "covered_lines": 33
+        },
+        "lib/suspension_monitor.py": {
+          "pct": 17.95,
+          "statements": 39,
+          "covered_lines": 7
+        },
+        "lib/tdx_batch.py": {
+          "pct": 60.13,
+          "statements": 153,
+          "covered_lines": 92
+        },
+        "lib/technical_signals.py": {
+          "pct": 90.22,
+          "statements": 225,
+          "covered_lines": 203
+        },
+        "lib/trade_logger.py": {
+          "pct": 52.38,
+          "statements": 63,
+          "covered_lines": 33
+        },
+        "lib/twap.py": {
+          "pct": 48.57,
+          "statements": 35,
+          "covered_lines": 17
+        },
+        "lib/utils.py": {
+          "pct": 81.82,
+          "statements": 11,
+          "covered_lines": 9
+        },
+        "lib/value_checklist.py": {
+          "pct": 5.0,
+          "statements": 60,
+          "covered_lines": 3
+        },
+        "lib/walkforward.py": {
+          "pct": 78.26,
+          "statements": 322,
+          "covered_lines": 252
+        },
+        "scanner.py": {
+          "pct": 42.42,
+          "statements": 33,
+          "covered_lines": 14
+        },
+        "trading_journal.py": {
+          "pct": 47.6,
+          "statements": 271,
+          "covered_lines": 129
+        }
+      }
+    }
+  },
+  "updated_at": "2026-11-06T22:40:28+00:00"
+}
