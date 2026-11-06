@@ -2,9 +2,9 @@
   "schema_version": 1,
   "platforms": {
     "linux": {
-      "total_pct": 43.77,
+      "total_pct": 43.8,
       "total_statements": 21719,
-      "covered_lines": 9507,
+      "covered_lines": 9513,
       "modules": {
         "api.py": {
           "pct": 18.2,
@@ -642,9 +642,9 @@
           "covered_lines": 39
         },
         "lib/strategies.py": {
-          "pct": 44.01,
+          "pct": 45.32,
           "statements": 459,
-          "covered_lines": 202
+          "covered_lines": 208
         },
         "lib/strategy_ranking.py": {
           "pct": 84.81,
@@ -714,9 +714,9 @@
       }
     },
     "darwin": {
-      "total_pct": 43.77,
+      "total_pct": 43.81,
       "total_statements": 21719,
-      "covered_lines": 9507,
+      "covered_lines": 9515,
       "modules": {
         "api.py": {
           "pct": 18.2,
@@ -1239,9 +1239,9 @@
           "covered_lines": 64
         },
         "lib/pipeline.py": {
-          "pct": 43.06,
+          "pct": 44.48,
           "statements": 562,
-          "covered_lines": 242
+          "covered_lines": 250
         },
         "lib/pipeline_core/__init__.py": {
           "pct": 100.0,
@@ -2138,6 +2138,6 @@
       }
     }
   },
-  "updated_at": "2026-11-06T22:53:42+00:00",
+  "updated_at": "2026-11-06T23:15:46+00:00",
   "note": "Baseline numbers MUST come from the CI runner of the same platform (the gate executes there). Local numbers differ (e.g. win32 local 43.09% vs CI) because branch coverage differs by environment."
 }
