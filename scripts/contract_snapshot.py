@@ -41,6 +41,15 @@ from datetime import datetime, timezone
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+# Windows CI 的 stdout 默认不是 UTF-8（cp1252/cp936），中文输出会直接抛
+# UnicodeEncodeError 让门禁崩溃 —— 显式重配为 UTF-8，errors="replace" 兜底。
+# 注意：本脚本面向 CI 日志，所有门禁输出保持纯 ASCII，中文说明留在文档与注释里。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError, OSError):
+        pass
+
 DEFAULT_DIR = ROOT / "docs" / "refactor" / "contracts"
 CONTRACT_FILE = "route-contract-baseline.json"
 OPENAPI_FILE = "openapi-baseline.json"
@@ -290,18 +299,18 @@ def compare(old: dict, new: dict) -> list:
 # ---------------------------------------------------------------- CLI
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description="API 契约快照 / 漂移检测")
-    p.add_argument("--out", default=str(DEFAULT_DIR), help="快照输出目录")
-    p.add_argument("--check", action="store_true", help="与基线比对，有漂移则退出码 1")
-    p.add_argument("--summary", action="store_true", help="只打印统计")
-    p.add_argument("--baseline", default=None, help="--check 时指定基线文件（默认用输出目录下的基线）")
-    p.add_argument("--verify-ast", action="store_true", help="额外做 AST↔运行时互证")
+    p = argparse.ArgumentParser(description="API contract snapshot / drift detection")
+    p.add_argument("--out", default=str(DEFAULT_DIR), help="snapshot output directory")
+    p.add_argument("--check", action="store_true", help="compare against baseline; exit 1 on drift")
+    p.add_argument("--summary", action="store_true", help="print stats only")
+    p.add_argument("--baseline", default=None, help="baseline file for --check (default: <out>/route-contract-baseline.json)")
+    p.add_argument("--verify-ast", action="store_true", help="also cross-check AST vs runtime endpoint sets")
     args = p.parse_args(argv)
 
     snap = collect()
 
     if args.summary:
-        print(json.dumps(snap["counts"], ensure_ascii=False, indent=2))
+        print(json.dumps(snap["counts"], ensure_ascii=True, indent=2))
         return 0
 
     out_dir = pathlib.Path(args.out)
@@ -311,7 +320,7 @@ def main(argv=None) -> int:
     if args.check:
         base_path = pathlib.Path(args.baseline) if args.baseline else contract_path
         if not base_path.exists():
-            print(f"[FAIL] 基线不存在：{base_path}（请先运行 --out 生成）", file=sys.stderr)
+            print(f"[FAIL] baseline not found: {base_path} (run --out first)", file=sys.stderr)
             return 1
         old = json.loads(base_path.read_text(encoding="utf-8"))
         diffs = compare(old, snap)
@@ -319,18 +328,18 @@ def main(argv=None) -> int:
         if args.verify_ast or True:
             a, b = ast_pairs(), runtime_pairs(snap)
             if a != b:
-                print("[FAIL] AST ↔ 运行时 端点集合不一致：", file=sys.stderr)
+                print("[FAIL] AST vs runtime endpoint set mismatch:", file=sys.stderr)
                 for x in sorted(a - b):
-                    print(f"   仅 AST 有： {x}", file=sys.stderr)
+                    print(f"   only in AST   : {x}", file=sys.stderr)
                 for x in sorted(b - a):
-                    print(f"   仅运行时有： {x}", file=sys.stderr)
+                    print(f"   only in runtime: {x}", file=sys.stderr)
                 diffs.append({"kind": "AST_MISMATCH", "route": "-", "detail": "见上"})
 
         if not diffs:
-            print(f"[PASS] 契约无漂移（{len(snap['routes'])} 条路由，基线 {base_path}）")
+            print(f"[PASS] contract unchanged ({len(snap['routes'])} routes, baseline {base_path})")
             return 0
 
-        print(f"[FAIL] 检出 {len(diffs)} 处契约漂移：", file=sys.stderr)
+        print(f"[FAIL] {len(diffs)} contract drift(s) detected:", file=sys.stderr)
         for d in diffs:
             print(f"  - {d['kind']:<14} {d['route']}", file=sys.stderr)
             if d["kind"] == "CHANGED":
@@ -355,11 +364,11 @@ def main(argv=None) -> int:
         newline="\n",
     )
     c = snap["counts"]
-    print(f"[OK] 契约快照已写入 {contract_path}")
-    print(f"[OK] OpenAPI 已写入   {openapi_path}")
+    print(f"[OK] contract snapshot written to {contract_path}")
+    print(f"[OK] OpenAPI written to {openapi_path}")
     print(
-        f"     /api/* 端点 {c['http_api']} 条 | async {c['async_true']} / sync {c['async_false']} "
-        f"| 需鉴权 {c['auth_required']} | 非 /api {c['http_non_api']} | WS {c['websocket']}"
+        f"     /api/* endpoints: {c['http_api']} | async {c['async_true']} / sync {c['async_false']} "
+        f"| auth-required {c['auth_required']} | non-/api {c['http_non_api']} | ws {c['websocket']}"
     )
     return 0
 
