@@ -14,7 +14,9 @@
 
 import json
 import logging
+import os
 import sys
+import threading
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
@@ -38,6 +40,28 @@ except ImportError:
         _HAS_FCNTL = True
     else:
         _HAS_FCNTL = False
+
+
+def _atomic_replace(tmp_path: Path, target_path: Path, retries: int = 10) -> None:
+    """原子替换（带重试）。
+
+    Windows 上 os.replace 会因**外部句柄**（杀毒软件实时扫描、索引服务等
+    短暂打开目标文件）而**偶发** PermissionError [WinError 5] —— 这是瞬时状态，
+    重试即可成功；POSIX 上通常一次成功。
+
+    退避用 threading.Event().wait() 而非 time.sleep —— 后者会被测试的
+    「默认零退避」autouse fixture 短路掉，导致重试窗口失效。
+    """
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            tmp_path.replace(target_path)  # os.replace() 原子 rename
+            return
+        except PermissionError as e:
+            last_exc = e
+            if attempt < retries - 1:
+                threading.Event().wait(0.02 * (attempt + 1))
+    raise last_exc
 
 
 def _last_trading_day() -> str:
@@ -107,35 +131,94 @@ class SignalTracker:
             except Exception as e:
                 logger.warning(f"加载信号历史失败: {e}")
 
-    def _apply_rotation(self, max_signals: int = 5000) -> None:
+    def _apply_rotation(self, max_signals: int = 5000, signals=None):
         """保留所有 pending (actual_return_5d=0) + 最近 max_signals 条已定型.
 
         Borrow 4: 防止 signal_history.json 无限增长.
         pending (待回填) 永远保留, resolved (已有 actual_return) 超限时 drop 最老.
+
+        P0 修复 (2026-11-07): 支持传入 signals 对**合并后**的集合做 rotation,
+        并返回结果（不直接改 self.signals），供 _save_history 的 read-modify-write 使用。
         """
-        pending = [s for s in self.signals if s.actual_return_5d == 0]
-        resolved = [s for s in self.signals if s.actual_return_5d != 0]
+        target = self.signals if signals is None else signals
+        pending = [s for s in target if s.actual_return_5d == 0]
+        resolved = [s for s in target if s.actual_return_5d != 0]
         if len(resolved) <= max_signals:
-            return
-        self.signals = pending + resolved[-max_signals:]
+            return target
+        rotated = pending + resolved[-max_signals:]
+        if signals is None:
+            self.signals = rotated
+        return rotated
+
+    @staticmethod
+    def _sig_key(rec) -> tuple:
+        """信号去重键：同一天 + 同股票 + 同方向 + 同来源 = 同一条。"""
+        return (rec.date, rec.code, rec.signal, rec.source)
+
+    def _merge_disk_signals(self, disk_signals: List[SignalRecord]) -> List[SignalRecord]:
+        """合并磁盘上的信号与本实例内存信号（内存优先，已结算结果优先保留）。
+
+        P0 修复 (2026-11-07)：原实现只写**内存副本**，多进程并发时后写者直接
+        覆盖先写者 ⇒ CI 上 5 进程 × 100 条只剩 100 条（丢 400 条）。
+        修法：写盘时在锁内做 read-modify-write —— 先读磁盘最新内容，
+        再合并本实例记录，按去重键合并后整体写回。
+
+        顺序：磁盘记录在前、本实例记录在后 ⇒ rotation 取"末尾 max 条"时
+        优先保留本实例的最新记录。
+        """
+        merged, order = {}, []
+        for s in disk_signals:
+            k = self._sig_key(s)
+            if k not in merged:
+                order.append(k)
+            merged[k] = s
+        for s in self.signals:
+            k = self._sig_key(s)
+            if k not in merged:
+                order.append(k)
+                merged[k] = s
+            else:
+                prev = merged[k]
+                # 内存优先；但若磁盘侧已结算(actual_return_5d != 0)，
+                # 保留结算结果（否则会丢掉其它进程刚回填的收益率）
+                if prev.actual_return_5d == 0 and s.actual_return_5d != 0:
+                    merged[k] = s
+        return [merged[k] for k in order]
 
     def _save_history(self):
         """保存信号历史 (Borrow 2 atomic write: tmp + replace + 跨平台文件锁)
 
         治本 (P0-2): 防崩溃损坏 JSON + 5 进程并发覆盖 (api.py 4 endpoint + cron).
         模板来自 position_manager.py:134-169 `_save` 模式 (跨平台 portalocker/fcntl).
+
+        P0 修复 (2026-11-07)：锁内 **read-modify-write**。
+        原实现只写**内存副本** ⇒ 并发时后写者直接覆盖先写者
+        (CI 实测 5 进程 × 100 条只剩 100 条, 丢 400 条)。
+        现在：加锁 → 读磁盘最新内容 → 与内存合并去重 → rotation → 原子写回。
         """
         history_file = SIGNAL_LOG_DIR / "signal_history.json"
-        self._apply_rotation()  # Borrow 4: rotation 在 write 之前
         self._acquire_lock("w")
         try:
+            # 锁内 read-modify-write: 先读磁盘最新内容 (可能含其它进程刚写的)
+            disk_signals = []
+            if history_file.exists():
+                try:
+                    with open(history_file, "r", encoding="utf-8") as f:
+                        disk_signals = [SignalRecord(**s) for s in json.load(f)]
+                except Exception as e:
+                    logger.warning(f"合并前读取信号历史失败（以内存为准）: {e}")
+
+            merged = self._merge_disk_signals(disk_signals)
+            merged = self._apply_rotation(signals=merged)  # Borrow 4: rotation 在 write 之前
+
             # 原子写入: 先写 .tmp 再 replace (Borrow 2 P0-2 治本)
             tmp_file = history_file.with_suffix(".tmp")
             tmp_file.write_text(
-                json.dumps([asdict(s) for s in self.signals], indent=2, ensure_ascii=False, default=str),
+                json.dumps([asdict(s) for s in merged], indent=2, ensure_ascii=False, default=str),
                 encoding="utf-8",
             )
-            tmp_file.replace(history_file)  # os.replace() 原子 rename
+            _atomic_replace(tmp_file, history_file)
+            self.signals = merged  # 写成功后才同步内存（失败时保持原样以便回滚）
         except IOError:
             # 锁获取失败已在 _acquire_lock 中记录, 不重复处理
             raise
@@ -152,18 +235,22 @@ class SignalTracker:
         锁超时 30s (vs position_manager 5s) 避免 cache miss 死循环 (P2-4).
         """
         history_file = SIGNAL_LOG_DIR / "signal_history.json"
-        if not history_file.exists():
-            history_file.parent.mkdir(parents=True, exist_ok=True)
-            history_file.touch(exist_ok=True)
+        # P0 修复 (2026-11-07)：锁**伴生 .lock 文件**，不再锁目标文件本身。
+        # 原因：portalocker.Lock 持有目标文件句柄，而 **Windows 不允许 os.replace()
+        # 覆盖一个仍被打开的文件** ⇒ 原实现（锁目标文件 + replace 目标文件）
+        # 在 Windows 上必然 PermissionError [WinError 5]。
+        lock_file = SIGNAL_LOG_DIR / "signal_history.lock"
+        if not lock_file.parent.exists():
+            lock_file.parent.mkdir(parents=True, exist_ok=True)
         try:
             if _HAS_PORTALOCKER:
                 self._lock_file = portalocker.Lock(
-                    str(history_file), timeout=30,
+                    str(lock_file), timeout=30,
                     fail_when_locked=False  # 30s 等待, 不 fail-fast
                 )
                 self._lock_file.acquire()
             elif _HAS_FCNTL:
-                self._lock_file = open(history_file, "r+" if mode == "r" else "w")
+                self._lock_file = open(lock_file, "a+")
                 fcntl.flock(
                     self._lock_file.fileno(),
                     fcntl.LOCK_EX if mode == "w" else fcntl.LOCK_SH,

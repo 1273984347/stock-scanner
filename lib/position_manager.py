@@ -18,6 +18,28 @@ from lib.risk_manager import ProofInvalidationManager
 
 logger = logging.getLogger(__name__)
 
+
+def _atomic_replace(tmp_path: Path, target_path: Path, retries: int = 10) -> None:
+    """原子替换（带重试）。
+
+    Windows 上 os.replace 会因**外部句柄**（杀毒软件实时扫描、索引服务等
+    短暂打开目标文件）而**偶发** PermissionError [WinError 5] —— 这是瞬时状态，
+    重试即可成功；POSIX 上通常一次成功。
+
+    退避用 threading.Event().wait() 而非 time.sleep —— 后者会被测试的
+    「默认零退避」autouse fixture 短路掉，导致重试窗口失效。
+    """
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            tmp_path.replace(target_path)  # os.replace() 原子 rename
+            return
+        except PermissionError as e:
+            last_exc = e
+            if attempt < retries - 1:
+                threading.Event().wait(0.02 * (attempt + 1))
+    raise last_exc
+
 POSITIONS_FILE = Path(__file__).parent.parent / "cache" / "positions.json"
 
 # 跨平台文件锁
@@ -74,19 +96,26 @@ class PositionManager:
         self._load()
 
     def _acquire_lock(self, mode="r"):
-        """获取文件锁（fail-fast：失败时抛出异常）"""
-        if not self.file.exists():
-            self.file.parent.mkdir(parents=True, exist_ok=True)
-            self.file.touch(exist_ok=True)
+        """获取文件锁（fail-fast：失败时抛出异常）
+
+        P0 修复 (2026-11-07)：锁**伴生 .lock 文件**，不再锁目标文件本身。
+        原因：portalocker.Lock 会打开并持有目标文件的句柄，而 **Windows 不允许
+        os.replace() 覆盖一个仍被打开的文件** ⇒ 原实现（锁目标文件 + replace
+        目标文件）在 Windows 上必然 PermissionError [WinError 5]。
+        锁伴生文件后目标文件可自由被原子替换，且跨平台语义一致。
+        """
+        lock_file = self.file.with_name(self.file.name + ".lock")
+        if not lock_file.parent.exists():
+            lock_file.parent.mkdir(parents=True, exist_ok=True)
         try:
             if _HAS_PORTALOCKER:
                 self._lock_file = portalocker.Lock(
-                    self.file, timeout=5,
+                    str(lock_file), timeout=5,
                     fail_when_locked=True if mode == "r" else False
                 )
                 self._lock_file.acquire()
             elif _HAS_FCNTL:
-                self._lock_file = open(self.file, "r+" if mode == "r" else "w")
+                self._lock_file = open(lock_file, "a+")
                 fcntl.flock(self._lock_file.fileno(),
                            fcntl.LOCK_EX if mode == "w" else fcntl.LOCK_SH)
             else:
@@ -159,7 +188,7 @@ class PositionManager:
             # 原子写入：先写临时文件再 rename
             tmp_file = self.file.with_suffix(".tmp")
             tmp_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-            tmp_file.replace(self.file)
+            _atomic_replace(tmp_file, self.file)
         except IOError:
             # 锁获取失败已在 _acquire_lock 中记录，不重复处理
             raise

@@ -56,6 +56,10 @@ def _concurrent_worker(worker_id: int, sig_dir: Path, records_per_worker: int = 
     """
     import lib.signal_tracker as st
     st.SIGNAL_LOG_DIR = sig_dir
+    # 固定日期：否则每条 record_signal 都会调 _last_trading_day() ->
+    # akshare 交易日历查询（禁网下虽快速失败，但每次仍有开销，
+    # 60 条记录实测多耗 ~60s）。本测试只验证并发写入，不测日期解析。
+    st._last_trading_day = lambda: "2026-05-30"
     t = SignalTracker()
     for i in range(records_per_worker):
         t.record_signal(
@@ -94,23 +98,17 @@ class TestBorrow2AtomicWrite:
         new_tracker = SignalTracker()
         assert new_tracker.signals == [], "corrupted JSON should not crash load"
 
-    @pytest.mark.skipif(
-        sys.platform == "win32",
-        reason=(
-            "Windows + 无 portalocker = 无锁 graceful degradation (Plan line 56 已知设计). "
-            "此测试需 POSIX fcntl 或 portalocker 才能验证锁有效性. "
-            "Linux CI 上 portalocker/fcntl 装上后跑."
-        ),
-    )
     def test_concurrent_save_history_no_data_loss(self, isolated_signal_dir):
         """P0-5 修 (R1b P0-3 修): multiprocessing spawn 真并发 (非 threads).
 
         真实风险场景: api.py 4 endpoint + cron = 5 process 抢写同一个 JSON.
         threads 共享 memory 测不到真 race, 必须 multiprocessing.
 
-        跨平台降级: Windows 文件锁严苛, 5 workers × 100 records 会 PermissionError
-        (POSIX fcntl OK, Windows 默认拒绝同名 tmp file 并发写). 测试降级到 2 workers
-        × 30 records, Linux 仍跑 5 × 100. 关键是验证 portalocker/fcntl 锁 0 丢失.
+        跨平台降级: Windows 降级到 2 workers × 30 records, Linux/macOS 跑 5 × 100.
+        (原 skipif 已移除 —— 2026-11-07 修复: 锁改为伴生 .lock 文件, 不再锁目标文件,
+         故 Windows 不再出现 PermissionError; 修复前 Linux 实测丢 400 条,
+         修复后锁内 read-modify-write 保证 0 丢失.)
+        关键是验证 portalocker/fcntl 锁 + 锁内合并 0 丢失.
 
         验证策略 (R1b 修): portalocker 应该保证 0 丢失 (in-memory list 不共享,
         每个 worker 独立累加, lock 只保证 _save_history 串行化). 删 5% 容忍 —
@@ -205,8 +203,11 @@ class TestBorrow2AtomicWrite:
         mock_pl = MagicMock()
         mock_lock = MagicMock()
         mock_pl.Lock.return_value = mock_lock
+        # patch 目标必须是 **模块属性** lib.signal_tracker.portalocker：
+        # 实现里是模块级 `import portalocker`（已绑定到模块属性），
+        # patch sys.modules 不会改变已绑定的引用 ⇒ mock 永远不会被调用。
         with patch("lib.signal_tracker._HAS_PORTALOCKER", True), \
-             patch.dict("sys.modules", {"portalocker": mock_pl}):
+             patch("lib.signal_tracker.portalocker", mock_pl):
             fresh_tracker.record_signal("600519", "bullish", 0.8, "2026-05-30")
 
         # 验证 Lock 被 acquire + release 配对调用
@@ -232,8 +233,11 @@ class TestBorrow2AtomicWrite:
         mock_lock = MagicMock()
         mock_lock.acquire.side_effect = TimeoutError("lock timeout (mock)")
         mock_pl.Lock.return_value = mock_lock
+        # patch 目标必须是 **模块属性** lib.signal_tracker.portalocker：
+        # 实现里是模块级 `import portalocker`（已绑定到模块属性），
+        # patch sys.modules 不会改变已绑定的引用 ⇒ mock 永远不会被调用。
         with patch("lib.signal_tracker._HAS_PORTALOCKER", True), \
-             patch.dict("sys.modules", {"portalocker": mock_pl}):
+             patch("lib.signal_tracker.portalocker", mock_pl):
             # 验证: lock 失败抛 IOError 给 caller
             with pytest.raises(IOError, match="无法获取信号历史文件锁"):
                 fresh_tracker.record_signal("600519", "bullish", 0.8, "2026-05-30")
