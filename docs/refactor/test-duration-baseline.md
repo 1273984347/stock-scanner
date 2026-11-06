@@ -14,6 +14,7 @@
 | 本地全量 pytest（**关实时日志**，测量口径） | **635.37s ≈ 10.6 min**（111 个测试文件逐文件实测之和） |
 | CI（`ubuntu-latest, 3.12`，ini 默认开日志） | **110.69s**（1,117 passed + 3 failed + 12 skipped） |
 | **✅ 治理后（默认禁网 fixture，见 §十）** | **69.3s**（ini 默认开日志）/ **63.07s**（关日志）⇒ 相对治理前 **>24× / 10.1×**；**零新增失败** |
+| **✅＋退避收口后（见 §十一）** | **11.22–14.9s**（开日志）/ **9.80–11.13s**（关日志）⇒ 相对最初基线 **> 100×**；失败清单三次一致 |
 | **日志 I/O 放大占比** | **约 62%**（28min → 10.6min） |
 | **剩余真实差距** | **约 5.7 倍**（635s vs 110.69s） |
 
@@ -249,6 +250,8 @@ python scripts/pytest_duration_baseline.py --verify --repeat 3 --top 8 --out doc
 | `test_pipeline_core_steps.py::test_fetch_stock_data_handles_empty` | 96.43s | <0.01s | — |
 | **失败清单** | 34（本地既有） | **34（同一批）** | **零新增** |
 | **CI 上（ubuntu-latest, 3.12）** | 110.69s / 3 failed / 1117 passed / 12 skipped / 193 warnings | **88.07s / 3 failed / 1117 passed / 12 skipped / 47 warnings** | 失败数与通过数**完全不变**，耗时提速 20%，warnings 少 76% |
+| **＋退避常量收口后（本地，全量）** | 关日志 47.79s / 开日志 49.31s | **关日志 9.80–11.13s / 开日志 11.22–14.9s** | 再降 ~75% ⇒ 相对最初基线 **> 100×** |
+| 治理后最慢单用例 | 188.07s | **1.12s**（matplotlib 图表生成，正常成本） | — |
 
 全量结果：`1,085 passed, 25 failed, 13 skipped, 9 errors in 63.07s`。
 （CI 参考：`ubuntu-latest, 3.12` 上 110.69s / 3 failed / 12 skipped）
@@ -297,13 +300,91 @@ Linux/macOS 上 multiprocessing 的 socketpair 走 AF_UNIX（str path）⇒ 同�
 ⇒ **推广：凡做「默认禁网」的测试 fixture，必须放行 loopback 与 AF_UNIX，
 否则会打断 asyncio / multiprocessing 的内部机制 —— 且这类失败只在 Windows 暴露。**
 
-### 10.5 禁网解决不了的残余慢点
+### 10.5 残余慢点：已全部清零（§十一 退避收口后）
 
-| 用例 | 耗时 | 性质 | 对应建议 |
-|---|---:|---|---|
-| `test_get_realtime_quotes_handles_akshare_rate_limit` | 14.66s | **确定性退避**（模式③，与网络无关） | §九 建议 ③：patch 退避常量为 0.01 |
-| `test_batch_quick_score_basic_parallel` | 8.98s | 仍需定位（并行 + 其它 IO） | §九 建议 ④ |
-| `test_strategies.py` × 4 | 各 3.00s | 整齐的固定成本（非网络） | 待定位 |
+禁网解决的是 **① 类（未隔离的真实网络路径）**；**③ 类（确定性退避）由 §十一 收口**。
 
-⇒ 禁网解决的是 **①② 类（未隔离的真实网络路径）**；**③ 类（确定性退避）与其它固定成本需单独处理**。
+治理后 top durations（1,132 用例全量）：
+
+| 用例 | 耗时 | 说明 |
+|---|---:|---|
+| `test_backtest_charts_cleanup.py::test_temp_charts_cleans_up_on_exit` | 1.12s | matplotlib 图表生成，正常成本 |
+| `test_walkforward.py::test_walkforward_backtest_basic` | 0.70s | 回测计算，正常成本 |
+| `test_import_all.py::test_import_module[lib.pdf_report]` | 0.37s | PDF 报告依赖导入 |
+| 其余 1,129 个用例 | **均 < 0.30s** | — |
+
+⇒ **原先记录的 6 个慢点（≥3s）全部清零**，最慢的现在只有 1.12s。
+
+---
+
+## 十一、退避常量收口：默认零退避 autouse fixture（2026-11-07）
+
+### 11.1 问题：退避遗漏**在同一文件内**也会漏
+
+本项目的 API 重试退避分布在多处，形态还不统一：
+
+| 位置 | 形态 |
+|---|---|
+| `lib/data_layer.py` | **模块常量** `API_RETRY_BASE_WAIT_S = 2.0`（限流错误 backoff 翻倍） |
+| `lib/data_margin.py` | **硬编码** `time.sleep(2 ** attempt)`（无法 patch 常量） |
+| `lib/data_baostock.py` | 硬编码 `time.sleep(2 ** (attempt + 1))` |
+| `lib/sentiment.py` | 硬编码 `time.sleep(1)` |
+
+实测三处遗漏：
+
+| 用例 | 耗时 | 遗漏形态 |
+|---|---:|---|
+| `test_get_realtime_quotes_handles_akshare_rate_limit` | **14.66s** | 同文件其它 3 个用例都正确 patch 了退避，**唯独这条漏了** |
+| `test_new_modules.py::TestMarginData::test_get_margin_indicator_structure` | **6.65s** | `data_margin` 的退避是硬编码，**连常量都 patch 不到** |
+| `test_strategies.py` ×4 + `test_batch_quick_score.py` ×3 | **33s** | `quick_score`/`full_score` → `_compute_base_scores` → `data_layer` 的资金流/新闻/情绪接口 → 走 `_retry_api_call` |
+
+⇒ **14.66s = 退避翻倍真 sleep（2s+4s）× 2 个调用点 + `_rate_limiter.acquire()` 的限流等待**；
+**6.65s = `_safe_call` 的 `sleep(1)+sleep(2)` × 2 个 API**；
+**33s = 多次 `_retry_api_call` 退避累加**。
+
+### 11.2 处置：显式补 + 默认零退避 autouse fixture
+
+1. **显式补 2 处**（语义最清晰，就地可读）：
+   - `test_datalayer_rate_limit.py`：加 `patch("lib.data_layer.time.sleep")` + `API_RETRY_BASE_WAIT_S=0.01`
+   - `test_new_modules.py`：加 `patch("lib.data_margin.time.sleep")`
+2. **`tests/conftest.py` 新增 `_zero_out_retry_backoff_by_default`（autouse）** 收口其余：
+
+```python
+monkeypatch.setattr("lib.data_layer.API_RETRY_BASE_WAIT_S", 0.01)
+monkeypatch.setattr("lib.data_layer.time.sleep", lambda *a, **k: None)
+```
+
+⚠️ `lib/data_layer.time` **就是标准库 `time` 模块本身** ⇒ 这一处同时覆盖
+`data_layer` / `data_margin` / `data_baostock` / `sentiment` 的**全部**退避 sleep。
+
+**为什么放 autouse 而不是逐个用例补**：这类遗漏在**同一文件内**也会漏（同文件其它用例已正确 patch，
+唯独某条漏掉）⇒ 逐个补治标，漏一处就慢几秒。**默认零退避 + 显式 patch 优先**才是稳定口径。
+
+### 11.3 「显式 patch 优先」为什么成立
+
+monkeypatch 的撤销栈是 LIFO：**后应用的 patch 覆盖先应用的**（后入栈先撤销）。
+autouse fixture 先执行 ⇒ 它的 patch 先应用；测试内的 `with patch(...)` 后应用 ⇒ **优先生效**。
+⇒ 专门测退避时长的 `test_retry_call_rate_limit_doubles_backoff` / `..._real_error_normal_backoff`
+（都自带 `patch("lib.data_layer.time.sleep")` 并断言 sleep 的秒数）**完全不受影响**。
+
+### 11.4 效果
+
+| 口径 | 退避修复前 | 退避修复后 |
+|---|---:|---:|
+| `test_get_realtime_quotes_handles_akshare_rate_limit` | 14.66s | **0.12s** |
+| `test_get_margin_indicator_structure` | 6.65s | **0.01s** |
+| `test_batch_quick_score_basic_parallel` | 6.01s | **0.02s** |
+| 3 个最慢文件合计 | 33.81s | **0.86s** |
+| **全量（关实时日志）** | 47.79s | **9.80 – 11.13s** |
+| **全量（ini 默认，开 DEBUG 日志）** | 49.31s | **11.22 – 14.9s** |
+| **相对最初基线** | > 28 min / 635.37s | **> 100×** |
+| **失败清单** | 25 failed + 9 errors | **完全相同**（三次独立跑一致：1085 passed / 13 skipped） |
+
+**测量说明**：冷缓存首轮偏慢（关日志 21.26s），热缓存稳定在 9.80–11.13s；
+换顺序复跑（先开日志后关日志）得 14.9s / 12.9s ⇒ **顺序无关，读数可信**。
+
+### 11.5 残余慢点
+
+已清零，详见 §10.5 —— 全量 1,132 个用例中最慢的只有 **1.12s**（matplotlib 图表生成，属正常成本）。
+
 

@@ -146,7 +146,14 @@ def test_get_realtime_quotes_handles_akshare_rate_limit():
     """akshare 限流 → TDX 也失败 → 返空 DataFrame (不 raise)"""
     import pandas as pd
     # 跳过缓存
-    with patch.object(data_layer, "_load_cache", return_value=pd.DataFrame()):
+    # 退避常量与真实 sleep 必须一并短路，否则本用例要 ~14.6s：
+    #   · API_RETRY_BASE_WAIT_S 未 patch => 限流错误 backoff 翻倍，真 sleep 2s+4s，
+    #     而 get_realtime_quotes 里有 2 个 _retry_api_call 调用点
+    #   · time.sleep 未 mock => _rate_limiter.acquire() 的限流等待（3 calls/s）也真 sleep
+    # 同文件其它用例（test_retry_call_*）均已正确 patch，此处是遗漏。
+    with patch.object(data_layer, "_load_cache", return_value=pd.DataFrame()), \
+         patch("lib.data_layer.time.sleep"), \
+         patch("lib.data_layer.API_RETRY_BASE_WAIT_S", 0.01):
         # 强制 akshare 抛限流错误
         with patch("lib.data_layer.ak.stock_zh_a_spot", side_effect=ValueError("Can not decode value starting with '<'")):
             # TDX 走 except 分支, 让 _retry_api_call 也命中限流模式

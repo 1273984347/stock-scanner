@@ -194,6 +194,32 @@ def _is_local(address) -> bool:
 
 
 @pytest.fixture(autouse=True)
+def _zero_out_retry_backoff_by_default(monkeypatch):
+    """默认把 API 重试退避压到 ~0（显式 patch 的测试不受影响）。
+
+    背景：退避常量遗漏是本项目**反复出现**的慢用例来源 ——
+      · lib/data_layer.py 的 API_RETRY_BASE_WAIT_S（模块常量）
+      · lib/data_margin.py 的硬编码 time.sleep(2 ** attempt)
+      · lib/data_baostock.py / lib/sentiment.py 的同类退避
+    测试未短路 ⇒ 真等 2s / 4s。实测三处：
+      test_datalayer_rate_limit  14.66s
+      test_new_modules (margin)   6.65s
+      test_strategies + test_batch_quick_score  33s
+
+    为什么放 autouse 而不是逐个用例补：这类遗漏在**同一文件内也会漏**
+    （同文件其它用例已正确 patch，唯独某条漏掉）⇒ 逐个补治标。
+    默认零退避 + 显式 patch 优先，才是稳定口径。
+
+    显式 patch 的测试（如专门测退避时长的 test_retry_call_*）不受影响：
+    monkeypatch 后应用者覆盖先应用者（后入栈先撤销），测试内的 patch 优先生效。
+    """
+    monkeypatch.setattr("lib.data_layer.API_RETRY_BASE_WAIT_S", 0.01)
+    # lib/data_layer.time 就是标准库 time 模块本身 ⇒ 这一处同时覆盖
+    # data_layer / data_margin / data_baostock / sentiment 的全部退避 sleep
+    monkeypatch.setattr("lib.data_layer.time.sleep", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
 def _block_network_by_default(request, monkeypatch):
     """默认禁止真实网络访问；@pytest.mark.enable_socket 可豁免。"""
     if request.node.get_closest_marker("enable_socket"):

@@ -255,7 +255,12 @@ class TestBacktestUnified:
 class TestMarginData:
     def test_get_margin_indicator_structure(self):
         from lib.data_margin import get_margin_indicator
-        result = get_margin_indicator("600519")
+        # lib.data_margin._safe_call 的退避是硬编码 time.sleep(2 ** attempt)
+        # （不是模块常量，故无法像 data_layer 那样 patch 常量），
+        # 未短路 => 每个 API 调用真等 3s，本用例实测 6.65s。
+        # 禁网下真实数据取不到（返回默认值），断言只校验结构，不依赖真实等待。
+        with patch("lib.data_margin.time.sleep"):
+            result = get_margin_indicator("600519")
         assert "margin_balance" in result
         assert "margin_balance_chg" in result
         assert "margin_buy_ratio" in result
@@ -265,7 +270,9 @@ class TestMarginData:
 
     def test_margin_balance_positive(self):
         from lib.data_margin import get_margin_indicator
-        result = get_margin_indicator("600519")
+        # 同上：短路 _safe_call 的退避 sleep
+        with patch("lib.data_margin.time.sleep"):
+            result = get_margin_indicator("600519")
         # 茅台应该有正的融资余额
         assert result["margin_balance"] >= 0
 
