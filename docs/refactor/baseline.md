@@ -111,6 +111,33 @@ CI 的整体结论不可用于判断契约门禁，**必须看步骤级结论**�
 
 ---
 
+## 四·0、本地 pytest 耗时与稳定性基线（2026-11-07 实测）
+
+> 完整报告：`docs/refactor/test-duration-baseline.md` ｜ 机器可读：`test-duration-baseline.json`
+> 工具：`scripts/pytest_duration_baseline.py`（--collect / --scan-by-file / --verify）
+
+| 指标 | 读数 |
+|---|---|
+| 本地全量 pytest（ini 默认，**开实时 DEBUG 日志**） | **> 28 min 未结束**（两次采集均在 13% 处中止） |
+| 本地全量 pytest（**关实时日志**，测量口径） | **635.37s ≈ 10.6 min**（111 个测试文件逐文件实测之和） |
+| CI 全量 pytest | **110.69s** ⇒ 关日志后仍差 **约 5.7 倍** |
+| **日志 I/O 放大占比** | **约 62%**（28min → 10.6min） |
+| 文件级集中度 | **Top 12 文件占 85.9%**；头号 `tests/test_scorecard.py` **304.65s = 47.9%** |
+| 用例级集中度 | **Top 2 用例占 47.8%**（都在 `test_scorecard.py`：188.07s + 115.84s） |
+| 最慢用例 | `test_scorecard.py::test_score_structure` **188.07s** |
+| 稳定性（Top-8 × 3 轮） | 轮次 wall 170.04 / 161.61 / 233.02s（**整体波动 44%**） |
+| 不稳定用例（CV > 0.3） | **1 个**：`test_fetch_stock_data_handles_empty`（CV **0.3018**，87.85~163.02s，1.85 倍浮动） |
+| 稳定但慢（CV < 0.01） | `test_get_realtime_quotes_handles_akshare_rate_limit`（17.08s, CV 0.0038）—— 确定性退避 sleep，非网络抖动 |
+
+**根因归类**：① mock 不全 ② 显式走真实逻辑 ③ mock 了错误但没 mock 退避
+⇒ 三类都是**未隔离的真实网络路径**；本地出网顺畅⇒走完全程，CI 快速失败⇒"看起来快"。
+
+**放大器**：`pytest.ini` 的 `log_cli=true` + `log_cli_level=DEBUG`
+与 `tests/logging.conf` 的 `logger_quant`(DEBUG)→stdout 叠加 ⇒ **DEBUG 日志双份输出**，
+matplotlib 字体扫描日志被逐条放大。
+
+---
+
 ## 五、阶段增量对照（随各 Phase 收官回填）
 
 | Phase | 关键指标 | 基线 | 目标 | 当前 | 状态 |
@@ -119,6 +146,7 @@ CI 的整体结论不可用于判断契约门禁，**必须看步骤级结论**�
 | 0 | 尺子自证（判红能力） | — | 3 路验证 | 3 路通过 | ✅ 完成 |
 | 0 | **CI 门禁三平台可用** | — | ubuntu/macos/windows 全绿 | 3/3 success（run 42290920148 @ master） | ✅ 完成 |
 | 0 | CI job 数增量 | 9 | 9（不新增） | 9 | ✅ 完成 |
+| 0 | **本地慢用例定位** | — | 耗时排序 + 稳定性基线 | 111 文件全覆盖 / 635.37s；Top12 占 85.9% | ✅ 完成（见 §四·0） |
 | 0 | 覆盖率基线入库 | — | 按模块分解 | — | ⏳ 待补 |
 | 0 | 对拍框架可用 | — | 3 条链路 | — | ⏳ 待补 |
 | 0 | 零测试数据模块契约测试 | — | ≥5 | 0 | ⏳ 待补 |

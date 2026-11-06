@@ -1,0 +1,1722 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-06T21:21:19+00:00",
+  "env": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "tdx_data_path": "<unset>",
+    "cwd": "D:\\stock-scanner"
+  },
+  "collect": {
+    "pytest_args": "-q --tb=no --durations=0 -o log_cli=false -o log_cli_level=WARNING tests/test_data_tdx.py tests/test_datalayer_rate_limit.py tests/test_datalayer_silent_exception.py tests/test_datalayer_p1_2_asofdate.py tests/test_datalayer_cache_p1_1_lru.py tests/test_datalayer_cache_p1_2.py tests/test_broker_market_cap_estimate.py tests/test_broker.py tests/test_broker_p1.py tests/test_market_utils.py tests/test_new_modules.py tests/test_kg_benchmark.py tests/test_kg_neo4j.py tests/test_ml_data_p1.py tests/test_ml_data_alignment.py tests/test_pipeline_core_real_data.py tests/test_pipeline_core_steps.py tests/test_strategies_p0_2_keltner.py tests/test_strategies_p0_3.py tests/test_analysis_report.py tests/test_batch_quick_score.py tests/test_api.py tests/test_e2e.py",
+    "targets": [
+      "tests/test_data_tdx.py",
+      "tests/test_datalayer_rate_limit.py",
+      "tests/test_datalayer_silent_exception.py",
+      "tests/test_datalayer_p1_2_asofdate.py",
+      "tests/test_datalayer_cache_p1_1_lru.py",
+      "tests/test_datalayer_cache_p1_2.py",
+      "tests/test_broker_market_cap_estimate.py",
+      "tests/test_broker.py",
+      "tests/test_broker_p1.py",
+      "tests/test_market_utils.py",
+      "tests/test_new_modules.py",
+      "tests/test_kg_benchmark.py",
+      "tests/test_kg_neo4j.py",
+      "tests/test_ml_data_p1.py",
+      "tests/test_ml_data_alignment.py",
+      "tests/test_pipeline_core_real_data.py",
+      "tests/test_pipeline_core_steps.py",
+      "tests/test_strategies_p0_2_keltner.py",
+      "tests/test_strategies_p0_3.py",
+      "tests/test_analysis_report.py",
+      "tests/test_batch_quick_score.py",
+      "tests/test_api.py",
+      "tests/test_e2e.py"
+    ],
+    "measured_tests": 56,
+    "sum_seconds": 107.14,
+    "wall_seconds": 112.48,
+    "summary": "206 passed, 11 skipped, 3 warnings"
+  },
+  "durations": [
+    {
+      "nodeid": "tests/test_scorecard.py::test_score_structure",
+      "seconds": 188.07
+    },
+    {
+      "nodeid": "tests/test_scorecard.py::test_score_empty_hist",
+      "seconds": 115.84
+    },
+    {
+      "nodeid": "tests/test_pipeline_core_steps.py::test_fetch_stock_data_handles_empty",
+      "seconds": 96.43
+    },
+    {
+      "nodeid": "tests/test_batch_quick_score.py::test_batch_quick_score_basic_parallel",
+      "seconds": 29.58
+    },
+    {
+      "nodeid": "tests/test_strategies_p1_1.py::test_p1_1_full_score_runs_without_name_error",
+      "seconds": 23.38
+    },
+    {
+      "nodeid": "tests/test_datalayer_rate_limit.py::test_get_realtime_quotes_handles_akshare_rate_limit",
+      "seconds": 17.06
+    },
+    {
+      "nodeid": "tests/test_new_modules.py::TestMarginData::test_get_margin_indicator_structure",
+      "seconds": 7.05
+    },
+    {
+      "nodeid": "tests/test_batch_quick_score.py::test_batch_quick_score_handles_exception_in_one_row",
+      "seconds": 6.05
+    },
+    {
+      "nodeid": "tests/test_batch_quick_score.py::test_batch_quick_score_skip_rows_without_code",
+      "seconds": 4.84
+    },
+    {
+      "nodeid": "tests/test_strategies.py::TestFullScore::test_full_score_grading_boundary",
+      "seconds": 3.06
+    },
+    {
+      "nodeid": "tests/test_strategies.py::TestFullScore::test_full_score_returns_structure",
+      "seconds": 2.99
+    },
+    {
+      "nodeid": "tests/test_strategies.py::TestQuickScore::test_quick_score_with_minimal_data",
+      "seconds": 2.01
+    },
+    {
+      "nodeid": "tests/test_pipeline_core_steps.py::test_score_without_realtime_returns_dict",
+      "seconds": 2.0
+    },
+    {
+      "nodeid": "tests/test_smoke.py::test_scanner_import",
+      "seconds": 1.49
+    },
+    {
+      "nodeid": "tests/test_alpha_factory.py::TestAlphaFactory::test_discover_with_low_ic_rejected",
+      "seconds": 1.47
+    },
+    {
+      "nodeid": "tests/test_bayesian_integration.py::test_pipeline_passes_bayesian_updater_to_dynamic_weight_manager",
+      "seconds": 1.02
+    },
+    {
+      "nodeid": "tests/test_walkforward.py::test_walkforward_backtest_basic",
+      "seconds": 0.96
+    },
+    {
+      "nodeid": "tests/test_alpha_feedback_killswitch.py::test_get_alpha_weights_returns_empty_dict_when_all_alphas_killed",
+      "seconds": 0.88
+    },
+    {
+      "nodeid": "tests/test_backtest_charts_cleanup.py::test_temp_charts_cleans_up_on_exit",
+      "seconds": 0.87
+    },
+    {
+      "nodeid": "tests/test_analysis_report.py::TestBacktestPathComparison::test_ml_backtest_runs",
+      "seconds": 0.8
+    },
+    {
+      "nodeid": "tests/test_api.py::TestStockCodeValidation::test_valid_6digit_code",
+      "seconds": 0.8
+    },
+    {
+      "nodeid": "tests/test_import_all.py::test_import_module[lib.kg_neo4j]",
+      "seconds": 0.77
+    },
+    {
+      "nodeid": "tests/test_smoke.py::test_ml_modules",
+      "seconds": 0.76
+    },
+    {
+      "nodeid": "tests/test_evaluator.py::TestFactorEvaluator::test_evaluator_init",
+      "seconds": 0.75
+    },
+    {
+      "nodeid": "tests/test_position_manager.py::TestPositionManager::test_position_manager_init",
+      "seconds": 0.75
+    },
+    {
+      "nodeid": "tests/test_anomaly_detector.py::TestDetectAnomalies::test_empty_periods_returns_empty",
+      "seconds": 0.74
+    },
+    {
+      "nodeid": "tests/test_attribution.py::TestPortfolioAttribution::test_basic_attribution",
+      "seconds": 0.73
+    },
+    {
+      "nodeid": "tests/test_alpha_factory.py::TestAlphaFactory::test_discover_alpha",
+      "seconds": 0.71
+    },
+    {
+      "nodeid": "tests/test_alpha_classifier.py::TestClassifyAlphaSource::test_trend_alpha",
+      "seconds": 0.7
+    },
+    {
+      "nodeid": "tests/test_walkforward_p0_2.py::test_worst_drawdown_uses_min",
+      "seconds": 0.7
+    },
+    {
+      "nodeid": "tests/test_alpha_feedback.py::TestAlphaStats::test_win_rate",
+      "seconds": 0.69
+    },
+    {
+      "nodeid": "tests/test_backtest_saver_win_loss.py::test_exposes_n_wins_and_n_losses",
+      "seconds": 0.69
+    },
+    {
+      "nodeid": "tests/test_constraints.py::TestSTFilter::test_st_stock_blocked",
+      "seconds": 0.69
+    },
+    {
+      "nodeid": "tests/test_walkforward_p0_4.py::test_p0_4_includes_last_window_when_step_overshoots",
+      "seconds": 0.68
+    },
+    {
+      "nodeid": "tests/test_walkforward_p1_9.py::test_p1_9_risk_per_trade_pct_removed_or_used",
+      "seconds": 0.68
+    },
+    {
+      "nodeid": "tests/test_six_factor_score.py::TestScoreTrend::test_strong_trend",
+      "seconds": 0.67
+    },
+    {
+      "nodeid": "tests/test_westock_cli_p1_enddate.py::test_filter_end_date_normal_case",
+      "seconds": 0.67
+    },
+    {
+      "nodeid": "tests/test_position_size.py::TestRiskSizedPosition::test_basic_calculation",
+      "seconds": 0.66
+    },
+    {
+      "nodeid": "tests/test_scorecard.py::test_l3_bullish",
+      "seconds": 0.66
+    },
+    {
+      "nodeid": "tests/test_strategy_regime_mapper.py::TestStrategyRegimeMapper::test_trend_up_allocation",
+      "seconds": 0.66
+    },
+    {
+      "nodeid": "tests/test_walkforward_p1_5_fragile.py::test_p1_5_classify_status_signature_accepts_sharpes",
+      "seconds": 0.65
+    },
+    {
+      "nodeid": "tests/test_walkforward_p1_7.py::test_p1_7_run_invokes_factor_audit",
+      "seconds": 0.65
+    },
+    {
+      "nodeid": "tests/test_multi_kdj.py::TestKdjTurn::test_turn_up_from_oversold",
+      "seconds": 0.64
+    },
+    {
+      "nodeid": "tests/test_pump_dump.py::TestDetectPumpAndDump::test_empty_dataframe_returns_empty",
+      "seconds": 0.64
+    },
+    {
+      "nodeid": "tests/test_strategies.py::TestQuickScore::test_quick_score_returns_structure",
+      "seconds": 0.64
+    },
+    {
+      "nodeid": "tests/test_strategy_ranking.py::TestStrategyRanker::test_no_data_returns_empty_with_label",
+      "seconds": 0.64
+    },
+    {
+      "nodeid": "tests/test_import_all.py::test_import_module[lib.pdf_report]",
+      "seconds": 0.63
+    },
+    {
+      "nodeid": "tests/test_new_modules.py::TestFactorOptimizer::test_normalize_weights",
+      "seconds": 0.63
+    },
+    {
+      "nodeid": "tests/test_walkforward.py::test_walkforward_config",
+      "seconds": 0.63
+    },
+    {
+      "nodeid": "tests/test_walkforward_p1_6.py::test_p1_6_diagnostics_merges_val_exit_reasons",
+      "seconds": 0.62
+    },
+    {
+      "nodeid": "tests/test_cache_stats.py::test_get_cache_stats_initial_all_zero",
+      "seconds": 0.61
+    },
+    {
+      "nodeid": "tests/test_ml_grid_search_timeseriessplit.py::test_timeseriessplit_basic_ordering",
+      "seconds": 0.61
+    },
+    {
+      "nodeid": "tests/test_walkforward_p1_5.py::test_walkforward_run_signature_accepts_adaptive_state",
+      "seconds": 0.61
+    },
+    {
+      "nodeid": "tests/test_scorer_p0_1.py::TestScoreNewsDefaultBehavior::test_default_no_data_gives_zero",
+      "seconds": 0.6
+    },
+    {
+      "nodeid": "tests/test_config_schema.py::test_schema_dict_exists_and_covers_critical_fields",
+      "seconds": 0.59
+    },
+    {
+      "nodeid": "tests/test_memory_log.py::TestParseRating::test_explicit_rating_label",
+      "seconds": 0.59
+    },
+    {
+      "nodeid": "tests/test_dcf.py::TestDCFValuation::test_basic_positive_fcf",
+      "seconds": 0.58
+    },
+    {
+      "nodeid": "tests/test_capital_allocator.py::TestCapitalAllocator::test_basic_allocation",
+      "seconds": 0.57
+    },
+    {
+      "nodeid": "tests/test_selection_rules.py::TestPriceAboveEma21::test_price_above_ema_passes",
+      "seconds": 0.57
+    },
+    {
+      "nodeid": "tests/test_kg_benchmark.py::test_networkx_scale_750_nodes",
+      "seconds": 0.56
+    },
+    {
+      "nodeid": "tests/test_llm_utils.py::TestBindStructured::test_bind_structured_success",
+      "seconds": 0.56
+    },
+    {
+      "nodeid": "tests/test_market_regime_unified.py::TestRiskOff::test_risk_off_constant_exists",
+      "seconds": 0.56
+    },
+    {
+      "nodeid": "tests/test_kg_neo4j.py::test_add_entity_caches",
+      "seconds": 0.55
+    },
+    {
+      "nodeid": "tests/test_kg_store.py::test_add_and_get_entity",
+      "seconds": 0.55
+    },
+    {
+      "nodeid": "tests/test_backtest_risk_integration.py::test_run_backtest_risk_manager_is_invoked",
+      "seconds": 0.47
+    },
+    {
+      "nodeid": "tests/test_pdf_font.py::TestGetChineseFontCandidates::test_windows_returns_msyh_first",
+      "seconds": 0.47
+    },
+    {
+      "nodeid": "tests/test_backtest_risk_integration.py::test_run_backtest_metrics_include_risk_fields",
+      "seconds": 0.44
+    },
+    {
+      "nodeid": "tests/test_backtest_risk_integration.py::test_run_backtest_consecutive_loss_triggers_alert",
+      "seconds": 0.44
+    },
+    {
+      "nodeid": "tests/test_backtest_risk_integration.py::test_survivorship_bias_factor_in_metrics",
+      "seconds": 0.42
+    },
+    {
+      "nodeid": "tests/test_backtest_charts_cleanup.py::test_temp_charts_cleans_up_on_exception",
+      "seconds": 0.38
+    },
+    {
+      "nodeid": "tests/test_pipeline.py::test_optimize_portfolio_basic",
+      "seconds": 0.23
+    },
+    {
+      "nodeid": "tests/test_new_modules.py::TestSentiment::test_get_market_sentiment_structure",
+      "seconds": 0.21
+    },
+    {
+      "nodeid": "tests/test_import_all.py::test_import_module[lib.panel_decision]",
+      "seconds": 0.17
+    },
+    {
+      "nodeid": "tests/test_api.py::TestSecurityHeaders::test_nosniff_header",
+      "seconds": 0.15
+    },
+    {
+      "nodeid": "tests/test_datalayer_cache_p1_2.py::test_load_cache_io_error_does_not_delete_file",
+      "seconds": 0.15
+    },
+    {
+      "nodeid": "tests/test_new_modules.py::TestSentiment::test_get_sentiment_factor",
+      "seconds": 0.12
+    },
+    {
+      "nodeid": "tests/test_backtest_stop_loss.py::test_initial_position_triggers_hard_stop_loss_on_day1",
+      "seconds": 0.11
+    },
+    {
+      "nodeid": "tests/test_ml_data_p1.py::test_p1_2_build_panel_calls_cross_sectional_features",
+      "seconds": 0.09
+    },
+    {
+      "nodeid": "tests/test_backtest_errors.py::test_get_stock_data_raises_on_all_sources_failed",
+      "seconds": 0.08
+    },
+    {
+      "nodeid": "tests/test_datalayer_p1_2_asofdate.py::test_get_financial_data_no_warning_with_as_of_date",
+      "seconds": 0.08
+    },
+    {
+      "nodeid": "tests/test_api.py::TestPresetValidation::test_valid_presets_accepted",
+      "seconds": 0.07
+    },
+    {
+      "nodeid": "tests/test_datalayer_cache_p1_1_lru.py::test_clean_cache_source_code_uses_atime",
+      "seconds": 0.07
+    },
+    {
+      "nodeid": "tests/test_ml_split_boundary.py::test_train_split_drops_samples_with_label_in_val",
+      "seconds": 0.07
+    },
+    {
+      "nodeid": "tests/test_capital_allocator.py::TestCapitalAllocator::test_allocate_with_feedback",
+      "seconds": 0.06
+    },
+    {
+      "nodeid": "tests/test_factor_optimizer_p0_2.py::TestEvaluateFitnessOOSSharpe::test_oos_sharpe_weight_constant_exists",
+      "seconds": 0.06
+    },
+    {
+      "nodeid": "tests/test_multi_kdj.py::TestGenerateSignalsKdj::test_overbought_with_turn_down_is_bearish",
+      "seconds": 0.06
+    },
+    {
+      "nodeid": "tests/test_pipeline_core_real_data.py::test_calculate_factors_real_kline_returns_factors_and_tech_tuple",
+      "seconds": 0.06
+    },
+    {
+      "nodeid": "tests/test_pipeline_core_real_data.py::test_calculate_factors_real_kline_tech_verdict_bullish",
+      "seconds": 0.06
+    },
+    {
+      "nodeid": "tests/test_pipeline_core_real_data.py::test_fetch_stock_data_real_data_layer_link",
+      "seconds": 0.06
+    },
+    {
+      "nodeid": "tests/test_llm_utils.py::TestInvokeStructuredOrFreetext::test_invoke_structured_success",
+      "seconds": 0.05
+    },
+    {
+      "nodeid": "tests/test_pipeline_core_real_data.py::test_calculate_factors_real_kline_returns_momentum",
+      "seconds": 0.05
+    },
+    {
+      "nodeid": "tests/test_pipeline_core_steps.py::test_fetch_stock_data_returns_4tuple",
+      "seconds": 0.05
+    },
+    {
+      "nodeid": "tests/test_broker_p0_1.py::test_paper_broker_query_balance_decreases_after_buy",
+      "seconds": 0.04
+    },
+    {
+      "nodeid": "tests/test_broker_p1.py::test_p1_1_paper_broker_position_check_without_update",
+      "seconds": 0.04
+    },
+    {
+      "nodeid": "tests/test_cache_stats.py::test_load_cache_hit_increments_hits",
+      "seconds": 0.04
+    },
+    {
+      "nodeid": "tests/test_data_layer.py::TestNormalizeColumns::test_vol_renamed_to_volume",
+      "seconds": 0.04
+    },
+    {
+      "nodeid": "tests/test_data_tdx.py::test_fallback_to_akshare_when_both_network_and_local_fail",
+      "seconds": 0.04
+    },
+    {
+      "nodeid": "tests/test_factor_optimizer_p0_2.py::TestEvaluateFitnessOOSSharpe::test_oos_sharpe_in_fitness_penalizes_overfit",
+      "seconds": 0.04
+    },
+    {
+      "nodeid": "tests/test_import_all.py::test_import_module[lib.sentiment]",
+      "seconds": 0.04
+    },
+    {
+      "nodeid": "tests/test_kg_store.py::test_save_creates_parent_dir",
+      "seconds": 0.04
+    },
+    {
+      "nodeid": "tests/test_pipeline_core_real_data.py::test_check_offset_anomaly_real_scorer_bullish_normal",
+      "seconds": 0.04
+    },
+    {
+      "nodeid": "tests/test_strategies_p1_1.py::test_p1_1_no_bare_config_name_outside_config_param",
+      "seconds": 0.04
+    },
+    {
+      "nodeid": "tests/test_westock_cli_p1_enddate.py::test_csv_format_outputs_csv",
+      "seconds": 0.04
+    },
+    {
+      "nodeid": "tests/test_alpha_classifier.py::TestClassifyTradeHistorical::test_with_hist_data",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_backtest_survivorship_bias.py::test_run_backtest_delisted_stocks_added_to_pool",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_bayesian_integration.py::test_dynamic_weight_manager_accepts_bayesian_updater",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_broker_can_trade.py::test_can_trade_date_filter_uses_target_date",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_broker_helper_methods.py::test_ensure_market_data_empty_triggers_fetch",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_cache_p2_5.py::test_load_cache_file_not_exists_returns_empty_no_error",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_cache_p2_5.py::test_load_cache_file_expired_returns_empty_and_deletes",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_datalayer_p1_2_asofdate.py::test_get_financial_data_raises_when_no_as_of_date",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_dynamic_exit_dead_code.py::TestDynamicLossBreakerRemoved::test_dynamic_loss_breaker_class_removed",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_factors.py::test_rsi_known_values",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_factors.py::test_momentum_5_known_values",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_indicators.py::TestCalculateATR::test_output_length",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_ml_grid_search_timeseriessplit.py::test_xgb_lgb_uses_timeseriessplit_not_kfold",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_new_modules.py::TestBacktestUnified::test_backtest_request_defaults",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_strategies_p0_2.py::TestNoModuleLevelSingleton::test_no_vol_corr_risk_manager_singleton_at_import",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_strategies_p0_2_keltner.py::TestKeltnerXOSIAsOfDate::test_function_signature_accepts_as_of_date",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_strategies_p0_3.py::TestSafeSignalDate::test_monday_pre_open_returns_last_friday",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_strategies_p1_3.py::test_p1_3_batch_get_stock_hist_accepts_as_of_date",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_walkforward_p0_1.py::test_p0_1_factor_data_sliced_per_window_no_future_data",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_walkforward_p0_3.py::test_p0_3_adaptive_state_deepcopy_isolates_writes",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_walkforward_p0_3.py::test_p0_3_initial_state_not_mutated",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_walkforward_p1_5.py::test_walkforward_source_code_calls_strategy_with_adaptive_state",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests/test_alert_monitor_fallback.py::TestAlertPushFallback::test_push_failure_writes_local_file",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_backtest_stop_loss.py::test_position_hard_stop_loss_during_holding",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_backtest_stop_loss.py::test_empty_initial_positions_does_not_break",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_broker_config.py::test_missing_days_threshold_default_60",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_broker_p1.py::test_p1_6_compute_daily_volume_thread_safe",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_cache_p2_5.py::test_load_cache_corrupt_returns_none_and_logs_error",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_cache_stats.py::test_concurrent_load_cache_thread_safe",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_constraints.py::TestSuspension::test_zero_volume_detected",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_datalayer_cache_p1_1_lru.py::test_clean_cache_uses_atime_for_lru_eviction",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_datalayer_p1_2_asofdate.py::test_get_financial_data_has_as_of_date_param",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_datalayer_silent_exception.py::test_pytdx_connection_failure_logs_warning",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_evaluator.py::TestFactorEvaluator::test_compute_ic_with_valid_data",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_factors.py::test_momentum_20_known_values",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_factors.py::test_volatility_20_known_values",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_import_all.py::test_import_module[lib.backtest_unified]",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_market_regime_unified.py::TestHysteresis::test_hysteresis_switches_after_n_confirmations",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_market_regime_unified.py::TestRiskOff::test_high_volatility_triggers_risk_off",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_market_utils.py::test_get_tdx_path_qfq_priority",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_ml_split_boundary.py::test_split_drops_boundary_samples",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_new_modules.py::TestFactorOptimizer::test_weights_hash",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_pressure_test.py::TestSlippageImpact::test_slippage_low_vs_high",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_sector_score.py::TestSectorScore::test_compute_sector_scores_returns_list",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_strategies_p1_2.py::test_p1_2_quick_score_uses_pct_chg_proxy_variable",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_walkforward.py::test_walkforward_with_limit_up",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_walkforward_p0_1.py::test_p0_1_factor_data_indexed_by_datetime",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_walkforward_p1_8.py::test_p1_8_save_results_no_overwrite_same_strategy_same_day",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/test_alert_monitor_fallback.py::TestAlertPushFallback::test_repeated_failures_increment_counter",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_alert_monitor_silent_period.py::TestSilentPeriodInjectable::test_default_silent_period_no_args_uses_wallclock",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_alpha_classifier.py::TestClassifyTradeHistorical::test_as_of_date_slices_future_data",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_alpha_classifier.py::TestClassifyTradeHistorical::test_no_as_of_date_uses_last_bar_warning",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_alpha_feedback.py::TestAlphaFeedback::test_record_trade",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_alpha_feedback.py::TestAlphaFeedback::test_persistence",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_api.py::TestStockCodeValidation::test_invalid_code_raises_400",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_api.py::TestIndex::test_index_returns_200_or_file",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_api.py::TestSecurityHeaders::test_hsts_header",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_api.py::TestSecurityHeaders::test_csp_header",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_api.py::TestSecurityHeaders::test_frame_deny",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_api.py::TestSecurityHeaders::test_xss_protection",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_api.py::TestPresetValidation::test_invalid_preset_returns_400",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_api.py::TestStockCodeValidation::test_short_code_raises_400",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_api.py::TestAPIKeyAuth::test_missing_key_returns_401",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_api.py::TestAPIKeyAuth::test_wrong_key_returns_401",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_api.py::TestStockCodeValidation::test_long_code_raises_400",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_api.py::TestAPIKeyAuth::test_valid_key_passes_auth",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_api.py::TestStockCodeValidation::test_empty_code_returns_404",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_backtest_charts_cleanup.py::test_cleanup_charts_removes_png",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_backtest_stop_loss.py::test_no_stop_loss_when_price_rises",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_backtest_stop_loss.py::test_v2_trend_exit_uses_gap_down_open",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_bayesian_and_frequency.py::TestBayesianUpdater::test_no_data_returns_prior",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_bayesian_and_frequency.py::TestBayesianUpdater::test_update_and_get_posterior",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_broker.py::test_t_plus_1",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_broker_config.py::test_missing_days_threshold_easy_to_change",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_broker_config.py::test_delisting_cleanup_broker_uses_flags",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_broker_helper_methods.py::test_ensure_market_data_already_loaded_skips",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_broker_market_cap_estimate.py::test_market_cap_volume_estimate_fallback",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_broker_p0_1.py::test_paper_broker_query_balance_matches_after_sell",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_broker_p1.py::test_p1_2_paper_broker_uses_exec_price_estimate",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_cache_p2_5.py::test_load_cache_valid_returns_dataframe",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_cache_p2_5.py::test_load_cache_io_error_returns_none_and_preserves_file",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_data_correction.py::TestDataCorrection::test_detect_price_jump",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_data_correction.py::TestDataCorrection::test_p1_10_correction_uses_prev_only",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_dynamic_weight_manager.py::TestDynamicWeightManager::test_compute_weights_trend_up",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_import_all.py::test_import_module[lib.stock_pool]",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_import_all.py::test_import_module[lib.scorecard]",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_import_all.py::test_import_module[lib.sector_score]",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_import_all.py::test_import_module[lib.portfolio_manager]",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_import_all.py::test_import_module[lib.walkforward]",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_indicators.py::TestChannelSignals::test_signal_has_required_columns",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_indicators.py::TestComputeAllChannels::test_full_pipeline",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_indicators.py::TestChannelPosition::test_position_bounds",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_investor_agents.py::TestBorrow1AgentPanelCaller::test_vote_returns_basic_signal",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_investor_agents.py::TestBorrow1AgentPanelCaller::test_vote_with_code_returns_past_context_injection",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_investor_agents.py::TestBorrow1AgentPanelCaller::test_vote_without_code_no_past_context",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_investor_agents.py::TestBorrow1Helpers::test_build_past_context_within_token_budget",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_investor_agents.py::TestBorrow1Helpers::test_build_past_context_cross_ticker_lessons",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_investor_agents.py::TestBorrow1Helpers::test_invalidate_tracker_cache_after_record_signal",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_investor_agents.py::TestBorrow1Helpers::test_build_past_context_same_ticker_history",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_kg_benchmark.py::test_neo4j_query_mock_throughput",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_kg_benchmark.py::test_networkx_persistence_roundtrip",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_kg_benchmark.py::test_scale_when_neo4j_worth_it",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_market_regime.py::TestDetectMarketRegime::test_trend_up",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_market_regime.py::TestDetectMarketRegime::test_trend_down",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_market_regime_unified.py::TestHysteresis::test_hysteresis_requires_n_confirmations",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_market_regime_unified.py::TestRiskOff::test_risk_off_returns_zero_position_scalar",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_market_utils.py::test_detect_market[600519-sh]",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_memory_log.py::TestTradingMemoryLog::test_rotation_max_entries",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_memory_log.py::TestTradingMemoryLog::test_get_past_context_same_ticker",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_memory_log.py::TestTradingMemoryLog::test_store_decision_and_load",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_ml_data_p1.py::test_p1_3_feature_target_split_no_empty_groups",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_ml_split_boundary.py::test_val_split_drops_samples_with_label_in_test",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_multi_kdj.py::TestGenerateSignalsKdj::test_overbought_no_turn_is_neutral",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_multi_kdj.py::TestGenerateSignalsKdj::test_kdj_turn_key_always_present_when_kdj_computed",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_multi_kdj.py::TestGenerateSignalsKdj::test_oversold_with_turn_up_is_bullish",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_multi_period_kdj.py::TestMultiPeriodKDJ::test_compute_basic",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_multi_period_kdj.py::TestMultiPeriodKDJ::test_backward_compatibility",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_new_modules.py::TestDynamicExit::test_volatility_position_sizer",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_opportunity_scorer.py::TestComputeOpportunityScore::test_high_score_trend_up",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_panel_decision.py::TestPanelDecision::test_get_panel_decision_returns_signal",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_panel_decision.py::TestPanelDecision::test_get_panel_decision_injects_past_context",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_panel_decision.py::TestPanelDecision::test_get_panel_decision_no_code_no_past_context",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_panel_decision.py::TestPanelDecision::test_format_panel_decision_with_past_context",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_partial_exit.py::TestPartialExit::test_first_partial_at_10pct",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_partial_exit_p0_3.py::TestConsecutiveLossBreakerPurity::test_is_stopped_pure_query_idempotent",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_pipeline.py::test_check_portfolio_risk_basic",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_pipeline.py::test_check_portfolio_risk_concentration",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_pipeline.py::test_optimize_portfolio_weight_sum",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_pipeline.py::test_optimize_with_sector_map",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_position_constraints.py::TestPositionConstraints::test_can_add_to_profitful",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_position_manager.py::TestPositionManager::test_track_position",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_pump_dump.py::TestDetectPumpAndDump::test_rapid_up_alert",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_risk_execution.py::TestRiskExecution::test_daily_loss_triggers_reduce",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_risk_manager.py::TestRiskManager::test_risk_manager_init",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_risk_manager_p0_1.py::TestWeeklyResetCrossWeek::test_missed_monday_tuesday_should_reset",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_sector_scoring.py::TestSectorScoring::test_scoring_dimensions",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_signal_tracker.py::TestBorrow2AtomicWrite::test_save_history_atomic_write_creates_no_tmp_file",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_signal_tracker.py::TestBorrow4Rotation::test_apply_rotation_keeps_pending_and_recent",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_signal_tracker.py::TestBorrow2AtomicWrite::test_portalocker_timeout_returns_gracefully",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_smoke.py::test_config_import",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_strategies_p0_2_keltner.py::TestKeltnerXOSIAsOfDate::test_index_df_truncated_to_as_of_date",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_walkforward_p1_4.py::test_p1_4_val_data_includes_warmup_context",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_walkforward_p1_5.py::test_walkforward_run_passes_adaptive_state_to_strategy",
+      "seconds": 0.01
+    },
+    {
+      "nodeid": "tests/test_walkforward_p1_5.py::test_walkforward_run_snapshots_state_per_window",
+      "seconds": 0.01
+    }
+  ],
+  "stability": {
+    "repeat": 2,
+    "top_n": 3,
+    "rounds": [
+      {
+        "round": 1,
+        "measured": 3,
+        "wall_seconds": 380.73
+      },
+      {
+        "round": 2,
+        "measured": 3,
+        "wall_seconds": 463.02
+      }
+    ],
+    "items": [
+      {
+        "nodeid": "tests/test_scorecard.py::test_score_structure",
+        "runs": 2,
+        "min": 192.08,
+        "median": 214.385,
+        "max": 236.69,
+        "mean": 214.385,
+        "std": 22.305,
+        "cv": 0.104,
+        "max_min_ratio": 1.232
+      },
+      {
+        "nodeid": "tests/test_scorecard.py::test_score_empty_hist",
+        "runs": 2,
+        "min": 108.65,
+        "median": 111.295,
+        "max": 113.94,
+        "mean": 111.295,
+        "std": 2.645,
+        "cv": 0.0238,
+        "max_min_ratio": 1.049
+      },
+      {
+        "nodeid": "tests/test_pipeline_core_steps.py::test_fetch_stock_data_handles_empty",
+        "runs": 2,
+        "min": 76.79,
+        "median": 92.965,
+        "max": 109.14,
+        "mean": 92.965,
+        "std": 16.175,
+        "cv": 0.174,
+        "max_min_ratio": 1.421
+      },
+      {
+        "nodeid": "tests/test_batch_quick_score.py::test_batch_quick_score_basic_parallel",
+        "runs": 3,
+        "min": 28.42,
+        "median": 28.58,
+        "max": 40.72,
+        "mean": 32.573,
+        "std": 5.761,
+        "cv": 0.1769,
+        "max_min_ratio": 1.433
+      },
+      {
+        "nodeid": "tests/test_datalayer_rate_limit.py::test_get_realtime_quotes_handles_akshare_rate_limit",
+        "runs": 3,
+        "min": 17.01,
+        "median": 17.08,
+        "max": 17.17,
+        "mean": 17.087,
+        "std": 0.065,
+        "cv": 0.0038,
+        "max_min_ratio": 1.009
+      },
+      {
+        "nodeid": "tests/test_new_modules.py::TestMarginData::test_get_margin_indicator_structure",
+        "runs": 3,
+        "min": 6.32,
+        "median": 6.65,
+        "max": 7.26,
+        "mean": 6.743,
+        "std": 0.389,
+        "cv": 0.0577,
+        "max_min_ratio": 1.149
+      },
+      {
+        "nodeid": "tests/test_batch_quick_score.py::test_batch_quick_score_skip_rows_without_code",
+        "runs": 3,
+        "min": 5.73,
+        "median": 5.84,
+        "max": 5.94,
+        "mean": 5.837,
+        "std": 0.086,
+        "cv": 0.0147,
+        "max_min_ratio": 1.037
+      },
+      {
+        "nodeid": "tests/test_batch_quick_score.py::test_batch_quick_score_handles_exception_in_one_row",
+        "runs": 3,
+        "min": 4.77,
+        "median": 4.79,
+        "max": 5.03,
+        "mean": 4.863,
+        "std": 0.118,
+        "cv": 0.0243,
+        "max_min_ratio": 1.055
+      },
+      {
+        "nodeid": "tests/test_pipeline_core_steps.py::test_score_without_realtime_returns_dict",
+        "runs": 3,
+        "min": 3.01,
+        "median": 3.07,
+        "max": 3.23,
+        "mean": 3.103,
+        "std": 0.093,
+        "cv": 0.0299,
+        "max_min_ratio": 1.073
+      },
+      {
+        "nodeid": "tests/test_api.py::TestStockCodeValidation::test_valid_6digit_code",
+        "runs": 3,
+        "min": 0.1,
+        "median": 0.1,
+        "max": 0.11,
+        "mean": 0.103,
+        "std": 0.005,
+        "cv": 0.0456,
+        "max_min_ratio": 1.1
+      }
+    ]
+  },
+  "stability_generated_at": "2026-11-06T21:37:54+00:00",
+  "scan_by_file": {
+    "files": 111,
+    "total_seconds": 635.37,
+    "ranked": [
+      {
+        "file": "tests/test_scorecard.py",
+        "wall_seconds": 304.65,
+        "measured": 3
+      },
+      {
+        "file": "tests/test_pipeline_core_steps.py",
+        "wall_seconds": 100.5,
+        "measured": 3
+      },
+      {
+        "file": "tests/test_batch_quick_score.py",
+        "wall_seconds": 41.38,
+        "measured": 3
+      },
+      {
+        "file": "tests/test_strategies.py",
+        "wall_seconds": 32.85,
+        "measured": 4
+      },
+      {
+        "file": "tests/test_strategies_p1_1.py",
+        "wall_seconds": 24.13,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_datalayer_rate_limit.py",
+        "wall_seconds": 17.81,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_new_modules.py",
+        "wall_seconds": 8.21,
+        "measured": 7
+      },
+      {
+        "file": "tests/test_import_all.py",
+        "wall_seconds": 4.16,
+        "measured": 10
+      },
+      {
+        "file": "tests/test_backtest_charts_cleanup.py",
+        "wall_seconds": 3.38,
+        "measured": 3
+      },
+      {
+        "file": "tests/test_api.py",
+        "wall_seconds": 3.05,
+        "measured": 16
+      },
+      {
+        "file": "tests/test_smoke.py",
+        "wall_seconds": 2.94,
+        "measured": 3
+      },
+      {
+        "file": "tests/test_backtest_risk_integration.py",
+        "wall_seconds": 2.5,
+        "measured": 4
+      },
+      {
+        "file": "tests/test_bayesian_and_frequency.py",
+        "wall_seconds": 2.41,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_alpha_factory.py",
+        "wall_seconds": 2.37,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_pipeline_core_real_data.py",
+        "wall_seconds": 2.18,
+        "measured": 5
+      },
+      {
+        "file": "tests/test_pipeline.py",
+        "wall_seconds": 2.01,
+        "measured": 5
+      },
+      {
+        "file": "tests/test_evaluator.py",
+        "wall_seconds": 1.95,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_ml_grid_search_timeseriessplit.py",
+        "wall_seconds": 1.82,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_ml_split_boundary.py",
+        "wall_seconds": 1.81,
+        "measured": 3
+      },
+      {
+        "file": "tests/test_bayesian_integration.py",
+        "wall_seconds": 1.76,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_walkforward.py",
+        "wall_seconds": 1.68,
+        "measured": 3
+      },
+      {
+        "file": "tests/test_ml_data_alignment.py",
+        "wall_seconds": 1.57,
+        "measured": 0
+      },
+      {
+        "file": "tests/test_ml_data_p1.py",
+        "wall_seconds": 1.54,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_alert_monitor_fallback.py",
+        "wall_seconds": 1.39,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_data_correction.py",
+        "wall_seconds": 1.22,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_pdf_font.py",
+        "wall_seconds": 1.17,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_backtest_errors.py",
+        "wall_seconds": 1.1,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_data_layer.py",
+        "wall_seconds": 0.99,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_alpha_feedback_killswitch.py",
+        "wall_seconds": 0.96,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_kg_store.py",
+        "wall_seconds": 0.96,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_kg_benchmark.py",
+        "wall_seconds": 0.94,
+        "measured": 4
+      },
+      {
+        "file": "tests/test_position_manager.py",
+        "wall_seconds": 0.94,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_signal_tracker.py",
+        "wall_seconds": 0.94,
+        "measured": 3
+      },
+      {
+        "file": "tests/test_kg_neo4j.py",
+        "wall_seconds": 0.92,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_backtest_stop_loss.py",
+        "wall_seconds": 0.89,
+        "measured": 5
+      },
+      {
+        "file": "tests/test_partial_exit.py",
+        "wall_seconds": 0.89,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_analysis_report.py",
+        "wall_seconds": 0.88,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_walkforward_p0_3.py",
+        "wall_seconds": 0.87,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_alpha_feedback.py",
+        "wall_seconds": 0.85,
+        "measured": 3
+      },
+      {
+        "file": "tests/test_constraints.py",
+        "wall_seconds": 0.85,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_panel_decision.py",
+        "wall_seconds": 0.85,
+        "measured": 4
+      },
+      {
+        "file": "tests/test_position_constraints.py",
+        "wall_seconds": 0.85,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_backtest_survivorship_bias.py",
+        "wall_seconds": 0.84,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_multi_kdj.py",
+        "wall_seconds": 0.84,
+        "measured": 5
+      },
+      {
+        "file": "tests/test_alpha_classifier.py",
+        "wall_seconds": 0.83,
+        "measured": 4
+      },
+      {
+        "file": "tests/test_anomaly_detector.py",
+        "wall_seconds": 0.83,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_datalayer_cache_p1_2.py",
+        "wall_seconds": 0.83,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_walkforward_p0_1.py",
+        "wall_seconds": 0.83,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_attribution.py",
+        "wall_seconds": 0.81,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_backtest_saver_win_loss.py",
+        "wall_seconds": 0.81,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_investor_agents.py",
+        "wall_seconds": 0.81,
+        "measured": 7
+      },
+      {
+        "file": "tests/test_strategies_p1_2.py",
+        "wall_seconds": 0.81,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_walkforward_p0_4.py",
+        "wall_seconds": 0.81,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_westock_cli_p1_enddate.py",
+        "wall_seconds": 0.81,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_strategies_p0_2_keltner.py",
+        "wall_seconds": 0.8,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_market_utils.py",
+        "wall_seconds": 0.79,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_cache_stats.py",
+        "wall_seconds": 0.78,
+        "measured": 3
+      },
+      {
+        "file": "tests/test_risk_execution.py",
+        "wall_seconds": 0.78,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_alert_monitor_silent_period.py",
+        "wall_seconds": 0.77,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_datalayer_p1_2_asofdate.py",
+        "wall_seconds": 0.77,
+        "measured": 3
+      },
+      {
+        "file": "tests/test_indicators.py",
+        "wall_seconds": 0.77,
+        "measured": 4
+      },
+      {
+        "file": "tests/test_six_factor_score.py",
+        "wall_seconds": 0.77,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_strategies_p1_3.py",
+        "wall_seconds": 0.77,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_walkforward_p0_2.py",
+        "wall_seconds": 0.77,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_position_size.py",
+        "wall_seconds": 0.76,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_walkforward_p1_8.py",
+        "wall_seconds": 0.76,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_cache_p2_5.py",
+        "wall_seconds": 0.75,
+        "measured": 5
+      },
+      {
+        "file": "tests/test_capital_allocator.py",
+        "wall_seconds": 0.75,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_pump_dump.py",
+        "wall_seconds": 0.75,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_walkforward_p1_9.py",
+        "wall_seconds": 0.75,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_data_tdx.py",
+        "wall_seconds": 0.74,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_factor_optimizer_p0_2.py",
+        "wall_seconds": 0.74,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_market_regime_unified.py",
+        "wall_seconds": 0.74,
+        "measured": 5
+      },
+      {
+        "file": "tests/test_risk_manager.py",
+        "wall_seconds": 0.74,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_walkforward_p1_6.py",
+        "wall_seconds": 0.74,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_broker.py",
+        "wall_seconds": 0.73,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_broker_p1.py",
+        "wall_seconds": 0.73,
+        "measured": 3
+      },
+      {
+        "file": "tests/test_datalayer_cache_p1_1_lru.py",
+        "wall_seconds": 0.73,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_partial_exit_p0_3.py",
+        "wall_seconds": 0.73,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_risk_manager_p0_1.py",
+        "wall_seconds": 0.73,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_strategy_regime_mapper.py",
+        "wall_seconds": 0.73,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_broker_helper_methods.py",
+        "wall_seconds": 0.72,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_factors.py",
+        "wall_seconds": 0.72,
+        "measured": 4
+      },
+      {
+        "file": "tests/test_pressure_test.py",
+        "wall_seconds": 0.72,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_strategies_p0_3.py",
+        "wall_seconds": 0.72,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_walkforward_p1_4.py",
+        "wall_seconds": 0.72,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_walkforward_p1_5.py",
+        "wall_seconds": 0.72,
+        "measured": 4
+      },
+      {
+        "file": "tests/test_broker_can_trade.py",
+        "wall_seconds": 0.71,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_broker_p0_1.py",
+        "wall_seconds": 0.71,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_memory_log.py",
+        "wall_seconds": 0.71,
+        "measured": 4
+      },
+      {
+        "file": "tests/test_multi_period_kdj.py",
+        "wall_seconds": 0.71,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_opportunity_scorer.py",
+        "wall_seconds": 0.71,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_strategy_ranking.py",
+        "wall_seconds": 0.71,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_walkforward_p1_5_fragile.py",
+        "wall_seconds": 0.71,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_walkforward_p1_7.py",
+        "wall_seconds": 0.71,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_broker_config.py",
+        "wall_seconds": 0.7,
+        "measured": 3
+      },
+      {
+        "file": "tests/test_dcf.py",
+        "wall_seconds": 0.7,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_llm_utils.py",
+        "wall_seconds": 0.68,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_strategies_p0_2.py",
+        "wall_seconds": 0.68,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_broker_market_cap_estimate.py",
+        "wall_seconds": 0.67,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_dynamic_exit_dead_code.py",
+        "wall_seconds": 0.67,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_sector_scoring.py",
+        "wall_seconds": 0.67,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_broker_order_validation.py",
+        "wall_seconds": 0.66,
+        "measured": 0
+      },
+      {
+        "file": "tests/test_config_schema.py",
+        "wall_seconds": 0.66,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_datalayer_silent_exception.py",
+        "wall_seconds": 0.66,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_dynamic_weight_manager.py",
+        "wall_seconds": 0.66,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_market_regime.py",
+        "wall_seconds": 0.66,
+        "measured": 2
+      },
+      {
+        "file": "tests/test_scorer_p0_1.py",
+        "wall_seconds": 0.66,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_selection_rules.py",
+        "wall_seconds": 0.65,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_sector_score.py",
+        "wall_seconds": 0.64,
+        "measured": 1
+      },
+      {
+        "file": "tests/test_e2e.py",
+        "wall_seconds": 0,
+        "measured": 0
+      }
+    ]
+  }
+}

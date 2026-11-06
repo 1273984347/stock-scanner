@@ -13,6 +13,8 @@
 | `baseline.md` | 规模/覆盖率/端点等**基线读数**台账（各阶段增量对比的参照） | 人工维护 + 脚本回填 |
 | `contracts/route-contract-baseline.json` | **路由契约快照**：路径 + 方法 + async/sync 属性 + 鉴权依赖 + 参数 + 响应状态码 | `python scripts/contract_snapshot.py --out docs/refactor/contracts` |
 | `contracts/openapi-baseline.json` | FastAPI 标准 OpenAPI 文档（给前端/网关/契约测试比对） | 同上（同一次运行一并产出） |
+| `test-duration-baseline.md` | **本地 pytest 耗时排序 + 稳定性基线**（慢用例定位与根因分析） | 人工维护 + 工具产出数据 |
+| `test-duration-baseline.json` | 上述基线的机器可读版（耗时排序 / 稳定性 min·median·max·CV） | `scripts/pytest_duration_baseline.py` |
 | `../plans/2026-11-07-refactor-plan.md` | 分阶段重构计划本体（阶段划分、兼容策略、验证方式、退出判据） | 人工维护 |
 
 ---
