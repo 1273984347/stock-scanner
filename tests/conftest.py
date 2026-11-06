@@ -138,6 +138,102 @@ def _mock_akshare_by_default(request, monkeypatch):
     yield
 
 
+# ============================================================================
+# 默认禁网（Phase 0 慢用例治理，2026-11-07）
+#
+# 背景：上面那个 akshare mock 只挡了 7 个接口 —— sina / eastmoney /
+#       其余 akshare 接口 / requests 直连 仍然漏网。实测本地全量 pytest
+#       635.37s（10.6min），其中 tests/test_scorecard.py 单文件 304.65s
+#       （占 47.9%）—— 根因正是这些未隔离的真实网络路径。
+#       详见 docs/refactor/test-duration-baseline.md。
+#
+# 修法：autouse fixture 默认阻断 socket 建连与 DNS 解析；
+#       标记 @pytest.mark.enable_socket 的测试显式豁免。
+#
+# 关键设计：抛 ConnectionError 子类而非 RuntimeError ——
+#       requests / urllib3 会把 socket 的 OSError 包装成自己的
+#       ConnectionError。抛同族异常才能让下游「网络失败降级」分支
+#       与真实断网时保持一致，不会因异常类型变了而改变行为。
+# ============================================================================
+
+
+class NetworkBlockedError(ConnectionError):
+    """测试期间的网络访问被默认阻断（用 @pytest.mark.enable_socket 豁免）"""
+
+
+# 记录被拦截的调用，便于失败时诊断（fixture teardown 时由调用方读取）
+_BLOCKED_NETWORK_CALLS = []
+
+# 原始实现，供"放行本机地址"时回退调用
+_REAL_CONNECT = socket.socket.connect
+_REAL_CREATE_CONNECTION = socket.create_connection
+
+
+# 放行的地址：loopback（127.0.0.1 / ::1 / localhost）与 unix socket path
+#   —— 这些不是"外部网络"，且必须放行，否则会打断基础设施：
+#   · Windows 上 asyncio 的 self-pipe 用 socket.socketpair()，而它在 Windows
+#     是用真实 connect() 到 127.0.0.1 模拟实现的 ⇒ 挡掉会导致 event loop
+#     创建失败（'ProactorEventLoop' object has no attribute '_ssock'），
+#     连带所有用 FastAPI TestClient 的测试全挂。
+#   · Linux/macOS 上 multiprocessing 的 socketpair 走 AF_UNIX（str path）。
+_LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "0.0.0.0", ""}
+_REAL_GETADDRINFO = socket.getaddrinfo
+
+
+def _is_local(address) -> bool:
+    """判定地址是否为本地/回环（非外部网络）。"""
+    if isinstance(address, (str, bytes)):
+        # unix socket path —— 非网络
+        return True
+    if isinstance(address, tuple) and address:
+        host = address[0]
+        if isinstance(host, bytes):
+            host = host.decode("utf-8", "ignore")
+        return str(host) in _LOOPBACK_HOSTS
+    return False
+
+
+@pytest.fixture(autouse=True)
+def _block_network_by_default(request, monkeypatch):
+    """默认禁止真实网络访问；@pytest.mark.enable_socket 可豁免。"""
+    if request.node.get_closest_marker("enable_socket"):
+        yield
+        return
+
+    def _blocked_connect(self, address, *args, **kwargs):
+        if _is_local(address):
+            return _REAL_CONNECT(self, address, *args, **kwargs)
+        _BLOCKED_NETWORK_CALLS.append(f"connect({address!r})")
+        raise NetworkBlockedError(
+            f"Network access blocked by default (address={address!r}). "
+            "Mark this test with @pytest.mark.enable_socket to opt in."
+        )
+
+    def _blocked_create_connection(address, *args, **kwargs):
+        if _is_local(address):
+            return _REAL_CREATE_CONNECTION(address, *args, **kwargs)
+        _BLOCKED_NETWORK_CALLS.append(f"create_connection({address!r})")
+        raise NetworkBlockedError(
+            f"Network access blocked by default (address={address!r}). "
+            "Mark this test with @pytest.mark.enable_socket to opt in."
+        )
+
+    def _blocked_getaddrinfo(host, *args, **kwargs):
+        if host is None or str(host) in _LOOPBACK_HOSTS:
+            return _REAL_GETADDRINFO(host, *args, **kwargs)
+        _BLOCKED_NETWORK_CALLS.append(f"getaddrinfo({host!r})")
+        raise NetworkBlockedError(
+            f"DNS resolution blocked by default (host={host!r}). "
+            "Mark this test with @pytest.mark.enable_socket to opt in."
+        )
+
+    monkeypatch.setattr(socket.socket, "connect", _blocked_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", _blocked_connect)
+    monkeypatch.setattr(socket, "create_connection", _blocked_create_connection)
+    monkeypatch.setattr(socket, "getaddrinfo", _blocked_getaddrinfo)
+    yield
+
+
 @pytest.fixture
 def sample_ohlcv(length=60):
     """标准 OHLCV 数据，60行"""

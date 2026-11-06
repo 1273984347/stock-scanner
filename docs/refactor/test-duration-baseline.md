@@ -13,6 +13,7 @@
 | 本地全量 pytest（**ini 默认，开实时 DEBUG 日志**） | **> 28 min 未结束**（两次采集均在 13% 处中止） |
 | 本地全量 pytest（**关实时日志**，测量口径） | **635.37s ≈ 10.6 min**（111 个测试文件逐文件实测之和） |
 | CI（`ubuntu-latest, 3.12`，ini 默认开日志） | **110.69s**（1,117 passed + 3 failed + 12 skipped） |
+| **✅ 治理后（默认禁网 fixture，见 §十）** | **69.3s**（ini 默认开日志）/ **63.07s**（关日志）⇒ 相对治理前 **>24× / 10.1×**；**零新增失败** |
 | **日志 I/O 放大占比** | **约 62%**（28min → 10.6min） |
 | **剩余真实差距** | **约 5.7 倍**（635s vs 110.69s） |
 
@@ -219,3 +220,84 @@ python scripts/pytest_duration_baseline.py --verify --repeat 3 --top 8 --out doc
 > 说明：第 1 项与 `conftest.py` 现有注释「网络隔离（修 hang 35+ min 元凶 2026-06-06）」是同一条路的延续 ——
 > 上次只挡了 akshare 的 7 个接口，**其余数据源与未 mock 的 akshare 接口仍然漏网**，
 > 而 `lib/scorecard.py` 正是在那次注释里被点名的三个元凶之一。
+>
+> ✅ **第 1 项已于 2026-11-07 落地**，实测效果见 §十（全量 635.37s → **63.07s**，零新增失败）。
+
+---
+
+## 十、治理落地：默认禁网 autouse fixture（2026-11-07）
+
+### 10.1 实施
+
+`tests/conftest.py` 新增 autouse fixture `_block_network_by_default`：
+
+| 项 | 内容 |
+|---|---|
+| 阻断 | `socket.socket.connect` / `connect_ex` / `socket.create_connection` / `socket.getaddrinfo` 的**非本地**地址 |
+| 放行 | **loopback**（`127.0.0.1` / `::1` / `localhost`）与 **unix socket path**（str） |
+| 豁免 | `@pytest.mark.enable_socket`（沿用既有标记机制；当前无测试使用） |
+| 异常类型 | `NetworkBlockedError(ConnectionError)` —— 与 requests/urllib3 对 socket `OSError` 的包装同族，使下游「断网降级」分支与真实断网行为一致 |
+
+### 10.2 效果
+
+| 口径 | 治理前 | 治理后 | 改善 |
+|---|---:|---:|---:|
+| **全量 pytest（ini 默认，开实时 DEBUG 日志）** | **> 28 min** | **69.3s** | **> 24×** |
+| **全量 pytest（关实时日志）** | 635.37s | **63.07s** | **10.1×** |
+| 6 个最慢文件（合） | 521.32s | 54.13s | 9.6× |
+| `test_scorecard.py::test_score_structure` | 188.07s | **0.04s** | ~4700× |
+| `test_pipeline_core_steps.py::test_fetch_stock_data_handles_empty` | 96.43s | <0.01s | — |
+| **失败清单** | 34（本地既有） | **34（同一批）** | **零新增** |
+
+全量结果：`1,085 passed, 25 failed, 13 skipped, 9 errors in 63.07s`。
+（CI 参考：`ubuntu-latest, 3.12` 上 110.69s / 3 failed / 12 skipped）
+
+**日志放大同时塌陷**：治理后开日志 69.3s vs 关日志 63.07s ⇒ 放大从 **62% 降到约 10%**
+（日志文件仅 0.9 MB）。原因：**放大主源就是网络调用产生的 DEBUG 日志** ——
+调用没了，日志也没了。⇒ 这也反证了 §一 的归因：本地慢的根因是未隔离的真实网络路径，
+日志放大只是它的**放大器**，不是独立问题。
+
+### 10.3 失败归属的对照实验（方法值得复用）
+
+**不能只靠"新失败数 = 旧失败数"下结论** —— 必须做同口径对照：
+
+```powershell
+git stash push -- tests/conftest.py          # 回退 fixture
+python -m pytest <同一批文件> -q --tb=no -o log_cli=false   # 对照跑
+git stash pop                              # 还原
+```
+
+实测：对照跑（无 fixture）同样得到 **25 failed + 9 errors**，且是**完全相同的 34 个用例**，
+全部为 `os.replace` 的 `PermissionError`（Windows 文件锁 / portalocker 语义），
+与 socket 无关 ⇒ **禁网 fixture 零新增失败**。
+（对照跑仅 1.83s，也侧面证明这批失败与网络无关。）
+
+### 10.4 fixture 自己踩的坑：不能无差别挡 socket
+
+第一版 fixture 拦掉**所有** `socket.socket.connect`，导致 **13 个 `test_api.py` 用例全红**
+（另 25 failed / 9 errors 里也混入了它们）。
+
+**根因**：**Windows 上 asyncio 的 `socket.socketpair()` 是用真实 `connect()` 到 127.0.0.1 模拟实现的**
+（`lsock.bind()` + `csock.connect()`）⇒ 被拦 ⇒ event loop 创建失败：
+
+```
+AttributeError: 'ProactorEventLoop' object has no attribute '_ssock'
+```
+
+⇒ 连带**所有用 FastAPI/httpx TestClient 的测试全挂**（TestClient 依赖 event loop）。
+
+**修法**：放行 loopback 与 unix socket path（见 §10.1 表）。
+Linux/macOS 上 multiprocessing 的 socketpair 走 AF_UNIX（str path）⇒ 同样必须放行。
+⇒ **推广：凡做「默认禁网」的测试 fixture，必须放行 loopback 与 AF_UNIX，
+否则会打断 asyncio / multiprocessing 的内部机制 —— 且这类失败只在 Windows 暴露。**
+
+### 10.5 禁网解决不了的残余慢点
+
+| 用例 | 耗时 | 性质 | 对应建议 |
+|---|---:|---|---|
+| `test_get_realtime_quotes_handles_akshare_rate_limit` | 14.66s | **确定性退避**（模式③，与网络无关） | §九 建议 ③：patch 退避常量为 0.01 |
+| `test_batch_quick_score_basic_parallel` | 8.98s | 仍需定位（并行 + 其它 IO） | §九 建议 ④ |
+| `test_strategies.py` × 4 | 各 3.00s | 整齐的固定成本（非网络） | 待定位 |
+
+⇒ 禁网解决的是 **①② 类（未隔离的真实网络路径）**；**③ 类（确定性退避）与其它固定成本需单独处理**。
+
