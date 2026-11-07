@@ -72,6 +72,23 @@ infra  ←  data  ←  scoring  ←  strategy
 
 ---
 
+## 一·五、回测调用规约（RF-01 Phase 3 起强制）
+
+| # | 规约 | 理由 |
+|---|---|---|
+| B1 | **所有回测调用只经 `backtest.unified`**（`BacktestRunner` / `BacktestRequest`），**禁止**直接 import `backtest.core` / `backtest.engine` / `backtest.full` / `backtest.rebalance` | 回测口径只在一处定义；改动能被回测对拍基线捕获 |
+| B2 | 新增回测调用方时，**先确认 `BacktestRequest` 是否已有对应字段**；缺字段必须先补字段再补透传 | 漏传参数会**静默改变回测口径**，不报错 |
+| B3 | 需要**非归一化字段**（`cost_summary` / `perf_df` / `report` / `summary` / 顶层标量）时，取 `result.raw` 而非归一化结果 | 归一化只保留 `metrics` 子集，取错会丢字段 = 改对外契约 |
+| B4 | `backtest/unified.py` 的 `raw` 字段是「原始结果 dict」的**同一对象引用** | 保留归一化前的完整信息 |
+| B5 | `lib/monitoring/backtest_unified.py` 是**薄壳 re-export**（同一对象），新代码不要 import 它 | 兼容旧路径，不新增引用 |
+
+> ⚠️ 已知引擎缺陷（2026-11-07 记录，未修）：`run_backtest` 的 `stock_codes` 是**必填位置参数**，
+> `symbols` 只是 backward-compat 别名 ⇒ 只传 `symbols` 会抛
+> `missing 1 required positional argument`。统一入口已同时传两者；
+> 外部代码若直接调 `run_backtest`，**必须传 `stock_codes`**。
+
+---
+
 ## 二、代码规约
 
 ### 2.1 import

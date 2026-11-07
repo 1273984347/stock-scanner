@@ -297,6 +297,996 @@
     }
    }
   },
+  "unified_modes": {
+   "ok": true,
+   "data": {
+    "factor": {
+     "ok": true,
+     "data": {
+      "mode": "factor",
+      "trade_count": 99,
+      "unified_trade_count": 99,
+      "metrics": {},
+      "trades": {
+       "count": 99,
+       "trades": [
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1800
+        },
+        {
+         "code": "000858",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1100
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "ATR止损",
+         "shares": 1800
+        },
+        {
+         "code": "000858",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1100
+        },
+        {
+         "code": "600519",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1400
+        },
+        {
+         "code": "600519",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1400
+        },
+        {
+         "code": "000858",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1300
+        },
+        {
+         "code": "000858",
+         "direction": "SELL",
+         "reason": "ATR止损",
+         "shares": 1300
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1500
+        },
+        {
+         "code": "600519",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1400
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1500
+        },
+        {
+         "code": "000858",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1600
+        },
+        {
+         "code": "600519",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1400
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1300
+        },
+        {
+         "code": "600519",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1500
+        },
+        {
+         "code": "000858",
+         "direction": "SELL",
+         "reason": "ATR止损",
+         "shares": 1600
+        },
+        {
+         "code": "000858",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1500
+        },
+        {
+         "code": "600519",
+         "direction": "SELL",
+         "reason": "ATR止损",
+         "shares": 1500
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1300
+        },
+        {
+         "code": "000858",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1500
+        },
+        {
+         "code": "600519",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1100
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1300
+        },
+        {
+         "code": "600519",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1100
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1300
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1300
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1300
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1400
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "ATR止损",
+         "shares": 1400
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1400
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1400
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1400
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1400
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1400
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1400
+        },
+        {
+         "code": "600519",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1300
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1300
+        },
+        {
+         "code": "600519",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1300
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1300
+        },
+        {
+         "code": "600519",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1100
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1300
+        },
+        {
+         "code": "600519",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1100
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1300
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1200
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1200
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1200
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "ATR止损",
+         "shares": 1200
+        },
+        {
+         "code": "600519",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1200
+        },
+        {
+         "code": "000858",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1200
+        },
+        {
+         "code": "600519",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1200
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1200
+        },
+        {
+         "code": "000858",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1200
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1200
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1100
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "ATR止损",
+         "shares": 1100
+        },
+        {
+         "code": "000858",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1100
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1000
+        },
+        {
+         "code": "000858",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1100
+        },
+        {
+         "code": "600519",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1300
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1000
+        },
+        {
+         "code": "600519",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1300
+        },
+        {
+         "code": "600519",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1100
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1000
+        },
+        {
+         "code": "600519",
+         "direction": "SELL",
+         "reason": "ATR止损",
+         "shares": 1100
+        },
+        {
+         "code": "600519",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 800
+        },
+        {
+         "code": "000858",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1500
+        },
+        {
+         "code": "000858",
+         "direction": "SELL",
+         "reason": "ATR止损",
+         "shares": 1500
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1000
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1000
+        },
+        {
+         "code": "600519",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 800
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1000
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1100
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1100
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1100
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "ATR止损",
+         "shares": 1100
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1000
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1000
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 900
+        },
+        {
+         "code": "000858",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1600
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 900
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 900
+        },
+        {
+         "code": "000858",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1600
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "ATR止盈",
+         "shares": 900
+        },
+        {
+         "code": "600519",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1200
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 800
+        },
+        {
+         "code": "000858",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1200
+        },
+        {
+         "code": "600519",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1200
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 800
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 800
+        },
+        {
+         "code": "000858",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1200
+        },
+        {
+         "code": "000858",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1300
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "ATR止损",
+         "shares": 800
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 900
+        },
+        {
+         "code": "000858",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 1300
+        },
+        {
+         "code": "000858",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1200
+        },
+        {
+         "code": "600036",
+         "direction": "SELL",
+         "reason": "超时",
+         "shares": 900
+        },
+        {
+         "code": "600519",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1300
+        },
+        {
+         "code": "600036",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 700
+        },
+        {
+         "code": "000858",
+         "direction": "SELL",
+         "reason": "ATR止盈",
+         "shares": 1200
+        },
+        {
+         "code": "000858",
+         "direction": "BUY",
+         "reason": "因子买入",
+         "shares": 1200
+        }
+       ]
+      },
+      "raw_keys": [
+       "benchmark",
+       "cost_summary",
+       "delisted_codes",
+       "exit_reasons",
+       "metrics",
+       "perf_df",
+       "report",
+       "survivorship_bias_warning",
+       "trade_count",
+       "trades"
+      ],
+      "extra": {},
+      "raw_top_level_scalars": {
+       "report": "============================================================\n                    回测绩效报告\n============================================================\n\n【收益指标】\n  累计收益率:          4.49%\n  年化收益率:          3.53%\n  年化波动率:          3.53%\n\n【风险调整收益】\n  夏普比率:             0.15\n  索提诺比率:           0.22\n  卡玛比率:             1.52\n\n【风险指标】\n  最大回撤:           -2.32%\n  最大回撤持续:           66 天\n  日 VaR (95%):       -0.35%\n  日 VaR (99%):       -0.55%\n\n【交易统计】\n  胜率:               38.56%\n  盈亏比:               1.11\n\n============================================================",
+       "survivorship_bias_warning": "回测数据仅含当前交易股票，收益可能被高估",
+       "trade_count": 99
+      }
+     }
+    },
+    "simple": {
+     "ok": true,
+     "data": {
+      "mode": "simple",
+      "trade_count": 6,
+      "unified_trade_count": 0,
+      "metrics": {
+       "avg_loss": 3.2100000000000004,
+       "avg_pnl": -2.5,
+       "avg_win": 1.08,
+       "consecutive_losses": 4,
+       "final_capital": 985030.0000000001,
+       "max_drawdown": -1.6,
+       "profit_factor": 0.07,
+       "risk_actions_count": 0,
+       "risk_alerts_count": 0,
+       "risk_max_drawdown": -1.5,
+       "risk_suspended": false,
+       "survivorship_bias_adjusted_return_pct": -1.4500000000000002,
+       "survivorship_bias_factor": 0.9700000000000001,
+       "survivorship_bias_note": "回测仅含存活股票（不含已退市/ST），实际收益可能被高估 1-3%/年。使用 survivorship_bias_adjusted_return_pct 替代 total_return_pct 看保守值。",
+       "survivorship_bias_warning": true,
+       "total_return_pct": -1.5,
+       "total_trades": 6,
+       "win_rate": 16.7
+      },
+      "trades": {
+       "count": 6,
+       "trades": [
+        {
+         "atr_pct": 1.399,
+         "code": "600519",
+         "entry_date": "2026-02-10",
+         "entry_price": 143.13,
+         "exit_date": "2026-02-16",
+         "exit_price": 139.028571429,
+         "exit_reason": "atr_stop",
+         "hold_days": 4,
+         "pnl_pct": -3.37
+        },
+        {
+         "atr_pct": 1.2530000000000001,
+         "code": "000858",
+         "entry_date": "2026-02-25",
+         "entry_price": 128.9,
+         "exit_date": "2026-02-26",
+         "exit_price": 123.85714285700001,
+         "exit_reason": "atr_stop",
+         "hold_days": 1,
+         "pnl_pct": -4.41
+        },
+        {
+         "atr_pct": 1.101,
+         "code": "600036",
+         "entry_date": "2026-03-02",
+         "entry_price": 184.8,
+         "exit_date": "2026-03-06",
+         "exit_price": 179.987142857,
+         "exit_reason": "atr_stop",
+         "hold_days": 4,
+         "pnl_pct": -3.1
+        },
+        {
+         "atr_pct": 1.419,
+         "code": "600036",
+         "entry_date": "2026-05-04",
+         "entry_price": 205.14000000000001,
+         "exit_date": "2026-05-12",
+         "exit_price": 199.968571429,
+         "exit_reason": "atr_stop",
+         "hold_days": 6,
+         "pnl_pct": -3.02
+        },
+        {
+         "atr_pct": 1.5390000000000001,
+         "code": "600036",
+         "entry_date": "2026-04-29",
+         "entry_price": 200.35000000000002,
+         "exit_date": "2026-05-27",
+         "exit_price": 197.04785714300002,
+         "exit_reason": "atr_stop",
+         "hold_days": 20,
+         "pnl_pct": -2.1500000000000004
+        },
+        {
+         "atr_pct": 1.6320000000000001,
+         "code": "600519",
+         "entry_date": "2026-05-25",
+         "entry_price": 126.54,
+         "exit_date": "2026-05-29",
+         "exit_price": 128.54000000000002,
+         "exit_reason": "timeout",
+         "hold_days": 4,
+         "pnl_pct": 1.08
+        }
+       ]
+      },
+      "raw_keys": [
+       "alpha_feedback",
+       "alpha_weights",
+       "by_reason",
+       "config",
+       "equity_curve",
+       "metrics",
+       "monthly",
+       "trades"
+      ],
+      "extra": {},
+      "raw_top_level_scalars": {}
+     }
+    },
+    "rebalance": {
+     "ok": true,
+     "data": {
+      "mode": "rebalance",
+      "trade_count": 68,
+      "unified_trade_count": 68,
+      "metrics": {},
+      "trades": {
+       "count": 0,
+       "trades": []
+      },
+      "raw_keys": [
+       "avg_loss",
+       "avg_win",
+       "final_drawdown",
+       "final_sharpe",
+       "is_stopped",
+       "loss_breaker_status",
+       "metrics",
+       "rebalance_count",
+       "report",
+       "sell_count",
+       "stop_reason",
+       "trade_count",
+       "trade_log",
+       "win_rate"
+      ],
+      "extra": {},
+      "raw_top_level_scalars": {
+       "avg_loss": 0.034276513,
+       "avg_win": 0.05604895,
+       "final_drawdown": 0.027533340000000003,
+       "final_sharpe": -1.0617711280000002,
+       "is_stopped": false,
+       "rebalance_count": 16,
+       "report": "============================================================\n                    回测绩效报告\n============================================================\n\n【收益指标】\n  累计收益率:          5.40%\n  年化收益率:          4.24%\n  年化波动率:          3.43%\n\n【风险调整收益】\n  夏普比率:             0.35\n  索提诺比率:           0.47\n  卡玛比率:             1.21\n\n【风险指标】\n  最大回撤:           -3.49%\n  最大回撤持续:           46 天\n  日 VaR (95%):       -0.31%\n  日 VaR (99%):       -0.49%\n\n【交易统计】\n  胜率:               29.47%\n  盈亏比:               1.26\n\n============================================================",
+       "sell_count": 34,
+       "stop_reason": "",
+       "trade_count": 68,
+       "win_rate": 0.529411765
+      }
+     }
+    },
+    "full": {
+     "ok": true,
+     "data": {
+      "mode": "full",
+      "trade_count": 6,
+      "unified_trade_count": 0,
+      "metrics": {
+       "avg_loss": 3.2100000000000004,
+       "avg_pnl": -2.5,
+       "avg_win": 1.08,
+       "consecutive_losses": 4,
+       "final_capital": 985030.0000000001,
+       "max_drawdown": -1.6,
+       "profit_factor": 0.07,
+       "risk_actions_count": 0,
+       "risk_alerts_count": 0,
+       "risk_max_drawdown": -1.5,
+       "risk_suspended": false,
+       "survivorship_bias_adjusted_return_pct": -1.4500000000000002,
+       "survivorship_bias_factor": 0.9700000000000001,
+       "survivorship_bias_note": "回测仅含存活股票（不含已退市/ST），实际收益可能被高估 1-3%/年。使用 survivorship_bias_adjusted_return_pct 替代 total_return_pct 看保守值。",
+       "survivorship_bias_warning": true,
+       "total_return_pct": -1.5,
+       "total_trades": 6,
+       "win_rate": 16.7
+      },
+      "trades": {
+       "count": 6,
+       "trades": [
+        {
+         "atr_pct": 1.399,
+         "code": "600519",
+         "entry_date": "2026-02-10",
+         "entry_price": 143.13,
+         "exit_date": "2026-02-16",
+         "exit_price": 139.028571429,
+         "exit_reason": "atr_stop",
+         "hold_days": 4,
+         "pnl_pct": -3.37
+        },
+        {
+         "atr_pct": 1.2530000000000001,
+         "code": "000858",
+         "entry_date": "2026-02-25",
+         "entry_price": 128.9,
+         "exit_date": "2026-02-26",
+         "exit_price": 123.85714285700001,
+         "exit_reason": "atr_stop",
+         "hold_days": 1,
+         "pnl_pct": -4.41
+        },
+        {
+         "atr_pct": 1.101,
+         "code": "600036",
+         "entry_date": "2026-03-02",
+         "entry_price": 184.8,
+         "exit_date": "2026-03-06",
+         "exit_price": 179.987142857,
+         "exit_reason": "atr_stop",
+         "hold_days": 4,
+         "pnl_pct": -3.1
+        },
+        {
+         "atr_pct": 1.419,
+         "code": "600036",
+         "entry_date": "2026-05-04",
+         "entry_price": 205.14000000000001,
+         "exit_date": "2026-05-12",
+         "exit_price": 199.968571429,
+         "exit_reason": "atr_stop",
+         "hold_days": 6,
+         "pnl_pct": -3.02
+        },
+        {
+         "atr_pct": 1.5390000000000001,
+         "code": "600036",
+         "entry_date": "2026-04-29",
+         "entry_price": 200.35000000000002,
+         "exit_date": "2026-05-27",
+         "exit_price": 197.04785714300002,
+         "exit_reason": "atr_stop",
+         "hold_days": 20,
+         "pnl_pct": -2.1500000000000004
+        },
+        {
+         "atr_pct": 1.6320000000000001,
+         "code": "600519",
+         "entry_date": "2026-05-25",
+         "entry_price": 126.54,
+         "exit_date": "2026-05-29",
+         "exit_price": 128.54000000000002,
+         "exit_reason": "timeout",
+         "hold_days": 4,
+         "pnl_pct": 1.08
+        }
+       ]
+      },
+      "raw_keys": [
+       "alpha_feedback",
+       "alpha_weights",
+       "by_reason",
+       "config",
+       "equity_curve",
+       "metrics",
+       "monthly",
+       "trades"
+      ],
+      "extra": {},
+      "raw_top_level_scalars": {}
+     }
+    },
+    "walk_forward": {
+     "ok": true,
+     "data": {
+      "mode": "walk_forward",
+      "trade_count": 0,
+      "unified_trade_count": 0,
+      "metrics": {},
+      "trades": {
+       "count": 0,
+       "trades": []
+      },
+      "raw_keys": [
+       "rounds",
+       "summary"
+      ],
+      "extra": {
+       "summary": {
+        "fragile_rounds": 0,
+        "insufficient_rounds": 5,
+        "median_profit_factor": 0,
+        "median_return": 0.014093172000000001,
+        "median_sharpe": 0,
+        "median_win_rate": 0,
+        "rounds": 5,
+        "stable_rounds": 0,
+        "total_trades": 3,
+        "worst_drawdown": 0,
+        "worst_return": 0.0
+       },
+       "rounds_count": 5,
+       "rounds": [
+        "WalkForwardRound(window_index=0, strategy=('factor_strategy',), symbol='', validation_status=<ValidationStatus.INSUFFICIENT_TRADES: 'insufficient_trades'>, train_metrics={'total_return': np.float64(0.028678474114441244), 'max_drawdown': 0, 'sharpe_ratio': 0, 'win_rate': 0, 'profit_factor': 0, 'total_trades': 1, 'expectancy': 0}, validation_metrics={'total_return': 0.0, 'max_drawdown': 0, 'sharpe_ratio': 0, 'win_rate': 0, 'profit_factor': 0, 'total_trades': 0, 'expectancy': 0}, perturbation={}, diagnostics={'no_entry_reasons': {}, 'stop_loss_count': 0, 'take_profit_count': 0, 'opposite_signal_count': 0, 'end_exit_count': 0, 'total_fees': 0})",
+        "WalkForwardRound(window_index=1, strategy=('factor_strategy',), symbol='', validation_status=<ValidationStatus.INSUFFICIENT_TRADES: 'insufficient_trades'>, train_metrics={'total_return': 0.0, 'max_drawdown': 0, 'sharpe_ratio': 0, 'win_rate': 0, 'profit_factor': 0, 'total_trades': 0, 'expectancy': 0}, validation_metrics={'total_return': np.float64(0.03470475062897749), 'max_drawdown': 0, 'sharpe_ratio': 0, 'win_rate': 0, 'profit_factor': 0, 'total_trades': 1, 'expectancy': 0}, perturbation={}, diagnostics={'no_entry_reasons': {}, 'stop_loss_count': 0, 'take_profit_count': 0, 'opposite_signal_count': 0, 'end_exit_count': 0, 'total_fees': 0})",
+        "WalkForwardRound(window_index=2, strategy=('factor_strategy',), symbol='', validation_status=<ValidationStatus.INSUFFICIENT_TRADES: 'insufficient_trades'>, train_metrics={'total_return': np.float64(0.03470475062897749), 'max_drawdown': 0, 'sharpe_ratio': 0, 'win_rate': 0, 'profit_factor': 0, 'total_trades': 1, 'expectancy': 0}, validation_metrics={'total_return': np.float64(0.014093171522845616), 'max_drawdown': 0, 'sharpe_ratio': 0, 'win_rate': 0, 'profit_factor': 0, 'total_trades': 1, 'expectancy': 0}, perturbation={}, diagnostics={'no_entry_reasons': {}, 'stop_loss_count': 0, 'take_profit_count': 0, 'opposite_signal_count': 0, 'end_exit_count': 0, 'total_fees': 0})",
+        "WalkForwardRound(window_index=3, strategy=('factor_strategy',), symbol='', validation_status=<ValidationStatus.INSUFFICIENT_TRADES: 'insufficient_trades'>, train_metrics={'total_return': np.float64(0.014093171522845616), 'max_drawdown': 0, 'sharpe_ratio': 0, 'win_rate': 0, 'profit_factor': 0, 'total_trades': 1, 'expectancy': 0}, validation_metrics={'total_return': np.float64(0.03196909927679137), 'max_drawdown': 0, 'sharpe_ratio': 0, 'win_rate': 0, 'profit_factor': 0, 'total_trades': 1, 'expectancy': 0}, perturbation={}, diagnostics={'no_entry_reasons': {}, 'stop_loss_count': 0, 'take_profit_count': 0, 'opposite_signal_count': 0, 'end_exit_count': 0, 'total_fees': 0})",
+        "WalkForwardRound(window_index=4, strategy=('factor_strategy',), symbol='', validation_status=<ValidationStatus.INSUFFICIENT_TRADES: 'insufficient_trades'>, train_metrics={'total_return': np.float64(0.07026416525138801), 'max_drawdown': 0, 'sharpe_ratio': 0, 'win_rate': 0, 'profit_factor': 0, 'total_trades': 2, 'expectancy': 0}, validation_metrics={'total_return': 0.0, 'max_drawdown': 0, 'sharpe_ratio': 0, 'win_rate': 0, 'profit_factor': 0, 'total_trades': 0, 'expectancy': 0}, perturbation={}, diagnostics={'no_entry_reasons': {}, 'stop_loss_count': 0, 'take_profit_count': 0, 'opposite_signal_count': 0, 'end_exit_count': 0, 'total_fees': 0})"
+       ]
+      },
+      "raw_top_level_scalars": {}
+     }
+    },
+    "stress": {
+     "ok": true,
+     "data": {
+      "mode": "stress",
+      "trade_count": 0,
+      "unified_trade_count": 0,
+      "metrics": {},
+      "trades": {
+       "count": 0,
+       "trades": []
+      },
+      "raw_keys": [
+       "best_window",
+       "monte_carlo",
+       "overall_return",
+       "overall_win_rate",
+       "recommendations",
+       "results",
+       "robustness_score",
+       "worst_window"
+      ],
+      "extra": {
+       "stress_keys": [
+        "best_window",
+        "monte_carlo",
+        "overall_return",
+        "overall_win_rate",
+        "recommendations",
+        "results",
+        "robustness_score",
+        "worst_window"
+       ],
+       "stress_deterministic": {
+        "best_window": "2015_crash",
+        "overall_return": 0.044901223000000004,
+        "overall_win_rate": 1.0,
+        "recommendations": [],
+        "results": [
+         "StressResult(window=StressWindow(name='2015_crash', start='2015-06-12', end='2015-09-01', description='2015年股灾：上证从5178跌至2850，跌幅45%', expected_regime='TREND_DOWN', severity='EXTREME'), total_trades=99, win_rate=1.0, total_return=np.float64(0.04490122280050013), max_drawdown=np.float64(-0.023186772131049166), sharpe_ratio=np.float64(0.1505630062041825), profit_loss_ratio=0.0, avg_hold_days=0.0, stop_loss_count=11, error='')"
+        ],
+        "robustness_score": 95.0,
+        "worst_window": "2015_crash"
+       }
+      },
+      "raw_top_level_scalars": {
+       "best_window": "2015_crash",
+       "overall_return": 0.044901223000000004,
+       "overall_win_rate": 1.0,
+       "robustness_score": 95.0,
+       "worst_window": "2015_crash"
+      }
+     }
+    }
+   }
+  },
   "core_factor_backtest": {
    "ok": true,
    "data": {

@@ -1027,12 +1027,14 @@ async def run_backtest(
     """运行回测"""
     async with _backtest_semaphore:
         try:
-            from backtest.core import run_factor_backtest
+            from backtest.unified import BacktestRunner
             sym_list = [_validate_stock_code(s.strip()) for s in symbols.split(",") if s.strip()]
             if len(sym_list) > 50:
                 raise HTTPException(status_code=400, detail="最多支持50只股票同时回测")
-            result = run_factor_backtest(
-                sym_list, days=days,
+            # 统一入口（RF-01 Phase 3）：所有回测调用只经 backtest.unified
+            unified = BacktestRunner().run(
+                mode="factor",
+                symbols=sym_list, days=days,
                 stop_loss_atr_mult=stop_loss_atr_mult,
                 take_profit_atr_mult=take_profit_atr_mult,
                 max_hold_days=max_hold_days,
@@ -1040,8 +1042,11 @@ async def run_backtest(
                 risk_per_trade_pct=risk_per_trade_pct,
                 preset=preset,
             )
-            if not result:
+            if not unified:
                 return {"error": "回测无结果"}
+            # ⚠️ 取 raw（原始 dict）而非归一化结果 —— 本端点响应依赖
+            #    cost_summary / perf_df 等非归一化字段，取归一化结果会丢字段 = 改契约
+            result = unified.raw if unified.raw is not None else unified.to_dict()
             equity_curve = _extract_equity_curve(result)
 
             return {

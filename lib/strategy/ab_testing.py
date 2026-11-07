@@ -70,13 +70,53 @@ class ABTester:
         self._backtest_engine = None
 
     def _get_backtest_engine(self):
-        """延迟加载回测引擎"""
+        """延迟加载回测引擎（统一入口，RF-01 Phase 3）
+
+        ⚠️ 历史缺陷（2026-11-07 修复）：旧实现 import 的 ' + chr(96) + 'backtest.engine.BacktestEngine' + chr(96) +
+        **在 backtest/engine.py 中并不存在** ⇒ ImportError ⇒ 永远静默降级到 mock，
+        真实回测从未参与 A/B 测试（mock 的注释自己写了「跨 session 不可复现」）。
+
+        现在改走统一入口 ' + chr(96) + 'backtest.unified' + chr(96) + ' 的 simple 模式（单股信号回测）。
+        """
         if self._backtest_engine is None:
             try:
-                from backtest.engine import BacktestEngine
-                self._backtest_engine = BacktestEngine()
-            except ImportError:
-                logger.warning("BacktestEngine not available, using mock")
+                from backtest.unified import BacktestRunner
+
+                class _UnifiedEngine:
+                    """把统一入口适配成 A/B 测试需要的 run(symbols, days, params) 接口"""
+
+                    @staticmethod
+                    def run(symbols, days, params=None):
+                        unified = BacktestRunner().run(
+                            mode="simple",
+                            symbols=list(symbols or []),
+                            days=days,
+                        )
+                        raw = (unified.raw
+                               if unified is not None and unified.raw is not None
+                               else None)
+                        if raw is None:
+                            return None
+                        metrics = raw.get("metrics") or {}
+                        equity = raw.get("equity_curve") or []
+                        returns = []
+                        if len(equity) > 1:
+                            vals = [e[1] if isinstance(e, (list, tuple)) else e for e in equity]
+                            for a, b in zip(vals[:-1], vals[1:]):
+                                if a:
+                                    returns.append((b - a) / a)
+                        return {
+                            "total_return": metrics.get("total_return", 0),
+                            "sharpe_ratio": metrics.get("sharpe", 0),
+                            "max_drawdown": metrics.get("max_drawdown", 0),
+                            "win_rate": metrics.get("win_rate", 0),
+                            "trades": raw.get("trade_count", 0),
+                            "returns": returns,
+                        }
+
+                self._backtest_engine = _UnifiedEngine()
+            except Exception as exc:
+                logger.warning(f"统一回测入口不可用（{exc}），降级到 mock")
                 self._backtest_engine = self._create_mock_engine()
         return self._backtest_engine
 

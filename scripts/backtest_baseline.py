@@ -269,6 +269,21 @@ def _run_core_chain():
     return out
 
 
+def _fake_batch(frames, codes, days=60):
+    # rebalance 模式走 TDX 本地文件批量读（batch_read_day_files），
+    # 绕过 get_stock_data => 必须单独注入，否则本地无 TDX 数据时返回 None。
+    out = {}
+    for code in codes:
+        df = frames.get(code)
+        if df is None:
+            continue
+        recs = df.to_dict("records")
+        for r in recs:
+            r["date"] = r["date"].strftime("%Y-%m-%d")
+            r.pop("trade_date", None)
+        out[code] = recs
+    return out
+
 def _run_engine_chain(multi_signal: bool):
     """链路 2/3：engine.run_backtest（默认 Donchian 口径 / 多信号 OR 口径）。"""
     import backtest.engine as engine
@@ -331,8 +346,124 @@ def _run_engine_chain(multi_signal: bool):
     return out
 
 
+def _run_unified_modes():
+    """统一入口（backtest.unified）的 6 个 mode 全部跑一遍。
+
+    这是 Phase 3 的核心安全网：改造后所有调用方都走这里，
+    因此「统一入口的参数透传是否正确」必须被尺子覆盖 ——
+    漏传一个参数（如 exit_days_map / confidence_threshold）会**静默改变回测口径**。
+
+    ⚠️ 必须注入合成数据：不注入则走真实数据源 ⇒ 跨环境不可复现 ⇒ 基线失效。
+    """
+    import backtest.core as core
+    import backtest.engine as engine
+    import lib.data.data_layer as data_layer
+    import lib.data.data_source_registry as registry
+    from backtest.unified import BacktestRunner
+
+    frames = {s: _synthetic_frame(s) for s in SYMBOLS}
+    hs300_frame = _synthetic_frame("000300", DAYS)
+
+    def fake_multi(code, days=180, source="auto", **kw):
+        return frames.get(code, _synthetic_frame(code, days)).copy()
+
+    def fake_get(symbol, days=250, use_cache=True):
+        return frames.get(symbol, _synthetic_frame(symbol, days)).copy()
+
+    import lib.data.tdx_batch as tdx_batch
+
+    orig = (engine.get_stock_hist_multi_source, registry.get_stock_hist_multi_source,
+            core.get_stock_data, data_layer.get_index_hist, tdx_batch.batch_read_day_files)
+    engine.get_stock_hist_multi_source = fake_multi
+    registry.get_stock_hist_multi_source = fake_multi
+    core.get_stock_data = fake_get
+    data_layer.get_index_hist = lambda code, days=180, **kw: hs300_frame.copy()
+    tdx_batch.batch_read_day_files = lambda codes, days=60, max_workers=8: _fake_batch(frames, codes, days)
+
+    out = {}
+    try:
+        for mode in ("factor", "simple", "rebalance", "full", "walk_forward", "stress"):
+            try:
+                # stress: 默认 8 个压力窗口 => 8 次因子回测 + 蒙特卡洛再跑 1 次
+                #          = 9 次（实测 152s，是其他链路的 60 倍）
+                # => 这里只跑**第一个窗口**: 窗口口径仍被锁定, 耗时降到 ~1/8
+                extra_kwargs = {}
+                if mode == "stress":
+                    try:
+                        from backtest.stress import STRESS_WINDOWS
+                        extra_kwargs["windows"] = list(STRESS_WINDOWS[:1])
+                    except Exception:
+                        pass
+                unified = BacktestRunner().run(
+                    mode=mode,
+                    symbols=list(SYMBOLS),
+                    days=DAYS,
+                    **extra_kwargs,
+                )
+            except Exception as exc:
+                out[mode] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+                continue
+            if unified is None:
+                out[mode] = {"ok": True, "data": {"_result": None}}
+                continue
+            raw = unified.raw if unified.raw is not None else {}
+            metrics = raw.get("metrics") if isinstance(raw, dict) else None
+            out[mode] = {
+                "ok": True,
+                "data": {
+                    "mode": unified.mode,
+                    # ⚠️ unified.trade_count 不可靠：多数引擎返回的 dict 没有 trade_count 键
+                    #    （run_backtest 返回 trades DataFrame + metrics.total_trades）
+                    #    ⇒ 交易数取 metrics.total_trades，并同时记录 trades 明细指纹
+                    "trade_count": (metrics.get("total_trades")
+                                     if isinstance(metrics, dict) else unified.trade_count),
+                    "unified_trade_count": unified.trade_count,
+                    "metrics": _fingerprint_metrics(metrics if isinstance(metrics, dict) else {}),
+                    "trades": (_summarize_trades(raw.get("trades"))
+                              if isinstance(raw, dict) else {"count": 0}),
+                    "raw_keys": sorted(raw.keys()) if isinstance(raw, dict) else [],
+                    # walk_forward 的实质产出在 rounds/summary（无 metrics/trades）
+                    # stress 的实质产出在 dict 顶层（无 metrics/trades）
+                    "extra": (
+                        {
+                            "summary": _canonical(raw.get("summary")),
+                            "rounds_count": len(raw.get("rounds") or []),
+                            "rounds": _canonical(raw.get("rounds")),
+                        }
+                        if mode == "walk_forward" and isinstance(raw, dict)
+                        else (
+                            # ⚠️ stress 的 monte_carlo 段是**未播种的随机量**
+                            #    （实测两次运行 ci_5pct/prob_positive 等逐次不同）
+                            #    ⇒ 随机量不能进基线，否则门禁随机假红。
+                            #    这里只取确定性字段（窗口/统计口径），排除蒙特卡洛随机段。
+                            {
+                                "stress_keys": sorted(raw.keys()),
+                                "stress_deterministic": _canonical({
+                                    k: v for k, v in raw.items()
+                                    if k not in ("monte_carlo", "bootstrap",
+                                                "cost_sensitivity")
+                                }),
+                            }
+                            if mode == "stress" and isinstance(raw, dict)
+                            else {}
+                        )
+                    ),
+                    "raw_top_level_scalars": {
+                        k: _canonical(v) for k, v in sorted(raw.items())
+                        if isinstance(v, (int, float, str, bool))
+                    } if isinstance(raw, dict) else {},
+                },
+            }
+    finally:
+        (engine.get_stock_hist_multi_source, registry.get_stock_hist_multi_source,
+         core.get_stock_data, data_layer.get_index_hist,
+         tdx_batch.batch_read_day_files) = orig
+    return out
+
+
 CHAINS = {
     "entry_signals": lambda: _capture_entry_signals(),
+    "unified_modes": lambda: _run_unified_modes(),
     "core_factor_backtest": lambda: _run_core_chain(),
     "engine_donchian_entry": lambda: _run_engine_chain(False),
     "engine_multi_signal_entry": lambda: _run_engine_chain(True),

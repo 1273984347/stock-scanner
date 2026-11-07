@@ -15,6 +15,9 @@ class BacktestResult:
     config: Dict = field(default_factory=dict)
     trade_count: int = 0
     mode: str = ""
+    # 原始结果 dict（未归一化）—— 调用方若依赖 cost_summary / perf_df 等
+    # 非归一化字段，必须取这里的原始值，否则会静默丢字段
+    raw: Optional[Dict] = None
 
     def to_dict(self) -> Dict:
         return {
@@ -26,4 +29,5 @@ class BacktestResult:
             "equity_curve": self.equity_curve,
             "benchmark": self.benchmark,
             "config": self.config,
+            "raw": self.raw,
         }

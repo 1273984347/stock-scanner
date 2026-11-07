@@ -84,8 +84,23 @@ class MultiMarketValidator:
             - is_robust: 是否在所有周期都表现可接受
         """
         if backtest_func is None:
-            from backtest.rebalance import run_rebalance_backtest
-            backtest_func = run_rebalance_backtest
+            # 统一入口（RF-01 Phase 3）：默认走 backtest.unified；
+            # 仍保留「可注入 backtest_func」语义（测试用自定义回测函数）
+            from backtest.unified import BacktestRunner
+
+            def backtest_func(symbols=None, days=300, disable_loss_breaker=False,
+                              start_date="", end_date="", **_kw):
+                unified = BacktestRunner().run(
+                    mode="rebalance",
+                    symbols=symbols,
+                    days=days,
+                    disable_loss_breaker=disable_loss_breaker,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                return (unified.raw
+                        if unified is not None and unified.raw is not None
+                        else None)
 
         results = []
         for period in self.periods:
@@ -197,7 +212,6 @@ class MultiMarketValidator:
                 continue
 
             # 用过滤后的数据跑回测
-            from backtest.rebalance import run_rebalance_backtest
             try:
                 # 临时替换数据源
                 result = self._run_with_data(list(period_data.keys()), period_data)

@@ -10,6 +10,11 @@
 > **四把尺子**（改动是否改变对外行为 → 机器可判据）：
 > ① 契约快照（路径/schema） ② 覆盖率基线（回归幅度） ③ 双跑对拍（数值）
 > ④ **回测口径基线**（回测数值 = 策略决策依据，见 §七）
+>
+> ④ 的 5 条链路分工：`entry_signals`（三份 `check_entry` 判定序列，锁定**口径**）、
+> `core_factor_backtest` / `engine_donchian_entry` / `engine_multi_signal_entry`（锁定**引擎产出**）、
+> `unified_modes`（打**统一入口** `backtest/unified.py` 的 6 个 mode ——
+> **只有它能发现「入口层参数漏传」这类漂移**，底层链路看不到）
 
 ---
 
@@ -23,7 +28,7 @@
 | `test-duration-baseline.md` | **本地 pytest 耗时排序 + 稳定性基线**（慢用例定位与根因分析） | 人工维护 + 工具产出数据 |
 | `test-duration-baseline.json` | 上述基线的机器可读版（耗时排序 / 稳定性 min·median·max·CV） | `scripts/pytest_duration_baseline.py` |
 | `pitfalls.md` | **踩坑集**：RF-01 执行期真实踩过的 48 个坑（现象 → 根因 → 修复 → 推广），按度量/跨平台/测试/搬迁/数据/CI/工具链分七类 | 人工维护（每批收官追加） |
-| `backtest-baseline.json` | **回测口径基线**：4 条链路的输出指纹（3 份 `check_entry` 判定序列 + 3 个回测引擎指标） | `python scripts/backtest_baseline.py --capture --out docs/refactor/backtest-baseline.json` |
+| `backtest-baseline.json` | **回测口径基线**：5 条链路的输出指纹（3 份 `check_entry` 判定序列 + 3 个回测引擎指标 + **统一入口 6 个 mode**） | `python scripts/backtest_baseline.py --capture --out docs/refactor/backtest-baseline.json` |
 | `../plans/2026-11-07-refactor-plan.md` | 分阶段重构计划本体（阶段划分、兼容策略、验证方式、退出判据） | 人工维护 |
 
 ---

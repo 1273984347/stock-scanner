@@ -665,11 +665,14 @@ def _to_float(val):
 
 def run_backtest_mode(symbols, days, walk_forward):
     """回测模式"""
-    from backtest.core import run_factor_backtest, run_walk_forward
+    from backtest.unified import BacktestRunner
 
     if walk_forward:
         logger.info(f"Walk-forward 验证: {symbols}")
-        result = run_walk_forward(symbols, days=days)
+        unified = BacktestRunner().run(mode="walk_forward", symbols=symbols, days=days)
+        # 取 raw（原始 dict）—— 本函数依赖 result["summary"] 等非归一化字段
+        result = (unified.raw if unified is not None and unified.raw is not None
+                  else (unified.to_dict() if unified is not None else {}))
         if "error" in result:
             logger.error(result["error"])
             return
@@ -686,7 +689,10 @@ def run_backtest_mode(symbols, days, walk_forward):
         print("=" * 60)
     else:
         logger.info(f"因子策略回测: {symbols}, {days} 天")
-        result = run_factor_backtest(symbols, days=days)
+        unified = BacktestRunner().run(mode="factor", symbols=symbols, days=days)
+        # 取 raw —— 本函数依赖 result["report"]（报告文本）
+        result = (unified.raw if unified is not None and unified.raw is not None
+                  else (unified.to_dict() if unified is not None else None))
         if result:
             print(result["report"])
             print(f"\n交易次数: {result['trade_count']}")
@@ -958,10 +964,16 @@ def run_rebalance_status():
 
 def run_stress_test_mode(symbols: list):
     """压力测试模式"""
-    from backtest.stress import run_stress_test, format_stress_report
+    from backtest.unified import BacktestRunner
+    from backtest.stress import format_stress_report
 
     logger.info(f"开始压力测试 - 标的: {symbols}")
-    report = run_stress_test(symbols)
+    unified = BacktestRunner().run(mode="stress", symbols=symbols)
+    # 取 raw —— format_stress_report 需要 StressTestReport 对象，非归一化 dict
+    report = unified.raw if unified is not None and unified.raw is not None else None
+    if report is None:
+        logger.error("压力测试无结果")
+        return
     print(format_stress_report(report))
 
 

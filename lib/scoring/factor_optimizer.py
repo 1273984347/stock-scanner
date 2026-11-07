@@ -201,19 +201,24 @@ def evaluate_fitness(
             selected = symbols
 
         # 运行回测
-        from backtest.rebalance import run_rebalance_backtest
+        from backtest.unified import BacktestRunner
 
         # IS 部分：全量 days（IS + OOS 一起算，expanding window 简化）
         # 注意：因 run_rebalance_backtest 只支持"取最近 N 天"，
         # 无法做严格的 walk-forward split。这里采用 expanding window：
         # IS 用全部 days，OOS 用最近 oos_test_days 天。
         # 这是对严格分离的折中；研究使用可接受。
-        result = run_rebalance_backtest(
+        # 统一入口（RF-01 Phase 3）：所有回测调用只经 backtest.unified
+        unified = BacktestRunner().run(
+            mode="rebalance",
             symbols=selected,
             days=days,
             disable_loss_breaker=disable_loss_breaker,
             exit_days_map=exit_days_map,
         )
+        # 取 raw —— 本函数依赖顶层标量（sharpe/max_drawdown/n_trades/total_return），
+        # 而 BacktestResult 归一化后只有 metrics 子集 ⇒ 直接用归一化结果会取不到值
+        result = unified.raw if unified is not None and unified.raw is not None else None
 
         if result is None:
             return -999.0, {"error": "backtest returned None"}
@@ -233,12 +238,16 @@ def evaluate_fitness(
         oos_failed = False
         if oos_test_days > 0 and days > oos_test_days:
             try:
-                oos_result = run_rebalance_backtest(
+                oos_unified = BacktestRunner().run(
+                    mode="rebalance",
                     symbols=selected,
                     days=oos_test_days,  # 只取最近 oos_test_days 天
                     disable_loss_breaker=disable_loss_breaker,
                     exit_days_map=exit_days_map,
                 )
+                oos_result = (oos_unified.raw
+                              if oos_unified is not None and oos_unified.raw is not None
+                              else None)
                 if oos_result is not None:
                     oos_sharpe = (
                         oos_result.get("sharpe",

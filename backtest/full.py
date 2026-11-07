@@ -482,6 +482,9 @@ def run_full_backtest(symbols=None, days=500, max_workers=4, **kwargs):
     )
     from backtest.engine import run_backtest
     return run_backtest(
+        # ⚠️ stock_codes 是 run_backtest 的**必填位置参数**，symbols 只是别名
+        #    （engine.py:635-637）⇒ 只传 symbols 会抛 missing 1 required positional argument
+        stock_codes=symbols,
         symbols=symbols, days=days,
         parallel=True, max_workers=max_workers,
         multi_signal_entry=True, sentiment_filter=True,

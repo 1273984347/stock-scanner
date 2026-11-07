@@ -57,7 +57,9 @@ stock-scanner/
 │   ├── engine.py          # 单股信号测试 (run_backtest, BacktestConfig)
 │   ├── full.py            # 全市场并行回测 (run_full_backtest)
 │   ├── rebalance.py       # 月频调仓回测 (run_rebalance_backtest)
-│   └── stress.py          # 压力测试 (run_stress_test)
+│   ├── stress.py          # 压力测试 (run_stress_test)
+│   ├── unified.py         # **唯一对外入口** (BacktestRunner/BacktestRequest, 6 mode)
+│   └── legacy/            # 未接线的回测能力（benchmark/monte_carlo），保留不删
 │
 ├── lib/                   # 核心业务模块 —— 按职责分 8 个子包 (2026-11-07 重构)
 │   ├── data/              # 数据层：多源获取/缓存/限流/协议规范化 (37)
@@ -363,7 +365,7 @@ curl http://localhost:8000/api/scan
 | `.env` | 敏感配置 (禁止 commit) |
 | `cache/models/` | ML 模型存储 |
 | `scripts/update_tdx_data.py` | TDX 日K线数据更新脚本 |
-| `RULES.md` | **项目规约** (目录结构/import/路径基准/验证分层硬约束)。改代码前先读 |
+| `RULES.md` | **项目规约** (目录结构/import/路径基准/**回测调用规约**/验证分层硬约束)。改代码前先读 |
 | `docs/refactor/pitfalls.md` | **踩坑集** (RF-01 执行期 48 条真实坑：现象→根因→修复→推广)。动 `lib/`、`tests/`、CI 前先读 |
 | `docs/refactor/README.md` | 重构度量基线说明 (契约/覆盖率/对拍三把尺子的口径与自证记录) |
 | `docs/plans/2026-11-07-refactor-plan.md` | RF-01 分阶段重构计划 (§七 为逐批执行记录/验收/复盘) |
