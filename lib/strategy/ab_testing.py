@@ -110,7 +110,12 @@ class ABTester:
                             "sharpe_ratio": metrics.get("sharpe", 0),
                             "max_drawdown": metrics.get("max_drawdown", 0),
                             "win_rate": metrics.get("win_rate", 0),
-                            "trades": raw.get("trade_count", 0),
+                            # ⚠️ 交易数：run_backtest 返回的是 trades(DataFrame) +
+                            #    metrics.total_trades，**没有 trade_count 键**
+                            #    ⇒ 只读 trade_count 会恒为 0（A/B 测试的「交易次数」全错）
+                            "trades": (metrics.get("total_trades")
+                                       if metrics.get("total_trades") is not None
+                                       else raw.get("trade_count", 0)),
                             "returns": returns,
                         }
 

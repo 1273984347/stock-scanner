@@ -123,9 +123,15 @@ def do_check(args) -> int:
 
     regressions = []
     base_modules = base.get("modules") or {}
+    uncovered = []
     for name, m in cov["modules"].items():
         b = base_modules.get(name)
         if not b:
+            # ⚠️ 基线里没有这个模块 ⇒ 它**完全不受门禁约束**（静默跳过）。
+            #    例如 2026-11-07 把 backtest/ 纳入 CI --cov 后，基线尚未在 CI 重建
+            #    ⇒ 这段时间内 backtest/* 的覆盖率回归不会被判红。
+            #    这里显式列出，避免「看不见的盲区」。
+            uncovered.append(name)
             continue
         if name in allow:
             continue
@@ -135,6 +141,16 @@ def do_check(args) -> int:
     regressions.sort(key=lambda x: x[3])
 
     print(f"[INFO] platform={plat}  total {cur_total}% (baseline {base_total}%, delta {delta_total:+}%)")
+
+    if uncovered:
+        print(f"[WARN] {len(uncovered)} module(s) have NO baseline entry -> not gated "
+              f"(coverage regression there would be silent). "
+              f"Rebuild the baseline in the CI env: "
+              f"python scripts/coverage_baseline.py --update --coverage-file <file>")
+        for nm in sorted(uncovered)[:12]:
+            print(f"       - {nm}")
+        if len(uncovered) > 12:
+            print(f"       ... and {len(uncovered) - 12} more")
 
     if delta_total < -args.threshold:
         print(f"[FAIL] total coverage dropped {abs(delta_total)}pp "

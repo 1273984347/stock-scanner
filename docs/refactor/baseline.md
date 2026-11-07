@@ -16,7 +16,7 @@
 | `api.py` 行数 | **3,142** | `(Get-Content api.py).Count` |
 | `backtest/` 业务模块数 | 9 | 目录列举 |
 | 测试文件数 | 116 | `Get-ChildItem tests` |
-| 测试用例数 | **1,169**（2026-11-07 实测；重构前 1,174，差额 = 删除 8 个零引用模块 − 3 个新增包级枚举用例） | `pytest --collect-only -q` |
+| 测试用例数 | **1,174**（2026-11-07 实测；目录重构后 1,169 + Phase 3 新增 `tests/test_ab_testing.py` 5 例） | `pytest --collect-only -q` |
 | `cache/` parquet 文件数 | 3,423（27 个子目录） | 递归统计 |
 | 前端消费的 API 路径 | **18** | `static/**` 的 `/api/` 路径去重 |
 

@@ -11,6 +11,9 @@
 > ① 契约快照（路径/schema） ② 覆盖率基线（回归幅度） ③ 双跑对拍（数值）
 > ④ **回测口径基线**（回测数值 = 策略决策依据，见 §七）
 >
+> **RF-01 进度**：Phase 0（尺子）✅ · Phase 1（公共状态）✅ · Phase 2（数据层）✅ · **Phase 3（回测引擎）✅ 收官**
+> → 下一阶段：Phase 4（评分体系归一）
+>
 > ④ 的 5 条链路分工：`entry_signals`（三份 `check_entry` 判定序列，锁定**口径**）、
 > `core_factor_backtest` / `engine_donchian_entry` / `engine_multi_signal_entry`（锁定**引擎产出**）、
 > `unified_modes`（打**统一入口** `backtest/unified.py` 的 6 个 mode ——
