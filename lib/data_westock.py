@@ -67,7 +67,7 @@ def _parse_markdown_table(output: str) -> pd.DataFrame:
 
 
 def get_kline(code: str, period: str = "day", limit: int = 200,
-              fq: str = "qfq") -> pd.DataFrame:
+              fq: str = "qfq", as_of_date: Optional[str] = None) -> pd.DataFrame:
     """获取 K 线数据
 
     Args:
@@ -75,13 +75,20 @@ def get_kline(code: str, period: str = "day", limit: int = 200,
         period: day/week/month/season/year
         limit: 数据条数（最大 2000）
         fq: qfq(前复权)/hfq(后复权)/bfq(不复权)
+        as_of_date: 时间截断 (YYYY-MM-DD)。回测必传。
 
-    Returns:
-        DataFrame with columns: 日期, 开盘, 收盘, 最高, 最低, 成交量, ...
+    ⚠️ westock CLI 只能按"最新 N 条"取数，**不支持按日期查询**
+    => 只能在返回后截断。若 CLI 取回的 N 条全部晚于 as_of_date，
+       结果会**为空或少于 N 条**（少取，不是多取 ⇒ 不会引入前视偏差）。
     """
     wc = _to_westock_code(code)
     output = _run_westock(["kline", wc, "--period", period, "--limit", str(limit), "--fq", fq])
-    return _parse_markdown_table(output)
+    df = _parse_markdown_table(output)
+    if as_of_date is not None and not df.empty and "日期" in df.columns:
+        cutoff = pd.Timestamp(as_of_date)
+        dates = pd.to_datetime(df["日期"], errors="coerce")
+        df = df[dates <= cutoff].copy()
+    return df
 
 
 def get_finance(code: str, ftype: str = "lrb", num: int = 4) -> pd.DataFrame:

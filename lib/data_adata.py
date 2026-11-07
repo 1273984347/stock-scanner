@@ -20,6 +20,16 @@ def _to_adata_code(code: str) -> str:
     return code
 
 
+def _resolve_end_date(as_of_date: Optional[str] = None):
+    """回测截止日（纯函数，便于离线契约测试）。
+
+    不传 as_of_date = 实时模式（用今天）；传了 = 回测（截止该日，修复前视偏差）。
+    """
+    if as_of_date is not None:
+        return pd.Timestamp(as_of_date)
+    return datetime.now()
+
+
 def get_kline(code: str, days: int = 180, period: str = "daily", as_of_date: Optional[str] = None) -> pd.DataFrame:
     """获取 K 线数据
 
@@ -36,7 +46,9 @@ def get_kline(code: str, days: int = 180, period: str = "daily", as_of_date: Opt
     try:
         import adata.stock.market as mkt
         acode = _to_adata_code(code)
-        end = datetime.now()
+        # P0 修复 (2026-11-07)：原来**收了 as_of_date 却仍用 datetime.now()** =>
+        # 回测仍取到 T 日数据 = 前视偏差。不传 = 实时模式（行为不变）。
+        end = _resolve_end_date(as_of_date)
         start = end - timedelta(days=days)
         freq_map = {"daily": 1, "weekly": 2, "monthly": 3}
         df = mkt.get_market(stock_code=acode, start_date=start.strftime("%Y-%m-%d"),

@@ -74,16 +74,17 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
             return _fetch_from_local_file(code, days, "daily", as_of_date)
         if source == "baostock":
             from lib.data_baostock import get_kline as baostock_kline
-            return breaker.call(baostock_kline, code, days=days)
+            return breaker.call(baostock_kline, code, days=days, as_of_date=as_of_date)
         if source == "tdx":
             from lib.data_tdx import get_kline as tdx_kline
             return breaker.call(tdx_kline, code, days=days, as_of_date=as_of_date)
         if source == "adata":
             from lib.data_adata import get_kline as adata_kline
-            return breaker.call(adata_kline, code, days=days)
+            return breaker.call(adata_kline, code, days=days, as_of_date=as_of_date)
         if source == "westock":
             from lib.data_westock import get_kline as westock_kline
-            df = breaker.call(westock_kline, code, period="day", limit=min(days, 2000))
+            df = breaker.call(westock_kline, code, period="day", limit=min(days, 2000),
+                             as_of_date=as_of_date)
             if df.empty:
                 return pd.DataFrame()
             col_map = {"日期": "date", "开盘": "open", "收盘": "close",

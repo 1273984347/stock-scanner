@@ -189,6 +189,10 @@ matplotlib 字体扫描日志被逐条放大。
 | 1 | **横切层抽离**（认证/校验/缓存/安全头/异常处理） | api.py 内 | lib/api_core.py | api.py **3142 → 3084 行**，逐字搬迁 | ✅ 完成 |
 | 2 | **数据层工具归一**（`_to_float`×6 / `_safe_div`×3） | 9 份副本 | 1 份内核 + 各源策略 | 特征测试 8 passed（33 边界值逐值等价），CI 三平台全绿 | ✅ 完成 |
 | 2 | **K 线协议层 + `as_of_date` 透传** | — | 契约 + 无前视 | data_protocol 90% / data_utils 100% / tdx 全链路；CI 覆盖率 **44.16%**（基线 43.80%，+0.36pp） | ✅ 完成 |
+| 2 | **registry 补透传 as_of_date** | 3/8 源漏传 | 8/8 | baostock / adata / westock 补齐；adata 的 `datetime.now()` 已修 | ✅ 完成 |
+| 2 | **统一适配器 `lib/data_api.py`** | 多个同名入口 | 单一入口 + 契约规范化 | `get_kline` / `get_realtime_quotes` / `get_stock_financial` / `clear_caches` | ✅ 完成 |
+| 2 | **as_of_date 离线契约测试** | — | 覆盖各源 | **14 passed，零网络调用** | ✅ 完成 |
+| — | **CI 矩阵瘦身**（Actions 额度） | 9 job ≈ 117 Linux-分钟 | 3 job ≈ 39 | push/PR 只跑 3.12×3OS；全矩阵改 `workflow_dispatch` 手动触发 | ✅ 完成 |
 | 2 | 数据层零测试模块数 | 28 | 0 | 28 | ⏳ 待开始 |
 | 3 | `backtest/` 重复实现函数 | ≥3 | 0 | — | ⏳ 待开始 |
 | 4 | 评分实现套数 | 8 | 1 内核 + N 适配器 | 8 | ⏳ 待开始 |
