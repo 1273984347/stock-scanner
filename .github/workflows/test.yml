@@ -1,8 +1,12 @@
 name: Test
 
 on:
-  push:
-  pull_request:
+  # ⚠️ Actions 额度已耗尽（2026-11-07）：暂时**只保留手动触发**，
+  #    避免每次 push 都产生一个"跑不起来的红色 run"（不耗分钟但刺眼）。
+  # 额度恢复后：把下面两行加回来即可恢复自动门禁（matrix 表达式会自动
+  # 只跑 3.12；需要全矩阵时手动触发 workflow_dispatch）。
+  #   push:
+  #   pull_request:
   workflow_dispatch:   # 手动触发 = 跑完整矩阵（3 OS x 3 Python，约 117 Linux-分钟）
 
 jobs:

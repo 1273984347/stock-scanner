@@ -193,6 +193,7 @@ matplotlib 字体扫描日志被逐条放大。
 | 2 | **统一适配器 `lib/data_api.py`** | 多个同名入口 | 单一入口 + 契约规范化 | `get_kline` / `get_realtime_quotes` / `get_stock_financial` / `clear_caches` | ✅ 完成 |
 | 2 | **as_of_date 离线契约测试** | — | 覆盖各源 | **14 passed，零网络调用** | ✅ 完成 |
 | — | **CI 矩阵瘦身**（Actions 额度） | 9 job ≈ 117 Linux-分钟 | 3 job ≈ 39 | push/PR 只跑 3.12×3OS；全矩阵改 `workflow_dispatch` 手动触发 | ✅ 完成 |
+| — | **workflow 语法修正** | job 级 if 引用 matrix.* | matrix 层过滤 | job 级 if 在 matrix 展开前求值 ⇒ workflow 直接失败；已下移到 matrix 层 | ✅ 完成 |
 | 2 | 数据层零测试模块数 | 28 | 0 | 28 | ⏳ 待开始 |
 | 3 | `backtest/` 重复实现函数 | ≥3 | 0 | — | ⏳ 待开始 |
 | 4 | 评分实现套数 | 8 | 1 内核 + N 适配器 | 8 | ⏳ 待开始 |
