@@ -387,6 +387,9 @@ curl http://localhost:8000/api/scan
 | `.env` | 敏感配置 (禁止 commit) |
 | `cache/models/` | ML 模型存储 |
 | `scripts/update_tdx_data.py` | TDX 日K线数据更新脚本 |
+| `docs/refactor/pitfalls.md` | **踩坑集** (RF-01 执行期 48 条真实坑：现象→根因→修复→推广)。动 `lib/`、`tests/`、CI 前先读 |
+| `docs/refactor/README.md` | 重构度量基线说明 (契约/覆盖率/对拍三把尺子的口径与自证记录) |
+| `docs/plans/2026-11-07-refactor-plan.md` | RF-01 分阶段重构计划 (§七 为逐批执行记录/验收/复盘) |
 
 ---
 
