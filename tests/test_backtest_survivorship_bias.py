@@ -55,7 +55,7 @@ def test_run_backtest_delisted_stocks_added_to_pool():
     # 强制并行路径：len > 100 才会走
     big_codes = [f"{i:06d}" for i in range(101)]
 
-    with patch("lib.data_delisted.get_delisted_symbols", return_value=set(fake_delisted)):
+    with patch("lib.data.data_delisted.get_delisted_symbols", return_value=set(fake_delisted)):
         with patch("backtest.engine._run_backtest_parallel", side_effect=mock_parallel):
             run_backtest(
                 stock_codes=big_codes,
@@ -71,7 +71,7 @@ def test_run_backtest_delisted_stocks_added_to_pool():
 @pytest.mark.skip(reason="CI 不兼容：run_backtest 内部需要真实数据源（本地 TDX 或网络），Linux CI 环境均无")
 def test_run_backtest_delisted_injection_failure_does_not_crash():
     """P0-4: 退市股票数据获取失败时（API 不可用）应优雅降级，不中断主流程"""
-    with patch("lib.data_delisted.get_delisted_symbols", side_effect=Exception("API down")):
+    with patch("lib.data.data_delisted.get_delisted_symbols", side_effect=Exception("API down")):
         # 不应抛异常
         result = run_backtest(
             stock_codes=["600519"],
@@ -97,7 +97,7 @@ def test_run_backtest_include_delisted_false_skips_injection():
 
     big_codes = [f"{i:06d}" for i in range(101)]
 
-    with patch("lib.data_delisted.get_delisted_symbols", return_value=set(fake_delisted)):
+    with patch("lib.data.data_delisted.get_delisted_symbols", return_value=set(fake_delisted)):
         with patch("backtest.engine._run_backtest_parallel", side_effect=mock_parallel):
             run_backtest(
                 stock_codes=big_codes,

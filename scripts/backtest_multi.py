@@ -22,7 +22,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.indicators import (
+from lib.scoring.indicators import (
     calculate_keltner_channels,
     calculate_xosi_channels,
     get_channel_signals,
@@ -104,7 +104,7 @@ def load_kline(code: str, days: int = 1000) -> pd.DataFrame:
     else:
         code = code.zfill(6)
         # 用 helper 替代手写市场判断（修复 bj 静默丢失）
-        from lib.market_utils import detect_market
+        from lib.data.market_utils import detect_market
         market_str = detect_market(code)
         if market_str == "unknown":
             return pd.DataFrame()
@@ -168,7 +168,7 @@ class MultiAssetBacktest:
 
     def load_index(self, index_code: str = "000001", days: int = 250):
         """加载指数数据（上证为主）"""
-        from lib.data_layer import get_index_hist
+        from lib.data.data_layer import get_index_hist
         self._index_df = get_index_hist(index_code, days=days)
         if not self._index_df.empty:
             self._index_df = self._index_df.rename(columns={"trade_date": "date", "close": "index_close"})
@@ -176,7 +176,7 @@ class MultiAssetBacktest:
 
     def load_macro(self, indicator: str = "SHIBOR_1W", days: int = 60):
         """加载宏观指标"""
-        from lib.data_layer import get_macro_hist_local
+        from lib.data.data_layer import get_macro_hist_local
         # 尝试多种宏观指标
         for ind in [f"{indicator}", f"38#9_{indicator}", indicator]:
             df = get_macro_hist_local(ind, days=days)

@@ -12,10 +12,10 @@ import numpy as np
 from typing import List, Dict, Tuple
 from dataclasses import dataclass
 
-from lib.data_layer import get_index_hist
-from lib.data_source_registry import get_stock_hist_multi_source
-from lib.technical_signals import ema
-from lib.market_regime import detect_market_regime, TREND_UP, MEAN_REVERSION, COMPRESSION, TREND_DOWN
+from lib.data.data_layer import get_index_hist
+from lib.data.data_source_registry import get_stock_hist_multi_source
+from lib.scoring.technical_signals import ema
+from lib.monitoring.market_regime import detect_market_regime, TREND_UP, MEAN_REVERSION, COMPRESSION, TREND_DOWN
 
 
 @dataclass
@@ -343,7 +343,7 @@ if __name__ == "__main__":
     print_diagnostic_report(df)
 
     # 保存结果
-    from lib.backtest_saver import save_backtest_result, RESULTS_DIR
+    from lib.monitoring.backtest_saver import save_backtest_result, RESULTS_DIR
     import json as _json
     from datetime import datetime
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")

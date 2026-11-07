@@ -23,8 +23,7 @@ import pytest
 
 def test_load_cache_io_error_does_not_delete_file():
     """P1-2: IO 错误（PermissionError）不应删文件（保留待人工诊断）"""
-    from lib import data_layer
-
+    import lib.data.data_layer as data_layer
     with tempfile.TemporaryDirectory() as tmpdir:
         cache_path = Path(tmpdir) / "good.parquet"
         # 先创建一个有效文件
@@ -43,8 +42,7 @@ def test_load_cache_io_error_does_not_delete_file():
 
 def test_load_cache_other_errors_do_not_delete_file():
     """P1-2: 未知错误（如 KeyError）不应删文件"""
-    from lib import data_layer
-
+    import lib.data.data_layer as data_layer
     with tempfile.TemporaryDirectory() as tmpdir:
         cache_path = Path(tmpdir) / "good.parquet"
         df_good = pd.DataFrame({"a": [1, 2, 3]})
@@ -62,7 +60,7 @@ def test_load_cache_other_errors_do_not_delete_file():
 def test_load_cache_source_code_handles_io_errors_safely():
     """P1-2: 验证修复后 source code 区分了错误类型"""
     import inspect
-    from lib import data_layer
+    import lib.data.data_layer as data_layer
     source = inspect.getsource(data_layer)
 
     # 找 _load_cache 段

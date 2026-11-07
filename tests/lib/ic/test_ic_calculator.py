@@ -5,7 +5,7 @@ from pathlib import Path
 def test_update_ic_history_new_date():
     """新增一日 IC 数据"""
     # Use a temp location for isolation
-    from lib.ic import ic_calculator
+    from lib.portfolio import ic_calculator
     orig_path = ic_calculator.IC_HISTORY_PATH
     ic_calculator.IC_HISTORY_PATH = Path("/tmp/test_ic_history.json")
     try:

@@ -14,7 +14,7 @@ import numpy as np
 
 def test_p1_1_no_bare_config_name_outside_config_param():
     """P1-1: 函数体内裸 Name 'config' 引用必须仅在以 config 为参数的函数中"""
-    from lib import strategies
+    import lib.strategy.strategies as strategies
     source = inspect.getsource(strategies)
     tree = ast.parse(source)
 
@@ -36,7 +36,7 @@ def test_p1_1_no_bare_config_name_outside_config_param():
 
 def test_p1_1_full_score_runs_without_name_error():
     """P1-1: 修复后 full_score 不再因裸 config 引用崩溃"""
-    from lib.strategies import full_score
+    from lib.strategy.strategies import full_score
     dates = pd.date_range("2026-01-01", periods=60, freq="D")
     np.random.seed(42)
     close = 100 + np.cumsum(np.random.randn(60) * 0.5)

@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import pandas as pd
 import pytest
 
-from lib.strategies import _compute_sector_score, _is_sector_declining
+from lib.strategy.strategies import _compute_sector_score, _is_sector_declining
 
 
 class TestSectorScoring:

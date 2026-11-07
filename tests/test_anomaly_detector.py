@@ -2,7 +2,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from lib.anomaly_detector import detect_anomalies, anomaly_summary
+from lib.monitoring.anomaly_detector import detect_anomalies, anomaly_summary
 
 
 class TestDetectAnomalies:

@@ -5,7 +5,7 @@ import json, os
 
 def test_emergency_ic_alert():
     """IC < -0.10 触发紧急降权"""
-    from lib.ic import weight_adjuster
+    from lib.portfolio import weight_adjuster
     # Override path to temp
     orig = weight_adjuster.WEIGHTS_PATH
     weight_adjuster.WEIGHTS_PATH = Path("/tmp/test_weights.json")
@@ -19,7 +19,7 @@ def test_emergency_ic_alert():
 
 def test_conservative_decay_5days():
     """连续5天 IC<0 且胜率<50%，降20%"""
-    from lib.ic import weight_adjuster
+    from lib.portfolio import weight_adjuster
     orig = weight_adjuster.WEIGHTS_PATH
     weight_adjuster.WEIGHTS_PATH = Path("/tmp/test_weights2.json")
     try:
@@ -40,7 +40,7 @@ def test_conservative_decay_5days():
 
 def test_eliminate_at_10days():
     """连续10天 IC<0 且胜率<50%，降至下限 preset×0.20"""
-    from lib.ic import weight_adjuster
+    from lib.portfolio import weight_adjuster
     orig = weight_adjuster.WEIGHTS_PATH
     weight_adjuster.WEIGHTS_PATH = Path("/tmp/test_weights3.json")
     try:
@@ -61,7 +61,7 @@ def test_eliminate_at_10days():
 
 def test_ic_sufficient():
     """is_ic_sufficient: IC样本≥20天返回True"""
-    from lib.ic.weight_adjuster import is_ic_sufficient
+    from lib.portfolio.weight_adjuster import is_ic_sufficient
     ic_stats = {"momentum_5": {"n_valid_days": 20}}
     assert is_ic_sufficient(ic_stats) == True
     ic_stats2 = {"momentum_5": {"n_valid_days": 19}}

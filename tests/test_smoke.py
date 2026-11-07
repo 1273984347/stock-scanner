@@ -21,7 +21,7 @@ def test_scanner_import():
 
 
 def test_judge_panel_import():
-    from lib.judge_panel import JudgePanel
+    from lib.scoring.judge_panel import JudgePanel
     j = JudgePanel()
     r = j.evaluate_all()
     assert "consensus" in r
@@ -34,16 +34,16 @@ def test_judge_panel_import():
 
 
 def test_scorecard_import():
-    from lib.scorecard import ScoreCard, MarketFilter
+    from lib.scoring.scorecard import ScoreCard, MarketFilter
     l1 = MarketFilter.layer1_market_trend()
     assert isinstance(l1, float)
     assert 0 <= l1 <= 1
 
 
 def test_ml_modules():
-    from lib.ml_data import MLDataPipeline
-    from lib.ml_trainer import MLTrainer
-    from lib.ml_predictor import MLPredictor
+    from lib.ml.ml_data import MLDataPipeline
+    from lib.ml.ml_trainer import MLTrainer
+    from lib.ml.ml_predictor import MLPredictor
     assert callable(MLTrainer)
     # 预测器输出结构验证
     p = MLPredictor()
@@ -62,14 +62,14 @@ def test_portfolio_import():
 
 
 def test_cost_filter():
-    from lib.cost_filter import TradabilityFilter
+    from lib.risk.cost_filter import TradabilityFilter
     from config import PortfolioConfig
     f = TradabilityFilter(PortfolioConfig())
     assert f.min_daily_volume == 5e6
 
 
 def test_backtest():
-    from lib.ml_backtest import MLBacktest
+    from lib.ml.ml_backtest import MLBacktest
     bt = MLBacktest({"step": 5})
     assert bt.step == 5
     assert bt.target_col == "excess_5d"

@@ -14,7 +14,7 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Tuple
 
-from lib.technical_signals import ema
+from lib.scoring.technical_signals import ema
 from backtest.utils import compute_atr, add_indicators
 
 # 本地文件直接读取（避免网络回退）
@@ -62,8 +62,7 @@ def _get_index_local(code: str, days: int = 500) -> pd.DataFrame:
 
 
 # 覆盖 get_stock_hist 为本地版本（避免网络回退）
-from lib import data_layer as _dl
-
+import lib.data.data_layer as _dl
 def _patched_get_stock(code, days=500):
     df = _get_stock_local(code, days)
     if not df.empty:
@@ -74,8 +73,8 @@ def _patched_get_stock(code, days=500):
 _dl.get_stock_hist = _patched_get_stock
 
 # 导入
-from lib.data_layer import get_index_hist
-from lib.data_source_registry import get_stock_hist_multi_source
+from lib.data.data_layer import get_index_hist
+from lib.data.data_source_registry import get_stock_hist_multi_source
 
 
 # ============================================================

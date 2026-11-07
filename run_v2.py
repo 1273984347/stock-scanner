@@ -25,9 +25,9 @@ sys.path.insert(0, '.')
 # 强制使用本地 TDX 数据（不触发网络回退）
 os.environ['NO_VERIFY_TDX'] = '1'
 
-from lib.data_layer import get_stock_hist, get_index_hist
-from lib.technical_signals import ema
-from lib.market_regime import detect_market_regime_from_hs300, TREND_UP, MEAN_REVERSION
+from lib.data.data_layer import get_stock_hist, get_index_hist
+from lib.scoring.technical_signals import ema
+from lib.monitoring.market_regime import detect_market_regime_from_hs300, TREND_UP, MEAN_REVERSION
 
 
 def compute_indicators(df):

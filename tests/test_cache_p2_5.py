@@ -25,15 +25,14 @@ import pytest
 
 def _make_cache_dir(monkeypatch, tmp_path):
     """把 CACHE_DIR 重定向到临时目录（不污染项目 cache/）。"""
-    from lib import cache as cache_mod
+    import lib.data.cache as cache_mod
     monkeypatch.setattr(cache_mod, "CACHE_DIR", tmp_path)
     return tmp_path
 
 
 def test_load_cache_file_not_exists_returns_empty_no_error(caplog):
     """P2-5: 文件不存在 → 返回空 df，**不**打 error 日志（cache miss 是预期）"""
-    from lib import cache as cache_mod
-
+    import lib.data.cache as cache_mod
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         # 不创建任何文件 → cache miss
@@ -45,14 +44,13 @@ def test_load_cache_file_not_exists_returns_empty_no_error(caplog):
     assert isinstance(result, pd.DataFrame), f"应返回 DataFrame，实际 {type(result)}"
     assert result.empty, "cache miss 应返回空 DataFrame"
     # 不能有 ERROR 级别日志
-    error_records = [r for r in caplog.records if r.levelno >= logging.ERROR and r.name == "lib.cache"]
+    error_records = [r for r in caplog.records if r.levelno >= logging.ERROR and r.name == "lib.data.cache"]
     assert not error_records, f"cache miss 不应打 error 日志，实际有: {[r.getMessage() for r in error_records]}"
 
 
 def test_load_cache_file_expired_returns_empty_and_deletes():
     """P2-5: 文件过期 → 删 + 返回空 df，文件不存在"""
-    from lib import cache as cache_mod
-
+    import lib.data.cache as cache_mod
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         cache_file = tmp_path / "expired_key.parquet"  # 必须匹配 _cache_path("expired_key")
@@ -73,8 +71,7 @@ def test_load_cache_file_expired_returns_empty_and_deletes():
 
 def test_load_cache_corrupt_returns_none_and_logs_error(caplog):
     """P2-5 核心：parquet 损坏 → logger.error + 返回 None（显式错误标记）"""
-    from lib import cache as cache_mod
-
+    import lib.data.cache as cache_mod
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         cache_file = tmp_path / "corrupt_key.parquet"  # 必须匹配 _cache_path("corrupt_key")
@@ -88,7 +85,7 @@ def test_load_cache_corrupt_returns_none_and_logs_error(caplog):
     # 1. 必须返回 None（显式错误标记）
     assert result is None, f"加载失败应返回 None，实际返回 {type(result)}: {result!r}"
     # 2. 必须打 ERROR 日志（不再静默）
-    error_records = [r for r in caplog.records if r.levelno >= logging.ERROR and r.name == "lib.cache"]
+    error_records = [r for r in caplog.records if r.levelno >= logging.ERROR and r.name == "lib.data.cache"]
     assert error_records, f"加载失败应打 error 日志，实际没有。全部记录: {[(r.name, r.levelname) for r in caplog.records]}"
     # 3. 日志内容应包含 key 和错误类型
     error_msg = error_records[0].getMessage()
@@ -101,8 +98,7 @@ def test_load_cache_io_error_returns_none_and_preserves_file(caplog):
 
     与 P1-2 (data_layer) 行为一致：PermissionError 保留文件。
     """
-    from lib import cache as cache_mod
-
+    import lib.data.cache as cache_mod
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         cache_file = tmp_path / "io_error_key.parquet"  # 必须匹配 _cache_path("io_error_key")
@@ -121,14 +117,13 @@ def test_load_cache_io_error_returns_none_and_preserves_file(caplog):
         # 2. 文件**保留**（核心修复点 — 不能静默删）
         assert cache_file.exists(), "IO 错误时应保留文件，不能静默删除"
         # 3. 打 error 日志
-        error_records = [r for r in caplog.records if r.levelno >= logging.ERROR and r.name == "lib.cache"]
+        error_records = [r for r in caplog.records if r.levelno >= logging.ERROR and r.name == "lib.data.cache"]
         assert error_records, f"IO 错误应打 error 日志。全部: {[(r.name, r.levelname) for r in caplog.records]}"
 
 
 def test_load_cache_valid_returns_dataframe(caplog):
     """P2-5: 正常加载 → 返回 DataFrame，无 error 日志"""
-    from lib import cache as cache_mod
-
+    import lib.data.cache as cache_mod
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         cache_file = tmp_path / "valid_key.parquet"  # 必须匹配 _cache_path("valid_key")
@@ -143,15 +138,15 @@ def test_load_cache_valid_returns_dataframe(caplog):
     assert not result.empty
     assert len(result) == 3
     assert list(result.columns) == ["a", "b"]
-    # 无 error 日志（只看 lib.cache）
-    error_records = [r for r in caplog.records if r.levelno >= logging.ERROR and r.name == "lib.cache"]
+    # 无 error 日志（只看 lib.data.cache）
+    error_records = [r for r in caplog.records if r.levelno >= logging.ERROR and r.name == "lib.data.cache"]
     assert not error_records, f"正常加载不应打 error 日志，实际: {[r.getMessage() for r in error_records]}"
 
 
 def test_load_cache_source_code_returns_optional_dataframe():
     """P2-5: 源码签名必须明确返回 Optional[DataFrame]（None 是合法返回值）"""
     import inspect
-    from lib import cache as cache_mod
+    import lib.data.cache as cache_mod
     sig = inspect.signature(cache_mod.load_cache)
     return_annotation = sig.return_annotation
     # 接受 Union[DataFrame, None] / Optional[DataFrame] / DataFrame | None
@@ -163,7 +158,7 @@ def test_load_cache_source_code_returns_optional_dataframe():
 def test_load_cache_source_code_logs_error_on_failure():
     """P2-5: 源码必须 logger.error 升级（不能是 logger.debug / logger.warning）"""
     import inspect
-    from lib import cache as cache_mod
+    import lib.data.cache as cache_mod
     source = inspect.getsource(cache_mod.load_cache)
     # 错误处理块必须有 logger.error
     assert "logger.error" in source, \
@@ -181,11 +176,11 @@ from contextlib import contextmanager
 
 @contextmanager
 def _capture_lib_logs(cache_mod, caplog, level):
-    """在测试期间让 lib.cache 日志能进 caplog。
+    """在测试期间让 lib.data.cache 日志能进 caplog。
 
     背景：tests/logging.conf 把 `lib` logger 设为 propagate=0，
-    pytest caplog 默认挂在 root logger 上，所以拿不到 lib.cache 的记录。
-    这里直接给 lib.cache 挂一个把记录写进 caplog.records 的 handler（最可靠）。
+    pytest caplog 默认挂在 root logger 上，所以拿不到 lib.data.cache 的记录。
+    这里直接给 lib.data.cache 挂一个把记录写进 caplog.records 的 handler（最可靠）。
     """
     class _CaplogHandler(logging.Handler):
         def emit(self, record):

@@ -10,8 +10,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lib.kg_neo4j import Neo4JKGStore
-from lib.kg_store import Entity, EntityType, Relation, RelationType
+from lib.scoring.kg_neo4j import Neo4JKGStore
+from lib.scoring.kg_store import Entity, EntityType, Relation, RelationType
 
 
 @pytest.fixture

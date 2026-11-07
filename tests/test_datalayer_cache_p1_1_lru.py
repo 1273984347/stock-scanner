@@ -43,8 +43,7 @@ def test_clean_cache_uses_atime_for_lru_eviction():
     FIFO 行为（bug）：删除 mtime 旧的 → 删 B
     LRU 正确行为：删除 atime 旧的 → 删 A
     """
-    from lib import data_layer
-
+    import lib.data.data_layer as data_layer
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         # A: 创建晚 (mtime 新=1分钟前) + 访问久 (atime 30 天前)
@@ -70,7 +69,7 @@ def test_clean_cache_uses_atime_for_lru_eviction():
 def test_clean_cache_source_code_uses_atime():
     """P1-1: 验证修复后源码使用 atime"""
     import inspect
-    from lib import data_layer
+    import lib.data.data_layer as data_layer
     source = inspect.getsource(data_layer.clean_cache)
 
     # 必须有 st_atime（访问时间）
@@ -84,8 +83,7 @@ def test_clean_cache_falls_back_to_mtime_when_atime_unavailable():
     Linux 某些挂载点 (noatime) atime 不会更新
     容错：用 max(atime, mtime) 保证至少有一个有效时间
     """
-    from lib import data_layer
-
+    import lib.data.data_layer as data_layer
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         # A: atime 不可用（30 天前），mtime 新（1 分钟前）

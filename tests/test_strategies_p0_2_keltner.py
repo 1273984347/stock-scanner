@@ -45,7 +45,7 @@ class TestKeltnerXOSIAsOfDate:
         修复前：函数只有 (config)
         修复后：函数有 (config, as_of_date=None)
         """
-        from lib.strategies import get_keltner_xosi_mt_candidates
+        from lib.strategy.strategies import get_keltner_xosi_mt_candidates
         sig = inspect.signature(get_keltner_xosi_mt_candidates)
         assert "as_of_date" in sig.parameters, (
             f"P0-2 修复未生效：get_keltner_xosi_mt_candidates 仍不接受 as_of_date。"
@@ -60,8 +60,7 @@ class TestKeltnerXOSIAsOfDate:
           - as_of_date = '2026-06-10'（5 天前）
           - 修复后：index_df 应只含 ≤ 2026-06-10 的数据（55 天）
         """
-        from lib import strategies
-
+        import lib.strategy.strategies as strategies
         # 构造指数数据：2026-05-01 ~ 2026-06-15（含 as_of_date 之后 5 天）
         dates = pd.date_range("2026-05-01", "2026-06-15", freq="D").strftime("%Y-%m-%d").tolist()
         full_idx = _build_synthetic_index(dates)
@@ -83,7 +82,7 @@ class TestKeltnerXOSIAsOfDate:
             captured["index_df_len"] = len(df)
             return {"regime": "TREND_UP", "confidence": 0.7}
         monkeypatch.setattr(
-            "lib.market_regime.detect_market_regime", fake_detect
+            "lib.monitoring.market_regime.detect_market_regime", fake_detect
         )
 
         # mock get_realtime_quotes 返回非空，避免函数 short-circuit
@@ -125,8 +124,7 @@ class TestKeltnerXOSIAsOfDate:
         修复前：stock_hist_data = _batch_get_stock_hist(all_codes, days=60)
         修复后：stock_hist_data = _batch_get_stock_hist(all_codes, days=60, as_of_date=as_of_date)
         """
-        from lib import strategies
-
+        import lib.strategy.strategies as strategies
         captured = {}
         real_batch = strategies._batch_get_stock_hist
 
@@ -148,7 +146,7 @@ class TestKeltnerXOSIAsOfDate:
 
         # mock detect_market_regime → TREND_UP
         monkeypatch.setattr(
-            "lib.market_regime.detect_market_regime",
+            "lib.monitoring.market_regime.detect_market_regime",
             lambda df: {"regime": "TREND_UP", "confidence": 0.7}
         )
 

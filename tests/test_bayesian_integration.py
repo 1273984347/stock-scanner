@@ -22,8 +22,8 @@ from unittest.mock import MagicMock, patch
 
 def test_dynamic_weight_manager_accepts_bayesian_updater():
     """P0-2: DynamicWeightManager 接受 bayesian_updater 参数"""
-    from lib.dynamic_weight_manager import DynamicWeightManager
-    from lib.bayesian_updater import BayesianUpdater
+    from lib.strategy.dynamic_weight_manager import DynamicWeightManager
+    from lib.scoring.bayesian_updater import BayesianUpdater
 
     bayes = BayesianUpdater()
     mgr = DynamicWeightManager(bayesian_updater=bayes)
@@ -32,8 +32,8 @@ def test_dynamic_weight_manager_accepts_bayesian_updater():
 
 def test_dynamic_weight_manager_bayesian_path_executes():
     """P0-2: 当传入 bayesian_updater 时，compute_weights 应调用贝叶斯分支"""
-    from lib.dynamic_weight_manager import DynamicWeightManager
-    from lib.bayesian_updater import BayesianUpdater
+    from lib.strategy.dynamic_weight_manager import DynamicWeightManager
+    from lib.scoring.bayesian_updater import BayesianUpdater
 
     bayes = BayesianUpdater()
     mgr = DynamicWeightManager(bayesian_updater=bayes)
@@ -53,7 +53,7 @@ def test_pipeline_passes_bayesian_updater_to_dynamic_weight_manager():
     import importlib
     try:
         # 检查 BayesianUpdater 是否在 pipeline 模块顶层被引用
-        import lib.pipeline as pipeline_mod
+        import lib.strategy.pipeline as pipeline_mod
         # 找到 DynamicWeightManager 实例化的行
         import inspect
         source = inspect.getsource(pipeline_mod)
@@ -63,12 +63,12 @@ def test_pipeline_passes_bayesian_updater_to_dynamic_weight_manager():
         assert "BayesianUpdater(" in source or "BayesianUpdater()" in source, \
             "pipeline.py 顶层应创建 BayesianUpdater 实例"
     except ImportError as e:
-        pytest.skip(f"lib.pipeline 导入失败（依赖链问题）: {e}")
+        pytest.skip(f"lib.strategy.pipeline 导入失败（依赖链问题）: {e}")
 
 
 def test_bayesian_state_persists_after_update():
     """P0-2: 调 bayesian_updater.update(...) + save() 后，state 应写入文件"""
-    from lib.bayesian_updater import BayesianUpdater
+    from lib.scoring.bayesian_updater import BayesianUpdater
 
     with tempfile.TemporaryDirectory() as tmpdir:
         state_file = Path(tmpdir) / "bayesian_state.json"

@@ -26,7 +26,7 @@ class TestSafeSignalDate:
 
     def _call(self, iso):
         """调用 _safe_signal_date(iso 解析的 datetime)"""
-        from lib.strategies import _safe_signal_date
+        from lib.strategy.strategies import _safe_signal_date
         return _safe_signal_date(datetime.fromisoformat(iso))
 
     def test_monday_pre_open_returns_last_friday(self):
@@ -90,7 +90,7 @@ class TestSafeSignalDate:
 
     def test_default_now_works(self, monkeypatch):
         """P0-3: 默认参数（now=None）应使用 datetime.now() 不崩溃"""
-        from lib.strategies import _safe_signal_date
+        from lib.strategy.strategies import _safe_signal_date
         # 不传 now，调用应成功
         result = _safe_signal_date()
         assert isinstance(result, str)
@@ -119,7 +119,7 @@ class TestStrategiesUseSafeSignalDate:
         修复后：所有调用都改用 _safe_signal_date()
         """
         import re
-        with open("lib/strategies.py", "r", encoding="utf-8") as f:
+        with open("lib/strategy/strategies.py", "r", encoding="utf-8") as f:
             source = f.read()
 
         # 查找所有 datetime.now() 调用（排除 _safe_signal_date 函数体内的合法调用）
@@ -139,5 +139,5 @@ class TestStrategiesUseSafeSignalDate:
 
     def test_safe_signal_date_is_exported(self):
         """P0-3: _safe_signal_date 函数必须存在且可导入"""
-        from lib.strategies import _safe_signal_date
+        from lib.strategy.strategies import _safe_signal_date
         assert callable(_safe_signal_date)

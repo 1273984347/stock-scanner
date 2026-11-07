@@ -20,7 +20,7 @@ from dataclasses import dataclass
 # 确保 lib 在路径中
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.indicators import (
+from lib.scoring.indicators import (
     calculate_keltner_channels,
     calculate_xosi_channels,
     get_channel_position,
@@ -28,7 +28,7 @@ from lib.indicators import (
     KC_LENGTH, KC_ATR, KC_SCALAR,
     XOSI_SHORT, XOSI_LONG,
 )
-from lib.walkforward import (
+from lib.strategy.walkforward import (
     WalkForwardBacktest, WalkForwardConfig,
     summarize_rounds,
 )
@@ -156,7 +156,7 @@ def load_kline_from_tdx(code: str, days: int = 400) -> pd.DataFrame:
     else:
         code = code.zfill(6)
         # 用 helper 替代手写市场判断（修复 bj 静默丢失）
-        from lib.market_utils import detect_market
+        from lib.data.market_utils import detect_market
         market_str = detect_market(code)
         if market_str == "unknown":
             return pd.DataFrame()

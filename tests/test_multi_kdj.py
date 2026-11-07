@@ -6,7 +6,7 @@ import numpy as np
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
-from technical_signals import detect_kdj_turn, multi_period_kdj_verdict, generate_signals
+from lib.scoring.technical_signals import detect_kdj_turn, multi_period_kdj_verdict, generate_signals
 
 
 def _make_j_series(values):

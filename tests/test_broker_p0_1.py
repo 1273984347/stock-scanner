@@ -13,8 +13,8 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pandas as pd
-from lib.broker import PaperBroker
-from lib.broker_data import Order
+from lib.data.broker import PaperBroker
+from lib.risk import Order
 
 
 def _make_market_data(date, close=10.0, pre_close=10.0, volume=1_000_000):

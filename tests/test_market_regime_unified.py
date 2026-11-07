@@ -2,7 +2,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from lib.market_regime import (
+from lib.monitoring.market_regime import (
     detect_market_regime,
     RISK_OFF, TREND_UP, TREND_DOWN,
     HIGH_VOLATILITY, LOW_VOLATILITY,

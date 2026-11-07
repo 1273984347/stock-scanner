@@ -235,10 +235,10 @@ def _zero_out_retry_backoff_by_default(monkeypatch):
     显式 patch 的测试（如专门测退避时长的 test_retry_call_*）不受影响：
     monkeypatch 后应用者覆盖先应用者（后入栈先撤销），测试内的 patch 优先生效。
     """
-    monkeypatch.setattr("lib.data_layer.API_RETRY_BASE_WAIT_S", 0.01)
+    monkeypatch.setattr("lib.data.data_layer.API_RETRY_BASE_WAIT_S", 0.01)
     # lib/data_layer.time 就是标准库 time 模块本身 ⇒ 这一处同时覆盖
     # data_layer / data_margin / data_baostock / sentiment 的全部退避 sleep
-    monkeypatch.setattr("lib.data_layer.time.sleep", lambda *a, **k: None)
+    monkeypatch.setattr("lib.data.data_layer.time.sleep", lambda *a, **k: None)
 
 
 @pytest.fixture(autouse=True)
@@ -323,7 +323,7 @@ def sample_market_data():
 @pytest.fixture
 def broker():
     """干净的 ABroker 实例"""
-    from lib.broker import ABroker
+    from lib.data.broker import ABroker
     broker = ABroker(initial_cash=1_000_000)
     broker.set_trade_dates(["2026-01-05", "2026-01-06", "2026-01-07"])
     return broker

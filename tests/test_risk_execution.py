@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest
-from lib.risk_manager import RiskManager, RiskConfig, ActionExecutor, RiskAction
+from lib.risk.risk_manager import RiskManager, RiskConfig, ActionExecutor, RiskAction
 
 
 class TestRiskExecution:

@@ -21,9 +21,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from lib import data_layer
-
-
+import lib.data.data_layer as data_layer
 # ─────────────────────────────────────────────────────────────
 # _is_rate_limit_error 单元测试 (5 用例)
 # ─────────────────────────────────────────────────────────────
@@ -86,9 +84,9 @@ def test_retry_call_rate_limit_doubles_backoff():
                 raise
         return "ok_after_retry"
 
-    with patch("lib.data_layer.time.sleep") as mock_sleep, \
-         patch("lib.data_layer.API_RETRY_BASE_WAIT_S", 1), \
-         patch("lib.data_layer.logger") as mock_logger:  # mock logger 直接验证 info 调用
+    with patch("lib.data.data_layer.time.sleep") as mock_sleep, \
+         patch("lib.data.data_layer.API_RETRY_BASE_WAIT_S", 1), \
+         patch("lib.data.data_layer.logger") as mock_logger:  # mock logger 直接验证 info 调用
         result = data_layer._retry_api_call(mock_func)
 
     assert result == "ok_after_retry"
@@ -113,8 +111,8 @@ def test_retry_call_real_error_normal_backoff():
             raise RuntimeError("real akshare error, not rate limit")
         return "ok"
 
-    with patch("lib.data_layer.time.sleep") as mock_sleep, \
-         patch("lib.data_layer.API_RETRY_BASE_WAIT_S", 1):
+    with patch("lib.data.data_layer.time.sleep") as mock_sleep, \
+         patch("lib.data.data_layer.API_RETRY_BASE_WAIT_S", 1):
         result = data_layer._retry_api_call(mock_func)
 
     assert result == "ok"
@@ -129,9 +127,9 @@ def test_retry_call_exhausted_max_retries():
     def mock_func():
         raise ValueError("Can not decode value starting with '<'")  # 限流
 
-    with patch("lib.data_layer.time.sleep"), \
-         patch("lib.data_layer.API_RETRY_MAX_ATTEMPTS", 2), \
-         patch("lib.data_layer.API_RETRY_BASE_WAIT_S", 0.01):
+    with patch("lib.data.data_layer.time.sleep"), \
+         patch("lib.data.data_layer.API_RETRY_MAX_ATTEMPTS", 2), \
+         patch("lib.data.data_layer.API_RETRY_BASE_WAIT_S", 0.01):
         with pytest.raises(ValueError) as excinfo:
             data_layer._retry_api_call(mock_func)
 
@@ -152,12 +150,12 @@ def test_get_realtime_quotes_handles_akshare_rate_limit():
     #   · time.sleep 未 mock => _rate_limiter.acquire() 的限流等待（3 calls/s）也真 sleep
     # 同文件其它用例（test_retry_call_*）均已正确 patch，此处是遗漏。
     with patch.object(data_layer, "_load_cache", return_value=pd.DataFrame()), \
-         patch("lib.data_layer.time.sleep"), \
-         patch("lib.data_layer.API_RETRY_BASE_WAIT_S", 0.01):
+         patch("lib.data.data_layer.time.sleep"), \
+         patch("lib.data.data_layer.API_RETRY_BASE_WAIT_S", 0.01):
         # 强制 akshare 抛限流错误
-        with patch("lib.data_layer.ak.stock_zh_a_spot", side_effect=ValueError("Can not decode value starting with '<'")):
+        with patch("lib.data.data_layer.ak.stock_zh_a_spot", side_effect=ValueError("Can not decode value starting with '<'")):
             # TDX 走 except 分支, 让 _retry_api_call 也命中限流模式
-            with patch("lib.data_layer.ak.stock_individual_info_em", side_effect=ValueError("Can not decode")):
+            with patch("lib.data.data_layer.ak.stock_individual_info_em", side_effect=ValueError("Can not decode")):
                 # 整个 TDX 流程 mock 掉, 让它走 fail 分支
                 with patch.object(data_layer, "REALTIME_SAMPLE_CODES", []):
                     result = data_layer.get_realtime_quotes()

@@ -2,7 +2,7 @@
 import pytest
 import numpy as np
 import pandas as pd
-from lib.indicators import (
+from lib.scoring.indicators import (
     calculate_atr,
     calculate_keltner_channels,
     calculate_xosi_channels,

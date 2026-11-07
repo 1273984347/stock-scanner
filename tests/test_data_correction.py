@@ -1,6 +1,6 @@
 """数据修正器测试"""
 import pytest
-from lib.data_correction import DataCorrection
+from lib.data.data_correction import DataCorrection
 
 
 class TestDataCorrection:

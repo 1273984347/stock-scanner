@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pandas as pd
 
-from lib.walkforward import WalkForwardBacktest, WalkForwardConfig
+from lib.strategy.walkforward import WalkForwardBacktest, WalkForwardConfig
 
 
 def test_p0_1_factor_data_sliced_per_window_no_future_data():

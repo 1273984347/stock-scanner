@@ -1,6 +1,6 @@
 """机会评分引擎测试"""
 import pytest
-from lib.opportunity_scorer import (
+from lib.scoring.opportunity_scorer import (
     compute_opportunity_score, score_from_signals,
     REGIME_MULTIPLIER, WEIGHTS,
     set_opp_score_weights, get_opp_score_weights, reset_opp_score_weights,

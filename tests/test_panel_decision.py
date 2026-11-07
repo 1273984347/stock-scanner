@@ -10,13 +10,13 @@ import pandas as pd
 import numpy as np
 from unittest.mock import patch
 
-from lib.panel_decision import get_panel_decision, format_panel_decision
-from lib.signal_tracker import SignalTracker, invalidate_tracker_cache
+from lib.scoring.panel_decision import get_panel_decision, format_panel_decision
+from lib.scoring.signal_tracker import SignalTracker, invalidate_tracker_cache
 
 
 @pytest.fixture
 def isolated_signal_dir(tmp_path, monkeypatch):
-    import lib.signal_tracker as st
+    import lib.scoring.signal_tracker as st
     test_dir = tmp_path / "signals"
     test_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(st, "SIGNAL_LOG_DIR", test_dir)

@@ -125,6 +125,6 @@ class TestIndex:
 
 class TestCircuitBreaker:
     def test_circuit_breaker_import(self):
-        from lib.cache import CircuitBreaker
+        from lib.data.cache import CircuitBreaker
         cb = CircuitBreaker(failure_threshold=3, recovery_timeout=10)
         assert cb.failure_threshold == 3

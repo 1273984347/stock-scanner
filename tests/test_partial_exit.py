@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest
 from config import RiskConfig
-from lib.position_manager import PositionManager, Position
+from lib.risk.position_manager import PositionManager, Position
 
 
 @pytest.fixture
@@ -196,28 +196,28 @@ class TestRegimeAwarePartialExit:
 
     def test_trend_up_raises_thresholds(self):
         """TREND_UP: 止盈目标提高 30%"""
-        from lib.partial_exit import PartialExitManager, ExitLevel
+        from lib.risk.partial_exit import PartialExitManager, ExitLevel
         base = [ExitLevel(trigger_pct=0.30, exit_ratio=0.33, description="test")]
         mgr = PartialExitManager(exit_levels=base, regime="TREND_UP")
         assert mgr.exit_levels[0].trigger_pct == pytest.approx(0.30 * 1.3)
 
     def test_mean_reversion_lowers_thresholds(self):
         """MEAN_REVERSION: 止盈目标降低 30%"""
-        from lib.partial_exit import PartialExitManager, ExitLevel
+        from lib.risk.partial_exit import PartialExitManager, ExitLevel
         base = [ExitLevel(trigger_pct=0.30, exit_ratio=0.33, description="test")]
         mgr = PartialExitManager(exit_levels=base, regime="MEAN_REVERSION")
         assert mgr.exit_levels[0].trigger_pct == pytest.approx(0.30 * 0.7)
 
     def test_high_volatility_early_exit(self):
         """HIGH_VOLATILITY: 止盈目标降低 50%"""
-        from lib.partial_exit import PartialExitManager, ExitLevel
+        from lib.risk.partial_exit import PartialExitManager, ExitLevel
         base = [ExitLevel(trigger_pct=0.30, exit_ratio=0.33, description="test")]
         mgr = PartialExitManager(exit_levels=base, regime="HIGH_VOLATILITY")
         assert mgr.exit_levels[0].trigger_pct == pytest.approx(0.30 * 0.5)
 
     def test_update_regime_changes_levels(self):
         """update_regime 动态更新止盈档位"""
-        from lib.partial_exit import PartialExitManager, ExitLevel
+        from lib.risk.partial_exit import PartialExitManager, ExitLevel
         base = [ExitLevel(trigger_pct=0.30, exit_ratio=0.33, description="test")]
         mgr = PartialExitManager(exit_levels=base, regime="MEAN_REVERSION")
         assert mgr.exit_levels[0].trigger_pct == pytest.approx(0.30 * 0.7)
@@ -227,6 +227,6 @@ class TestRegimeAwarePartialExit:
 
     def test_default_regime_is_mean_reversion(self):
         """默认市场状态为 MEAN_REVERSION"""
-        from lib.partial_exit import PartialExitManager
+        from lib.risk.partial_exit import PartialExitManager
         mgr = PartialExitManager()
         assert mgr._regime == "MEAN_REVERSION"

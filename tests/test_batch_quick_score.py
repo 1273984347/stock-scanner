@@ -18,9 +18,7 @@ from unittest.mock import patch, MagicMock
 import pandas as pd
 import pytest
 
-from lib import strategies as strat
-
-
+import lib.strategy.strategies as strat
 # ─────────────────────────────────────────────────────────────
 # batch_quick_score 单元测试 (4 用例)
 # ─────────────────────────────────────────────────────────────

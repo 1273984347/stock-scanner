@@ -3,7 +3,7 @@ import numpy as np
 
 def test_volatility_control():
     """波动率超限时等比例压缩"""
-    from lib.portfolio_optimizer import RiskBudgetController, RiskBudgetConfig
+    from lib.portfolio.portfolio_optimizer import RiskBudgetController, RiskBudgetConfig
 
     weights = np.array([0.5, 0.5])
     expected_returns = np.array([0.10, 0.05])
@@ -19,7 +19,7 @@ def test_volatility_control():
 
 def test_var_estimation():
     """VaR估算接口存在"""
-    from lib.portfolio_optimizer import RiskBudgetController, RiskBudgetConfig
+    from lib.portfolio.portfolio_optimizer import RiskBudgetController, RiskBudgetConfig
 
     config = RiskBudgetConfig()
     controller = RiskBudgetController(config)
@@ -31,7 +31,7 @@ def test_var_estimation():
 
 def test_drawdown_estimation():
     """回撤估算接口存在"""
-    from lib.portfolio_optimizer import RiskBudgetController, RiskBudgetConfig
+    from lib.portfolio.portfolio_optimizer import RiskBudgetController, RiskBudgetConfig
 
     config = RiskBudgetConfig()
     controller = RiskBudgetController(config)

@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import inspect
 
-from lib.walkforward import (
+from lib.strategy.walkforward import (
     WalkForwardBacktest, WalkForwardConfig, ValidationStatus,
 )
 

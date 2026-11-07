@@ -44,14 +44,14 @@ import pytest
     # 注意："519" zfill 后是 "000519" → 0 开头 → sz（见下面 test_detect_market_short_code_zfilled）
 ])
 def test_detect_market(code, expected):
-    from lib.market_utils import detect_market
+    from lib.data.market_utils import detect_market
     assert detect_market(code) == expected
 
 
 # 上面的 "519" 用例逻辑不明确，单独再测
 def test_detect_market_short_code_zfilled():
     """短代码 zfill 到 6 位后判断"""
-    from lib.market_utils import detect_market
+    from lib.data.market_utils import detect_market
     # "519" → "000519" → 0 开头 → sz
     assert detect_market("519") == "sz"
     # "6" → "000006" → 0 开头 → sz（虽然真实股票不存在，但规则要一致）
@@ -70,7 +70,7 @@ def test_get_tdx_path_qfq_priority(tmp_path, monkeypatch):
     (tmp_path / "sh" / "lday_4" / "sh600519.day").touch()
     monkeypatch.setenv("TDX_DATA_PATH", str(tmp_path))
 
-    from lib.market_utils import get_tdx_path
+    from lib.data.market_utils import get_tdx_path
     p = get_tdx_path("600519", prefer_qfq=True)
     assert p is not None
     assert "lday_4" in str(p)
@@ -84,7 +84,7 @@ def test_get_tdx_path_fallback_to_lday(tmp_path, monkeypatch):
     (tmp_path / "bj" / "lday" / "bj430001.day").touch()
     monkeypatch.setenv("TDX_DATA_PATH", str(tmp_path))
 
-    from lib.market_utils import get_tdx_path
+    from lib.data.market_utils import get_tdx_path
     p = get_tdx_path("430001", prefer_qfq=True)
     assert p is not None
     # 用 Path.parts 跨平台比较
@@ -102,7 +102,7 @@ def test_get_tdx_path_bj_stock_routes_to_bj(tmp_path, monkeypatch):
     (tmp_path / "sz" / "lday_4" / "sz430001.day").touch()
     monkeypatch.setenv("TDX_DATA_PATH", str(tmp_path))
 
-    from lib.market_utils import get_tdx_path
+    from lib.data.market_utils import get_tdx_path
     p = get_tdx_path("430001")
     assert p is not None
     # 用 Path.parts 跨平台比较
@@ -114,7 +114,7 @@ def test_get_tdx_path_unknown_returns_none(tmp_path, monkeypatch):
     """unknown 代码（如债券）返回 None"""
     monkeypatch.setenv("TDX_DATA_PATH", str(tmp_path))
 
-    from lib.market_utils import get_tdx_path
+    from lib.data.market_utils import get_tdx_path
     assert get_tdx_path("123456") is None  # 1x 债券
     assert get_tdx_path("") is None
     assert get_tdx_path("abc") is None
@@ -125,7 +125,7 @@ def test_get_tdx_path_no_file_returns_none(tmp_path, monkeypatch):
     (tmp_path / "sh" / "lday_4").mkdir(parents=True)
     monkeypatch.setenv("TDX_DATA_PATH", str(tmp_path))
 
-    from lib.market_utils import get_tdx_path
+    from lib.data.market_utils import get_tdx_path
     assert get_tdx_path("600519") is None  # 目录存在但文件不存在
 
 
@@ -137,7 +137,7 @@ def test_get_tdx_path_prefer_qfq_false(tmp_path, monkeypatch):
     (tmp_path / "sh" / "lday_4" / "sh600519.day").touch()
     monkeypatch.setenv("TDX_DATA_PATH", str(tmp_path))
 
-    from lib.market_utils import get_tdx_path
+    from lib.data.market_utils import get_tdx_path
     p = get_tdx_path("600519", prefer_qfq=False)
     assert p is not None
     # 用 Path 跨平台比较，避免 Windows 反斜杠问题
@@ -172,7 +172,7 @@ def test_read_tdx_day_closes_empty_when_no_file(tmp_path, monkeypatch):
     """文件不存在 → None"""
     monkeypatch.setenv("TDX_DATA_PATH", str(tmp_path))
 
-    from lib.market_utils import read_tdx_day_closes
+    from lib.data.market_utils import read_tdx_day_closes
     assert read_tdx_day_closes("600519") is None
 
 
@@ -183,7 +183,7 @@ def test_read_tdx_day_closes_bj_fallback(tmp_path, monkeypatch):
     _make_day_file(tmp_path / "bj" / "lday" / "bj430001.day", dates, close=5000)
     monkeypatch.setenv("TDX_DATA_PATH", str(tmp_path))
 
-    from lib.market_utils import read_tdx_day_closes
+    from lib.data.market_utils import read_tdx_day_closes
     closes = read_tdx_day_closes("430001", days=5)
     assert closes is not None
     # close 值应被除以 100: 5000/100 = 50.0
@@ -197,7 +197,7 @@ def test_read_tdx_day_closes_lday_4_priority(tmp_path, monkeypatch):
     _make_day_file(tmp_path / "sh" / "lday" / "sh600519.day", dates, close=9999)
     monkeypatch.setenv("TDX_DATA_PATH", str(tmp_path))
 
-    from lib.market_utils import read_tdx_day_closes
+    from lib.data.market_utils import read_tdx_day_closes
     closes = read_tdx_day_closes("600519", days=5)
     assert closes is not None
     # 读的是 lday_4 的 close = 2000/100 = 20.0
@@ -210,7 +210,7 @@ def test_read_tdx_day_ohlcv_basic(tmp_path, monkeypatch):
     _make_day_file(tmp_path / "bj" / "lday" / "bj430001.day", dates, close=5000)
     monkeypatch.setenv("TDX_DATA_PATH", str(tmp_path))
 
-    from lib.market_utils import read_tdx_day_ohlcv
+    from lib.data.market_utils import read_tdx_day_ohlcv
     df = read_tdx_day_ohlcv("430001", days=10)
     assert df is not None
     assert list(df.columns) == ["date", "open", "high", "low", "close", "amount", "volume"]
@@ -225,7 +225,7 @@ def test_read_tdx_day_ohlcv_bj_fallback(tmp_path, monkeypatch):
     _make_day_file(tmp_path / "bj" / "lday" / "bj430001.day", dates, close=5000)
     monkeypatch.setenv("TDX_DATA_PATH", str(tmp_path))
 
-    from lib.market_utils import read_tdx_day_ohlcv
+    from lib.data.market_utils import read_tdx_day_ohlcv
     df = read_tdx_day_ohlcv("430001", days=5)
     # 旧代码: bj 错归 sz → sz/lday_4/sz430001.day 不存在 → None
     # 新代码: bj 走 bj/lday/bj430001.day → 5 行 DataFrame
@@ -251,6 +251,6 @@ def test_market_routing_integration(tmp_path, monkeypatch, code, market):
     (tmp_path / market / "lday" / f"{market}{code}.day").touch()
     monkeypatch.setenv("TDX_DATA_PATH", str(tmp_path))
 
-    from lib.market_utils import detect_market, get_tdx_path
+    from lib.data.market_utils import detect_market, get_tdx_path
     assert detect_market(code) == market
     assert get_tdx_path(code) is not None

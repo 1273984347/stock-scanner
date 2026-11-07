@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pandas as pd
 import numpy as np
-from lib.walkforward import WalkForwardBacktest, WalkForwardConfig, WalkForwardRound, ValidationStatus, summarize_rounds
+from lib.strategy.walkforward import WalkForwardBacktest, WalkForwardConfig, WalkForwardRound, ValidationStatus, summarize_rounds
 
 
 def _make_mock_market_data(codes, dates, base_price=100.0):

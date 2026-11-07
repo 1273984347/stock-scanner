@@ -9,14 +9,14 @@
 
 | 指标 | 基线值 | 取证方式 |
 |---|---:|---|
-| Python 文件数 | 312 | `Get-ChildItem -Recurse -Filter *.py` |
-| Python 总行数 | 62,944 | 同上 + `Measure-Object -Line` |
-| `lib/` 业务模块数 | 118（+ `__init__.py` = 119 文件） | `Get-ChildItem lib` |
+| Python 文件数 | 308（2026-11-07 目录重构后） | `Get-ChildItem -Recurse -Filter *.py`（排除 node_modules/.git/cache 等） |
+| Python 总行数 | 75,267（同上口径，含注释与文档字符串） | 同上 + `Measure-Object -Line` |
+| `lib/` 业务模块数 | **135 个模块，分 8 个子包**（2026-11-07 目录重构后；根级仅剩 `__init__.py`） | `Get-ChildItem lib` + `docs/refactor/README.md` 归属表 |
 | `lib/` 无同名测试模块 | **74 / 118（63%）** | 模块名 ↔ `tests/test_*.py` 映射 |
 | `api.py` 行数 | **3,142** | `(Get-Content api.py).Count` |
 | `backtest/` 业务模块数 | 9 | 目录列举 |
 | 测试文件数 | 116 | `Get-ChildItem tests` |
-| 测试用例数 | **1,132** | `pytest --collect-only -q`（收集耗时 5.72s） |
+| 测试用例数 | **1,169**（2026-11-07 实测；重构前 1,174，差额 = 删除 8 个零引用模块 − 3 个新增包级枚举用例） | `pytest --collect-only -q` |
 | `cache/` parquet 文件数 | 3,423（27 个子目录） | 递归统计 |
 | 前端消费的 API 路径 | **18** | `static/**` 的 `/api/` 路径去重 |
 
@@ -97,7 +97,7 @@ CI 的整体结论不可用于判断契约门禁，**必须看步骤级结论**�
 某平台尚无基线时**只报告不阻断**（首次建基线不该让 CI 红）。
 
 **尺子自证**：人为把基线调高 5pp + 单模块调到 99% ⇒ `--check` 判红（exit 1）
-并精确定位到退化模块（-52.97pp lib/risk_manager.py）；还原后 PASS。
+并精确定位到退化模块（-52.97pp lib/risk/risk_manager.py）；还原后 PASS。
 
 ### 三·0、待补（Phase 0 剩余项）
 
@@ -186,11 +186,11 @@ matplotlib 字体扫描日志被逐条放大。
 | 0 | 对拍框架可用 | — | 3 条链路 | — | ⏳ 待补 |
 | 0 | 零测试数据模块契约测试 | — | ≥5 | 0 | ⏳ 待补 |
 | 1 | `api.py` 模块级可变状态 | 3 | 0 | **0** | ✅ 完成（见 RF-01 §七 Phase 1） |
-| 1 | **横切层抽离**（认证/校验/缓存/安全头/异常处理） | api.py 内 | lib/api_core.py | api.py **3142 → 3084 行**，逐字搬迁 | ✅ 完成 |
+| 1 | **横切层抽离**（认证/校验/缓存/安全头/异常处理） | api.py 内 | lib/infra/api_core.py | api.py **3142 → 3084 行**，逐字搬迁 | ✅ 完成 |
 | 2 | **数据层工具归一**（`_to_float`×6 / `_safe_div`×3） | 9 份副本 | 1 份内核 + 各源策略 | 特征测试 8 passed（33 边界值逐值等价），CI 三平台全绿 | ✅ 完成 |
 | 2 | **K 线协议层 + `as_of_date` 透传** | — | 契约 + 无前视 | data_protocol 90% / data_utils 100% / tdx 全链路；CI 覆盖率 **44.16%**（基线 43.80%，+0.36pp） | ✅ 完成 |
 | 2 | **registry 补透传 as_of_date** | 3/8 源漏传 | 8/8 | baostock / adata / westock 补齐；adata 的 `datetime.now()` 已修 | ✅ 完成 |
-| 2 | **统一适配器 `lib/data_api.py`** | 多个同名入口 | 单一入口 + 契约规范化 | `get_kline` / `get_realtime_quotes` / `get_stock_financial` / `clear_caches` | ✅ 完成 |
+| 2 | **统一适配器 `lib/data/data_api.py`** | 多个同名入口 | 单一入口 + 契约规范化 | `get_kline` / `get_realtime_quotes` / `get_stock_financial` / `clear_caches` | ✅ 完成 |
 | 2 | **as_of_date 离线契约测试** | — | 覆盖各源 | **14 passed，零网络调用** | ✅ 完成 |
 | — | **CI 矩阵瘦身**（Actions 额度） | 9 job ≈ 117 Linux-分钟 | 3 job ≈ 39 | push/PR 只跑 3.12×3OS；全矩阵改 `workflow_dispatch` 手动触发 | ✅ 完成 |
 | — | **workflow 语法修正** | job 级 if 引用 matrix.* | matrix 层过滤 | job 级 if 在 matrix 展开前求值 ⇒ workflow 直接失败；已下移到 matrix 层 | ✅ 完成 |

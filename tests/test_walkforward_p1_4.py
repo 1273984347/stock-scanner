@@ -10,7 +10,7 @@ import inspect
 import pandas as pd
 import numpy as np
 
-from lib.walkforward import WalkForwardBacktest, WalkForwardConfig
+from lib.strategy.walkforward import WalkForwardBacktest, WalkForwardConfig
 
 
 def _make_market_data(codes, n_dates, seed=42):

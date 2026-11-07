@@ -85,7 +85,7 @@ def _get_atr(code: str, period: int = 14) -> float:
 
 def run_scan(preset: str = "balanced"):
     """运行盘后扫描，记录信号"""
-    from lib.pipeline import run_all_strategies
+    from lib.strategy.pipeline import run_all_strategies
     from config import get_config
 
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M')}] 开始扫描...")

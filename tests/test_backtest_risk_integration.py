@@ -61,7 +61,7 @@ def test_run_backtest_metrics_include_risk_fields():
     hs300 = _make_hs300_df(n=100)
 
     with patch("backtest.engine.get_stock_hist_multi_source") as mock_get, \
-         patch("lib.data_layer.get_index_hist") as mock_idx:
+         patch("lib.data.data_layer.get_index_hist") as mock_idx:
         mock_get.return_value = df_with_ind
         mock_idx.return_value = hs300
         config = BacktestConfig(
@@ -100,7 +100,7 @@ def test_run_backtest_risk_manager_is_invoked():
     hs300 = _make_hs300_df(n=100)
 
     with patch("backtest.engine.get_stock_hist_multi_source") as mock_get, \
-         patch("lib.data_layer.get_index_hist") as mock_idx:
+         patch("lib.data.data_layer.get_index_hist") as mock_idx:
         mock_get.return_value = df_with_ind
         mock_idx.return_value = hs300
 
@@ -131,7 +131,7 @@ def test_run_backtest_consecutive_loss_triggers_alert():
     """P0-1: 连续亏损 5 笔时 metrics.consecutive_losses == 5 且 risk_alerts_count ≥ 1"""
     from backtest.engine import run_backtest, BacktestConfig
     from backtest.utils import add_indicators
-    from lib.risk_manager import RiskConfig, RiskManager
+    from lib.risk.risk_manager import RiskConfig, RiskManager
 
     # 构造连续亏损场景：先涨后跌，触发入场后立即止损
     # 但更简单：mock RiskManager 让它强制触发
@@ -140,7 +140,7 @@ def test_run_backtest_consecutive_loss_triggers_alert():
     hs300 = _make_hs300_df(n=100)
 
     with patch("backtest.engine.get_stock_hist_multi_source") as mock_get, \
-         patch("lib.data_layer.get_index_hist") as mock_idx:
+         patch("lib.data.data_layer.get_index_hist") as mock_idx:
         mock_get.return_value = df_with_ind
         mock_idx.return_value = hs300
         config = BacktestConfig(
@@ -176,7 +176,7 @@ def test_survivorship_bias_factor_in_metrics():
     hs300 = _make_hs300_df(n=100)
 
     with patch("backtest.engine.get_stock_hist_multi_source") as mock_get, \
-         patch("lib.data_layer.get_index_hist") as mock_idx:
+         patch("lib.data.data_layer.get_index_hist") as mock_idx:
         mock_get.return_value = df_with_ind
         mock_idx.return_value = hs300
         config = BacktestConfig(

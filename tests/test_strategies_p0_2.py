@@ -33,7 +33,7 @@ class TestNoModuleLevelSingleton:
                 导致所有 import 此模块的代码共享同一实例。
         修复后：模块导入时不应自动创建 RiskManager 实例。
         """
-        from lib.risk_manager import VolCorrRiskManager
+        from lib.risk.risk_manager import VolCorrRiskManager
 
         call_count = {"n": 0}
         original_init = VolCorrRiskManager.__init__
@@ -44,11 +44,11 @@ class TestNoModuleLevelSingleton:
 
         monkeypatch.setattr(VolCorrRiskManager, "__init__", counting_init)
 
-        # 强制重新加载 lib.strategies 触发模块级代码
-        if "lib.strategies" in sys.modules:
-            importlib.reload(sys.modules["lib.strategies"])
+        # 强制重新加载 lib.strategy.strategies 触发模块级代码
+        if "lib.strategy.strategies" in sys.modules:
+            importlib.reload(sys.modules["lib.strategy.strategies"])
         else:
-            importlib.import_module("lib.strategies")
+            importlib.import_module("lib.strategy.strategies")
 
         assert call_count["n"] == 0, (
             f"P0-2 修复未生效：模块导入时创建了 {call_count['n']} 个 "
@@ -56,17 +56,17 @@ class TestNoModuleLevelSingleton:
         )
 
     def test_module_does_not_expose_risk_manager_singleton(self):
-        """P0-2: lib.strategies 模块不应再暴露共享的 _risk_manager 属性
+        """P0-2: lib.strategy.strategies 模块不应再暴露共享的 _risk_manager 属性
 
-        修复前：import lib.strategies 后，lib.strategies._risk_manager 是
+        修复前：import lib.strategy.strategies 后，lib.strategy.strategies._risk_manager 是
                 一个共享的 VolCorrRiskManager 实例。
         修复后：不应再有此属性（避免被误用为跨策略共享状态）。
         """
-        import lib.strategies as strategies_module
+        import lib.strategy.strategies as strategies_module
 
         # 关键属性已删除
         assert not hasattr(strategies_module, "_risk_manager"), (
-            "P0-2 修复未生效：lib.strategies 仍暴露 _risk_manager 模块级单例。"
+            "P0-2 修复未生效：lib.strategy.strategies 仍暴露 _risk_manager 模块级单例。"
             " 该单例会导致多策略状态污染（consecutive_losses / _weekly_returns 跨策略共享）。"
         )
 
@@ -80,7 +80,7 @@ class TestStateIsolationPerInstance:
         即便未来在策略中使用 RiskManager，每个策略自行实例化时，
         状态不会跨策略污染。这是 P0-2 修复的语义保证。
         """
-        from lib.risk_manager import VolCorrRiskConfig, VolCorrRiskManager
+        from lib.risk.risk_manager import VolCorrRiskConfig, VolCorrRiskManager
 
         rm_a = VolCorrRiskManager(VolCorrRiskConfig())
         rm_b = VolCorrRiskManager(VolCorrRiskConfig())
@@ -102,7 +102,7 @@ class TestStateIsolationPerInstance:
 
         验证：模拟两个策略同时累积周收益时，互不干扰。
         """
-        from lib.risk_manager import VolCorrRiskConfig, VolCorrRiskManager
+        from lib.risk.risk_manager import VolCorrRiskConfig, VolCorrRiskManager
 
         rm_a = VolCorrRiskManager(VolCorrRiskConfig())
         rm_b = VolCorrRiskManager(VolCorrRiskConfig())

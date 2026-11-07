@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import pandas as pd
 import copy
 
-from lib.walkforward import WalkForwardBacktest, WalkForwardConfig
+from lib.strategy.walkforward import WalkForwardBacktest, WalkForwardConfig
 
 
 def _make_data(n=80, code="600519"):

@@ -16,8 +16,8 @@ from unittest.mock import patch, MagicMock
 import pandas as pd
 import pytest
 
-from lib.broker import PaperBroker, Order
-from lib.broker_data.datatypes import Holding
+from lib.data.broker import PaperBroker, Order
+from lib.risk.datatypes import Holding
 
 
 # ─────────────────────────────────────────────────────────────
@@ -105,7 +105,7 @@ def test_ensure_market_data_already_loaded_skips(paper_broker):
     """_market_data 已有 code → 跳过拉取"""
     paper_broker._market_data["600519"] = pd.DataFrame({"close": [10.0]})
     # 拉取函数不应被调
-    with patch("lib.data_layer.get_stock_hist_multi_source") as mock_fetch:
+    with patch("lib.data.data_layer.get_stock_hist_multi_source") as mock_fetch:
         paper_broker._ensure_market_data("600519")
     mock_fetch.assert_not_called()
 
@@ -113,7 +113,7 @@ def test_ensure_market_data_already_loaded_skips(paper_broker):
 def test_ensure_market_data_empty_triggers_fetch(paper_broker):
     """_market_data 无 code → 拉 5 天, 写入 _market_data"""
     fake_df = pd.DataFrame({"date": ["2026-06-01", "2026-06-09"], "close": [10.0, 11.0]})
-    with patch("lib.data_layer.get_stock_hist_multi_source", return_value=fake_df) as mock_fetch:
+    with patch("lib.data.data_layer.get_stock_hist_multi_source", return_value=fake_df) as mock_fetch:
         paper_broker._ensure_market_data("600519")
     assert "600519" in paper_broker._market_data
     assert "trade_date" in paper_broker._market_data["600519"].columns
@@ -122,7 +122,7 @@ def test_ensure_market_data_empty_triggers_fetch(paper_broker):
 
 def test_ensure_market_data_fetch_failure_silent(paper_broker):
     """data_layer 拉取失败 → 静默, _market_data 仍空 (不 raise)"""
-    with patch("lib.data_layer.get_stock_hist_multi_source",
+    with patch("lib.data.data_layer.get_stock_hist_multi_source",
                side_effect=Exception("network down")):
         paper_broker._ensure_market_data("600519")
     assert "600519" not in paper_broker._market_data

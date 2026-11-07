@@ -20,8 +20,8 @@ import sys
 # 确保项目根目录在 path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from lib.ic.panel_builder import build_ic_panel, save_ic_panel
-from lib.ic.ic_calculator import update_ic_history
+from lib.portfolio.panel_builder import build_ic_panel, save_ic_panel
+from lib.portfolio.ic_calculator import update_ic_history
 
 IC_PANEL_DIR = Path("cache/ic/panel")
 
@@ -38,7 +38,7 @@ def get_trading_dates(days: int = 60) -> list:
 def backfill_ic(days: int = 60, start_date: str = None, end_date: str = None):
     """回填历史 IC"""
     import json
-    from lib.data_source_registry import get_stock_hist_multi_source
+    from lib.data.data_source_registry import get_stock_hist_multi_source
 
     # 获取候选股列表（用宽基指数成分股模拟）
     codes = _get_universe_codes()

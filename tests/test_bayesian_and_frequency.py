@@ -4,8 +4,8 @@ import json
 import tempfile
 from pathlib import Path
 
-from lib.bayesian_updater import BayesianUpdater, ConditionStats
-from lib.pipeline import StrategyFailureTracker
+from lib.scoring.bayesian_updater import BayesianUpdater, ConditionStats
+from lib.strategy.pipeline import StrategyFailureTracker
 
 
 # ========== 贝叶斯更新器 ==========

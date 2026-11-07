@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 def push_ic_report(date: str = None) -> bool:
     """生成并推送 IC 报告"""
-    from lib.ic.ic_reporter import build_ic_report
+    from lib.portfolio.ic_reporter import build_ic_report
     from reporter.feishu_pusher import push_report
 
     if date is None:

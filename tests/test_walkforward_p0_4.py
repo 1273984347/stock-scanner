@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pandas as pd
 
-from lib.walkforward import WalkForwardBacktest, WalkForwardConfig
+from lib.strategy.walkforward import WalkForwardBacktest, WalkForwardConfig
 
 
 def test_p0_4_includes_last_window_when_step_overshoots():

@@ -12,22 +12,22 @@
 import pandas as pd
 import pytest
 
-from lib.data_protocol import KLINE_COLUMNS
+from lib.data.data_protocol import KLINE_COLUMNS
 
 
 # ========== 1. registry 透传 ==========
 
 @pytest.mark.parametrize("source,module,attr", [
-    ("baostock", "lib.data_baostock", "get_kline"),
-    ("adata", "lib.data_adata", "get_kline"),
-    ("westock", "lib.data_westock", "get_kline"),
-    ("tdx", "lib.data_tdx", "get_kline"),
+    ("baostock", "lib.data.data_baostock", "get_kline"),
+    ("adata", "lib.data.data_adata", "get_kline"),
+    ("westock", "lib.data.data_westock", "get_kline"),
+    ("tdx", "lib.data.data_tdx", "get_kline"),
 ])
 def test_registry_passes_as_of_date(source, module, attr, monkeypatch):
     """registry 必须把 as_of_date 透传给每个源，否则回测取到 T 日数据（前视偏差）。"""
     import importlib
 
-    import lib.data_source_registry as reg
+    import lib.data.data_source_registry as reg
 
     captured = {}
 
@@ -48,7 +48,7 @@ def test_registry_without_as_of_date_still_works(monkeypatch):
     """不传 as_of_date = 实时模式，必须仍能正常取数（行为不变）。"""
     import importlib
 
-    import lib.data_source_registry as reg
+    import lib.data.data_source_registry as reg
 
     calls = []
 
@@ -56,7 +56,7 @@ def test_registry_without_as_of_date_still_works(monkeypatch):
         calls.append(kwargs.get("as_of_date"))
         return pd.DataFrame()
 
-    monkeypatch.setattr(importlib.import_module("lib.data_baostock"), "get_kline", fake)
+    monkeypatch.setattr(importlib.import_module("lib.data.data_baostock"), "get_kline", fake)
     reg._fetch_from_source("600519", 30, "baostock")
     assert calls == [None]
 
@@ -65,7 +65,7 @@ def test_registry_without_as_of_date_still_works(monkeypatch):
 
 def test_adata_uses_as_of_date_as_end():
     """data_adata 此前收了 as_of_date 却仍用 datetime.now() => 前视偏差。"""
-    from lib.data_adata import _resolve_end_date
+    from lib.data.data_adata import _resolve_end_date
 
     end = _resolve_end_date("2026-01-20")
     assert end == pd.Timestamp("2026-01-20")
@@ -76,7 +76,7 @@ def test_adata_uses_as_of_date_as_end():
 
 def test_adata_without_as_of_date_uses_today():
     """不传 as_of_date => 实时模式（仍用今天），行为不变。"""
-    from lib.data_adata import _resolve_end_date
+    from lib.data.data_adata import _resolve_end_date
 
     end = _resolve_end_date(None)
     assert end is not None
@@ -88,7 +88,7 @@ def test_adata_without_as_of_date_uses_today():
 # ========== 3. data_westock 返回后截断 ==========
 
 def test_westock_truncates_to_as_of_date(monkeypatch):
-    import lib.data_westock as w
+    import lib.data.data_westock as w
 
     md = (
         "| 日期 | 开盘 | 收盘 |\n"
@@ -105,7 +105,7 @@ def test_westock_truncates_to_as_of_date(monkeypatch):
 
 
 def test_westock_without_as_of_date_keeps_all(monkeypatch):
-    import lib.data_westock as w
+    import lib.data.data_westock as w
 
     md = (
         "| 日期 | 开盘 | 收盘 |\n"
@@ -122,7 +122,7 @@ def test_westock_without_as_of_date_keeps_all(monkeypatch):
 # ========== 4. data_tdx 截断在 tail 之前 ==========
 
 def test_tdx_truncate_before_tail():
-    from lib.data_protocol import truncate_to_date
+    from lib.data.data_protocol import truncate_to_date
 
     df = pd.DataFrame({
         "date": pd.date_range("2026-01-01", periods=50, freq="D"),
@@ -137,8 +137,8 @@ def test_tdx_truncate_before_tail():
 # ========== 5. 统一适配器 ==========
 
 def test_data_api_get_kline_normalizes(monkeypatch):
-    import lib.data_api as api
-    import lib.data_layer as dl
+    import lib.data.data_api as api
+    import lib.data.data_layer as dl
 
     raw = pd.DataFrame({
         "日期": ["2026-01-01"], "开盘": [1.0], "收盘": [2.0],
@@ -152,8 +152,8 @@ def test_data_api_get_kline_normalizes(monkeypatch):
 
 
 def test_data_api_get_kline_empty(monkeypatch):
-    import lib.data_api as api
-    import lib.data_layer as dl
+    import lib.data.data_api as api
+    import lib.data.data_layer as dl
 
     monkeypatch.setattr(dl, "get_stock_hist_multi_source", lambda *a, **k: pd.DataFrame())
     out = api.get_kline("600519")
@@ -162,8 +162,8 @@ def test_data_api_get_kline_empty(monkeypatch):
 
 
 def test_data_api_passes_as_of_date(monkeypatch):
-    import lib.data_api as api
-    import lib.data_layer as dl
+    import lib.data.data_api as api
+    import lib.data.data_layer as dl
 
     captured = {}
 
@@ -177,7 +177,7 @@ def test_data_api_passes_as_of_date(monkeypatch):
 
 
 def test_data_api_clear_caches_reports_sources():
-    import lib.data_api as api
+    import lib.data.data_api as api
 
     cleared = api.clear_caches()
     assert isinstance(cleared, list)

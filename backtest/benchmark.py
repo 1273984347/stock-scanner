@@ -44,7 +44,7 @@ def get_benchmark_returns(
         DataFrame with date and daily_return columns
     """
     try:
-        from lib.data_layer import get_index_hist
+        from lib.data.data_layer import get_index_hist
         df = get_index_hist(index_code, days=days)
         if df.empty:
             return pd.DataFrame()

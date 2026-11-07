@@ -1,6 +1,6 @@
 """V6 六因子评分系统测试"""
 import pytest
-from lib.scorer import (
+from lib.scoring.scorer import (
     six_factor_score, score_trend, score_momentum, score_volume,
     score_sector, score_volatility_quality, score_structure,
     SIX_FACTOR_WEIGHTS,
@@ -181,7 +181,7 @@ class TestSixFactorScore:
 
     def test_complements_comprehensive_score(self):
         """六因子与四维评分可以同时使用"""
-        from lib.scorer import comprehensive_score, score_fundamental, score_capital_flow, score_news, score_technical
+        from lib.scoring.scorer import comprehensive_score, score_fundamental, score_capital_flow, score_news, score_technical
 
         four_dim = comprehensive_score(
             score_fundamental(pe=15, roe=0.20),

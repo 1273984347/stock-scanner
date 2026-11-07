@@ -19,9 +19,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from lib import cache as cache_mod
-
-
+import lib.data.cache as cache_mod
 @pytest.fixture(autouse=True)
 def reset_stats():
     """每个测试前后重置 stats，避免污染"""

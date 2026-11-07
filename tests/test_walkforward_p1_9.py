@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import inspect
 import dataclasses
 
-from lib.walkforward import WalkForwardConfig
+from lib.strategy.walkforward import WalkForwardConfig
 
 
 def test_p1_9_risk_per_trade_pct_removed_or_used():
@@ -20,7 +20,7 @@ def test_p1_9_risk_per_trade_pct_removed_or_used():
         return
 
     # 字段仍存在: 检查源码中是否被实际引用
-    from lib import walkforward
+    import lib.strategy.walkforward as walkforward
     source = inspect.getsource(walkforward)
     lines = source.split("\n")
     usage_lines = [

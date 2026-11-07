@@ -20,9 +20,7 @@ import pandas as pd
 import pytest
 
 from config import BrokerConfig
-from lib import broker as broker_mod
-
-
+import lib.data.broker as broker_mod
 # ─────────────────────────────────────────────────────────────
 # BrokerConfig dataclass 单元测试
 # ─────────────────────────────────────────────────────────────
@@ -54,7 +52,7 @@ def test_broker_config_customizable():
 
 def test_get_limit_pct_default_all_boards():
     """默认 BrokerConfig → 8 板块行为完全不变"""
-    from lib.broker import ABroker
+    from lib.data.broker import ABroker
     cases = [
         ("600519", "贵州茅台", 0.10),     # 主板 (60 开头)
         ("000001", "平安银行", 0.10),     # 主板 (00 开头)
@@ -73,7 +71,7 @@ def test_get_limit_pct_default_all_boards():
 
 def test_get_limit_pct_custom_config_respected():
     """自定义 BrokerConfig → 板块涨跌幅用新值"""
-    from lib.broker import ABroker
+    from lib.data.broker import ABroker
     # mock BrokerConfig 实例
     custom = BrokerConfig(
         limit_pct_main=0.08,        # 主板 8% (严于默认 10%)
@@ -82,7 +80,7 @@ def test_get_limit_pct_custom_config_respected():
     with patch.object(broker_mod, "BrokerConfig", return_value=custom):
         # 但 ABroker.get_limit_pct 内部用 BrokerConfig() 实时实例化
         # 我们需要 mock 让它返 custom
-        with patch("lib.broker.BrokerConfig", return_value=custom):
+        with patch("lib.data.broker.BrokerConfig", return_value=custom):
             assert ABroker.get_limit_pct("600519", "茅台") == 0.08
             assert ABroker.get_limit_pct("300750", "宁德") == 0.15
             # 不在 mock 范围内的保持默认
@@ -98,9 +96,9 @@ def test_missing_days_threshold_default_60():
     cfg = BrokerConfig()
     assert cfg.missing_days_threshold == 60
     # broker.py 应该用这个值, 简单验证 grep
-    src = open("lib/broker.py", encoding="utf-8").read()
+    src = open("lib/data/broker.py", encoding="utf-8").read()
     assert "BrokerConfig().missing_days_threshold" in src, \
-        "lib/broker.py 应引用 BrokerConfig().missing_days_threshold"
+        "lib/data/broker.py 应引用 BrokerConfig().missing_days_threshold"
     # 老的 magic 60 不应在 _missing_days 比较行
     # (跳过注释行 — 注释里的 "60 天" 不算 magic)
     lines_with_60 = [l for l in src.split("\n")
@@ -148,7 +146,7 @@ def test_delisting_cleanup_broker_uses_flags():
 
 def test_delisting_cleanup_force_close_disabled_keeps_holdings():
     """force_close_on_delisting=False → holdings 保留, 不强制平仓"""
-    from lib.broker import ABroker
+    from lib.data.broker import ABroker
 
     # 创建 ABroker 实例
     broker = ABroker(initial_cash=100000)

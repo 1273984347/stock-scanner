@@ -1,6 +1,6 @@
 """V9 资本配置器测试"""
 import pytest
-from lib.capital_allocator import CapitalAllocator, AllocationResult
+from lib.portfolio.capital_allocator import CapitalAllocator, AllocationResult
 
 
 class TestCapitalAllocator:
@@ -106,7 +106,7 @@ class TestCapitalAllocator:
 
     def test_allocate_with_feedback(self):
         """从 AlphaFeedback 分配"""
-        from lib.alpha_feedback import AlphaFeedback
+        from lib.scoring.alpha_feedback import AlphaFeedback
         fb = AlphaFeedback()
         for _ in range(10):
             fb.record_trade("trend", 5.0, "TREND_UP", "AI")
@@ -121,7 +121,7 @@ class TestCapitalAllocator:
 
     def test_allocate_with_factory(self):
         """从 AlphaFactory 分配"""
-        from lib.alpha_factory import AlphaFactory
+        from lib.scoring.alpha_factory import AlphaFactory
         factory = AlphaFactory(persist_path=None)
         id1 = factory.discover("momentum_20")
         for _ in range(15):

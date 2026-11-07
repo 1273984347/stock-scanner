@@ -44,8 +44,8 @@ class TestPipelineE2E:
             "成交额": [5e8, 3e8],
         })
 
-    @patch("lib.data_layer.get_stock_hist_multi_source")
-    @patch("lib.data_layer.get_realtime_quotes")
+    @patch("lib.data.data_layer.get_stock_hist_multi_source")
+    @patch("lib.data.data_layer.get_realtime_quotes")
     def test_scan_to_score(self, mock_realtime, mock_hist, mock_hist_data, mock_realtime_data):
         """测试：扫描 → 打分"""
         mock_hist.return_value = mock_hist_data
@@ -60,7 +60,7 @@ class TestPipelineE2E:
         # 验证结果结构
         assert isinstance(results, dict)
 
-    @patch("lib.pipeline.get_stock_score")
+    @patch("lib.strategy.pipeline.get_stock_score")
     def test_single_stock_scoring(self, mock_score):
         """测试：单股评分"""
         mock_score.return_value = {
@@ -72,7 +72,7 @@ class TestPipelineE2E:
             "constraints": {"passed": True, "blocked": False},
         }
 
-        from lib.pipeline import get_stock_score
+        from lib.strategy.pipeline import get_stock_score
         result = get_stock_score("000001")
 
         assert result["code"] == "000001"
@@ -96,7 +96,7 @@ class TestBrokerConstraints:
 
     def test_order_validation(self):
         """测试：订单参数验证"""
-        from lib.broker import Order, TradingConstraints
+        from lib.data.broker import Order, TradingConstraints
 
         order = Order(
             code="000001",
@@ -112,7 +112,7 @@ class TestBrokerConstraints:
 
     def test_trading_constraints_basic(self):
         """测试：交易约束基本功能"""
-        from lib.broker import TradingConstraints
+        from lib.data.broker import TradingConstraints
 
         constraints = TradingConstraints()
 
@@ -125,7 +125,7 @@ class TestDataFlow:
 
     def test_column_normalization(self):
         """测试：列名标准化"""
-        from lib.data_source_registry import _normalize_columns
+        from lib.data.data_source_registry import _normalize_columns
 
         # 测试 trade_date -> date 映射
         df = pd.DataFrame({
@@ -145,7 +145,7 @@ class TestDataFlow:
 
     def test_batch_quick_score(self):
         """测试：批量快速评分"""
-        from lib.strategies import batch_quick_score
+        from lib.strategy.strategies import batch_quick_score
 
         rows = [
             pd.Series({"代码": "000001", "涨跌幅": 2.5, "60日涨跌幅": 10.0}),

@@ -26,7 +26,7 @@ class _LogCapture(logging.Handler):
 @pytest.fixture
 def lib_logger_capture():
     """attach 到 lib.* logger，返回 records 列表"""
-    log = logging.getLogger("lib.alert_monitor")
+    log = logging.getLogger("lib.monitoring.alert_monitor")
     cap = _LogCapture()
     log.addHandler(cap)
     # 移除 propagate 屏蔽（handler 直接抓 records）
@@ -42,7 +42,7 @@ class TestAlertPushFallback:
 
     def _make_alert(self):
         """制造一个 alert 触发"""
-        from lib.alert_monitor import AlertMonitor
+        from lib.monitoring.alert_monitor import AlertMonitor
         am = AlertMonitor()
         am.check_drawdown([100, 110, 90], threshold=0.03)  # 触发 18% 回撤
         return am
@@ -55,7 +55,7 @@ class TestAlertPushFallback:
 
     def test_push_failure_writes_local_file(self, lib_logger_capture):
         """推送失败时必须落本地文件 + 计数器 + ERROR 日志"""
-        from lib.alert_monitor import AlertMonitor
+        from lib.monitoring.alert_monitor import AlertMonitor
         am = self._make_alert()
         assert len(am.alerts) >= 1
 
@@ -85,7 +85,7 @@ class TestAlertPushFallback:
 
     def test_push_success_does_not_increment_failure_count(self):
         """推送成功时失败计数器不变"""
-        from lib.alert_monitor import AlertMonitor
+        from lib.monitoring.alert_monitor import AlertMonitor
         am = self._make_alert()
 
         fake_module = MagicMock()
@@ -99,7 +99,7 @@ class TestAlertPushFallback:
 
     def test_repeated_failures_increment_counter(self):
         """多次失败计数器累加（同一实例多次推送）"""
-        from lib.alert_monitor import AlertMonitor
+        from lib.monitoring.alert_monitor import AlertMonitor
 
         fake_module = MagicMock()
         fake_module.push_report = MagicMock(side_effect=RuntimeError("network down"))
@@ -115,7 +115,7 @@ class TestAlertPushFallback:
 
     def test_alert_id_in_log_and_file(self, lib_logger_capture):
         """失败时日志和文件必须含 alert_id 标识（便于人工定位）"""
-        from lib.alert_monitor import AlertMonitor
+        from lib.monitoring.alert_monitor import AlertMonitor
         am = self._make_alert()
 
         with self._patch_feishu_pusher_failure():

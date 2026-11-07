@@ -4,8 +4,8 @@ import tempfile
 import os
 from pathlib import Path
 
-from lib.llm_utils.memory import TradingMemoryLog
-from lib.llm_utils.rating import parse_rating, RATINGS_5_TIER
+from lib.infra.llm_memory import TradingMemoryLog
+from lib.infra.llm_rating import parse_rating, RATINGS_5_TIER
 
 
 class TestParseRating:

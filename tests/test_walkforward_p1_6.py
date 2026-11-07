@@ -6,7 +6,7 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from lib.walkforward import WalkForwardBacktest, WalkForwardConfig
+from lib.strategy.walkforward import WalkForwardBacktest, WalkForwardConfig
 
 
 def test_p1_6_diagnostics_merges_val_exit_reasons():

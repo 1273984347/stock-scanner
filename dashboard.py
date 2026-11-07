@@ -21,13 +21,13 @@ from datetime import datetime
 sys.path.insert(0, '.')
 os.environ['NO_VERIFY_TDX'] = '1'
 
-from lib.market_regime import (
+from lib.monitoring.market_regime import (
     detect_market_regime_from_hs300,
     TREND_UP, MEAN_REVERSION, COMPRESSION, TREND_DOWN,
     REGIME_POSITION_SCALAR,
 )
-from lib.technical_signals import ema
-from lib.data_layer import get_stock_hist, get_index_hist
+from lib.scoring.technical_signals import ema
+from lib.data.data_layer import get_stock_hist, get_index_hist
 from trading_journal import TradingJournal
 
 
@@ -388,7 +388,7 @@ with tab_benchmark:
     st.markdown("---")
     st.markdown("**券商连接状态**")
     try:
-        from lib.broker import TDXBroker
+        from lib.data.broker import TDXBroker
         st.info("📡 TDXBroker 已加载。需要通达信客户端运行并开启交易 API（设置→个人中心→网络安全→允许网络写入）。连接地址：http://127.0.0.1:10092")
     except Exception as e:
         st.error(f"券商模块加载失败: {e}")

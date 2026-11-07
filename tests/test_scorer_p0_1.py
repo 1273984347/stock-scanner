@@ -7,7 +7,7 @@ import logging
 
 import pytest
 
-from lib.scorer import score_news
+from lib.scoring.scorer import score_news
 
 
 class TestScoreNewsDefaultBehavior:
@@ -50,7 +50,7 @@ class TestScoreNewsDefaultBehavior:
         """P0-1: 数据缺失时应记录告警日志，方便排查污染源"""
         # lib logger 有 propagate=0（tests/logging.conf），
         # 直接挂 handler 收集记录。
-        scorer_logger = logging.getLogger("lib.scorer")
+        scorer_logger = logging.getLogger("lib.scoring.scorer")
         records = []
 
         class _CollectHandler(logging.Handler):
@@ -79,7 +79,7 @@ class TestScoreNewsIntegrationWithComprehensive:
         修复前：news=2（虚高） → 综合分被推高
         修复后：news=0（中性） → 综合分仅由其他维度贡献
         """
-        from lib.scorer import (
+        from lib.scoring.scorer import (
             comprehensive_score,
             score_fundamental,
             score_capital_flow,

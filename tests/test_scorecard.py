@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import numpy as np
 import pandas as pd
-from lib.scorecard import MarketFilter, ScoreCard
+from lib.scoring.scorecard import MarketFilter, ScoreCard
 
 
 def _make_hist(close_vals, open_vals=None, high_vals=None, low_vals=None, length=60):

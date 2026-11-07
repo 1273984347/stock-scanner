@@ -10,14 +10,14 @@ import pandas as pd
 class TestQuickScore:
     def test_quick_score_returns_structure(self, sample_realtime_row):
         """quick_score 返回结构正确"""
-        from lib.strategies import quick_score
+        from lib.strategy.strategies import quick_score
         result = quick_score(sample_realtime_row)
         assert isinstance(result, dict)
         assert "score" in result or "rating" in result
 
     def test_quick_score_with_minimal_data(self):
         """最小数据（仅有代码）时不崩溃"""
-        from lib.strategies import quick_score
+        from lib.strategy.strategies import quick_score
         row = pd.Series({"代码": "000001"})
         try:
             result = quick_score(row)
@@ -29,7 +29,7 @@ class TestQuickScore:
 class TestFullScore:
     def test_full_score_returns_structure(self, sample_ohlcv):
         """full_score 返回结构正确"""
-        from lib.strategies import full_score
+        from lib.strategy.strategies import full_score
         row = pd.Series({
             "代码": "000001", "市盈率-动态": 8.5,
             "量比": 1.2, "换手率": 1.0, "成交额": 5e8,
@@ -41,7 +41,7 @@ class TestFullScore:
 
     def test_full_score_grading_boundary(self, sample_ohlcv):
         """评分边界：调整分 8/6/4/2 阈值"""
-        from lib.strategies import full_score
+        from lib.strategy.strategies import full_score
         row = pd.Series({
             "代码": "000001", "市盈率-动态": 8.5,
             "量比": 1.2, "换手率": 1.0, "成交额": 5e8,
@@ -57,7 +57,7 @@ class TestFullScore:
 class TestComprehensiveScore:
     def test_comprehensive_score_from_scorer(self):
         """comprehensive_score 来自 scorer 模块，验证调用"""
-        from lib.scorer import comprehensive_score
+        from lib.scoring.scorer import comprehensive_score
         # 四个维度全零
         result = comprehensive_score(0, 0, 0, 0)
         assert isinstance(result, dict)

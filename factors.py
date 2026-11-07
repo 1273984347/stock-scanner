@@ -7,12 +7,12 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 import logging
 
-from lib.utils import _safe_float
+from lib.infra.utils import _safe_float
 from config import get_config
 
 # KC通道常量（用于辅助过滤）
 try:
-    from lib.indicators import KC_LENGTH, KC_ATR, KC_SCALAR
+    from lib.scoring.indicators import KC_LENGTH, KC_ATR, KC_SCALAR
 except ImportError:
     KC_LENGTH, KC_ATR, KC_SCALAR = 21, 14, 2.0
 
@@ -38,7 +38,7 @@ VOL_MULTIPLIER_MAX = 1.25
 
 # ========== 安全转换 ==========
 
-# 使用 lib.utils 中的统一实现
+# 使用 lib.infra.utils 中的统一实现
 safe_float = _safe_float
 
 
@@ -281,14 +281,14 @@ def detect_market_regime(prices: pd.Series, volume: pd.Series = None,
     """检测市场体制（已废弃，请使用 lib/market_regime.detect_market_regime）
 
     .. deprecated::
-        此函数已废弃，请使用 ``lib.market_regime.detect_market_regime`` 作为统一来源。
+        此函数已废弃，请使用 ``lib.monitoring.market_regime.detect_market_regime`` 作为统一来源。
     """
     import warnings
     warnings.warn(
-        "factors.detect_market_regime 已废弃，请使用 lib.market_regime.detect_market_regime",
+        "factors.detect_market_regime 已废弃，请使用 lib.monitoring.market_regime.detect_market_regime",
         DeprecationWarning, stacklevel=2
     )
-    from lib.market_regime import detect_market_regime as _detect
+    from lib.monitoring.market_regime import detect_market_regime as _detect
     index_df = pd.DataFrame({"close": prices, "high": prices, "low": prices})
     result = _detect(index_df)
     regime_map = {
@@ -689,7 +689,7 @@ def calc_channel_filter(hist_df: pd.DataFrame) -> Dict:
         - reason: 调整原因
     """
     try:
-        from lib.indicators import calculate_keltner_channels
+        from lib.scoring.indicators import calculate_keltner_channels
     except ImportError:
         return {"kc_pos": 0.5, "adjustment": 1.0, "reason": ""}
 
@@ -771,7 +771,7 @@ def get_market_sentiment_factor(days: int = 10) -> Dict:
           - source: 数据来源标记
     """
     try:
-        from lib.data_layer import get_latest_market_stats
+        from lib.data.data_layer import get_latest_market_stats
     except ImportError:
         return {"error": "data_layer not available"}
 
@@ -859,7 +859,7 @@ def get_market_sentiment_factor(days: int = 10) -> Dict:
 def get_market_sentiment_history(days: int = 30) -> pd.DataFrame:
     """获取市场情绪历史数据（用于时序分析）"""
     try:
-        from lib.data_layer import get_market_stats
+        from lib.data.data_layer import get_market_stats
     except ImportError:
         return pd.DataFrame()
 
@@ -901,7 +901,7 @@ def get_northbound_flow_factor(code: str, market: str = "sh", days: int = 20) ->
           - source: 数据来源
     """
     try:
-        from lib.data_layer import get_hsj_hist
+        from lib.data.data_layer import get_hsj_hist
     except ImportError:
         return {"error": "data_layer not available"}
 
@@ -1070,7 +1070,7 @@ def get_sector_performance(top_n: int = 10, days: int = 20) -> List[Dict]:
     import struct
     import time as _time
     from pathlib import Path
-    from lib.data_layer import get_all_blocks
+    from lib.data.data_layer import get_all_blocks
 
     # 缓存检查（10 分钟 TTL）
     cache_key = f"{top_n}_{days}"
@@ -1090,7 +1090,7 @@ def get_sector_performance(top_n: int = 10, days: int = 20) -> List[Dict]:
 
         returns = []
         for code in stock_codes[:50]:  # sample up to 50 stocks per block
-            from lib.market_utils import read_tdx_day_ohlcv
+            from lib.data.market_utils import read_tdx_day_ohlcv
             df = read_tdx_day_ohlcv(code, days=days)
             if df is None or len(df) < 2:
                 continue
@@ -1136,7 +1136,7 @@ def get_financial_valuation_factor(code: str) -> Dict:
           - source: 数据来源
     """
     try:
-        from lib.data_layer import get_stock_financial, get_financial_file_info
+        from lib.data.data_layer import get_stock_financial, get_financial_file_info
     except ImportError:
         return {"error": "data_layer not available"}
 
@@ -1188,7 +1188,7 @@ def get_gp_market_factor(code: str, market: str = "sz") -> Dict:
           - source: 数据来源
     """
     try:
-        from lib.data_tdx_gp import get_gp_data
+        from lib.data.data_tdx_gp import get_gp_data
     except ImportError:
         return {"error": "data_tdx_gp not available"}
 
@@ -1237,7 +1237,7 @@ def get_ggt_market_factor(code: str, days: int = 20) -> Dict:
           - source: 数据来源
     """
     try:
-        from lib.data_layer import get_ggt_hist
+        from lib.data.data_layer import get_ggt_hist
     except ImportError:
         return {"error": "data_layer not available"}
 
@@ -1320,7 +1320,7 @@ def get_xsb_market_factor(code: str, days: int = 20) -> Dict:
           - source: 数据来源
     """
     try:
-        from lib.data_layer import get_xsb_hist
+        from lib.data.data_layer import get_xsb_hist
     except ImportError:
         return {"error": "data_layer not available"}
 
@@ -1382,7 +1382,7 @@ def get_index_enhancement_factor(code: str, market: str = "sh") -> Dict:
           - source: 数据来源
     """
     try:
-        from lib.data_layer import get_index_hist
+        from lib.data.data_layer import get_index_hist
     except ImportError:
         return {"error": "data_layer not available"}
 
@@ -1466,8 +1466,8 @@ def _compute_all_signals_impl(hist_df: pd.DataFrame, macro_score: float = 0,
     if close.empty:
         return {}
 
-    # 1. 检测市场体制（使用统一的 lib.market_regime 模块）
-    from lib.market_regime import detect_market_regime as _detect_regime
+    # 1. 检测市场体制（使用统一的 lib.monitoring.market_regime 模块）
+    from lib.monitoring.market_regime import detect_market_regime as _detect_regime
     regime_df = hist_df[["close"]].copy()
     if "high" in hist_df.columns:
         regime_df["high"] = hist_df["high"]
@@ -1554,7 +1554,7 @@ def _compute_all_signals_impl(hist_df: pd.DataFrame, macro_score: float = 0,
         factors["kdj_j"] = kdj["J"]
         # 多周期 KDJ 共振（fast_mode 时跳过以节省计算）
         if not fast_mode:
-            from lib.multi_period_kdj import compute_multi_period_kdj
+            from lib.strategy.multi_period_kdj import compute_multi_period_kdj
             mp_kdj = compute_multi_period_kdj(high, low, close)
             factors["kdj_resonance_score"] = mp_kdj.resonance_score
             factors["kdj_fast_j"] = mp_kdj.fast.j
@@ -1608,7 +1608,7 @@ def _compute_all_signals_impl(hist_df: pd.DataFrame, macro_score: float = 0,
 
         # 板块映射因子（infoharbor_block）
         if _use('use_block', default=True):
-            from lib.data_layer import get_stock_blocks
+            from lib.data.data_layer import get_stock_blocks
             blocks = get_stock_blocks(code)
             if blocks:
                 data_factors["block"] = {
@@ -1617,26 +1617,26 @@ def _compute_all_signals_impl(hist_df: pd.DataFrame, macro_score: float = 0,
                 }
             # 统一板块评分（0-100，fast_mode 时跳过）
             if not fast_mode:
-                from lib.sector_score import get_sector_score_for_stock
+                from lib.strategy.sector_score import get_sector_score_for_stock
                 data_factors["sector_score"] = get_sector_score_for_stock(code)
 
         # 估值因子（PE/PB/市值）
         if _use('use_valuation', default=True):
-            from lib.data_layer import get_stock_valuation
+            from lib.data.data_layer import get_stock_valuation
             val = get_stock_valuation(code)
             if val:
                 data_factors["valuation"] = val
 
         # 基金持仓因子
         if _use('use_fund_hold', default=True):
-            from lib.data_layer import get_fund_holdings
+            from lib.data.data_layer import get_fund_holdings
             fh = get_fund_holdings(code)
             if fh:
                 data_factors["fund_holdings"] = fh
 
         # 股息率因子（gbbq 除权除息）
         if _use('use_dividend', default=True):
-            from lib.data_layer import get_dividend_amount
+            from lib.data.data_layer import get_dividend_amount
             div = get_dividend_amount(code)
             if div > 0:
                 data_factors["dividend"] = {"per_share": round(div, 4)}
@@ -1699,21 +1699,21 @@ def calc_volatility_adjusted_limit(annualized_volatility: float) -> float:
 
 def calc_technical_verdict(hist_df: pd.DataFrame) -> Dict:
     """技术面综合研判（12 个信号多数投票）"""
-    from lib.technical_signals import calc_composite_verdict
+    from lib.scoring.technical_signals import calc_composite_verdict
     return calc_composite_verdict(hist_df)
 
 
 def calc_fundamental_score(income: Dict, balance: Dict,
                            cashflow: Dict = None) -> float:
     """基本面综合评分（0-10 分）"""
-    from lib.fundamental import compute_fundamentals, fundamental_score
+    from lib.scoring.fundamental import compute_fundamentals, fundamental_score
     fundamentals = compute_fundamentals(income, balance, cashflow)
     return fundamental_score(fundamentals)
 
 
 def calc_anomaly_score(periods_data: list) -> Dict:
     """财报异常检测（扣分制）"""
-    from lib.anomaly_detector import detect_anomalies, anomaly_summary
+    from lib.monitoring.anomaly_detector import detect_anomalies, anomaly_summary
     alerts = detect_anomalies(periods_data)
     summary = anomaly_summary(alerts)
     return {"alerts": alerts, "summary": summary}

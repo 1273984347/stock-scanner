@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lib.kg_store import (
+from lib.scoring.kg_store import (
     Entity,
     EntityType,
     KGStore,

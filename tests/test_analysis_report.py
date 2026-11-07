@@ -52,7 +52,7 @@ class TestBacktestPathComparison:
         ms_all = model.predict(xgb.DMatrix(panel[feats].fillna(0.5)))
         ms_test = pd.Series(ms_all, index=panel.index)[panel["date"].isin(test_dates)]
 
-        from lib.ml_backtest import MLBacktest
+        from lib.ml.ml_backtest import MLBacktest
         bt = MLBacktest({"target_col": "excess_20d", "top_pct": 0.1, "transaction_cost": 0.01, "step": 20})
         r2 = bt.run(p_test, ml_scores=ms_test)
         assert "metrics" in r2
@@ -64,7 +64,7 @@ class TestJudgePanelGroups:
 
     def test_judge_panel_groups_exist(self):
         """评委团各组规则可正常导入和实例化"""
-        from lib.judge_panel import JudgePanel
+        from lib.scoring.judge_panel import JudgePanel
         import pandas as pd
         panel = JudgePanel()
         assert hasattr(panel, "evaluate_all")
@@ -74,7 +74,7 @@ class TestJudgePanelGroups:
 
     def test_judge_groups_have_abstain_mechanism(self):
         """评委团具备 ABSTAIN 机制（数据不足时正确降级）"""
-        from lib.judge_panel import JudgePanel
+        from lib.scoring.judge_panel import JudgePanel
         panel = JudgePanel()
         # 无市场数据时各组应能处理（ABSTAIN 而非崩溃）
         try:

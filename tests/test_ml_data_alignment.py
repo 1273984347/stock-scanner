@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lib.ml_data import MLDataPipeline
+from lib.ml.ml_data import MLDataPipeline
 
 
 def _make_close(prices):

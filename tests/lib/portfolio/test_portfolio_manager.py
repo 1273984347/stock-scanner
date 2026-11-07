@@ -3,7 +3,7 @@ import numpy as np
 
 def test_single_strategy_optimize():
     """单策略优化返回正确结构"""
-    from lib.portfolio_manager import PortfolioManager, StrategyConfig
+    from lib.portfolio.portfolio_manager import PortfolioManager, StrategyConfig
 
     strategies = [
         StrategyConfig(name="momentum", weight=1.0, enabled=True),
@@ -23,7 +23,7 @@ def test_single_strategy_optimize():
 
 def test_empty_candidates_returns_empty():
     """空候选股返回空组合"""
-    from lib.portfolio_manager import PortfolioManager, StrategyConfig
+    from lib.portfolio.portfolio_manager import PortfolioManager, StrategyConfig
 
     manager = PortfolioManager(strategies=[StrategyConfig(name="test", enabled=True)])
     result = manager.optimize({"test": []})
@@ -32,7 +32,7 @@ def test_empty_candidates_returns_empty():
 
 def test_total_risk_budget_check():
     """总风险预算超限时压缩"""
-    from lib.portfolio_manager import PortfolioManager, StrategyConfig
+    from lib.portfolio.portfolio_manager import PortfolioManager, StrategyConfig
 
     strategies = [
         StrategyConfig(name="s1", weight=0.5, enabled=True),

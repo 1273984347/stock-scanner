@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 def get_large_stock_pool(n: int = 50) -> list:
     """获取大规模股票池"""
     try:
-        from lib.stock_pool import StockPoolBuilder, PoolConfig
+        from lib.strategy.stock_pool import StockPoolBuilder, PoolConfig
         config = PoolConfig(
             max_candidates_per_strategy=20,
             enable_hs300=True,
@@ -43,7 +43,7 @@ def get_large_stock_pool(n: int = 50) -> list:
 
     # 回退：使用 HS300 成分股
     try:
-        from lib.data_layer import get_index_stocks
+        from lib.data.data_layer import get_index_stocks
         codes = get_index_stocks("000300")[:n]
         if codes:
             logger.info(f"HS300 fallback: {len(codes)} stocks")
@@ -70,7 +70,7 @@ def get_large_stock_pool(n: int = 50) -> list:
 
 def run_validation():
     """运行多市场周期验证"""
-    from lib.multi_market_validator import MultiMarketValidator, MARKET_PERIODS
+    from lib.strategy.multi_market_validator import MultiMarketValidator, MARKET_PERIODS
     from backtest.rebalance import run_rebalance_backtest
 
     # 获取大规模股票池
@@ -81,7 +81,7 @@ def run_validation():
     def backtest_with_relaxed_breaker(symbols, days, **kwargs):
         """放宽熔断阈值的回测"""
         # 临时修改 partial_exit 的默认参数
-        import lib.partial_exit as pe
+        import lib.risk.partial_exit as pe
         orig_init = pe.ConsecutiveLossBreaker.__init__
 
         def patched_init(self, reduce_threshold=3, stop_threshold=8, cooldown_days=10):

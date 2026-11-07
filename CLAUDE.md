@@ -59,40 +59,16 @@ stock-scanner/
 │   ├── rebalance.py       # 月频调仓回测 (run_rebalance_backtest)
 │   └── stress.py          # 压力测试 (run_stress_test)
 │
-├── lib/                   # 核心业务模块 (87 个)
-│   ├── data_layer.py      # 多源数据获取/缓存/限流
-│   ├── data_source_registry.py  # 数据源注册与标准化路由
-│   ├── data_tdx.py        # TDX 本地文件数据源
-│   ├── data_margin.py     # 融资融券数据 [NEW]
-│   ├── data_fund_enhanced.py  # 基金持仓补全+机构增持信号 [NEW]
-│   ├── data_level2.py     # Level-2 接口框架 [NEW]
-│   ├── data_northbound_rt.py  # 北向实时监控接口 [NEW]
-│   ├── sentiment.py       # 新闻情绪分析 [NEW]
-│   ├── tdx_batch.py       # TDX 批量读取优化 [NEW]
-│   ├── factor_optimizer.py    # GA+贝叶斯因子权重优化器 [NEW]
-│   ├── dynamic_exit.py    # 动态退出规则 [NEW]
-│   ├── sector_rotation.py # 板块轮动增强 [NEW]
-│   ├── stock_pool.py      # 股票池扩展 [NEW]
-│   ├── investor_agents.py # 4种风格评委团 [NEW]
-│   ├── signal_tracker.py  # 信号追踪+事后回测 [NEW]
-│   ├── paper_trading_runner.py  # 实盘模拟运行器 [NEW]
-│   ├── backtest_unified.py    # 统一回测接口 [NEW]
-│   ├── multi_market_validator.py  # 多市场周期验证 [NEW]
-│   ├── multi_period_kdj.py    # 多周期 KDJ 共振 [NEW]
-│   ├── sector_score.py        # 统一板块评分 0-100 [NEW]
-│   ├── dynamic_weight_manager.py  # 动态权重管理 [NEW]
-│   ├── strategy_regime_mapper.py  # 策略-状态映射 [NEW]
-│   ├── strategies.py      # 5大选股策略 + 四维评分
-│   ├── pipeline.py        # 策略编排/组合优化/ML集成
-│   ├── broker_data/       # broker 拆分模块
-│   ├── risk_manager.py    # 风控 (止损/回撤)
-│   ├── position_size.py   # 仓位管理
-│   ├── analyzer.py        # 性能分析
-│   ├── scorecard.py       # 评分卡 (四层评委团)
-│   ├── ml_predictor.py    # ML 预测
-│   ├── ml_trainer.py      # ML 训练
-│   ├── walkforward.py     # Walk-forward 验证
-│   └── llm_utils/         # LLM 工具
+├── lib/                   # 核心业务模块 —— 按职责分 8 个子包 (2026-11-07 重构)
+│   ├── data/              # 数据层：多源获取/缓存/限流/协议规范化 (37)
+│   ├── scoring/           # 评分体系：多维打分/因子/评委团/估值 (30)
+│   ├── strategy/          # 策略层：选股策略/编排管道/调仓 (21)
+│   ├── risk/              # 风控执行：风控/仓位/约束/成本/滑点 (14)
+│   ├── portfolio/         # 组合与因子分析：组合构建/优化/IC (10)
+│   ├── ml/                # 机器学习：训练/推理/数据管道/监控 (5)
+│   ├── monitoring/        # 监控告警：异常检测/告警/日志/体制 (9)
+│   └── infra/             # 横切层：认证/通用工具/LLM工具/共享状态 (9)
+│   # 归属表与依赖方向约束见 RULES.md §1.3
 │
 ├── scripts/               # 工具脚本 (12 个)
 │   ├── backtest_charts.py # matplotlib 回测图表 [NEW]
@@ -382,11 +358,12 @@ curl http://localhost:8000/api/scan
 |:-----|:-----|
 | `config.py` | 全局配置 (策略/风控/LLM/ML) |
 | `scanner.py` | 选股策略入口 |
-| `lib/pipeline.py` | 策略编排核心 |
-| `lib/data_layer.py` | 多源数据层 |
+| `lib/strategy/pipeline.py` | 策略编排核心 |
+| `lib/data/data_layer.py` | 多源数据层 |
 | `.env` | 敏感配置 (禁止 commit) |
 | `cache/models/` | ML 模型存储 |
 | `scripts/update_tdx_data.py` | TDX 日K线数据更新脚本 |
+| `RULES.md` | **项目规约** (目录结构/import/路径基准/验证分层硬约束)。改代码前先读 |
 | `docs/refactor/pitfalls.md` | **踩坑集** (RF-01 执行期 48 条真实坑：现象→根因→修复→推广)。动 `lib/`、`tests/`、CI 前先读 |
 | `docs/refactor/README.md` | 重构度量基线说明 (契约/覆盖率/对拍三把尺子的口径与自证记录) |
 | `docs/plans/2026-11-07-refactor-plan.md` | RF-01 分阶段重构计划 (§七 为逐批执行记录/验收/复盘) |
@@ -455,7 +432,7 @@ export TDX_DATA_PATH="D:/TDX/vipdoc"
 ## 维护提示
 
 - `config.py` 是全局配置核心，修改前确认影响范围
-- `lib/pipeline.py` 是策略编排核心，修改后运行回测验证
+- `lib/strategy/pipeline.py` 是策略编排核心，修改后运行回测验证
 - 数据源适配器在 `lib/data_*.py`，新增数据源时参考现有模式
 - ML 模型存储在 `cache/models/`，更新后重新验证 Walk-forward
 
@@ -466,10 +443,10 @@ export TDX_DATA_PATH="D:/TDX/vipdoc"
 ### 因子权重优化
 ```bash
 # 评估当前权重
-python -m lib.factor_optimizer --eval-only --symbols 600519 000858
+python -m lib.scoring.factor_optimizer --eval-only --symbols 600519 000858
 
 # 运行 GA 优化（50代×30种群）
-python -m lib.factor_optimizer --symbols 600519 000858 --generations 50 --population 30
+python -m lib.scoring.factor_optimizer --symbols 600519 000858 --generations 50 --population 30
 
 # 结果保存到 cache/optimizer/optimal_weights_latest.json
 # 应用：替换 factors.py IC_FACTOR_WEIGHTS
@@ -477,7 +454,7 @@ python -m lib.factor_optimizer --symbols 600519 000858 --generations 50 --popula
 
 ### 统一回测
 ```python
-from lib.backtest_unified import BacktestRunner, BacktestRequest
+from lib.monitoring.backtest_unified import BacktestRunner, BacktestRequest
 
 runner = BacktestRunner()
 result = runner.run(mode="rebalance", symbols=["600519", "000858"], days=300)
@@ -493,7 +470,7 @@ from backtest import run_factor_backtest
 
 ### 投资者风格评委团
 ```python
-from lib.investor_agents import AgentPanel
+from lib.scoring.investor_agents import AgentPanel
 panel = AgentPanel()
 votes = panel.vote(hist_df, code="600519", data_factors={...})
 # votes["signal"]: bullish/bearish/neutral
@@ -514,7 +491,7 @@ python scripts/backtest_charts.py --symbols 600519,000858 --days 500
 
 ### 信号追踪
 ```python
-from lib.signal_tracker import SignalTracker
+from lib.scoring.signal_tracker import SignalTracker
 tracker = SignalTracker()
 tracker.record_signal("600519", "bullish", 0.8, source="ic_score")
 tracker.update_actual_returns()  # 事后更新实际收益

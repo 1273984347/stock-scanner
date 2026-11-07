@@ -17,7 +17,7 @@ class TestSilentPeriodInjectable:
 
     def test_default_silent_period_no_args_uses_wallclock(self):
         """不传 current_time 时仍走 wall-clock（实盘兼容）"""
-        from lib.alert_monitor import AlertMonitor
+        from lib.monitoring.alert_monitor import AlertMonitor
         am = AlertMonitor()
         # 静默期 22:00-08:00，当前 wall-clock 必然返回 bool，不抛错
         result = am.is_silent_period()
@@ -25,7 +25,7 @@ class TestSilentPeriodInjectable:
 
     def test_current_time_injection_returns_true_in_silent(self):
         """注入 23:00 → 必返回 True（22:00-08:00 静默期）"""
-        from lib.alert_monitor import AlertMonitor
+        from lib.monitoring.alert_monitor import AlertMonitor
         am = AlertMonitor()
         am.set_silent_period(dtime(22, 0), dtime(8, 0))
 
@@ -35,7 +35,7 @@ class TestSilentPeriodInjectable:
 
     def test_current_time_injection_returns_false_outside_silent(self):
         """注入 12:00 → 必返回 False（白天非静默）"""
-        from lib.alert_monitor import AlertMonitor
+        from lib.monitoring.alert_monitor import AlertMonitor
         am = AlertMonitor()
         am.set_silent_period(dtime(22, 0), dtime(8, 0))
 
@@ -44,7 +44,7 @@ class TestSilentPeriodInjectable:
 
     def test_current_time_injection_cross_midnight_start(self):
         """注入 22:30 → True（在 22:00-08:00 静默期内，刚跨入静默）"""
-        from lib.alert_monitor import AlertMonitor
+        from lib.monitoring.alert_monitor import AlertMonitor
         am = AlertMonitor()
         am.set_silent_period(dtime(22, 0), dtime(8, 0))
 
@@ -53,7 +53,7 @@ class TestSilentPeriodInjectable:
 
     def test_current_time_injection_cross_midnight_end(self):
         """注入 07:59 → True（即将离开静默，仍在期内）"""
-        from lib.alert_monitor import AlertMonitor
+        from lib.monitoring.alert_monitor import AlertMonitor
         am = AlertMonitor()
         am.set_silent_period(dtime(22, 0), dtime(8, 0))
 
@@ -62,7 +62,7 @@ class TestSilentPeriodInjectable:
 
     def test_current_time_injection_at_boundary(self):
         """注入 08:00 → False（恰好出静默，结束边界不含）"""
-        from lib.alert_monitor import AlertMonitor
+        from lib.monitoring.alert_monitor import AlertMonitor
         am = AlertMonitor()
         am.set_silent_period(dtime(22, 0), dtime(8, 0))
 
@@ -73,7 +73,7 @@ class TestSilentPeriodInjectable:
 
     def test_current_time_injection_daytime_silent(self):
         """非跨午夜静默期（13:00-14:00）：注入 12:00 → False，13:30 → True"""
-        from lib.alert_monitor import AlertMonitor
+        from lib.monitoring.alert_monitor import AlertMonitor
         am = AlertMonitor()
         am.set_silent_period(dtime(13, 0), dtime(14, 0))
 
@@ -83,7 +83,7 @@ class TestSilentPeriodInjectable:
 
     def test_run_all_checks_accepts_current_time(self):
         """run_all_checks 也必须支持 current_time 透传（实盘调用方零改动）"""
-        from lib.alert_monitor import AlertMonitor
+        from lib.monitoring.alert_monitor import AlertMonitor
         am = AlertMonitor()
         am.set_silent_period(dtime(22, 0), dtime(8, 0))
 
@@ -101,7 +101,7 @@ class TestSilentPeriodInjectable:
 
     def test_run_all_checks_in_silent_period_skips(self):
         """run_all_checks 静默期注入 → 跳过检查"""
-        from lib.alert_monitor import AlertMonitor
+        from lib.monitoring.alert_monitor import AlertMonitor
         am = AlertMonitor()
         am.set_silent_period(dtime(22, 0), dtime(8, 0))
 

@@ -19,7 +19,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from lib.factor_optimizer import (
+from lib.scoring.factor_optimizer import (
     OptimizerConfig,
     GeneticOptimizer,
     walk_forward_validate,

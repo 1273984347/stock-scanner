@@ -46,7 +46,7 @@ def main():
     parser.add_argument("--no-push", action="store_true", help="只打印不推送飞书")
     args = parser.parse_args()
 
-    from lib.signal_tracker import SignalTracker
+    from lib.scoring.signal_tracker import SignalTracker
 
     tracker = SignalTracker()
     tracker.update_actual_returns()

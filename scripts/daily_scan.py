@@ -63,8 +63,8 @@ def run_daily_scan(push_feishu: bool = True, extra_symbols: list = None):
         print(f"{datetime.now().strftime('%Y-%m-%d')} 非交易日，跳过扫描")
         return None
 
-    from lib.paper_trading_runner import PaperTradingRunner, TRADE_LOG_DIR
-    from lib.signal_tracker import SignalTracker
+    from lib.strategy.paper_trading_runner import PaperTradingRunner, TRADE_LOG_DIR
+    from lib.scoring.signal_tracker import SignalTracker
 
     runner = PaperTradingRunner(initial_cash=1_000_000, preset="balanced")
     report = runner.run_once()
@@ -83,9 +83,9 @@ def run_daily_scan(push_feishu: bool = True, extra_symbols: list = None):
 
     # Borrow 1 production caller: 多风格投票 + past_context 注入
     try:
-        from lib.panel_decision import get_panel_decision, format_panel_decision
-        from lib.data_layer import get_stock_hist_multi_source
-        from lib.strategies import get_data_factors
+        from lib.scoring.panel_decision import get_panel_decision, format_panel_decision
+        from lib.data.data_layer import get_stock_hist_multi_source
+        from lib.strategy.strategies import get_data_factors
         if report.signals:
             for s in report.signals[:5]:  # 只对 top 5 候选股投票 (避免性能 regression)
                 code = s.get("code", "")
@@ -108,7 +108,7 @@ def run_daily_scan(push_feishu: bool = True, extra_symbols: list = None):
 
     # 财报预警：持仓股财报前3天推送
     try:
-        from lib.data_earnings import get_upcoming_earnings
+        from lib.data.data_earnings import get_upcoming_earnings
         upcoming = get_upcoming_earnings(days=3)
         if not upcoming.empty and report.positions:
             held_codes = {p['code'] for p in report.positions}

@@ -15,7 +15,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.indicators import (
+from lib.scoring.indicators import (
     calculate_keltner_channels,
     calculate_xosi_channels,
     get_channel_signals,
@@ -95,7 +95,7 @@ def load_kline(code: str, days: int = 1000) -> pd.DataFrame:
     else:
         code = code.zfill(6)
         # 用 helper 替代手写市场判断（修复 bj 静默丢失）
-        from lib.market_utils import detect_market
+        from lib.data.market_utils import detect_market
         market_str = detect_market(code)
         if market_str == "unknown":
             return pd.DataFrame()

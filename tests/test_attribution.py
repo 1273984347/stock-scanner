@@ -1,6 +1,6 @@
 """组合归因分析测试"""
 import pytest
-from lib.attribution import PortfolioAttribution, AttributionResult
+from lib.scoring.attribution import PortfolioAttribution, AttributionResult
 
 
 class TestPortfolioAttribution:

@@ -2,7 +2,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from lib.pump_dump_detector import detect_pump_and_dump, is_pump_dump_risk
+from lib.monitoring.pump_dump_detector import detect_pump_and_dump, is_pump_dump_risk
 
 
 class TestDetectPumpAndDump:

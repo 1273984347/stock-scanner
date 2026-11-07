@@ -16,13 +16,13 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import logging
 
-from lib.broker import ABroker, Order
-from lib.broker_data import Holding
+from lib.data.broker import ABroker, Order
+from lib.risk import Holding
 from config import get_config
-from lib.position_size import RiskSizedPosition, PositionSizeConfig
-from lib.risk_manager import RiskManager, RiskConfig
-from lib.partial_exit import PartialExitManager, ConsecutiveLossBreaker
-from lib.rebalance_scheduler import RebalanceScheduler, RebalanceConfig
+from lib.risk.position_size import RiskSizedPosition, PositionSizeConfig
+from lib.risk.risk_manager import RiskManager, RiskConfig
+from lib.risk.partial_exit import PartialExitManager, ConsecutiveLossBreaker
+from lib.strategy.rebalance_scheduler import RebalanceScheduler, RebalanceConfig
 from factors import compute_all_signals, calc_atr, compute_ic_weighted_score
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ if __name__ == "__main__":
         print(result['report'])
 
         # 保存结果
-        from lib.backtest_saver import save_backtest_result
+        from lib.monitoring.backtest_saver import save_backtest_result
         perf_df = result.get('perf_df')
         nav = perf_df['nav'].values if perf_df is not None and 'nav' in perf_df.columns else np.array([1.0])
         trades_list = result.get('trades', [])

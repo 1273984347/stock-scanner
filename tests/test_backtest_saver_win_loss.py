@@ -22,7 +22,7 @@
 import numpy as np
 import pytest
 
-from lib.backtest_saver import _compute_metrics
+from lib.monitoring.backtest_saver import _compute_metrics
 
 
 def _nav():

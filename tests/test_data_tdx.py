@@ -23,12 +23,12 @@ def _make_df(n: int = 30) -> pd.DataFrame:
 
 def test_fallback_to_akshare_when_both_network_and_local_fail():
     """网络+本地均失败时，fallback 到 akshare"""
-    from lib.data_tdx import get_kline
+    from lib.data.data_tdx import get_kline
 
     df_akshare = _make_df()
 
-    with patch("lib.data_tdx._fetch_via_network", return_value=pd.DataFrame()):
-        with patch("lib.data_tdx._fetch_from_local_file", return_value=pd.DataFrame()):
+    with patch("lib.data.data_tdx._fetch_via_network", return_value=pd.DataFrame()):
+        with patch("lib.data.data_tdx._fetch_from_local_file", return_value=pd.DataFrame()):
             with patch("akshare.stock_zh_a_hist", return_value=df_akshare) as mock_ak:
                 result = get_kline("600519", days=30)
 
@@ -39,12 +39,12 @@ def test_fallback_to_akshare_when_both_network_and_local_fail():
 
 def test_network_success_no_local_no_akshare():
     """网络成功时，不调用本地文件和 akshare"""
-    from lib.data_tdx import get_kline
+    from lib.data.data_tdx import get_kline
 
     df_network = _make_df()
 
-    with patch("lib.data_tdx._fetch_via_network", return_value=df_network) as mock_net:
-        with patch("lib.data_tdx._fetch_from_local_file") as mock_local:
+    with patch("lib.data.data_tdx._fetch_via_network", return_value=df_network) as mock_net:
+        with patch("lib.data.data_tdx._fetch_from_local_file") as mock_local:
             with patch("akshare.stock_zh_a_hist") as mock_ak:
                 result = get_kline("600519", days=30)
 
@@ -56,12 +56,12 @@ def test_network_success_no_local_no_akshare():
 
 def test_local_success_no_akshare():
     """本地文件成功时，不调用 akshare"""
-    from lib.data_tdx import get_kline
+    from lib.data.data_tdx import get_kline
 
     df_local = _make_df()
 
-    with patch("lib.data_tdx._fetch_via_network", return_value=pd.DataFrame()):
-        with patch("lib.data_tdx._fetch_from_local_file", return_value=df_local) as mock_local:
+    with patch("lib.data.data_tdx._fetch_via_network", return_value=pd.DataFrame()):
+        with patch("lib.data.data_tdx._fetch_from_local_file", return_value=df_local) as mock_local:
             with patch("akshare.stock_zh_a_hist") as mock_ak:
                 result = get_kline("600519", days=30)
 
@@ -72,10 +72,10 @@ def test_local_success_no_akshare():
 
 def test_all_sources_fail_returns_empty_dataframe():
     """所有源都失败时，返回空 DataFrame"""
-    from lib.data_tdx import get_kline
+    from lib.data.data_tdx import get_kline
 
-    with patch("lib.data_tdx._fetch_via_network", return_value=pd.DataFrame()):
-        with patch("lib.data_tdx._fetch_from_local_file", return_value=pd.DataFrame()):
+    with patch("lib.data.data_tdx._fetch_via_network", return_value=pd.DataFrame()):
+        with patch("lib.data.data_tdx._fetch_from_local_file", return_value=pd.DataFrame()):
             with patch("akshare.stock_zh_a_hist", side_effect=Exception("akshare 失败")):
                 result = get_kline("600519", days=30)
 
@@ -84,12 +84,12 @@ def test_all_sources_fail_returns_empty_dataframe():
 
 def test_akshare_returns_insufficient_data_uses_partial():
     """akshare 返回数据不足 30 天时，使用全部数据"""
-    from lib.data_tdx import get_kline
+    from lib.data.data_tdx import get_kline
 
     df_partial = _make_df(n=15)
 
-    with patch("lib.data_tdx._fetch_via_network", return_value=pd.DataFrame()):
-        with patch("lib.data_tdx._fetch_from_local_file", return_value=pd.DataFrame()):
+    with patch("lib.data.data_tdx._fetch_via_network", return_value=pd.DataFrame()):
+        with patch("lib.data.data_tdx._fetch_from_local_file", return_value=pd.DataFrame()):
             with patch("akshare.stock_zh_a_hist", return_value=df_partial):
                 result = get_kline("600519", days=30)
 

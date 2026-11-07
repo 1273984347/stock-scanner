@@ -2,7 +2,7 @@
 """新旧优化器增量对比测试
 
 旧优化器: lib.portfolio.PortfolioBuilder (等权)
-新优化器: lib.portfolio_manager.PortfolioManager (PositionSizer + RiskBudget + Turnover)
+新优化器: lib.portfolio.portfolio_manager.PortfolioManager (PositionSizer + RiskBudget + Turnover)
 
 用法:
     python scripts/compare_optimizers.py
@@ -69,7 +69,7 @@ def test_old_optimizer(candidates: list) -> dict:
 
 def test_new_optimizer(candidates: list) -> dict:
     """新优化器: PortfolioManager (PositionSizer + RiskBudget + Turnover)"""
-    from lib.portfolio_manager import PortfolioManager, StrategyConfig
+    from lib.portfolio.portfolio_manager import PortfolioManager, StrategyConfig
 
     strategies = [StrategyConfig(name="signal", weight=1.0)]
     manager = PortfolioManager(strategies=strategies)

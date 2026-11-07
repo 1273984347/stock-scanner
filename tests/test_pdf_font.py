@@ -21,11 +21,11 @@ import pytest
 @pytest.fixture
 def mock_reportlab_font():
     """Mock reportlab.pdfbase.ttfonts.TTFont + pdfmetrics.registerFont"""
-    # CI 无 reportlab 时 lib.pdf_report.TTFont/pdfmetrics 属性不存在 (try/except import),
+    # CI 无 reportlab 时 lib.infra.pdf_report.TTFont/pdfmetrics 属性不存在 (try/except import),
     # patch 默认 AttributeError。create=True 让 patch 在属性缺失时创建 mock 属性。
-    with patch("lib.pdf_report.HAS_REPORTLAB", True), \
-         patch("lib.pdf_report.TTFont", create=True) as mock_ttfont, \
-         patch("lib.pdf_report.pdfmetrics", create=True) as mock_metrics:
+    with patch("lib.infra.pdf_report.HAS_REPORTLAB", True), \
+         patch("lib.infra.pdf_report.TTFont", create=True) as mock_ttfont, \
+         patch("lib.infra.pdf_report.pdfmetrics", create=True) as mock_metrics:
         mock_ttfont.return_value = MagicMock()
         yield mock_ttfont, mock_metrics
 
@@ -77,27 +77,27 @@ class TestGetChineseFontCandidates:
 class TestResolveChineseFontPath:
     def test_returns_first_existing_path(self):
         fake = ["/nonexistent/a.ttf", "/fake/b.ttf", "/fake/c.ttc"]
-        with patch("lib.pdf_report.get_chinese_font_candidates", return_value=fake), \
+        with patch("lib.infra.pdf_report.get_chinese_font_candidates", return_value=fake), \
              patch("os.path.isfile", side_effect=lambda p: p == "/fake/b.ttf"):
             assert resolve_chinese_font_path() == "/fake/b.ttf"
 
     def test_returns_none_when_none_exist(self):
         fake = ["/nope/a.ttf", "/nope/b.ttf"]
-        with patch("lib.pdf_report.get_chinese_font_candidates", return_value=fake), \
+        with patch("lib.infra.pdf_report.get_chinese_font_candidates", return_value=fake), \
              patch("os.path.isfile", return_value=False):
             assert resolve_chinese_font_path() is None
 
     def test_skips_oserror(self):
         def boom(_):
             raise OSError("permission denied")
-        with patch("lib.pdf_report.get_chinese_font_candidates",
+        with patch("lib.infra.pdf_report.get_chinese_font_candidates",
                    return_value=["/nope/a.ttf", "/ok/b.ttf"]), \
              patch("os.path.isfile", side_effect=boom):
             # OSError 路径被跳过，最终 None
             assert resolve_chinese_font_path() is None
 
     def test_empty_candidate_list(self):
-        with patch("lib.pdf_report.get_chinese_font_candidates", return_value=[]):
+        with patch("lib.infra.pdf_report.get_chinese_font_candidates", return_value=[]):
             assert resolve_chinese_font_path() is None
 
 
@@ -112,11 +112,11 @@ class TestPDFReportGeneratorFontSetup:
         """P2-2 关键：找不到字体时显式抛错，不静默用 Helvetica"""
         monkeypatch.setenv("STOCK_FONT_PATH", "")  # 清空覆盖
         # 所有平台路径都不存在
-        with patch("lib.pdf_report.resolve_chinese_font_path", return_value=None), \
-             patch("lib.pdf_report.get_chinese_font_candidates",
+        with patch("lib.infra.pdf_report.resolve_chinese_font_path", return_value=None), \
+             patch("lib.infra.pdf_report.get_chinese_font_candidates",
                    return_value=["/nope/msyh.ttc", "/nope/PingFang.ttc"]):
             with pytest.raises(RuntimeError) as exc_info:
-                from lib.pdf_report import PDFReportGenerator
+                from lib.infra.pdf_report import PDFReportGenerator
                 PDFReportGenerator()
 
         msg = str(exc_info.value)
@@ -127,8 +127,8 @@ class TestPDFReportGeneratorFontSetup:
 
     def test_registers_font_when_found(self, mock_reportlab_font):
         """正常路径：找到字体 → 注册成功 → _chinese_font = 'Chinese'"""
-        from lib.pdf_report import PDFReportGenerator
-        with patch("lib.pdf_report.resolve_chinese_font_path",
+        from lib.infra.pdf_report import PDFReportGenerator
+        with patch("lib.infra.pdf_report.resolve_chinese_font_path",
                    return_value="/fake/font.ttc"):
             gen = PDFReportGenerator()
         assert gen._chinese_font == "Chinese"
@@ -141,11 +141,11 @@ class TestPDFReportGeneratorFontSetup:
         self, mock_reportlab_font, monkeypatch
     ):
         """TTFont.register 内部抛错 → 包成 RuntimeError 带文件路径"""
-        from lib.pdf_report import PDFReportGenerator
+        from lib.infra.pdf_report import PDFReportGenerator
         monkeypatch.setenv("STOCK_FONT_PATH", "")
-        with patch("lib.pdf_report.resolve_chinese_font_path",
+        with patch("lib.infra.pdf_report.resolve_chinese_font_path",
                    return_value="/corrupt/font.ttc"), \
-             patch("lib.pdf_report.pdfmetrics.registerFont",
+             patch("lib.infra.pdf_report.pdfmetrics.registerFont",
                    side_effect=OSError("bad ttf")):
             with pytest.raises(RuntimeError) as exc_info:
                 PDFReportGenerator()
@@ -154,8 +154,8 @@ class TestPDFReportGeneratorFontSetup:
 
     def test_skips_setup_when_reportlab_missing(self, monkeypatch):
         """HAS_REPORTLAB=False 时不抛错（向后兼容 reportlab 未装的场景）"""
-        with patch("lib.pdf_report.HAS_REPORTLAB", False):
-            from lib.pdf_report import PDFReportGenerator
+        with patch("lib.infra.pdf_report.HAS_REPORTLAB", False):
+            from lib.infra.pdf_report import PDFReportGenerator
             gen = PDFReportGenerator()
         # 不应抛错，_chinese_font 应保持为 init 默认（无）
         assert not hasattr(gen, "_chinese_font") or gen._chinese_font is None \
@@ -168,10 +168,10 @@ class TestPDFReportGeneratorFontSetup:
 
 def _call_candidates():
     """调用模块级函数，避开 reportlab 是否真的 import 成功的影响"""
-    from lib.pdf_report import get_chinese_font_candidates
+    from lib.infra.pdf_report import get_chinese_font_candidates
     return get_chinese_font_candidates()
 
 
 def resolve_chinese_font_path():
-    from lib.pdf_report import resolve_chinese_font_path
+    from lib.infra.pdf_report import resolve_chinese_font_path
     return resolve_chinese_font_path()

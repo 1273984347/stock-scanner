@@ -1,7 +1,7 @@
 """Alpha 反馈闭环测试"""
 import pytest
 from pathlib import Path
-from lib.alpha_feedback import AlphaFeedback, AlphaStats
+from lib.scoring.alpha_feedback import AlphaFeedback, AlphaStats
 
 
 class TestAlphaStats:

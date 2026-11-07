@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 def test_p1_3_batch_get_stock_hist_accepts_as_of_date():
     """P1-3: _batch_get_stock_hist 应接受 as_of_date 参数"""
-    from lib.strategies import _batch_get_stock_hist
+    from lib.strategy.strategies import _batch_get_stock_hist
     sig = inspect.signature(_batch_get_stock_hist)
     assert "as_of_date" in sig.parameters, (
         f"P1-3 修复未完成: _batch_get_stock_hist 必须接受 as_of_date 参数，"
@@ -23,8 +23,7 @@ def test_p1_3_batch_get_stock_hist_accepts_as_of_date():
 
 def test_p1_3_batch_get_stock_hist_filters_future_data():
     """P1-3: 传 as_of_date 后, 返回 DataFrame 不含 > as_of_date 的数据"""
-    from lib import strategies
-
+    import lib.strategy.strategies as strategies
     def fake_hist(code, days, source):
         # 2024-09-01 ~ 2025-01-15: 含 2024-12-01 之后的"未来"数据
         dates = pd.date_range("2024-09-01", "2025-01-15", freq="D")
@@ -52,7 +51,7 @@ def test_p1_3_batch_get_stock_hist_filters_future_data():
 
 def test_p1_3_get_volume_breakout_candidates_accepts_as_of_date():
     """P1-3: get_volume_breakout_candidates 签名应接受 as_of_date"""
-    from lib.strategies import get_volume_breakout_candidates
+    from lib.strategy.strategies import get_volume_breakout_candidates
     sig = inspect.signature(get_volume_breakout_candidates)
     assert "as_of_date" in sig.parameters, (
         f"P1-3 修复未完成: get_volume_breakout_candidates 必须接受 as_of_date 参数，"

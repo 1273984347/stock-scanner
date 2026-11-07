@@ -29,7 +29,7 @@ import pandas as pd
 
 # 导入 FinancialCache（统一缓存层）
 try:
-    from lib.data_cache import get_financial_cache
+    from lib.data.data_cache import get_financial_cache
 except ImportError:
     get_financial_cache = None
 
@@ -71,7 +71,7 @@ def _get_baostock():
 
 # 尝试导入缓存模块，失败则内联
 try:
-    from lib.cache import retry_api_call
+    from lib.data.cache import retry_api_call
 except ImportError:
     def retry_api_call(func, *args, max_retries=3, **kwargs):
         for attempt in range(max_retries):
@@ -247,7 +247,7 @@ def fetch_pe_pb_baostock(code: str, timeout: int = 10) -> dict:
 
         # 转换代码格式: 000001 -> sz.000001, 600519 -> sh.600519, 430017 -> bj.430017
         # 用 helper 替代手写市场判断（修复 bj 静默丢失）
-        from lib.market_utils import detect_market
+        from lib.data.market_utils import detect_market
         market = detect_market(code)
         if market == "unknown":
             return {}
@@ -318,7 +318,7 @@ def fetch_financial_indicators(code: str, timeout: int = 20) -> dict:
     # 同花顺代码格式转换（股票列表返回的是纯代码如 000001）
     # 用 helper 替代手写市场判断（修复 bj 静默丢失）
     ths_code = code
-    from lib.market_utils import detect_market
+    from lib.data.market_utils import detect_market
     market = detect_market(code)
     if market in ("sh", "sz", "bj"):
         ths_code = market + code
@@ -379,7 +379,7 @@ def _fetch_em_debt_ratio_batch(code: str) -> None:
     if code in _em_debt_ratio_cache:
         return
     try:
-        from lib.data_eastmoney_fin import get_debt_ratio as _get_em_dr
+        from lib.data.data_eastmoney_fin import get_debt_ratio as _get_em_dr
         dr = _get_em_dr(code)
         _em_debt_ratio_cache[code] = dr
     except Exception:

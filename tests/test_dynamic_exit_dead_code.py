@@ -22,27 +22,27 @@ class TestDynamicLossBreakerRemoved:
 
     def test_dynamic_loss_breaker_class_removed(self):
         """DynamicLossBreaker 不再 import 得"""
-        from lib import dynamic_exit
+        import lib.risk.dynamic_exit as dynamic_exit
         assert not hasattr(dynamic_exit, "DynamicLossBreaker"), \
             "DynamicLossBreaker 是死代码（backtest 从未实例化），必须删除"
 
     def test_loss_breaker_config_removed(self):
         """LossBreakerConfig 也应删除（仅被 DynamicLossBreaker 使用）"""
-        from lib import dynamic_exit
+        import lib.risk.dynamic_exit as dynamic_exit
         assert not hasattr(dynamic_exit, "LossBreakerConfig"), \
             "LossBreakerConfig 仅服务于 DynamicLossBreaker，应一并删除"
 
     def test_dynamic_exit_manager_uses_consecutive_breaker(self):
         """DynamicExitManager.loss_breaker 必须是 ConsecutiveLossBreaker 实例"""
-        from lib.dynamic_exit import DynamicExitManager
-        from lib.partial_exit import ConsecutiveLossBreaker
+        from lib.risk.dynamic_exit import DynamicExitManager
+        from lib.risk.partial_exit import ConsecutiveLossBreaker
         mgr = DynamicExitManager()
         assert isinstance(mgr.loss_breaker, ConsecutiveLossBreaker), \
             "DynamicExitManager 应复用 ConsecutiveLossBreaker（partial_exit.py）"
 
     def test_dynamic_exit_manager_still_has_exit_days(self):
         """regime → exit_days 映射仍存在（V6 设计保留）"""
-        from lib.dynamic_exit import DynamicExitManager
+        from lib.risk.dynamic_exit import DynamicExitManager
         mgr = DynamicExitManager()
         mgr.update_market_state("TREND_UP", 0.25)
         assert mgr.get_exit_days() == 20, "TREND_UP → 20 天"
@@ -51,7 +51,7 @@ class TestDynamicLossBreakerRemoved:
 
     def test_dynamic_exit_manager_vol_sizer_still_works(self):
         """VolatilityPositionSizer 保留（真实使用：动态仓位）"""
-        from lib.dynamic_exit import DynamicExitManager
+        from lib.risk.dynamic_exit import DynamicExitManager
         mgr = DynamicExitManager()
         mgr.update_market_state("MEAN_REVERSION", 0.15)
         # 低波动 → 仓位更大
@@ -60,7 +60,7 @@ class TestDynamicLossBreakerRemoved:
 
     def test_dynamic_take_profit_still_works(self):
         """DynamicTakeProfit 保留（真实使用：动态止盈）"""
-        from lib.dynamic_exit import DynamicTakeProfit
+        from lib.risk.dynamic_exit import DynamicTakeProfit
         tp = DynamicTakeProfit()
         low_vol = tp.get_exit_levels(0.15)
         high_vol = tp.get_exit_levels(0.50)

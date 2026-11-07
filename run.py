@@ -130,12 +130,12 @@ def main():
 
             # === IC 面板构建 ===
             try:
-                from lib.ic.panel_builder import build_ic_panel, save_ic_panel
-                from lib.ic.ic_calculator import update_ic_history
-                from lib.ic.weight_adjuster import (
+                from lib.portfolio.panel_builder import build_ic_panel, save_ic_panel
+                from lib.portfolio.ic_calculator import update_ic_history
+                from lib.portfolio.weight_adjuster import (
                     compute_dynamic_weights, load_weights, maybe_restore_dynamic_weights
                 )
-                from lib.ic.ic_reporter import build_ic_report
+                from lib.portfolio.ic_reporter import build_ic_report
                 from config import get_config
 
                 # 构建 IC 面板（候选股列表从 results 获取）
@@ -172,8 +172,8 @@ def main():
 
             # === 组合优化 ===
             try:
-                from lib.portfolio_manager import PortfolioManager, StrategyConfig
-                from lib.portfolio_optimizer import PositionSizerConfig, RiskBudgetConfig
+                from lib.portfolio.portfolio_manager import PortfolioManager, StrategyConfig
+                from lib.portfolio.portfolio_optimizer import PositionSizerConfig, RiskBudgetConfig
 
                 # 构建每策略候选股 dict
                 strategy_candidates = {}
@@ -235,8 +235,8 @@ def run_score_mode(code, data_source="akshare"):
     """综合评分模式（四维真实数据）"""
     from scanner import get_stock_hist_multi_source, get_realtime_quotes
     from factors import compute_all_signals
-    from lib.technical_signals import calc_composite_verdict
-    from lib.scorer import (comprehensive_score, score_fundamental,
+    from lib.scoring.technical_signals import calc_composite_verdict
+    from lib.scoring.scorer import (comprehensive_score, score_fundamental,
                             score_capital_flow, score_news, score_technical,
                             calc_deviation_value, check_anomaly_threshold,
                             get_board_type)
@@ -329,7 +329,7 @@ def run_score_mode(code, data_source="akshare"):
 def run_dcf_mode(code, fcf=None, growth=None, discount=None,
                   terminal_growth=0.03, years=5, debt=0, cash=0, shares=1):
     """DCF 估值模式"""
-    from lib.dcf import dcf_valuation, sensitivity_matrix, margin_of_safety
+    from lib.scoring.dcf import dcf_valuation, sensitivity_matrix, margin_of_safety
 
     logger.info(f"DCF 估值: {code}")
 
@@ -396,7 +396,7 @@ def run_dcf_mode(code, fcf=None, growth=None, discount=None,
 
 def run_value_mode(code):
     """巴菲特评分模式"""
-    from lib.value_checklist import value_score, auto_score_financials
+    from lib.scoring.value_checklist import value_score, auto_score_financials
 
     logger.info(f"巴菲特评分: {code}")
     # 使用默认评分（人工判断维度用 3 分）
@@ -429,7 +429,7 @@ def run_value_mode(code):
 
 def run_earnings_mode():
     """财报日历模式"""
-    from lib.data_earnings import get_earnings_calendar, get_earnings_forecast
+    from lib.data.data_earnings import get_earnings_calendar, get_earnings_forecast
 
     logger.info("获取财报日历...")
     cal = get_earnings_calendar()
@@ -452,8 +452,8 @@ def run_earnings_mode():
 
 def run_anomaly_mode(code):
     """异常检测模式（接入多期财务数据）"""
-    from lib.data_tushare import get_financials, _to_ts_code
-    from lib.anomaly_detector import detect_anomalies, anomaly_summary
+    from lib.data.data_tushare import get_financials, _to_ts_code
+    from lib.monitoring.anomaly_detector import detect_anomalies, anomaly_summary
 
     logger.info(f"异常检测: {code}")
     ts_code = _to_ts_code(code)
@@ -464,7 +464,7 @@ def run_anomaly_mode(code):
 
     # 用 Tushare 获取多期财务数据
     try:
-        from lib.data_tushare import _get_pro
+        from lib.data.data_tushare import _get_pro
         pro = _get_pro()
         if pro is None:
             print("  Tushare 未配置（需要 TUSHARE_TOKEN），尝试用 akshare...")
@@ -561,8 +561,8 @@ def run_anomaly_mode(code):
 
 def _run_anomaly_akshare(code):
     """用 akshare 财报数据做简化异常检测"""
-    from lib.data_earnings import get_earnings_report
-    from lib.anomaly_detector import detect_anomalies, anomaly_summary
+    from lib.data.data_earnings import get_earnings_report
+    from lib.monitoring.anomaly_detector import detect_anomalies, anomaly_summary
 
     report = get_earnings_report()
     if report.empty:
@@ -597,7 +597,7 @@ def _run_anomaly_akshare(code):
 
 def run_macro_mode():
     """宏观数据监控模式"""
-    from lib.data_tushare import get_macro_cpi, get_macro_pmi, get_index_daily, _get_pro
+    from lib.data.data_tushare import get_macro_cpi, get_macro_pmi, get_index_daily, _get_pro
     from factors import calc_market_exposure
     import pandas as pd
 
@@ -706,7 +706,7 @@ def run_factor_evaluation():
     """
     from factors import compute_all_signals
     from scanner import get_stock_hist, get_realtime_quotes
-    from lib.evaluator import FactorEvaluator, EvalConfig
+    from lib.scoring.evaluator import FactorEvaluator, EvalConfig
     import pandas as pd
 
     logger.info("开始因子评价...")
@@ -859,7 +859,7 @@ def run_factor_evaluation():
 
 def _load_candidate_hist_data(candidates, days: int = 60) -> Dict[str, pd.DataFrame]:
     """加载候选股历史数据（简化版）"""
-    from lib.data_layer import get_stock_hist_multi_source
+    from lib.data.data_layer import get_stock_hist_multi_source
     hist_data = {}
     for c in candidates[:50]:  # 限制数量避免慢
         try:
@@ -873,7 +873,7 @@ def _load_candidate_hist_data(candidates, days: int = 60) -> Dict[str, pd.DataFr
 
 def _load_ic_stats() -> Dict:
     """读取 IC 统计（从 ic_history）"""
-    from lib.ic.ic_calculator import load_ic_history
+    from lib.portfolio.ic_calculator import load_ic_history
     history = load_ic_history()
     return {
         factor: data["stats"]
@@ -883,7 +883,7 @@ def _load_ic_stats() -> Dict:
 
 def run_rebalance_mode(preset: str, no_push: bool):
     """月频调仓模式 —— 集成退出规则"""
-    from lib.rebalance_scheduler import RebalanceScheduler, RebalanceConfig
+    from lib.strategy.rebalance_scheduler import RebalanceScheduler, RebalanceConfig
     from scanner import run_all_strategies
     from config import get_config
 
@@ -937,7 +937,7 @@ def run_rebalance_mode(preset: str, no_push: bool):
 
 def run_rebalance_status():
     """查看调仓状态"""
-    from lib.rebalance_scheduler import RebalanceScheduler
+    from lib.strategy.rebalance_scheduler import RebalanceScheduler
 
     scheduler = RebalanceScheduler()
     status = scheduler.get_status()

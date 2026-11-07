@@ -46,7 +46,7 @@ def scan_tdx_stocks(min_rows: int = 750, top_n: int = 100):
             code = fp.stem
             if not is_a_stock(code):
                 continue
-            # 关键：lib.data_tdx._to_tdx_market_code 期望纯 6 位代码（不带 sh/sz）
+            # 关键：lib.data.data_tdx._to_tdx_market_code 期望纯 6 位代码（不带 sh/sz）
             pure_code = code[2:] if code.startswith(('sh', 'sz')) else code
             try:
                 df = reader.get_df(str(fp))

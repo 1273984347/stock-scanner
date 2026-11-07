@@ -17,13 +17,13 @@ class TestEvaluateFitnessOOSSharpe:
 
     def test_oos_sharpe_weight_constant_exists(self):
         """P0-2 红: 应有 OOS_SHARPE_WEIGHT 常量"""
-        from lib.factor_optimizer import OOS_SHARPE_WEIGHT
+        from lib.scoring.factor_optimizer import OOS_SHARPE_WEIGHT
         assert isinstance(OOS_SHARPE_WEIGHT, (int, float))
         assert 0.0 < OOS_SHARPE_WEIGHT <= 1.0
 
     def test_oos_sharpe_in_fitness_penalizes_overfit(self):
         """P0-2 红: IS 高分 + OOS 低分 → 总 fitness 应被 OOS 拉低（避免过拟合）"""
-        from lib.factor_optimizer import evaluate_fitness, OOS_SHARPE_WEIGHT
+        from lib.scoring.factor_optimizer import evaluate_fitness, OOS_SHARPE_WEIGHT
 
         # 模拟：IS 跑得好，OOS 跑得差 → 应当 fitness 偏低
         call_count = {"n": 0}
@@ -70,7 +70,7 @@ class TestEvaluateFitnessOOSSharpe:
 
     def test_no_oos_when_oos_test_days_zero(self):
         """P0-2: oos_test_days=0 时不应触发 OOS 调用（backward compat）"""
-        from lib.factor_optimizer import evaluate_fitness
+        from lib.scoring.factor_optimizer import evaluate_fitness
 
         call_count = {"n": 0}
 
@@ -103,7 +103,7 @@ class TestEvaluateFitnessOOSSharpe:
 
     def test_fitness_lower_when_oos_underperforms(self):
         """P0-2: 对比测试 —— OOS 表现差时 fitness 应低于 OOS 表现好时"""
-        from lib.factor_optimizer import evaluate_fitness
+        from lib.scoring.factor_optimizer import evaluate_fitness
 
         weights = {"volume_ratio": 0.2, "adx": 0.2, "williams_r": 0.1,
                    "cci": 0.1, "rsi_14": 0.1, "trend_strength": 0.1,
@@ -147,7 +147,7 @@ class TestEvaluateFitnessOOSSharpe:
 
     def test_oos_sharpe_none_handled_gracefully(self):
         """P0-2: OOS backtest 返回 None 时不应让 fitness 整体崩溃"""
-        from lib.factor_optimizer import evaluate_fitness
+        from lib.scoring.factor_optimizer import evaluate_fitness
 
         call_count = {"n": 0}
 

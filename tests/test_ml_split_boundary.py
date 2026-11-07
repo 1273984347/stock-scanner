@@ -18,7 +18,7 @@ import pandas as pd
 import numpy as np
 import pytest
 
-from lib.ml_data import MLDataPipeline
+from lib.ml.ml_data import MLDataPipeline
 
 
 def _make_panel_with_forward_returns(n_dates=30, n_stocks=1):

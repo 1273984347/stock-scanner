@@ -22,7 +22,7 @@ from unittest.mock import patch, MagicMock
 import pandas as pd
 import pytest
 
-from lib.pipeline_core import steps as steps_mod
+from lib.strategy import steps as steps_mod
 
 
 # ─────────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ from lib.pipeline_core import steps as steps_mod
 
 def test_all_6_steps_importable():
     """C4 关键验证: 6 步均能 import, 不 ImportError (修 master P0 破损)"""
-    from lib.pipeline_core.steps import (
+    from lib.strategy.steps import (
         fetch_stock_data, calculate_factors,
         score_with_realtime, score_without_realtime,
         evaluate_with_judge_ml, check_offset_anomaly,
@@ -51,7 +51,7 @@ def test_all_6_steps_importable():
 
 def test_lib_pipeline_imports_via_lazy_pipeline_core():
     """C4 验证: lib/pipeline.py 的 lazy import 不再 ImportError"""
-    from lib.pipeline import get_stock_score  # lazy import 在函数体内, 此处只验 module 加载
+    from lib.strategy.pipeline import get_stock_score  # lazy import 在函数体内, 此处只验 module 加载
     # 真实调用会触发 lazy import — 用 mock 隔离
     # 因为 get_stock_score 需要 network, 这里只验证 import OK
     assert callable(get_stock_score)
@@ -107,9 +107,9 @@ def test_calculate_factors_empty_hist_returns_empty_dicts():
 def test_score_with_realtime_returns_dict():
     """score_with_realtime 应返 dict (含 score / rating)"""
     fake_row = pd.Series({"代码": "600519", "涨跌幅": 1.5})
-    # full_score 在函数体内 from lib.strategies import full_score
-    # mock 必须 patch 源位置 (lib.strategies.full_score)
-    with patch("lib.strategies.full_score",
+    # full_score 在函数体内 from lib.strategy.strategies import full_score
+    # mock 必须 patch 源位置 (lib.strategy.strategies.full_score)
+    with patch("lib.strategy.strategies.full_score",
                return_value={"score": 5.0, "rating": "buy"}):
         result = steps_mod.score_with_realtime("600519", pd.DataFrame({"close": [10]}), {}, fake_row)
     assert isinstance(result, dict)
@@ -119,11 +119,11 @@ def test_score_with_realtime_returns_dict():
 def test_score_without_realtime_returns_dict():
     """score_without_realtime 应返 dict (4 维综合分)"""
     # 这些函数在 steps.py 模块顶部 import, mock 源位置
-    with patch("lib.scorer.score_technical", return_value=5.0), \
-         patch("lib.scorer.score_fundamental", return_value=5.0), \
-         patch("lib.scorer.score_capital_flow", return_value=5.0), \
-         patch("lib.scorer.score_news", return_value=5.0), \
-         patch("lib.scorer.comprehensive_score", return_value={"score": 5.0, "rating": "buy"}):
+    with patch("lib.scoring.scorer.score_technical", return_value=5.0), \
+         patch("lib.scoring.scorer.score_fundamental", return_value=5.0), \
+         patch("lib.scoring.scorer.score_capital_flow", return_value=5.0), \
+         patch("lib.scoring.scorer.score_news", return_value=5.0), \
+         patch("lib.scoring.scorer.comprehensive_score", return_value={"score": 5.0, "rating": "buy"}):
         result = steps_mod.score_without_realtime("600519", {"momentum_5": 5, "momentum_20": 10})
     assert isinstance(result, dict)
 
@@ -134,8 +134,8 @@ def test_score_without_realtime_returns_dict():
 
 def test_evaluate_with_judge_ml_returns_dict_on_error():
     """judge_panel 抛异常 → 返空 dict (graceful degradation)"""
-    # JudgePanel 在函数体内 from lib.judge_panel import JudgePanel
-    with patch("lib.judge_panel.JudgePanel",
+    # JudgePanel 在函数体内 from lib.scoring.judge_panel import JudgePanel
+    with patch("lib.scoring.judge_panel.JudgePanel",
                side_effect=ImportError("judge_panel 不存在")):
         result = steps_mod.evaluate_with_judge_ml("600519", pd.DataFrame(), {}, {}, {})
     assert result == {}, f"judge_panel 失败应返空 dict, 实际 {result}"
@@ -143,7 +143,7 @@ def test_evaluate_with_judge_ml_returns_dict_on_error():
 
 def test_evaluate_with_judge_ml_no_ml_prediction_ok():
     """ml_prediction=None / {} 时, 仍能正常跑"""
-    with patch("lib.judge_panel.JudgePanel") as mock_panel:
+    with patch("lib.scoring.judge_panel.JudgePanel") as mock_panel:
         mock_instance = MagicMock()
         mock_panel.return_value = mock_instance
         mock_instance.evaluate_with_ml.return_value = {"verdict": "neutral"}

@@ -1,6 +1,6 @@
 """V8 Alpha 工厂测试"""
 import pytest
-from lib.alpha_factory import (
+from lib.scoring.alpha_factory import (
     AlphaFactory, AlphaRecord, AlphaEvaluation,
     LIFECYCLE_DISCOVERED, LIFECYCLE_EFFECTIVE, LIFECYCLE_CROWDED,
     LIFECYCLE_DECAYING, LIFECYCLE_DEAD,
@@ -155,7 +155,7 @@ class TestAlphaFactory:
         A 股 long-only 场景：负 IC 因子应被拒（不应取 abs）
         """
         import pandas as pd
-        from lib.alpha import AlphaSynthesizer
+        from lib.scoring.alpha import AlphaSynthesizer
         factory = self._make_factory(tmp_path)
 
         # 因子值与前向收益完全负相关 → rank_ic 应为负

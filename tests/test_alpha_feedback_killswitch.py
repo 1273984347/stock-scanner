@@ -13,7 +13,7 @@ sys.path.insert(0, '.')
 
 import pytest
 import logging
-from lib.alpha_feedback import AlphaFeedback
+from lib.scoring.alpha_feedback import AlphaFeedback
 
 
 def test_get_alpha_weights_returns_empty_dict_when_all_alphas_killed():
@@ -78,7 +78,7 @@ def test_kill_switch_logged_as_warning(caplog):
         feedback.record_trade(alpha_type="龙虎榜", pnl_pct=-0.05, regime="TREND_UP", sector="金融")
 
     # 验证 kill switch 触发并打 warning（不依赖 caplog，用直接验证）
-    from lib.alpha_feedback import logger as _af_logger
+    from lib.scoring.alpha_feedback import logger as _af_logger
     captured = []
     handler_id = _af_logger.addHandler(_CaptureHandler(captured))
     try:

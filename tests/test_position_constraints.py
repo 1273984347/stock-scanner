@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest
-from lib.position_manager import PositionManager, Position
+from lib.risk.position_manager import PositionManager, Position
 from trading_journal import TradeRecord, TradeAttribution, analyze_trade
 
 

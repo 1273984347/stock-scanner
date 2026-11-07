@@ -14,14 +14,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lib.kg_store import (
+from lib.scoring.kg_store import (
     Entity,
     EntityType,
     KGStore,
     Relation,
     RelationType,
 )
-from lib.kg_neo4j import Neo4JKGStore
+from lib.scoring.kg_neo4j import Neo4JKGStore
 
 
 # ── 5×3×50 真实 KG 构造 ────────────────────────────────────

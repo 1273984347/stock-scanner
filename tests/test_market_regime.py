@@ -2,8 +2,8 @@
 import pytest
 import numpy as np
 import pandas as pd
-import lib.market_regime as mr_module
-from lib.market_regime import (
+import lib.monitoring.market_regime as mr_module
+from lib.monitoring.market_regime import (
     detect_market_regime,
     get_regime_description,
     REGIME_STATES,

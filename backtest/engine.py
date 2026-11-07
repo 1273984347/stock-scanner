@@ -17,10 +17,10 @@ import numpy as np
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from lib.technical_signals import ema
-from lib.data_layer import get_index_hist
-from lib.data_source_registry import get_stock_hist_multi_source
-from lib.market_regime import detect_market_regime, TREND_DOWN, RISK_OFF
+from lib.scoring.technical_signals import ema
+from lib.data.data_layer import get_index_hist
+from lib.data.data_source_registry import get_stock_hist_multi_source
+from lib.monitoring.market_regime import detect_market_regime, TREND_DOWN, RISK_OFF
 from backtest.utils import compute_atr, add_indicators
 from config import COMMISSION_RATE, STAMP_DUTY_RATE, SLIPPAGE_RATE, MAX_POSITIONS
 
@@ -295,10 +295,10 @@ def _process_single_stock_engine(args):
         hs300_pvem_dict, hs300_ret_dict, config_dict, multi_signal_entry = args[:9]
     include_delisted = args[9] if len(args) > 9 else False
 
-    from lib.data_source_registry import get_stock_hist_multi_source as _get_hist
+    from lib.data.data_source_registry import get_stock_hist_multi_source as _get_hist
     from backtest.utils import add_indicators as _add_ind
     # P0-4 修复（2026-06-05）：活股数据不足时 fallback 到退市股数据
-    from lib.data_delisted import get_delisted_stock_hist
+    from lib.data.data_delisted import get_delisted_stock_hist
 
     trades = []
     try:
@@ -638,7 +638,7 @@ def run_backtest(
     # 限最多 50 只，避免退市池过大拖慢回测
     if include_delisted and parallel and len(stock_codes) > 100:
         try:
-            from lib.data_delisted import get_delisted_symbols
+            from lib.data.data_delisted import get_delisted_symbols
             delisted = list(get_delisted_symbols())[:50]
             if delisted:
                 # 去重 + 保留原顺序
@@ -672,7 +672,7 @@ def run_backtest(
     equity_curve = [(start_date, equity)]
 
     # 加载 HS300 做市场过滤（只用收盘>EMA21判断趋势）
-    from lib.data_layer import get_index_hist
+    from lib.data.data_layer import get_index_hist
     hs300 = get_index_hist('000300', days=days)
     hs300['EMA21'] = ema(hs300['close'], 21)
     hs300['date_str'] = hs300['date'].apply(
@@ -1016,7 +1016,7 @@ def run_backtest(
     alpha_feedback = {}
     alpha_weights = {}
     try:
-        from lib.alpha_feedback import AlphaFeedback
+        from lib.scoring.alpha_feedback import AlphaFeedback
         fb = AlphaFeedback()
         for trade in all_trades:
             # 简化归因：根据市场状态和退出原因推断 Alpha 类型
@@ -1039,7 +1039,7 @@ def run_backtest(
     # - daily_loss_limit / weekly_loss_limit：累计超限告警
     # - consecutive_loss（P1-2）：连续亏损 ≥5 笔 → 减仓告警
     try:
-        from lib.risk_manager import RiskManager
+        from lib.risk.risk_manager import RiskManager
         rm = RiskManager()
         # P0-2: 注册 executor 回调（之前默认空，3 类 action 都静默失败）
         # 回测场景下无可真实减仓，记录到 metrics 即视为"已执行"
@@ -1132,13 +1132,13 @@ def run_rebalance_backtest(
         factor_config: FactorConfig 实例，控制因子开关
     """
     from datetime import datetime, timedelta
-    from lib.broker import ABroker, Order
-    from lib.broker_data import Holding
+    from lib.data.broker import ABroker, Order
+    from lib.risk import Holding
     from config import get_config
-    from lib.position_size import RiskSizedPosition, PositionSizeConfig
-    from lib.risk_manager import RiskManager, RiskConfig
-    from lib.partial_exit import PartialExitManager, ConsecutiveLossBreaker
-    from lib.rebalance_scheduler import RebalanceScheduler, RebalanceConfig
+    from lib.risk.position_size import RiskSizedPosition, PositionSizeConfig
+    from lib.risk.risk_manager import RiskManager, RiskConfig
+    from lib.risk.partial_exit import PartialExitManager, ConsecutiveLossBreaker
+    from lib.strategy.rebalance_scheduler import RebalanceScheduler, RebalanceConfig
     from factors import compute_all_signals, calc_atr, compute_ic_weighted_score
     from backtest.core import get_stock_data, _compute_atr_for_position
 
@@ -1148,7 +1148,7 @@ def run_rebalance_backtest(
     # 获取数据（并行批量读取）
     market_data: Dict[str, pd.DataFrame] = {}
     try:
-        from lib.tdx_batch import batch_read_day_files
+        from lib.data.tdx_batch import batch_read_day_files
         raw_data = batch_read_day_files(symbols, days=days, max_workers=8)
         for sym, records in raw_data.items():
             if records and len(records) > 60:
@@ -1196,7 +1196,7 @@ def run_rebalance_backtest(
     risk_mgr = RiskManager(RiskConfig(max_drawdown_stop=0.20))
     partial_exit = PartialExitManager()
     # 动态退出管理器（根据市场状态调整出场天数）
-    from lib.dynamic_exit import DynamicExitManager
+    from lib.risk.dynamic_exit import DynamicExitManager
     dynamic_exit = DynamicExitManager(exit_days_map=exit_days_map)
     if disable_loss_breaker:
         # No-op loss breaker for factor comparison
@@ -1234,7 +1234,7 @@ def run_rebalance_backtest(
         # 检测市场状态（每 5 天更新一次，避免频繁计算）
         if i % 5 == 0:
             try:
-                from lib.market_regime import detect_market_regime_from_hs300
+                from lib.monitoring.market_regime import detect_market_regime_from_hs300
                 regime_result = detect_market_regime_from_hs300(days=60)
                 current_regime = regime_result.get("regime", "MEAN_REVERSION")
                 atr_ratio = regime_result.get("atr_ratio", 1.0)
@@ -1421,7 +1421,7 @@ def run_rebalance_backtest(
     if perf_df.empty:
         return None
 
-    from lib.analyzer import PerformanceAnalyzer
+    from lib.scoring.analyzer import PerformanceAnalyzer
     analyzer = PerformanceAnalyzer(perf_df)
     metrics = analyzer.analyze()
 

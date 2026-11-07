@@ -14,7 +14,7 @@
 
 import pytest
 
-from lib.data_utils import safe_div, to_float
+from lib.data.data_utils import safe_div, to_float
 
 
 # ========== 参考实现（搬迁前各模块的原文）============
@@ -153,10 +153,11 @@ def test_safe_div_equivalent_to_pre_refactor():
 
 def test_modules_expose_same_behaviour():
     """各数据源模块暴露的 _to_float / _safe_div 必须与参考版一致。"""
-    from lib import anomaly_detector, data_eastmoney_fin, data_eastmoney_fund
-    from lib import data_fund_flow, data_layer, data_sina_fin, data_tdx_fin_adapter
-    from lib import fundamental
-
+    from lib.monitoring import anomaly_detector
+    from lib.data import data_eastmoney_fin, data_eastmoney_fund
+    from lib.data import data_fund_flow, data_layer, data_sina_fin
+    from lib.scoring import data_tdx_fin_adapter
+    import lib.scoring.fundamental as fundamental
     live = [
         ("data_eastmoney_fin", data_eastmoney_fin._to_float, ref_to_float_eastmoney_fin),
         ("data_eastmoney_fund", data_eastmoney_fund._to_float, ref_to_float_eastmoney_fund),

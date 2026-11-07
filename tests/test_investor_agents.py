@@ -15,8 +15,8 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from lib.investor_agents import AgentPanel
-from lib.signal_tracker import (
+from lib.scoring.investor_agents import AgentPanel
+from lib.scoring.signal_tracker import (
     SignalTracker, SignalRecord, build_past_context,
     get_cached_tracker, invalidate_tracker_cache,
 )
@@ -29,7 +29,7 @@ from lib.signal_tracker import (
 @pytest.fixture
 def isolated_signal_dir(tmp_path, monkeypatch):
     """重定向 SIGNAL_LOG_DIR 到 tmp_path (signal_tracker 隔离)."""
-    import lib.signal_tracker as st
+    import lib.scoring.signal_tracker as st
     test_dir = tmp_path / "signals"
     test_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(st, "SIGNAL_LOG_DIR", test_dir)
@@ -119,7 +119,7 @@ class TestBorrow1AgentPanelCaller:
     ):
         """tracker 失败时 graceful 降级 (不阻塞 vote)."""
         panel = AgentPanel()
-        with patch("lib.signal_tracker.get_cached_tracker",
+        with patch("lib.scoring.signal_tracker.get_cached_tracker",
                    side_effect=IOError("simulated tracker failure")):
             result = panel.vote(hist_df, code="600519", data_factors=data_factors)
         assert "signal" in result

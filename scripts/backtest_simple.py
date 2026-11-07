@@ -11,9 +11,9 @@ import numpy as np
 from typing import List, Dict, Tuple
 from dataclasses import dataclass
 
-from lib.data_layer import get_index_hist
-from lib.data_source_registry import get_stock_hist_multi_source
-from lib.technical_signals import ema
+from lib.data.data_layer import get_index_hist
+from lib.data.data_source_registry import get_stock_hist_multi_source
+from lib.scoring.technical_signals import ema
 
 
 @dataclass
@@ -233,7 +233,7 @@ if __name__ == "__main__":
     print(r['monthly'].to_string())
 
     # 保存结果
-    from lib.backtest_saver import save_backtest_result
+    from lib.monitoring.backtest_saver import save_backtest_result
     trades_list = r.get('trades', [])
     if hasattr(trades_list, 'to_dict'):
         trades_list = trades_list.to_dict('records')

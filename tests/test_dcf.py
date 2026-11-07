@@ -1,7 +1,7 @@
 """DCF 估值模型测试"""
 import pytest
 import numpy as np
-from lib.dcf import dcf_valuation, sensitivity_matrix, margin_of_safety
+from lib.scoring.dcf import dcf_valuation, sensitivity_matrix, margin_of_safety
 
 
 class TestDCFValuation:

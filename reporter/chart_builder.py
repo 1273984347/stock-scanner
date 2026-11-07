@@ -239,7 +239,7 @@ def build_position_returns_chart(save_path: Path) -> Optional[str]:
         return None
 
     try:
-        from lib.position_manager import PositionManager
+        from lib.risk.position_manager import PositionManager
         from scanner import ScanOrchestrator
     except ImportError:
         return None

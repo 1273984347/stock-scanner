@@ -4,8 +4,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import numpy as np
 import pandas as pd
-from lib.broker import ABroker  # ABroker 在 lib/broker.py 中
-from lib.broker_data import Order, TradingConstraints  # 从子包 lib/broker_data/ 导入
+from lib.data.broker import ABroker  # ABroker 在 lib/broker.py 中
+from lib.risk import Order, TradingConstraints# 从子包 lib/broker_data/ 导入
 
 
 def _make_market_data(dates, close_vec, limit_up=False, limit_down=False,
@@ -147,7 +147,7 @@ def test_tdx_broker_holdings_no_attribute_error():
     任何访问 broker.holdings 的代码都会抛 AttributeError。
     修复：删除该 property，TDXBroker 走 _query_positions 路径查询实盘持仓。
     """
-    from lib.broker import TDXBroker
+    from lib.data.broker import TDXBroker
     broker = TDXBroker(account="test_account")
     # 修复后（推荐方案）：完全删除 holdings property
     # 调用方应改用 broker.get_positions() 走 _query_positions() 路径
@@ -174,7 +174,7 @@ def test_get_market_cap_no_lookahead():
     = 错误市值（数据穿越）。
     修复：完全回退到 volume 估算路径（sentinel = -2），不走 akshare 实时接口。
     """
-    import lib.broker as broker_mod
+    import lib.data.broker as broker_mod
 
     call_count = {"n": 0}
     original_func = broker_mod.ak.stock_individual_info_em
@@ -263,7 +263,7 @@ def test_paper_broker_uses_internal_lot_size():
     触发场景：max_single_weight 较紧，缩量结果在 [100, lot_size) 之间。
     修复后行为：PaperBroker 在缩量阶段就 floor 到 0，return None（不调 ABroker）。
     """
-    from lib.broker import PaperBroker
+    from lib.data.broker import PaperBroker
     broker = PaperBroker(
         account="test", initial_cash=1_000_000,
         max_single_weight=0.01,

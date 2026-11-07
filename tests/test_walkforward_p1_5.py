@@ -18,8 +18,8 @@ from unittest.mock import patch
 
 def test_walkforward_run_signature_accepts_adaptive_state():
     """P1-5: 修复后 run() 接受 adaptive_state 参数"""
-    from lib import walkforward
-    from lib.walkforward import WalkForwardBacktest, WalkForwardConfig
+    import lib.strategy.walkforward as walkforward
+    from lib.strategy.walkforward import WalkForwardBacktest, WalkForwardConfig
 
     sig = inspect.signature(WalkForwardBacktest.run)
     assert "adaptive_state" in sig.parameters, \
@@ -28,7 +28,7 @@ def test_walkforward_run_signature_accepts_adaptive_state():
 
 def test_walkforward_run_passes_adaptive_state_to_strategy():
     """P1-5: strategy_fn 调用时收到 adaptive_state"""
-    from lib.walkforward import WalkForwardBacktest, WalkForwardConfig
+    from lib.strategy.walkforward import WalkForwardBacktest, WalkForwardConfig
 
     strategy_calls = []
 
@@ -67,7 +67,7 @@ def test_walkforward_run_passes_adaptive_state_to_strategy():
 
 def test_walkforward_run_snapshots_state_per_window():
     """P1-5: 每个窗口的 adaptive_state 反映"窗口起点前的状态"（隔离）"""
-    from lib.walkforward import WalkForwardBacktest, WalkForwardConfig
+    from lib.strategy.walkforward import WalkForwardBacktest, WalkForwardConfig
     from unittest.mock import MagicMock
 
     # mock bayesian state 文件，模拟多次读
@@ -106,7 +106,7 @@ def test_walkforward_run_snapshots_state_per_window():
         return state
 
     # 这里 walkforward 内部应调用 snapshot/restore；测试期望 strategy 收到正确 snapshot
-    with patch.object(walkforward_module := sys.modules['lib.walkforward'],
+    with patch.object(walkforward_module := sys.modules['lib.strategy.walkforward'],
                       'Path', wraps=__import__('pathlib').Path):
         wf.run(
             strategy_fn=mock_strategy_fn,
@@ -119,7 +119,7 @@ def test_walkforward_run_snapshots_state_per_window():
 # 测试 source code 验证（不依赖运行结果）
 def test_walkforward_source_code_calls_strategy_with_adaptive_state():
     """P1-5: 验证 run() source code 在 strategy_fn 调用时传 adaptive_state"""
-    from lib import walkforward
+    import lib.strategy.walkforward as walkforward
     source = inspect.getsource(walkforward)
 
     # 找 run() 方法

@@ -57,7 +57,7 @@ app = FastAPI(title="A股量化交易系统", version="3.0.0")
 # ========== 横切层已抽离到 lib/api_core.py（RF-01 Phase 1 剩余）============
 # 认证 / 校验 / 缓存 / 安全头 / 异常处理 —— 代码逐字搬迁，行为不变。
 # api.py 侧保留同名引用（函数对象同一个）=> 旧 import 路径与端点签名均不变。
-from lib.api_core import (
+from lib.infra.api_core import (
     API_KEY_HEADER,
     CACHE_DIR,
     _cache_get,
@@ -68,8 +68,8 @@ from lib.api_core import (
     verify_api_key,
     verify_ws_token,
 )
-from lib.api_core import add_security_headers as _add_security_headers
-from lib.api_core import http_exception_handler as _http_exception_handler_impl
+from lib.infra.api_core import add_security_headers as _add_security_headers
+from lib.infra.api_core import http_exception_handler as _http_exception_handler_impl
 
 
 # P1-3 修复（2026-06-05）：全局 HTTPException handler
@@ -117,7 +117,7 @@ def _verify_api_key_on_startup():
 
 # 抽离到 lib/scan_task_registry.py（RF-01 Phase 1）：ALLOWED_PRESETS 是跨端点
 # 共享的 preset 集合，与 _scan_tasks 必须同处一个模块。
-from lib.scan_task_registry import ALLOWED_PRESETS
+from lib.infra.scan_task_registry import ALLOWED_PRESETS
 
 
 
@@ -138,7 +138,7 @@ async def track_performance(request: Request, call_next):
 # 拆分后仍须是**同一个对象**（只能原地 append/clear，不要重新赋值）。
 # 注意 _perf_file 刻意留在本模块：它的路径基准是 Path(__file__).parent，
 # 搬到 lib/ 会改变落盘目录 => 行为漂移。
-from lib.perf_metrics import _perf_metrics
+from lib.infra.perf_metrics import _perf_metrics
 _perf_file = Path(__file__).parent / "cache" / "perf_baseline.json"
 
 
@@ -195,7 +195,7 @@ async def add_security_headers(request: Request, call_next):
 # 缓存操作全局锁（保护 JSON 缓存文件的并发读写）
 
 # ========== 断路器（使用 lib/cache.py 统一实现）==========
-from lib.cache import CircuitBreaker
+from lib.data.cache import CircuitBreaker
 
 # 全局断路器实例
 circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=60)
@@ -241,7 +241,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 # ========== 统一入口 ==========
 
 from scanner import ScanOrchestrator
-from lib.broker import LRUCache
+from lib.data.broker import LRUCache
 
 # 编排器缓存（按 preset 缓存，避免重复创建，使用 LRU 限制内存占用）
 _orchestrator_cache = LRUCache(maxsize=16)
@@ -335,7 +335,7 @@ import threading
 
 # 扫描任务状态机已抽离到 lib/scan_task_registry.py（RF-01 Phase 1）——
 # /api/scan 与 /api/scan/status 共享同一份状态，拆分后必须仍是**同一个对象**。
-from lib.scan_task_registry import _scan_tasks
+from lib.infra.scan_task_registry import _scan_tasks
 
 
 def _run_scan_background(preset: str):
@@ -343,7 +343,7 @@ def _run_scan_background(preset: str):
     cache_key = f"scan_{preset}"
     _scan_tasks[preset] = {"status": "running", "started_at": time.time(), "error": None}
     try:
-        from lib.data_layer import get_realtime_quotes
+        from lib.data.data_layer import get_realtime_quotes
         get_realtime_quotes()
 
         orchestrator = _get_orchestrator(preset)
@@ -433,7 +433,7 @@ async def stock_detail(code: str, _=Security(verify_api_key)):
     """单股因子详情"""
     code = _validate_stock_code(code)
     from factors import compute_all_signals
-    from lib.technical_signals import calc_composite_verdict
+    from lib.scoring.technical_signals import calc_composite_verdict
 
     orchestrator = _get_orchestrator()
     hist = orchestrator.get_stock_hist(code, days=180)
@@ -468,7 +468,7 @@ async def market_overview(_=Security(verify_api_key)):
         return cached
 
     from factors import evaluate_macro_gate, calc_market_exposure
-    from lib.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
+    from lib.risk.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
 
     orchestrator = _get_orchestrator()
     sentiment = orchestrator.get_market_sentiment()
@@ -513,7 +513,7 @@ async def position_detail(code: str):
     """单只持仓详情"""
     code = _validate_stock_code(code)
     try:
-        from lib.position_manager import PositionManager
+        from lib.risk.position_manager import PositionManager
         from datetime import datetime as _dt
 
         pm = PositionManager()
@@ -581,7 +581,7 @@ async def position_detail(code: str):
 @app.get("/api/positions")
 async def positions(_=Security(verify_api_key)):
     """持仓概况"""
-    from lib.position_manager import PositionManager
+    from lib.risk.position_manager import PositionManager
     try:
         pm = PositionManager()
         orchestrator = _get_orchestrator()
@@ -605,8 +605,8 @@ async def positions(_=Security(verify_api_key)):
 async def position_distribution():
     """持仓分布（按行业分组）"""
     try:
-        from lib.position_manager import PositionManager
-        from lib.data_layer import get_stock_blocks
+        from lib.risk.position_manager import PositionManager
+        from lib.data.data_layer import get_stock_blocks
 
         pm = PositionManager()
         positions = pm.positions
@@ -653,7 +653,7 @@ async def risk_assessment(_=Security(verify_api_key)):
     if cached is not None:
         return cached
 
-    from lib.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
+    from lib.risk.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
     from factors import evaluate_macro_gate
 
     try:
@@ -672,7 +672,7 @@ async def risk_assessment(_=Security(verify_api_key)):
         # 尝试从持仓管理器获取实际资金
         total_value = 1_000_000  # 默认100万
         try:
-            from lib.position_manager import PositionManager
+            from lib.risk.position_manager import PositionManager
             pm = PositionManager()
             summary = pm.get_portfolio_summary({})
             total_value = summary.get("total_value", 1_000_000)
@@ -747,8 +747,8 @@ async def risk_exposure():
         return cached
 
     try:
-        from lib.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
-        from lib.position_manager import PositionManager
+        from lib.risk.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
+        from lib.risk.position_manager import PositionManager
 
         pm = PositionManager()
         positions = pm.positions
@@ -955,7 +955,7 @@ async def signal_accuracy(days: int = Query(default=30, ge=1, le=365)):
         return cached
 
     try:
-        from lib.signal_tracker import SignalTracker
+        from lib.scoring.signal_tracker import SignalTracker
         tracker = SignalTracker()
         tracker.update_actual_returns()
         summary = tracker.evaluate_signals(days=days)
@@ -991,7 +991,7 @@ async def signal_accuracy(days: int = Query(default=30, ge=1, le=365)):
 async def audit_history(limit: int = Query(default=20, ge=1, le=100)):
     """审计日志列表"""
     try:
-        from lib.audit_logger import get_scan_history
+        from lib.monitoring.audit_logger import get_scan_history
         return {"history": get_scan_history(limit)}
     except Exception as e:
         return {"history": [], "error": "服务暂时不可用"}
@@ -1001,7 +1001,7 @@ async def audit_history(limit: int = Query(default=20, ge=1, le=100)):
 async def audit_detail(scan_id: int):
     """某次扫描的审计详情"""
     try:
-        from lib.audit_logger import get_scan_detail
+        from lib.monitoring.audit_logger import get_scan_detail
         detail = get_scan_detail(scan_id)
         if not detail:
             raise HTTPException(status_code=404, detail="未找到该记录")
@@ -1125,7 +1125,7 @@ async def run_walkforward(
     """运行 Walk-Forward 滚动前推验证"""
     async with _wf_semaphore:
         try:
-            from lib.walkforward import WalkForwardBacktest, WalkForwardConfig, summarize_rounds
+            from lib.strategy.walkforward import WalkForwardBacktest, WalkForwardConfig, summarize_rounds
             from backtest.core import run_factor_backtest
 
             orchestrator = _get_orchestrator()
@@ -1284,8 +1284,8 @@ async def factor_evaluation(
     try:
         import numpy as np
         import pandas as pd
-        from lib.evaluator import FactorEvaluator, EvalConfig
-        from lib.alpha import AlphaSynthesizer
+        from lib.scoring.evaluator import FactorEvaluator, EvalConfig
+        from lib.scoring.alpha import AlphaSynthesizer
         from factors import compute_all_signals
 
         orchestrator = _get_orchestrator()
@@ -1392,7 +1392,7 @@ async def factor_scatter(
     """因子散点图数据"""
     try:
         from factors import compute_all_signals
-        from lib.data_layer import get_stock_hist
+        from lib.data.data_layer import get_stock_hist
         import numpy as np
 
         orchestrator = _get_orchestrator()
@@ -1470,8 +1470,8 @@ async def regime_history(days: int = Query(default=60, ge=10, le=365)):
         return cached
 
     try:
-        from lib.data_layer import get_index_hist
-        from lib.market_regime import detect_market_regime
+        from lib.data.data_layer import get_index_hist
+        from lib.monitoring.market_regime import detect_market_regime
 
         hs300 = get_index_hist("000300", days=days)
         if hs300.empty:
@@ -1516,7 +1516,7 @@ async def sector_heatmap(top_n: int = Query(default=50, ge=10, le=200)):
         return cached
 
     try:
-        from lib.sector_score import compute_sector_scores
+        from lib.strategy.sector_score import compute_sector_scores
 
         scores = compute_sector_scores(top_n=top_n)
 
@@ -1555,8 +1555,8 @@ async def kline_data(code: str, days: int = Query(default=120, ge=30, le=500)):
     code = _validate_stock_code(code)
     try:
         import pandas as pd
-        from lib.data_layer import get_stock_hist
-        from lib.technical_signals import ema
+        from lib.data.data_layer import get_stock_hist
+        from lib.scoring.technical_signals import ema
         from backtest.utils import compute_atr
 
         df = get_stock_hist(code, days=days)
@@ -1611,7 +1611,7 @@ async def trade_history(
 ):
     """交易历史"""
     try:
-        from lib.trade_logger import TradeLogger
+        from lib.monitoring.trade_logger import TradeLogger
         tl = TradeLogger()
         trades = tl.get_recent_trades(days=days)
 
@@ -1640,7 +1640,7 @@ async def trade_history(
 async def export_positions():
     """导出持仓为 CSV"""
     try:
-        from lib.position_manager import PositionManager
+        from lib.risk.position_manager import PositionManager
         pm = PositionManager()
         positions = pm.positions
 
@@ -1683,7 +1683,7 @@ async def export_positions():
 async def export_trades(days: int = Query(default=30, ge=1, le=365)):
     """导出交易历史为 CSV"""
     try:
-        from lib.trade_logger import TradeLogger
+        from lib.monitoring.trade_logger import TradeLogger
         tl = TradeLogger()
         trades = tl.get_recent_trades(days=days)
 
@@ -1718,7 +1718,7 @@ async def export_trades(days: int = Query(default=30, ge=1, le=365)):
 async def export_positions_excel():
     """导出持仓为 Excel"""
     try:
-        from lib.position_manager import PositionManager
+        from lib.risk.position_manager import PositionManager
         from openpyxl import Workbook
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
@@ -1792,7 +1792,7 @@ async def export_positions_excel():
 async def export_trades_excel(days: int = Query(default=30, ge=1, le=365)):
     """导出交易历史为 Excel"""
     try:
-        from lib.trade_logger import TradeLogger
+        from lib.monitoring.trade_logger import TradeLogger
         from openpyxl import Workbook
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
@@ -1932,7 +1932,7 @@ async def return_attribution(days: int = Query(default=30, ge=1, le=365)):
         return cached
 
     try:
-        from lib.trade_logger import TradeLogger
+        from lib.monitoring.trade_logger import TradeLogger
         import numpy as np
 
         tl = TradeLogger()
@@ -1979,7 +1979,7 @@ async def factor_contribution(days: int = Query(default=30, ge=1, le=365)):
         return cached
 
     try:
-        from lib.signal_tracker import SignalTracker
+        from lib.scoring.signal_tracker import SignalTracker
         import numpy as np
 
         tracker = SignalTracker()
@@ -2087,7 +2087,7 @@ async def save_settings(request: Request, _=Security(verify_api_key)):
 async def factor_ic_history(days: int = Query(60, ge=10, le=365)):
     """因子 IC 时间序列 — 每个因子的 IC 值随时间变化"""
     try:
-        from lib.signal_tracker import SignalTracker
+        from lib.scoring.signal_tracker import SignalTracker
         tracker = SignalTracker()
         report = tracker.evaluate_signals(days=days)
         # 生成模拟 IC 时间序列（基于信号数据）
@@ -2109,7 +2109,7 @@ async def factor_ic_history(days: int = Query(60, ge=10, le=365)):
 async def signals_accuracy_trend(days: int = Query(90, ge=14, le=365)):
     """信号准确率趋势 — 按周/月统计准确率变化"""
     try:
-        from lib.signal_tracker import SignalTracker
+        from lib.scoring.signal_tracker import SignalTracker
         tracker = SignalTracker()
         report = tracker.evaluate_signals(days=days)
         # 按周分组统计
@@ -2136,7 +2136,7 @@ async def signals_accuracy_trend(days: int = Query(90, ge=14, le=365)):
 async def risk_correlation():
     """持仓相关性矩阵 — 风险热力图数据"""
     try:
-        from lib.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
+        from lib.risk.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
         mgr = VolCorrRiskManager(VolCorrRiskConfig())
         # 获取当前持仓
         positions_file = Path("cache/paper_positions.json")
@@ -2166,7 +2166,7 @@ async def risk_correlation():
 async def sector_flow(top_n: int = Query(20, ge=5, le=50)):
     """板块资金流向 — 桑基图数据"""
     try:
-        from lib.data_layer import _load_cache
+        from lib.data.data_layer import _load_cache
         import numpy as np
         sectors_data = _load_cache("sectors/sector_scores", max_age_hours=24)
         if sectors_data is None or (hasattr(sectors_data, 'empty') and sectors_data.empty):
@@ -2233,7 +2233,7 @@ async def strategy_save(request: Request):
 async def strategy_recommend(symbols: str = Query("", description="股票代码，逗号分隔")):
     """最优参数推荐 — 基于 GA 优化推荐参数组合"""
     try:
-        from lib.factor_optimizer import FactorOptimizer
+        from lib.scoring.factor_optimizer import FactorOptimizer
         symbol_list = [s.strip() for s in symbols.split(",") if s.strip()] if symbols else ["600519", "000858"]
         optimizer = FactorOptimizer()
         # 快速评估当前权重
@@ -2254,10 +2254,10 @@ async def strategy_recommend(symbols: str = Query("", description="股票代码�
 async def sector_flow(top_n: int = Query(20, ge=5, le=50)):
     """板块资金流向 — 桑基图数据"""
     try:
-        from lib.sector_rotation import SectorMomentum
+        from lib.strategy.sector_rotation import SectorMomentum
         sm = SectorMomentum()
         # 获取板块数据
-        from lib.data_layer import _load_cache
+        from lib.data.data_layer import _load_cache
         import numpy as np
         sectors_data = _load_cache("sectors/sector_scores", max_age_hours=24)
         if sectors_data is None or (hasattr(sectors_data, 'empty') and sectors_data.empty):
@@ -2372,7 +2372,7 @@ async def _get_ws_data():
         # 持仓盈亏（从 PositionManager 读取）
         position_pnl = {}
         try:
-            from lib.position_manager import PositionManager
+            from lib.risk.position_manager import PositionManager
             pm = PositionManager()
             if pm.positions:
                 # 获取实时行情
@@ -2522,7 +2522,7 @@ async def ab_test_run(request: Request):
         group_b = body.get("group_b", {"name": "优化", "stop_loss": 3.0})
         num_runs = body.get("num_runs", 10)
 
-        from lib.ab_testing import ab_tester, ABTestConfig
+        from lib.strategy.ab_testing import ab_tester, ABTestConfig
         config = ABTestConfig(
             symbols=symbols,
             days=days,
@@ -2602,7 +2602,7 @@ async def strategy_snapshot_save(request: Request):
         description = body.get("description", "")
         params = body.get("params")
 
-        from lib.strategy_snapshot import snapshot_manager
+        from lib.strategy.strategy_snapshot import snapshot_manager
         snapshot = snapshot_manager.save(name, description, params)
 
         return {
@@ -2619,7 +2619,7 @@ async def strategy_snapshot_save(request: Request):
 async def strategy_snapshots_list():
     """列出所有策略快照"""
     try:
-        from lib.strategy_snapshot import snapshot_manager
+        from lib.strategy.strategy_snapshot import snapshot_manager
         snapshots = snapshot_manager.list()
 
         return {
@@ -2643,7 +2643,7 @@ async def strategy_snapshots_list():
 async def strategy_snapshot_apply(snapshot_id: str):
     """恢复策略快照"""
     try:
-        from lib.strategy_snapshot import snapshot_manager
+        from lib.strategy.strategy_snapshot import snapshot_manager
         config = snapshot_manager.restore(snapshot_id)
         return {"status": "applied", "config": config}
     except ValueError as e:
@@ -2657,7 +2657,7 @@ async def strategy_snapshot_apply(snapshot_id: str):
 async def strategy_snapshot_delete(snapshot_id: str):
     """删除策略快照"""
     try:
-        from lib.strategy_snapshot import snapshot_manager
+        from lib.strategy.strategy_snapshot import snapshot_manager
         success = snapshot_manager.delete(snapshot_id)
         if not success:
             raise HTTPException(status_code=404, detail="Snapshot not found")
@@ -2673,7 +2673,7 @@ async def strategy_snapshot_delete(snapshot_id: str):
 async def strategy_ranking():
     """策略性能排行"""
     try:
-        from lib.strategy_ranking import strategy_ranker
+        from lib.strategy.strategy_ranking import strategy_ranker
         ranking = strategy_ranker.get_ranking()
         return {"ranking": ranking}
     except Exception as e:
@@ -2685,7 +2685,7 @@ async def strategy_ranking():
 async def export_pdf():
     """生成 PDF 报告"""
     try:
-        from lib.pdf_report import pdf_generator
+        from lib.infra.pdf_report import pdf_generator
 
         # 收集数据
         dashboard = _cache_get("dashboard", max_age=3600) or {}
@@ -2723,7 +2723,7 @@ async def export_pdf():
 async def export_pdf_status():
     """检查 PDF 导出功能是否可用"""
     try:
-        from lib.pdf_report import HAS_REPORTLAB, HAS_MATPLOTLIB
+        from lib.infra.pdf_report import HAS_REPORTLAB, HAS_MATPLOTLIB
         return {
             "available": HAS_REPORTLAB,
             "charts": HAS_MATPLOTLIB,
@@ -2989,8 +2989,7 @@ async def get_notifications(
 ):
     """获取通知历史（支持搜索）"""
     try:
-        from lib.notification_logger import notification_logger
-
+        import lib.monitoring.notification_logger as notification_logger
         # 获取所有通知
         notifications = notification_logger.get_notifications(limit=1000)
 
@@ -3033,8 +3032,7 @@ async def get_notifications(
 async def get_notification_stats():
     """获取通知统计"""
     try:
-        from lib.notification_logger import notification_logger
-
+        import lib.monitoring.notification_logger as notification_logger
         notifications = notification_logger.get_notifications(limit=10000)
 
         # 按类型统计

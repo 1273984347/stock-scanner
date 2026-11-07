@@ -8,7 +8,7 @@ import numpy as np
 class TestMultiPeriodKDJ:
     def test_compute_basic(self):
         """基本功能：返回 MultiPeriodKDJResult"""
-        from lib.multi_period_kdj import compute_multi_period_kdj
+        from lib.strategy.multi_period_kdj import compute_multi_period_kdj
         # 构造上升趋势数据
         n = 100
         close = pd.Series(np.linspace(10, 20, n) + np.random.normal(0, 0.3, n))
@@ -25,7 +25,7 @@ class TestMultiPeriodKDJ:
 
     def test_resonance_bullish(self):
         """温和上升趋势：共振偏多"""
-        from lib.multi_period_kdj import compute_multi_period_kdj
+        from lib.strategy.multi_period_kdj import compute_multi_period_kdj
         n = 100
         # 温和上升 + 回调，避免 KDJ 超买钝化
         base = np.linspace(10, 15, n)
@@ -40,7 +40,7 @@ class TestMultiPeriodKDJ:
 
     def test_resonance_bearish(self):
         """下降趋势：共振偏空"""
-        from lib.multi_period_kdj import compute_multi_period_kdj
+        from lib.strategy.multi_period_kdj import compute_multi_period_kdj
         n = 100
         close = pd.Series(np.linspace(30, 10, n))
         high = close + 0.5
@@ -51,7 +51,7 @@ class TestMultiPeriodKDJ:
 
     def test_resonance_neutral(self):
         """震荡数据：中性区间"""
-        from lib.multi_period_kdj import compute_multi_period_kdj
+        from lib.strategy.multi_period_kdj import compute_multi_period_kdj
         n = 100
         close = pd.Series(15 + np.sin(np.linspace(0, 10, n)) * 2)
         high = close + 0.3
@@ -63,7 +63,7 @@ class TestMultiPeriodKDJ:
 
     def test_turn_detection(self):
         """拐头检测"""
-        from lib.multi_period_kdj import _detect_turn
+        from lib.strategy.multi_period_kdj import _detect_turn
         # 构造 J 值序列：先降后升（低位拐头）
         j_series = pd.Series([50, 30, 15, 10, 8, 12, 18])
         turn = _detect_turn(j_series)
@@ -71,7 +71,7 @@ class TestMultiPeriodKDJ:
 
     def test_insufficient_data(self):
         """数据不足：不崩溃"""
-        from lib.multi_period_kdj import compute_multi_period_kdj
+        from lib.strategy.multi_period_kdj import compute_multi_period_kdj
         close = pd.Series([10.0, 10.5, 11.0])
         high = close + 0.2
         low = close - 0.2

@@ -21,7 +21,7 @@ import pytest
 
 def test_get_financial_data_has_as_of_date_param():
     """P1-2: _get_financial_data 必须接受 as_of_date 参数"""
-    from lib.data_layer import _get_financial_data
+    from lib.data.data_layer import _get_financial_data
     sig = inspect.signature(_get_financial_data)
     assert "as_of_date" in sig.parameters, \
         f"_get_financial_data 必须有 as_of_date 参数，当前参数: {list(sig.parameters.keys())}"
@@ -33,8 +33,8 @@ def test_get_financial_data_raises_when_no_as_of_date():
     旧 P1-2 行为是 warning (但被忽略导致 backtest 误用)
     新 P0 #1 行为: 硬 raise, 防止误用, 强制 caller 显式传 as_of_date 或改用 get_stock_fundamentals_lite()
     """
-    from lib import data_layer
-    from lib.data_cache import FinancialCache
+    import lib.data.data_layer as data_layer
+    from lib.data.data_cache import FinancialCache
 
     # 用 mock cache 避免网络
     fake_cache = FinancialCache(memory_ttl=300, disk_ttl=604800)
@@ -56,8 +56,8 @@ def test_get_financial_data_no_warning_with_as_of_date():
     注意：仍可能因其他原因打 warning（如数据源失败），所以只检查
     'backtest'/'未来信息'/'snapshot' 类型的警告**不**出现
     """
-    from lib import data_layer
-    from lib.data_cache import FinancialCache
+    import lib.data.data_layer as data_layer
+    from lib.data.data_cache import FinancialCache
 
     fake_cache = FinancialCache(memory_ttl=300, disk_ttl=604800)
     with patch.object(data_layer, "_financial_cache", fake_cache):

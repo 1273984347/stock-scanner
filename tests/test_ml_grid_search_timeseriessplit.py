@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import pytest
 
-from lib.ml_trainer import _TimeSeriesSplitWithEmbargo
+from lib.ml.ml_trainer import _TimeSeriesSplitWithEmbargo
 
 
 def _make_panel(n_dates=120, n_features=5):
@@ -86,8 +86,7 @@ def test_xgb_lgb_uses_timeseriessplit_not_kfold():
     通过直接检查 ml_trainer.py 源码（防止回退到 nfold=3）
     """
     import inspect
-    from lib import ml_trainer
-
+    import lib.ml.ml_trainer as ml_trainer
     src = inspect.getsource(ml_trainer)
     # 找所有 cv() 调用（xgb.cv 和 lgb.cv）
     # 实际参数应该是 folds=... 不应该是 nfold=3
@@ -105,8 +104,7 @@ def test_xgb_lgb_uses_timeseriessplit_not_kfold():
 def test_xgb_lgb_cv_uses_folds_timeseriessplit():
     """P0-5: xgb.cv / lgb.cv 调用应使用 folds=TimeSeriesSplit-like 参数"""
     import re
-    from lib import ml_trainer
-
+    import lib.ml.ml_trainer as ml_trainer
     # 按行检查：去掉注释行（包括 docstring 中的）
     src = open(ml_trainer.__file__, encoding='utf-8').read()
     in_docstring = False

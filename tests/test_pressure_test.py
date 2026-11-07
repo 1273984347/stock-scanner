@@ -12,7 +12,7 @@ class TestSlippageImpact:
 
     def _simulate_trade(self, slippage, price=100, shares=10000):
         """模拟一笔完整买入持有卖出交易"""
-        from lib.broker import ABroker, Order
+        from lib.data.broker import ABroker, Order
         broker = ABroker(initial_cash=1_000_000, slippage=slippage)
         dates = ["2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08", "2026-01-09"]
         broker.set_trade_dates(dates)
@@ -83,7 +83,7 @@ class TestSlippageImpact:
 
     def test_zero_slippage_no_impact(self):
         """零滑点时买入/卖出价等于基准价"""
-        from lib.broker import ABroker, Order
+        from lib.data.broker import ABroker, Order
         broker = ABroker(initial_cash=1_000_000, slippage=0.0)
         broker.set_trade_dates(["2026-01-05", "2026-01-09"])
         records = [{

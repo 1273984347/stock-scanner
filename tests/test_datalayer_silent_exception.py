@@ -20,7 +20,7 @@ def test_pytdx_connection_failure_logs_warning():
     验证修复后 source code 包含 logger.warning（不靠 caplog 捕获）
     """
     import inspect
-    from lib import data_layer
+    import lib.data.data_layer as data_layer
     source = inspect.getsource(data_layer)
 
     # 找 pytdx 连接代码段
@@ -44,7 +44,7 @@ def test_pytdx_exception_is_not_silently_swallowed():
     """P1-1: 验证修复后 - pytdx 异常不会被 'except Exception: continue' 静默吞掉"""
     # 直接读 lib/data_layer.py:520 附近代码
     import inspect
-    from lib import data_layer
+    import lib.data.data_layer as data_layer
     source = inspect.getsource(data_layer)
 
     # 不应有 "except Exception: continue" 这种模式
@@ -63,7 +63,7 @@ def test_pytdx_exception_is_not_silently_swallowed():
 def test_pytdx_exception_caught_with_logger():
     """P1-1: pytdx 异常被捕获时伴随 logger.warning"""
     import inspect
-    from lib import data_layer
+    import lib.data.data_layer as data_layer
     source = inspect.getsource(data_layer)
 
     # 在 pytdx 连接相关代码段中，必须有 logger.warning 或 logger.debug

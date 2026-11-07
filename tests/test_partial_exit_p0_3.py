@@ -18,7 +18,7 @@ class TestConsecutiveLossBreakerPurity:
 
     def _make_stopped_breaker(self):
         """构造一个已进入冷却期的熔断器"""
-        from lib.partial_exit import ConsecutiveLossBreaker
+        from lib.risk.partial_exit import ConsecutiveLossBreaker
         cb = ConsecutiveLossBreaker(stop_threshold=3, cooldown_days=5)
         # 3 笔亏损触发熔断
         cb.record_trade("000001", -0.05, "2026-01-01")

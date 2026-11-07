@@ -153,14 +153,14 @@ def _blocked_socket():
 @contextlib.contextmanager
 def pinned_environment():
     """pin 数据源 + as_of_date + 阻断网络。"""
-    import lib.data_source_registry as reg
+    import lib.data.data_source_registry as reg
 
     old_priority = list(reg.DATA_SOURCE_PRIORITY)
     old_adj = list(getattr(reg, "DATA_SOURCE_PRIORITY_ADJUSTED", []))
     reg.DATA_SOURCE_PRIORITY = list(PIN_DATA_SOURCES)
     reg.DATA_SOURCE_PRIORITY_ADJUSTED = list(PIN_DATA_SOURCES)
 
-    import lib.data_layer as dl
+    import lib.data.data_layer as dl
     had_dl = hasattr(dl, "DATA_SOURCE_PRIORITY")
     old_dl = list(getattr(dl, "DATA_SOURCE_PRIORITY", []))
     if had_dl:
@@ -311,7 +311,7 @@ def compare(old, new, path="") -> list:
 @contextlib.contextmanager
 def _inject_shared_data(codes):
     """把**同一份**数据注入取数层 —— 双方共享对象，不各自取数。"""
-    import lib.pipeline_core.steps as steps
+    import lib.strategy.steps as steps
     import backtest.core as btcore
 
     hist_map = {c: synth_ohlcv(c) for c in codes}
@@ -340,7 +340,7 @@ def _inject_shared_data(codes):
             out["pre_close"] = out["close"].shift(1)
             out["pre_close"] = out["pre_close"].fillna(out["close"])
         try:
-            from lib.broker import ABroker
+            from lib.data.broker import ABroker
             limit_pct = ABroker.get_limit_pct(symbol)
         except Exception:
             limit_pct = 0.1
@@ -373,8 +373,8 @@ class _StubML:
 
 
 def capture_score(code: str = "600519") -> dict:
-    from lib.pipeline import get_stock_score
-    import lib.pipeline_core.steps as steps
+    from lib.strategy.pipeline import get_stock_score
+    import lib.strategy.steps as steps
 
     orig_ml = steps.MLPredictor
     steps.MLPredictor = _StubML
@@ -385,8 +385,8 @@ def capture_score(code: str = "600519") -> dict:
 
 
 def capture_scan(symbols=None, preset: str = "balanced") -> dict:
-    from lib.pipeline import run_all_strategies
-    import lib.pipeline as pipeline
+    from lib.strategy.pipeline import run_all_strategies
+    import lib.strategy.pipeline as pipeline
 
     symbols = symbols or ["600519", "000001", "000858"]
     # 策略层返回确定性 DataFrame（对拍的是编排与字段契约，不测取数）
@@ -401,17 +401,17 @@ def capture_scan(symbols=None, preset: str = "balanced") -> dict:
         "get_zt_candidates", "get_volume_breakout_candidates", "get_hot_board_candidates",
         "get_lhb_candidates", "get_multi_factor_candidates",
     ]
-    # patch 目标必须是**使用方** lib.pipeline 的模块属性：
+    # patch 目标必须是**使用方** lib.strategy.pipeline 的模块属性：
     # lib/pipeline.py:23 是模块级 from-import，已绑定引用
-    # => 改 lib.strategies 不生效（与 portalocker 同构的教训）。
+    # => 改 lib.strategy.strategies 不生效（与 portalocker 同构的教训）。
     saved = {n: getattr(pipeline, n) for n in names if hasattr(pipeline, n)}
     for n in saved:
         setattr(pipeline, n, lambda *a, **k: stub.copy())
 
     # 市场状态检测：无本地行情数据时会判 TREND_DOWN -> run_all_strategies 直接 return {}
     # （对拍退化成"空 vs 空"，毫无价值）=> 固定为 TREND_UP，保证产出确定性候选
-    # lib/pipeline.py:26 是**模块级** import => 只需替换 lib.pipeline 上的引用。
-    # 绝不能改 lib.market_regime 模块本身（那里还有别的调用点期望不同返回结构）。
+    # lib/pipeline.py:26 是**模块级** import => 只需替换 lib.strategy.pipeline 上的引用。
+    # 绝不能改 lib.monitoring.market_regime 模块本身（那里还有别的调用点期望不同返回结构）。
     fixed_regime = {
         "regime": "TREND_UP",
         "confidence": 0.8,

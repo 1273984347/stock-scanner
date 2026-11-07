@@ -18,7 +18,7 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from lib.constraints import (
+from lib.risk.selection_constraints import (
     DeterministicConstraints,
     Constraint,
     ConstraintLevel,

@@ -20,12 +20,12 @@ from pathlib import Path
 import time
 import logging
 
-from lib.broker import ABroker, Order, TradingConstraints
-from lib.broker_data import Holding
-from lib.analyzer import PerformanceAnalyzer
-from lib.position_size import RiskSizedPosition, PositionSizeConfig, atr_risk_size
-from lib.risk_manager import RiskManager, RiskConfig
-from lib.partial_exit import PartialExitManager, ConsecutiveLossBreaker
+from lib.data.broker import ABroker, Order, TradingConstraints
+from lib.risk import Holding
+from lib.scoring.analyzer import PerformanceAnalyzer
+from lib.risk.position_size import RiskSizedPosition, PositionSizeConfig, atr_risk_size
+from lib.risk.risk_manager import RiskManager, RiskConfig
+from lib.risk.partial_exit import PartialExitManager, ConsecutiveLossBreaker
 from factors import compute_all_signals, calc_atr
 
 logger = logging.getLogger(__name__)
@@ -145,7 +145,7 @@ def _fetch_stock_data_impl(symbol: str, days: int) -> pd.DataFrame:
         )
         _survivorship_warned = True
 
-    from lib.data_layer import get_stock_hist_multi_source, AllDataSourcesFailedError
+    from lib.data.data_layer import get_stock_hist_multi_source, AllDataSourcesFailedError
     try:
         df = get_stock_hist_multi_source(symbol, days=days, source="auto", prefer_adjusted=True)
     except AllDataSourcesFailedError as e:
@@ -233,7 +233,7 @@ def run_factor_backtest(
     # 可选：加入退市股票数据（缓解幸存者偏差）
     if include_delisted:
         try:
-            from lib.data_delisted import get_all_delisted_hist, merge_with_delisted
+            from lib.data.data_delisted import get_all_delisted_hist, merge_with_delisted
             delisted_data = get_all_delisted_hist(days=days, max_stocks=30)
             if delisted_data:
                 market_data = merge_with_delisted(market_data, delisted_data)
@@ -493,7 +493,7 @@ def run_factor_backtest(
         bt_start_str = str(bt_start.date()) if hasattr(bt_start, 'date') else str(bt_start)
         bt_end_str = str(bt_end.date()) if hasattr(bt_end, 'date') else str(bt_end)
 
-        from lib.data_layer import get_index_hist
+        from lib.data.data_layer import get_index_hist
         idx_df = get_index_hist("000300", days=500)
         if not idx_df.empty and "close" in idx_df.columns:
             date_col = "date" if "date" in idx_df.columns else "trade_date"
@@ -555,7 +555,7 @@ def run_walk_forward(
     strategy_name: str = "factor_strategy",
 ) -> Dict:
     """Walk-forward 验证"""
-    from lib.walkforward import (WalkForwardBacktest, WalkForwardConfig,
+    from lib.strategy.walkforward import (WalkForwardBacktest, WalkForwardConfig,
                                   summarize_rounds, save_walkforward_results)
 
     # 获取数据
@@ -642,8 +642,8 @@ def run_mvp_backtest(
     Returns:
         回测指标 dict（胜率/盈亏比/最大回撤/Sharpe/连亏次数）
     """
-    from lib.data_layer import get_stock_hist_multi_source
-    from lib.market_regime import detect_market_regime_from_hs300
+    from lib.data.data_layer import get_stock_hist_multi_source
+    from lib.monitoring.market_regime import detect_market_regime_from_hs300
 
     results = {}
     all_trades = []
@@ -651,7 +651,7 @@ def run_mvp_backtest(
     # 获取 HS300 数据（用于市场过滤）
     hs300_hist = None
     try:
-        from lib.data_layer import get_index_hist
+        from lib.data.data_layer import get_index_hist
         hs300_hist = get_index_hist("000300", days=days)
     except Exception:
         pass

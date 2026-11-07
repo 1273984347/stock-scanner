@@ -20,8 +20,8 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import json
 
-from lib.data_layer import get_index_hist, get_stock_hist
-from lib.technical_signals import ema
+from lib.data.data_layer import get_index_hist, get_stock_hist
+from lib.scoring.technical_signals import ema
 
 
 # ============================================================

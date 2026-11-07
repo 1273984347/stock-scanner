@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from pydantic import BaseModel
 
-from lib.llm_utils.structured import bind_structured, invoke_structured_or_freetext
+from lib.infra.llm_structured import bind_structured, invoke_structured_or_freetext
 
 
 class MockSchema(BaseModel):

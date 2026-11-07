@@ -19,8 +19,8 @@ import pandas as pd
 import pytest
 from unittest.mock import patch, MagicMock
 
-from lib.broker import ABroker, PaperBroker, LiveBrokerABC, TDXBroker
-from lib.broker_data import Order
+from lib.data.broker import ABroker, PaperBroker, LiveBrokerABC, TDXBroker
+from lib.risk import Order
 
 
 # 通用：构造单日市场数据

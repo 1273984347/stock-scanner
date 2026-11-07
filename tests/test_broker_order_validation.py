@@ -14,8 +14,8 @@ os.environ['NO_VERIFY_TDX'] = '1'
 
 import pytest
 
-from lib.broker import validate_order, LiveBrokerABC
-from lib.broker_data.datatypes import Order
+from lib.data.broker import validate_order, LiveBrokerABC
+from lib.risk.datatypes import Order
 
 
 # ─────────────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ def test_validate_order_type_errors_raises():
 
 def test_paper_broker_submit_order_invalid_returns_none():
     """PaperBroker.submit_order 收到非法 Order → 返 None (不 crash)"""
-    from lib.broker import PaperBroker
+    from lib.data.broker import PaperBroker
 
     paper = PaperBroker(initial_cash=100000)
     # 注: PaperBroker._connected 默认 True (initialize)
@@ -114,8 +114,8 @@ def test_paper_broker_submit_order_invalid_returns_none():
 def test_live_broker_abc_submit_order_invalid_logs_error():
     """LiveBrokerABC.submit_order 收到非法 Order → log error + 返 None"""
     from unittest.mock import patch
-    from lib import broker as broker_mod
-    from lib.broker import PaperBroker
+    import lib.data.broker as broker_mod
+    from lib.data.broker import PaperBroker
 
     paper = PaperBroker(initial_cash=100000)
     # 注: PaperBroker._connected 需为 True 才能走到 validate_order

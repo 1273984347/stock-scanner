@@ -35,7 +35,7 @@ class TestWeeklyResetCrossWeek:
         修复前：weekday()==1 != 0 → 不重置，上周累计被错算
         修复后：isocalendar().week 不同 → 重置
         """
-        from lib.risk_manager import RiskManager, RiskConfig
+        from lib.risk.risk_manager import RiskManager, RiskConfig
 
         rm = RiskManager(RiskConfig(weekly_loss_limit=0.08))
         # 模拟上周累积了 5% 亏损（即将触发阈值）
@@ -66,7 +66,7 @@ class TestWeeklyResetCrossWeek:
           - 周二 2026-06-09 10:00 继续调用
         期望：同周不重置，_weekly_returns 继续累积
         """
-        from lib.risk_manager import RiskManager, RiskConfig
+        from lib.risk.risk_manager import RiskManager, RiskConfig
 
         rm = RiskManager(RiskConfig(weekly_loss_limit=0.08))
         rm._weekly_returns = [-0.01, -0.02]
@@ -87,7 +87,7 @@ class TestWeeklyResetCrossWeek:
 
         回归测试：确保新的判断逻辑不破坏首次调用路径。
         """
-        from lib.risk_manager import RiskManager, RiskConfig
+        from lib.risk.risk_manager import RiskManager, RiskConfig
 
         rm = RiskManager(RiskConfig(weekly_loss_limit=0.08))
         assert rm._last_week_reset is None
@@ -106,7 +106,7 @@ class TestWeeklyResetCrossWeek:
         仅比较 week 字段足够（week 编号 ISO 标准不重复），
         但要确保 year != 时也能识别（用 year+week tuple 更稳妥）。
         """
-        from lib.risk_manager import RiskManager, RiskConfig
+        from lib.risk.risk_manager import RiskManager, RiskConfig
 
         rm = RiskManager(RiskConfig(weekly_loss_limit=0.08))
         rm._weekly_returns = [-0.05, -0.04]
@@ -129,7 +129,7 @@ class TestWeeklyResetCrossWeek:
         设计：_check_weekly_loss 接受 now 参数（默认 None）；
               check_all 接受 now 参数（默认 None）并放入 context。
         """
-        from lib.risk_manager import RiskManager, RiskConfig
+        from lib.risk.risk_manager import RiskManager, RiskConfig
 
         rm = RiskManager(RiskConfig(weekly_loss_limit=0.08))
         # 首次调用时 last_week_reset 为 None

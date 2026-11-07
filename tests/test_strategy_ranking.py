@@ -1,15 +1,15 @@
 """策略性能排行测试"""
 import pytest
 import json
-from lib.strategy_ranking import StrategyRanker
+from lib.strategy.strategy_ranking import StrategyRanker
 
 
 class TestStrategyRanker:
     def _make_ranker(self, tmp_path):
         ranker = StrategyRanker()
         # 重定向 RESULTS_DIR
-        import lib.strategy_ranking
-        lib.strategy_ranking.RESULTS_DIR = tmp_path / "backtest_results"
+        import lib.strategy.strategy_ranking as strategy_ranking
+        strategy_ranking.RESULTS_DIR = tmp_path / "backtest_results"
         (tmp_path / "backtest_results").mkdir(parents=True, exist_ok=True)
         return ranker
 
@@ -27,10 +27,10 @@ class TestStrategyRanker:
     def test_real_data_ranking(self, tmp_path):
         """有真实回测数据时正常排名"""
         ranker = self._make_ranker(tmp_path)
-        import lib.strategy_ranking
+        import lib.strategy.strategy_ranking as strategy_ranking
         # 写两个真实回测结果
         for name, sharpe in [("strategy_a", 1.5), ("strategy_b", 2.0)]:
-            with open(lib.strategy_ranking.RESULTS_DIR / f"{name}.json", "w", encoding="utf-8") as f:
+            with open(strategy_ranking.RESULTS_DIR / f"{name}.json", "w", encoding="utf-8") as f:
                 json.dump({
                     "name": name,
                     "sharpe_ratio": sharpe,

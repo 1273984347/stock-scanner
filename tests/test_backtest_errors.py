@@ -12,9 +12,9 @@ from unittest.mock import patch, MagicMock
 def test_get_stock_data_raises_on_all_sources_failed():
     """数据源全部失败时抛出 AllDataSourcesUnavailableError"""
     from backtest.core import get_stock_data, AllDataSourcesUnavailableError
-    from lib.data_layer import AllDataSourcesFailedError
+    from lib.data.data_layer import AllDataSourcesFailedError
 
-    with patch("lib.data_layer.get_stock_hist_multi_source") as mock_get:
+    with patch("lib.data.data_layer.get_stock_hist_multi_source") as mock_get:
         mock_get.side_effect = AllDataSourcesFailedError("000001", ["数据源A失败", "数据源B失败"])
 
         with pytest.raises(AllDataSourcesUnavailableError) as exc_info:
@@ -31,7 +31,7 @@ def test_get_stock_data_raises_on_empty_dataframe():
     mock_df = MagicMock()
     mock_df.empty = True
 
-    with patch("lib.data_layer.get_stock_hist_multi_source", return_value=mock_df):
+    with patch("lib.data.data_layer.get_stock_hist_multi_source", return_value=mock_df):
         with pytest.raises(AllDataSourcesUnavailableError) as exc_info:
             get_stock_data("600519", days=250, use_cache=False)
 

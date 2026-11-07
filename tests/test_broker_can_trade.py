@@ -15,7 +15,7 @@ os.environ['NO_VERIFY_TDX'] = '1'
 import pandas as pd
 import pytest
 
-from lib.broker import ABroker
+from lib.data.broker import ABroker
 
 
 def _make_market_data(code: str = "600519", date: str = "2026-06-09",

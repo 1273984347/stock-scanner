@@ -3,7 +3,7 @@
 import pandas as pd
 import numpy as np
 from typing import List, Dict
-from lib.technical_signals import ema
+from lib.scoring.technical_signals import ema
 
 
 def compute_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:

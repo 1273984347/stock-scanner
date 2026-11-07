@@ -15,7 +15,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 import pandas as pd
 
-from lib.signal_tracker import (
+from lib.scoring.signal_tracker import (
     SignalTracker, SignalRecord,
 )
 # Borrow 1 符号 (build_past_context, get_cached_tracker, invalidate_tracker_cache)
@@ -33,7 +33,7 @@ def isolated_signal_dir(tmp_path, monkeypatch):
     Borrow 2 测试不能污染真实 cache/signals/signal_history.json.
     Borrow 1 测试也需要隔离 (避免读真实 signal history).
     """
-    import lib.signal_tracker as st
+    import lib.scoring.signal_tracker as st
     test_dir = tmp_path / "signals"
     test_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(st, "SIGNAL_LOG_DIR", test_dir)
@@ -54,7 +54,7 @@ def _concurrent_worker(worker_id: int, sig_dir: Path, records_per_worker: int = 
     跨进程传递 sig_dir (Path) 是必要的 — 每个 worker 显式重定向 SIGNAL_LOG_DIR,
     因为 monkeypatch 不跨进程边界传播.
     """
-    import lib.signal_tracker as st
+    import lib.scoring.signal_tracker as st
     st.SIGNAL_LOG_DIR = sig_dir
     # 固定日期：否则每条 record_signal 都会调 _last_trading_day() ->
     # akshare 交易日历查询（禁网下虽快速失败，但每次仍有开销，
@@ -196,18 +196,18 @@ class TestBorrow2AtomicWrite:
         """
         pytest.importorskip("portalocker", reason="portalocker not installed in this env")
 
-        from lib.signal_tracker import _HAS_PORTALOCKER
+        from lib.scoring.signal_tracker import _HAS_PORTALOCKER
         if not _HAS_PORTALOCKER:
             pytest.skip("portalocker not available (env fcntl fallback)")
 
         mock_pl = MagicMock()
         mock_lock = MagicMock()
         mock_pl.Lock.return_value = mock_lock
-        # patch 目标必须是 **模块属性** lib.signal_tracker.portalocker：
+        # patch 目标必须是 **模块属性** lib.scoring.signal_tracker.portalocker：
         # 实现里是模块级 `import portalocker`（已绑定到模块属性），
         # patch sys.modules 不会改变已绑定的引用 ⇒ mock 永远不会被调用。
-        with patch("lib.signal_tracker._HAS_PORTALOCKER", True), \
-             patch("lib.signal_tracker.portalocker", mock_pl):
+        with patch("lib.scoring.signal_tracker._HAS_PORTALOCKER", True), \
+             patch("lib.scoring.signal_tracker.portalocker", mock_pl):
             fresh_tracker.record_signal("600519", "bullish", 0.8, "2026-05-30")
 
         # 验证 Lock 被 acquire + release 配对调用
@@ -225,7 +225,7 @@ class TestBorrow2AtomicWrite:
         """
         pytest.importorskip("portalocker", reason="portalocker not installed in this env")
 
-        from lib.signal_tracker import _HAS_PORTALOCKER
+        from lib.scoring.signal_tracker import _HAS_PORTALOCKER
         if not _HAS_PORTALOCKER:
             pytest.skip("portalocker not available (env fcntl fallback)")
 
@@ -233,11 +233,11 @@ class TestBorrow2AtomicWrite:
         mock_lock = MagicMock()
         mock_lock.acquire.side_effect = TimeoutError("lock timeout (mock)")
         mock_pl.Lock.return_value = mock_lock
-        # patch 目标必须是 **模块属性** lib.signal_tracker.portalocker：
+        # patch 目标必须是 **模块属性** lib.scoring.signal_tracker.portalocker：
         # 实现里是模块级 `import portalocker`（已绑定到模块属性），
         # patch sys.modules 不会改变已绑定的引用 ⇒ mock 永远不会被调用。
-        with patch("lib.signal_tracker._HAS_PORTALOCKER", True), \
-             patch("lib.signal_tracker.portalocker", mock_pl):
+        with patch("lib.scoring.signal_tracker._HAS_PORTALOCKER", True), \
+             patch("lib.scoring.signal_tracker.portalocker", mock_pl):
             # 验证: lock 失败抛 IOError 给 caller
             with pytest.raises(IOError, match="无法获取信号历史文件锁"):
                 fresh_tracker.record_signal("600519", "bullish", 0.8, "2026-05-30")
@@ -292,11 +292,11 @@ class TestBorrow3Reflection:
     """Borrow 3: build_reflection_prompt 生成反思 prompt."""
 
     def test_build_reflection_prompt_empty_signals(self):
-        from lib.signal_tracker import build_reflection_prompt
+        from lib.scoring.signal_tracker import build_reflection_prompt
         assert build_reflection_prompt([], "600519") == ""
 
     def test_build_reflection_prompt_returns_prompt(self, isolated_signal_dir):
-        from lib.signal_tracker import build_reflection_prompt, SignalTracker
+        from lib.scoring.signal_tracker import build_reflection_prompt, SignalTracker
         t = SignalTracker()
         t.record_signal("600519", "bullish", 0.7, "2026-05-01")
         t.signals[-1].actual_return_5d = 0.05

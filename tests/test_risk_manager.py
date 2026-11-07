@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import pytest
 import numpy as np
 import pandas as pd
-from lib.risk_manager import RiskManager, RiskConfig, RiskAlert, ActionExecutor
+from lib.risk.risk_manager import RiskManager, RiskConfig, RiskAlert, ActionExecutor
 
 
 class TestRiskManager:
@@ -52,13 +52,13 @@ class TestRiskManager:
 class TestVolCorrRiskManager:
     def test_vol_corr_risk_manager_init(self):
         """VolCorrRiskManager 可正常实例化"""
-        from lib.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
+        from lib.risk.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
         vrm = VolCorrRiskManager(VolCorrRiskConfig())
         assert vrm.config is not None
 
     def test_get_risk_budget(self):
         """get_risk_budget 返回结构正确"""
-        from lib.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
+        from lib.risk.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
         vrm = VolCorrRiskManager(VolCorrRiskConfig())
         budget = vrm.get_risk_budget("normal", 0.5)
         assert isinstance(budget, dict)
@@ -120,7 +120,7 @@ class TestExecutorCallbacks:
 
     def test_register_and_execute_callback(self):
         """注册回调后，execute() 会调用回调"""
-        from lib.risk_manager import ActionExecutor, RiskAction
+        from lib.risk.risk_manager import ActionExecutor, RiskAction
         executor = ActionExecutor()
         called = []
         executor.register("STOP_TRADING", lambda action: called.append(("STOP", action.reason)))
@@ -133,7 +133,7 @@ class TestExecutorCallbacks:
 
     def test_unregistered_action_returns_false(self):
         """未注册的动作返回 False（不静默吞，调用方可观测）"""
-        from lib.risk_manager import ActionExecutor, RiskAction
+        from lib.risk.risk_manager import ActionExecutor, RiskAction
         executor = ActionExecutor()
         action = RiskAction(action_type="REDUCE_POSITION", target="ALL", reason="x", severity="WARNING")
         result = executor.execute(action)

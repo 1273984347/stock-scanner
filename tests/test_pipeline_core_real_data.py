@@ -19,7 +19,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from lib.pipeline_core import steps
+from lib.strategy import steps
 
 
 # ─────────────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ from lib.pipeline_core import steps
 def real_kline():
     """180 天真实 K线, 列名匹配 calc_composite_verdict 要求 (注意: 'volume' 不是 'vol')
 
-    lib.technical_signals.generate_signals 期望列: open/close/high/low/volume
+    lib.scoring.technical_signals.generate_signals 期望列: open/close/high/low/volume
     factors.compute_all_signals 期望: trade_date (在 as_of_date 切片前)
     """
     return pd.DataFrame({
@@ -95,13 +95,13 @@ def test_calculate_factors_real_kline_returns_factors_and_tech_tuple(real_kline)
 
 def test_fetch_stock_data_real_data_layer_link(real_kline, real_index_kline):
     """真实 data_layer 子函数: get_stock_hist / get_realtime / _get_financial / get_index"""
-    from lib.data_layer import _get_financial_data  # 真实调用, 不 mock
+    from lib.data.data_layer import _get_financial_data  # 真实调用, 不 mock
 
-    # 注: steps.py 顶部 from lib.data_layer import X, mock 必须打 lib.pipeline_core.steps.X
-    with patch("lib.pipeline_core.steps.get_stock_hist_multi_source", return_value=real_kline), \
-         patch("lib.pipeline_core.steps.get_realtime_quotes", return_value=pd.DataFrame()), \
-         patch("lib.pipeline_core.steps._get_financial_data", return_value=None), \
-         patch("lib.pipeline_core.steps.get_index_hist", return_value=real_index_kline):
+    # 注: steps.py 顶部 from lib.data.data_layer import X, mock 必须打 lib.strategy.steps.X
+    with patch("lib.strategy.steps.get_stock_hist_multi_source", return_value=real_kline), \
+         patch("lib.strategy.steps.get_realtime_quotes", return_value=pd.DataFrame()), \
+         patch("lib.strategy.steps._get_financial_data", return_value=None), \
+         patch("lib.strategy.steps.get_index_hist", return_value=real_index_kline):
         hist, rt_row, fin_data, idx_df = steps.fetch_stock_data("600519", days=180)
     # 真实返回路径校验
     assert len(hist) == 180, "应拿到 180 天 K线"
@@ -121,10 +121,10 @@ def test_fetch_stock_data_with_realtime_quote(real_kline):
         "最新价":    [1800.0, 12.0],
         "涨跌幅":   [2.5, -0.5],
     })
-    with patch("lib.pipeline_core.steps.get_stock_hist_multi_source", return_value=real_kline), \
-         patch("lib.pipeline_core.steps.get_realtime_quotes", return_value=realtime), \
-         patch("lib.pipeline_core.steps._get_financial_data", return_value=None), \
-         patch("lib.pipeline_core.steps.get_index_hist", return_value=pd.DataFrame()):
+    with patch("lib.strategy.steps.get_stock_hist_multi_source", return_value=real_kline), \
+         patch("lib.strategy.steps.get_realtime_quotes", return_value=realtime), \
+         patch("lib.strategy.steps._get_financial_data", return_value=None), \
+         patch("lib.strategy.steps.get_index_hist", return_value=pd.DataFrame()):
         hist, rt_row, fin_data, idx_df = steps.fetch_stock_data("600519", days=180)
     assert rt_row is not None
     assert str(rt_row["代码"]) == "600519"
@@ -138,7 +138,7 @@ def test_fetch_stock_data_with_realtime_quote(real_kline):
 def test_check_offset_anomaly_real_scorer_bullish_normal(real_kline, real_index_kline):
     """股票 + 指数 都递增 → 偏移值在合理范围 → 不触发告警"""
     factors, _ = steps.calculate_factors(real_kline)
-    with patch("lib.scorer.get_board_type", return_value="main"):
+    with patch("lib.scoring.scorer.get_board_type", return_value="main"):
         offset_alert, score_adj = steps.check_offset_anomaly(
             "600519", real_kline, factors, real_index_kline
         )

@@ -11,7 +11,7 @@ import inspect
 
 def test_p1_7_run_invokes_factor_audit():
     """P1-7: run() 中应包含 FactorAudit/audit 引用"""
-    from lib import walkforward
+    import lib.strategy.walkforward as walkforward
     source = inspect.getsource(walkforward)
     run_idx = source.find("def run(")
     next_def_idx = source.find("\n    def ", run_idx + 1)
@@ -25,7 +25,7 @@ def test_p1_7_run_invokes_factor_audit():
 
 def test_p1_7_run_calls_validate_timestamp():
     """P1-7: run() 段应出现 validate_timestamp 方法调用"""
-    from lib import walkforward
+    import lib.strategy.walkforward as walkforward
     source = inspect.getsource(walkforward)
     run_idx = source.find("def run(")
     next_def_idx = source.find("\n    def ", run_idx + 1)

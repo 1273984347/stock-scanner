@@ -8,7 +8,7 @@
 
 import pandas as pd
 
-from lib.data_protocol import (
+from lib.data.data_protocol import (
     COLUMN_ALIASES,
     KLINE_COLUMNS,
     is_valid_kline,

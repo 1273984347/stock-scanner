@@ -213,7 +213,7 @@ matplotlib 的 `font_manager` 对每个字体逐条打分被逐条放大。
 静态 grep 圈候选 → 候选精测 → 文件级全覆盖扫描。
 
 **根因**：**第一轮的静态 grep 漏掉了 4 个慢文件**，其中 `tests/test_scorecard.py`（**304.65s，占总时长 47.9%**）
-是头号慢源 —— 它文件内**不直接出现** sleep / requests / akshare 关键词，只是**间接**调用 `lib/scorecard.py`。
+是头号慢源 —— 它文件内**不直接出现** sleep / requests / akshare 关键词，只是**间接**调用 `lib/scoring/scorecard.py`。
 
 **修复**：最后一步必须是**全覆盖实测**（`--scan-by-file`），不能停在静态推断。
 
@@ -395,7 +395,7 @@ python scripts/contract_snapshot.py --check   # 修复前崩溃；修复后 exit
 
 **现象**：想 mock portalocker，mock 永远不被调用 ⇒ 断言必失败。
 
-**根因**：`lib/signal_tracker.py` 是**模块级** `import portalocker` ⇒ 已绑定到模块属性，
+**根因**：`lib/scoring/signal_tracker.py` 是**模块级** `import portalocker` ⇒ 已绑定到模块属性，
 改 `sys.modules` 里的 key 改不动那个已绑定的引用。
 
 **修复**：改用 `patch("lib.signal_tracker.portalocker", mock_pl)`。
@@ -409,7 +409,7 @@ python scripts/contract_snapshot.py --check   # 修复前崩溃；修复后 exit
 
 **现象**：对拍框架 patch `lib.strategies.get_zt_candidates` **不生效**，真实策略被执行并报错。
 
-**根因**：`lib/pipeline.py:23` 是模块级 `from lib.strategies import (...)` ⇒ 已绑定引用。
+**根因**：`lib/strategy/pipeline.py:23` 是模块级 `from lib.strategy.strategies import (...)` ⇒ 已绑定引用。
 
 **修复**：必须 patch `lib.pipeline.get_zt_candidates`。
 
@@ -417,7 +417,7 @@ python scripts/contract_snapshot.py --check   # 修复前崩溃；修复后 exit
 与 P-18 同源：都是"import 时绑定"造成的。
 配套：框架必须记录 **traceback**（不只存类型 + 消息）——
 只存类型和消息定位不到位置，加上 `traceback.format_exc()` 后一眼看到
-`lib/pipeline.py:841 regime_scalar[1]` 期望 (min, max) 二元组却给了 float。
+`lib/strategy/pipeline.py:841 regime_scalar[1]` 期望 (min, max) 二元组却给了 float。
 
 ---
 
@@ -532,7 +532,7 @@ CI 上 110.69s → 33.90s（3.3×）→ **15.69s**（累计 7.1×）；残余慢
 
 ### P-27 · 别名必须绑定同一对象，且抽离后禁止重新赋值
 
-**现象**：`from lib.perf_metrics import _perf_metrics` 绑定的是**列表对象**
+**现象**：`from lib.infra.perf_metrics import _perf_metrics` 绑定的是**列表对象**
 ⇒ 原地 append / clear 两边可见；但若抽离后任何一处写 `_perf_metrics = []`
 ⇒ **状态分裂**（api.py 与新模块各有一份）。
 
@@ -558,7 +558,7 @@ CI 上 110.69s → 33.90s（3.3×）→ **15.69s**（累计 7.1×）；残余慢
 **根因**：同名是**历史巧合**，不是"复制粘贴"的证据。
 
 **修复**：**参数化公共内核 + 各源显式声明策略**
-（`lib/data_utils.py` 的 to_float(v, strip_grouping, strip_cn_units, zero_is_none,
+（`lib/data/data_utils.py` 的 to_float(v, strip_grouping, strip_cn_units, zero_is_none,
 zero_string_is_none, dash_is_none, prefer_raw_float) + 唯一的 `safe_div`），
 重复的**转换逻辑**只剩一份，各源**差异被显式化**。
 
@@ -614,7 +614,7 @@ zero_string_is_none, dash_is_none, prefer_raw_float) + 唯一的 `safe_div`）�
 
 **现象**：计划里的 `api/core/` 目录不可用 —— Python 里 `api.py` 与 `api/` 同名不可共存。
 
-**修复**：改为 `lib/api_core.py`（符合项目 lib/ 惯例）。
+**修复**：改为 `lib/infra/api_core.py`（符合项目 lib/ 惯例）。
 
 **推广**：**新建模块前先查有没有同名文件 / 目录。**
 

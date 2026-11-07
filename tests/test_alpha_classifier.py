@@ -1,6 +1,6 @@
 """Alpha 来源分类器测试"""
 import pytest
-from lib.alpha_classifier import (
+from lib.scoring.alpha_classifier import (
     classify_alpha_source, classify_trade_historical,
     AlphaClassification, ALPHA_TYPES,
 )

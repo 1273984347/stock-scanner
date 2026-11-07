@@ -8,9 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import time
 
-from lib import walkforward
-
-
+import lib.strategy.walkforward as walkforward
 def test_p1_8_save_results_no_overwrite_same_strategy_same_day(tmp_path, monkeypatch):
     """P1-8: 同日同 strategy 多次 save 不应覆盖前一次"""
     # 重定向 cache_dir 到 tmp_path

@@ -18,7 +18,7 @@ import pytest
 import numpy as np
 import pandas as pd
 
-from lib.position_size import (
+from lib.risk.position_size import (
     PositionSizeConfig,
     PositionSizeResult,
     RiskSizedPosition,
