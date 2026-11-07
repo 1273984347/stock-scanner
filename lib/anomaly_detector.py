@@ -1,3 +1,5 @@
+from lib.data_utils import safe_div
+
 """财报异常检测 —— 10 条规则检测财务异常
 
 来源：financial-report-reader skill
@@ -26,9 +28,7 @@ DEFAULT_THRESHOLDS = {
 
 
 def _safe_div(a, b):
-    if b is None or a is None or b == 0:
-        return None
-    return a / b
+    return safe_div(a, b)
 
 
 def _pct_change(new, old):

@@ -54,11 +54,29 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="A股量化交易系统", version="3.0.0")
 
+# ========== 横切层已抽离到 lib/api_core.py（RF-01 Phase 1 剩余）============
+# 认证 / 校验 / 缓存 / 安全头 / 异常处理 —— 代码逐字搬迁，行为不变。
+# api.py 侧保留同名引用（函数对象同一个）=> 旧 import 路径与端点签名均不变。
+from lib.api_core import (
+    API_KEY_HEADER,
+    CACHE_DIR,
+    _cache_get,
+    _cache_lock,
+    _cache_set,
+    _get_api_key,
+    _validate_stock_code,
+    verify_api_key,
+    verify_ws_token,
+)
+from lib.api_core import add_security_headers as _add_security_headers
+from lib.api_core import http_exception_handler as _http_exception_handler_impl
+
 
 # P1-3 修复（2026-06-05）：全局 HTTPException handler
 # 补充 5xx 错误的 trace_id logging（不改每处 except → raise HTTPException）
 @app.exception_handler(HTTPException)
 async def _http_exception_handler(request: Request, exc: HTTPException):
+    return await _http_exception_handler_impl(request, exc)
     if exc.status_code >= 500:
         logger.error(
             f"API 5xx: {request.method} {request.url.path} -> {exc.detail}",
@@ -102,43 +120,8 @@ def _verify_api_key_on_startup():
 from lib.scan_task_registry import ALLOWED_PRESETS
 
 
-def _validate_stock_code(code: str) -> str:
-    """Validate A-share stock code format (6 digits)"""
-    if not re.match(r'^\d{6}$', code):
-        raise HTTPException(status_code=400, detail=f"Invalid stock code format: {code}")
-    return code
 
 # ========== 安全中间件 ==========
-
-API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-
-def _get_api_key() -> str:
-    """获取 API 密钥，密钥不存在则拒绝启动"""
-    key = os.getenv("API_SECRET_KEY", "")
-    if not key:
-        raise RuntimeError(
-            "API_SECRET_KEY must be set in production. "
-            "Hint: export API_SECRET_KEY=your-secret-key"
-        )
-    return key
-
-
-async def verify_api_key(api_key: str = Security(API_KEY_HEADER)) -> str:
-    """验证 API Key（生产模式：API_SECRET_KEY 必须设置）"""
-    if api_key is None:
-        raise HTTPException(status_code=401, detail="缺少API密钥")
-    expected = _get_api_key()
-    if not secrets.compare_digest(api_key, expected):
-        raise HTTPException(status_code=401, detail="无效的API密钥")
-    return api_key
-
-
-def verify_ws_token(token: str) -> bool:
-    """验证 WebSocket token"""
-    expected = _get_api_key()
-    return secrets.compare_digest(token, expected)
-
 
 @app.middleware("http")
 async def track_performance(request: Request, call_next):
@@ -198,6 +181,7 @@ def _flush_perf_on_shutdown():
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
+    return await _add_security_headers(request, call_next)
     """添加安全响应头"""
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -209,7 +193,6 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 # 缓存操作全局锁（保护 JSON 缓存文件的并发读写）
-_cache_lock = threading.Lock()
 
 # ========== 断路器（使用 lib/cache.py 统一实现）==========
 from lib.cache import CircuitBreaker
@@ -248,63 +231,11 @@ if os.environ.get("SKIP_HS300_PREFETCH", "").strip().lower() not in ("1", "true"
     threading.Thread(target=_prefetch_hs300, daemon=True).start()
 
 STATIC_DIR = Path(__file__).parent / "static"
-CACHE_DIR = Path(__file__).parent / "cache"
-CACHE_DIR.mkdir(exist_ok=True)
-
 # 注意：静态文件挂载在 API 路由之后（见文件末尾）
 
 
-def _cache_get(key: str, max_age: int = 3600):
-    """读 JSON 缓存（线程安全，带随机 TTL 防止缓存雪崩，支持 gzip 压缩）"""
-    import random, zlib
-    path = CACHE_DIR / f"api_{key}.json"
-    # 添加 ±10% 随机偏移防止缓存雪崩
-    jitter = int(max_age * 0.1 * (random.random() * 2 - 1))
-    effective_max_age = max(max_age + jitter, 1)
-    with _cache_lock:
-        if not path.exists():
-            return None
-        age = (datetime.now().timestamp() - path.stat().st_mtime)
-        if age > effective_max_age:
-            path.unlink(missing_ok=True)
-            return None
-        try:
-            data = path.read_bytes()
-            # 尝试 gzip 解压（向后兼容未压缩文件）
-            try:
-                data = zlib.decompress(data)
-            except Exception:
-                pass  # 未压缩的旧缓存文件
-            return json.loads(data.decode("utf-8"))
-        except (json.JSONDecodeError, IOError, OSError) as e:
-            logger.debug(f"缓存读取失败[{path.name}]: {e}")
-            path.unlink(missing_ok=True)
-            return None
 
 
-def _cache_set(key: str, data):
-    """写 JSON 缓存（线程安全，gzip 压缩）"""
-    import zlib
-    path = CACHE_DIR / f"api_{key}.json"
-    with _cache_lock:
-        try:
-            json_data = json.dumps(data, ensure_ascii=False, default=str)
-            # 压缩后存储（节省磁盘空间）
-            compressed = zlib.compress(json_data.encode("utf-8"), level=6)
-            # 只有压缩后更小才使用压缩
-            if len(compressed) < len(json_data.encode("utf-8")):
-                path.write_bytes(compressed)
-            else:
-                path.write_text(json_data, encoding="utf-8")
-            try:
-                # Windows 限制文件访问：仅当前用户可读写
-                import os
-                os.chmod(path, 0o600)
-            except Exception:
-                # 非 Windows 或权限不足时跳过
-                pass
-        except Exception as e:
-            logger.warning(f"缓存写入失败[{key}]: {e}")
 
 
 # ========== 统一入口 ==========

@@ -1,3 +1,5 @@
+from lib.data_utils import to_float
+
 """东方财富财报数据适配器
 
 提供东方财富财报 API 数据，补充：
@@ -29,12 +31,7 @@ _EM_URL = "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/ZY
 
 def _to_float(v) -> Optional[float]:
     """安全转 float"""
-    if v is None:
-        return None
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+    return to_float(v, prefer_raw_float=True)
 
 
 def _fetch_em_financial(code: str) -> Optional[Dict]:

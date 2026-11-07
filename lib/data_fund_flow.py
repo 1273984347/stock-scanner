@@ -1,3 +1,5 @@
+from lib.data_utils import to_float
+
 """资金流向估算
 
 数据来源（3层fallback）：
@@ -22,12 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 def _to_float(v) -> Optional[float]:
-    if not v or str(v) in ("", "-", "0"):
-        return None
-    try:
-        return float(str(v).replace(",", ""))
-    except (ValueError, TypeError):
-        return None
+    return to_float(v, zero_is_none=True, zero_string_is_none=True, dash_is_none=True, strip_grouping=True)
 
 
 def get_fund_flow_estimate(code: str, as_of_date: Optional[str] = None) -> dict:

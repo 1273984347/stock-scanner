@@ -15,8 +15,11 @@ import struct
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
+
+from lib.data_protocol import truncate_to_date
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +54,7 @@ def _to_tdx_code(code: str) -> str:
 
 # ========== 网络获取 ==========
 
-def _fetch_via_network(code: str, days: int, period: str) -> pd.DataFrame:
+def _fetch_via_network(code: str, days: int, period: str, as_of_date: Optional[str] = None) -> pd.DataFrame:
     """通过 pytdx hq API 获取 K 线"""
     try:
         from pytdx.hq import TdxHq_API
@@ -89,6 +92,9 @@ def _fetch_via_network(code: str, days: int, period: str) -> pd.DataFrame:
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c], errors="coerce")
 
+        # as_of_date 截断（回测防前视偏差）：必须在 tail(days) **之前**
+        df = truncate_to_date(df, as_of_date)
+
         # 只保留最近 days 天
         if len(df) > days:
             df = df.tail(days)
@@ -107,7 +113,7 @@ def _fetch_via_network(code: str, days: int, period: str) -> pd.DataFrame:
 
 # ========== 本地文件获取 ==========
 
-def _fetch_from_local_file(code: str, days: int, period: str) -> pd.DataFrame:
+def _fetch_from_local_file(code: str, days: int, period: str, as_of_date: Optional[str] = None) -> pd.DataFrame:
     """读取本地 TDX .day 二进制文件"""
     # 北交所股票特殊处理（使用标准整数分格式）
     if code.startswith(("4", "8")):
@@ -144,6 +150,9 @@ def _fetch_from_local_file(code: str, days: int, period: str) -> pd.DataFrame:
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c], errors="coerce")
 
+        # as_of_date 截断（回测防前视偏差）：必须在 tail(days) **之前**
+        df = truncate_to_date(df, as_of_date)
+
         # 只保留最近 days 天
         if len(df) > days:
             df = df.tail(days)
@@ -155,7 +164,7 @@ def _fetch_from_local_file(code: str, days: int, period: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def _fetch_qfq_local_file(code: str, days: int, period: str) -> pd.DataFrame:
+def _fetch_qfq_local_file(code: str, days: int, period: str, as_of_date: Optional[str] = None) -> pd.DataFrame:
     """读取本地 TDX 前复权 .day 二进制文件（sh/lday_4/, sz/lday_4/）
 
     Args:
@@ -168,7 +177,7 @@ def _fetch_qfq_local_file(code: str, days: int, period: str) -> pd.DataFrame:
     """
     # 北交所股票没有前复权数据，退回不复权版本
     if code.startswith(("4", "8")):
-        return _fetch_from_local_file(code, days, period)
+        return _fetch_from_local_file(code, days, period, as_of_date)
 
     try:
         from pytdx.reader import TdxDailyBarReader
@@ -183,13 +192,13 @@ def _fetch_qfq_local_file(code: str, days: int, period: str) -> pd.DataFrame:
 
     if not file_path.exists():
         # 前复权文件不存在时，fallback 到不复权版本
-        return _fetch_from_local_file(code, days, period)
+        return _fetch_from_local_file(code, days, period, as_of_date)
 
     try:
         reader = TdxDailyBarReader()
         df = reader.get_df(str(file_path))
         if df.empty:
-            return _fetch_from_local_file(code, days, period)
+            return _fetch_from_local_file(code, days, period, as_of_date)
 
         df = df.reset_index()
 
@@ -202,6 +211,9 @@ def _fetch_qfq_local_file(code: str, days: int, period: str) -> pd.DataFrame:
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c], errors="coerce")
 
+        # as_of_date 截断（回测防前视偏差）：必须在 tail(days) **之前**
+        df = truncate_to_date(df, as_of_date)
+
         if len(df) > days:
             df = df.tail(days)
 
@@ -210,12 +222,12 @@ def _fetch_qfq_local_file(code: str, days: int, period: str) -> pd.DataFrame:
     except Exception as e:
         logger.debug(f"TDX 前复权文件读取 {code} 失败: {e}")
         # 前复权读取失败时 fallback 到不复权版本
-        return _fetch_from_local_file(code, days, period)
+        return _fetch_from_local_file(code, days, period, as_of_date)
 
 
 # ========== 主接口 ==========
 
-def get_kline(code: str, days: int = 180, period: str = "daily") -> pd.DataFrame:
+def get_kline(code: str, days: int = 180, period: str = "daily", as_of_date: Optional[str] = None) -> pd.DataFrame:
     """获取 K 线数据（兼容现有 data_*.py 接口）
 
     Args:
@@ -227,12 +239,12 @@ def get_kline(code: str, days: int = 180, period: str = "daily") -> pd.DataFrame
         DataFrame with columns: date, open, high, low, close, volume
     """
     # 优先网络直连
-    df = _fetch_via_network(code, days, period)
+    df = _fetch_via_network(code, days, period, as_of_date)
     if not df.empty and len(df) >= 10:
         return df
 
     # 网络失败，尝试本地文件
-    df = _fetch_from_local_file(code, days, period)
+    df = _fetch_from_local_file(code, days, period, as_of_date)
     if not df.empty:
         logger.debug(f"TDX 使用本地文件获取 {code}")
         return df

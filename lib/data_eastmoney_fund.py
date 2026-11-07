@@ -1,3 +1,5 @@
+from lib.data_utils import to_float
+
 """东方财富资金流向 API
 
 API: https://push2.eastmoney.com/api/qt/stock/fflow/kline/get
@@ -55,12 +57,7 @@ def _secid(code: str) -> str:
 
 
 def _to_float(v) -> Optional[float]:
-    if not v or v == '-' or v == '':
-        return None
-    try:
-        return float(v)
-    except (ValueError, TypeError):
-        return None
+    return to_float(v, zero_is_none=True, dash_is_none=True, prefer_raw_float=True)
 
 
 def get_fund_flow(code: str, days: int = 5, as_of_date: Optional[str] = None) -> dict:

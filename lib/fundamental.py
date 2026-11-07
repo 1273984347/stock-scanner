@@ -1,3 +1,5 @@
+from lib.data_utils import safe_div
+
 """基本面分析 —— 27 个财务指标 + 杜邦分解
 
 来源：stock-finance-profiler skill
@@ -10,9 +12,7 @@ from typing import Dict, Optional
 
 
 def _safe_div(num, den):
-    if num is None or den is None or den == 0:
-        return None
-    return num / den
+    return safe_div(num, den)
 
 
 def compute_fundamentals(income: Dict, balance: Dict, cashflow: Dict = None,

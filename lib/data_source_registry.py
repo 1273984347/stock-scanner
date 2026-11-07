@@ -68,16 +68,16 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
     try:
         if source == "tdx_local_qfq":
             from lib.data_tdx import _fetch_qfq_local_file
-            return _fetch_qfq_local_file(code, days, "daily")
+            return _fetch_qfq_local_file(code, days, "daily", as_of_date)
         if source == "tdx_local":
             from lib.data_tdx import _fetch_from_local_file
-            return _fetch_from_local_file(code, days, "daily")
+            return _fetch_from_local_file(code, days, "daily", as_of_date)
         if source == "baostock":
             from lib.data_baostock import get_kline as baostock_kline
             return breaker.call(baostock_kline, code, days=days)
         if source == "tdx":
             from lib.data_tdx import get_kline as tdx_kline
-            return breaker.call(tdx_kline, code, days=days)
+            return breaker.call(tdx_kline, code, days=days, as_of_date=as_of_date)
         if source == "adata":
             from lib.data_adata import get_kline as adata_kline
             return breaker.call(adata_kline, code, days=days)

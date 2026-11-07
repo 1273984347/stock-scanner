@@ -1,3 +1,7 @@
+from lib.data_utils import safe_div
+
+from lib.data_utils import to_float
+
 """TDX 财务数据适配器
 
 将 gpcw*.dat 的原始字段映射到 compute_fundamentals() 需要的格式。
@@ -52,9 +56,7 @@ GPCW_TO_PER_SHARE = {
 
 def _safe_div(num, den):
     """安全除法"""
-    if num is None or den is None or den == 0:
-        return None
-    return num / den
+    return safe_div(num, den)
 
 
 class TdxFinAdapter:
@@ -254,12 +256,7 @@ def get_tdx_fin_adapter() -> TdxFinAdapter:
 
 def _to_float(v) -> Optional[float]:
     """将字符串转为 float，处理 None/空值"""
-    if v is None or str(v) in ("", "-"):
-        return None
-    try:
-        return float(str(v).replace(",", ""))
-    except (ValueError, TypeError):
-        return None
+    return to_float(v, strip_grouping=True, dash_is_none=True)
 
 
 _bs_session = None  # type: ignore

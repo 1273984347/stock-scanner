@@ -1,3 +1,5 @@
+from lib.data_utils import to_float
+
 """新浪财经财务报表 API
 
 [状态] 当前网络环境下 Sina API 返回 "Input error" (code=11)，暂不可用。
@@ -45,12 +47,7 @@ def _rate_limited():
 
 
 def _to_float(v) -> Optional[float]:
-    if v is None:
-        return None
-    try:
-        return float(str(v).replace(",", ""))
-    except (ValueError, TypeError):
-        return None
+    return to_float(v, strip_grouping=True)
 
 
 def _post_json(url: str, data: dict, timeout: int = 10) -> dict:

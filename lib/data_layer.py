@@ -1,3 +1,5 @@
+from lib.data_utils import to_float
+
 """数据层：多源数据获取、缓存、限流"""
 import os
 import json
@@ -248,15 +250,9 @@ _financial_cache = get_financial_cache()  # 统一缓存实例
 def _to_float(v) -> Optional[float]:
     """将任意值转为 float，自动剥离千分位逗号和中文字符（亿/万）。
 
-    Returns:
-        转换成功返回 float，失败或输入为 None 返回 None。
-    """
-    if v is None:
-        return None
-    try:
-        return float(str(v).replace(",", "").replace("亿", "").replace("万", ""))
-    except (ValueError, TypeError):
-        return None
+Returns:
+    转换成功返回 float，失败或输入为 None 返回 None。"""
+    return to_float(v, strip_grouping=True, strip_cn_units=True)
 
 
 def _get_financial_data(code: str, as_of_date: Optional[str] = None) -> Optional[pd.Series]:
