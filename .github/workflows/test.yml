@@ -7,15 +7,16 @@ on:
 
 jobs:
   test:
-    # Actions 额度有限：push/pull_request 默认只跑 3.12（3 个 job ≈ 39 Linux-分钟），
-    # 3.10/3.11 的兼容性验证改为手动触发 workflow_dispatch 时执行。
-    if: matrix.python-version == '3.12' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.10', '3.11', '3.12']
+        # Actions 额度有限：push/pull_request 默认只跑 3.12（3 个 job ≈ 39 Linux-分钟）。
+        # 需要 Python 3.10/3.11 兼容性验证时手动触发 workflow_dispatch ⇒ 跑完整 9 个 job。
+        # ⚠️ 必须在 **matrix 层**过滤：job 级 if 在 matrix 展开前求值，引用 matrix.* 会让
+        # workflow 直接失败（"likely failed because of a workflow file issue"）。
+        python-version: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["3.10","3.11","3.12"]' || '["3.12"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
