@@ -133,6 +133,9 @@ python scripts/contract_snapshot.py --check
 
 # L3 双跑对拍（3 条链路逐字段比对，容差 1e-9）
 python scripts/dual_run_diff.py --check --out docs/refactor/dual-run-baseline.json
+
+# L4 回测口径基线（4 条链路：3 份 check_entry 判定序列 + 3 个引擎指标）
+python scripts/backtest_baseline.py --check --out docs/refactor/backtest-baseline.json
 ```
 
 | 判据 | 通过标准 |
@@ -140,6 +143,7 @@ python scripts/dual_run_diff.py --check --out docs/refactor/dual-run-baseline.js
 | L1 | 0 failed；用例数变化须能逐条解释（新增/改名/删除） |
 | L2 | `[PASS] contract unchanged`（当前 72 路由） |
 | L3 | `[PASS] dual-run: 3 chains match baseline` |
+| L4 | `[PASS] backtest baseline: all chains match` |
 
 ### 4.2 覆盖率门禁
 

@@ -135,7 +135,13 @@ def get_all_stocks() -> List[str]:
 # ============================================================
 
 def check_entry(df: pd.DataFrame, i: int) -> bool:
-    """入场信号检查（多信号 OR 逻辑）
+    """入场信号：多信号 OR 口径（全市场并行回测用）
+
+    ⚠️ **不是重复实现** —— `backtest/engine.py::check_entry` 是 **Donchian 突破** 口径，
+    二者服务于不同回测引擎、对应不同策略假设，**不可合并**。
+    详见 `docs/adr/0002-check-entry-duplicate-not-merge.md`。
+
+    入场信号检查（多信号 OR 逻辑）
 
     信号1: EMA5/EMA21 金叉 + 价格>EMA5（原有）
     信号2: RSI 超卖反弹（RSI<30 后回升到 35）

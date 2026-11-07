@@ -63,6 +63,16 @@ jobs:
         # Phase N 改动后本步骤即判定"行为是否改变"。
         if: matrix.python-version == '3.12'
         run: python scripts/dual_run_diff.py --check --out docs/refactor/dual-run-baseline.json
+      - name: Backtest baseline (回测口径漂移门禁)
+        # 回测数值是**策略决策依据**（RF-01 风险登记 R6：错一位可能误导后续所有优化）。
+        # 本门禁比对 4 条链路的输出：
+        #   entry_signals          —— 三份 check_entry 的判定序列（口径本身）
+        #   core_factor_backtest   —— 因子回测主链路
+        #   engine_donchian_entry  —— 单股信号回测（Donchian 口径）
+        #   engine_multi_signal_entry —— 同上（多信号口径）
+        # 全部用**确定性合成数据**（zlib.crc32 种子），跨环境可复现。
+        if: matrix.python-version == '3.12'
+        run: python scripts/backtest_baseline.py --check --out docs/refactor/backtest-baseline.json
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4

@@ -71,7 +71,14 @@ class BacktestConfig:
 # ============================================================
 
 def check_entry(df: pd.DataFrame, i: int) -> Tuple[bool, str]:
-    """Check if day i meets entry conditions (design spec version)
+    """入场信号：Donchian 突破口径（单股信号回测默认）
+
+    ⚠️ **不是重复实现** —— `backtest/full.py::check_entry` 是**多信号 OR** 口径，
+    二者服务于不同回测引擎、对应不同策略假设，**不可合并**。
+    详见 `docs/adr/0002-check-entry-duplicate-not-merge.md`。
+    同族第三份：`check_entry_multi_signal`（本模块内，多信号口径）。
+
+    Check if day i meets entry conditions (design spec version)
 
     Design requirements:
     1. Price > EMA21
