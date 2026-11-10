@@ -366,7 +366,7 @@ curl http://localhost:8000/api/scan
 | `cache/models/` | ML 模型存储 |
 | `scripts/update_tdx_data.py` | TDX 日K线数据更新脚本 |
 | `RULES.md` | **项目规约** (目录结构/import/路径基准/**回测调用规约**/验证分层硬约束)。改代码前先读 |
-| `docs/refactor/pitfalls.md` | **踩坑集** (RF-01 执行期 57 条真实坑：现象→根因→修复→推广)。动 `lib/`、`tests/`、CI 前先读 |
+| `docs/refactor/pitfalls.md` | **踩坑集** (RF-01 执行期 58 条真实坑：现象→根因→修复→推广)。动 `lib/`、`tests/`、CI 前先读 |
 | `docs/refactor/README.md` | 重构度量基线说明 (契约/覆盖率/对拍三把尺子的口径与自证记录) |
 | `docs/plans/2026-11-07-refactor-plan.md` | RF-01 分阶段重构计划 (§七 为逐批执行记录/验收/复盘) |
 | `lib/scoring/scoring_contract.py` | **统一评分契约**：`ScoringResult` / `ScoringKernel` / 四维真源声明（RF-01 Phase 4） |
@@ -374,7 +374,7 @@ curl http://localhost:8000/api/scan
 | `lib/scoring/scoring_weights.py` | 评分权重唯一定义点 + 外部权重源登记 |
 | `lib/scoring/scoring_gateway.py` | **灰度判定唯一入口**：`score_4d(consumer, ...)`，off 直调旧实现 / on 经内核（阶段 B） |
 | `scripts/scoring_baseline.py` | 第 5 把尺子：评分对拍基线（9 入口 × 285 样本，`--capture` / `--check`） |
-| `scripts/scoring_switch_diff.py` | 第 6 把尺子：开关前后整份响应 diff + 自证内核被调用（`--check` / `--flag all`） |
+| `scripts/scoring_switch_diff.py` | 第 6 把尺子：三分支开关前后整份响应 diff + 自证内核被调用 + 逐个消费者自证（`--check` / `--branch endpoint`） |
 | `docs/refactor/scoring-baseline.json` | 评分对拍基线读数（改动评分前后必比对） |
 | `docs/adr/0003-*.md` | 基线 pin 修复 + Phase 4 归一范围 / 覆盖率判据修正 |
 

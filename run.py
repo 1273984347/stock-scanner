@@ -236,10 +236,12 @@ def run_score_mode(code, data_source="akshare"):
     from scanner import get_stock_hist_multi_source, get_realtime_quotes
     from factors import compute_all_signals
     from lib.scoring.technical_signals import calc_composite_verdict
-    from lib.scoring.scorer import (comprehensive_score, score_fundamental,
+    from lib.scoring.scorer import (score_fundamental,
                             score_capital_flow, score_news, score_technical,
                             calc_deviation_value, check_anomaly_threshold,
                             get_board_type)
+    # RF-01 Phase 4 阶段 B：CLI 评分决策改经统一网关（consumer = "cli"）
+    from lib.scoring.scoring_gateway import score_4d
 
     logger.info(f"综合评分: {code} (数据源: {data_source})")
     try:
@@ -282,7 +284,7 @@ def run_score_mode(code, data_source="akshare"):
     news_score = 5.0
 
     # 综合评分
-    final = comprehensive_score(fund_score, cap_score, news_score, tech_score)
+    final = score_4d("cli", fund_score, cap_score, news_score, tech_score)
 
     # 偏移值检查
     board_type = "main"

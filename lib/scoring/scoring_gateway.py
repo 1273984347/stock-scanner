@@ -38,6 +38,7 @@ def score_4d(
         consumer: 消费者标识，用于 `FEATURE_UNIFIED_SCORING` 按粒度灰度。当前已接入：
             - `"strategies"`：`lib/strategy/strategies.py::_compute_base_scores`（实时评分路径）
             - `"pipeline"`：`lib/strategy/steps.py::score_without_realtime`（无实时行情路径）
+            - `"cli"`：`run.py::run_score_mode`（CLI `--score` 模式）
         fundamental / capital_flow / news / technical: 四个维度分（0–10）。
 
     Returns:
@@ -77,4 +78,9 @@ def score_4d_result(
 
 
 #: 已接入灰度的消费者名单 —— 供取证脚本与文档核对，避免「以为切了其实没切」。
-GRAY_CONSUMERS = ("strategies", "pipeline")
+GRAY_CONSUMERS = ("strategies", "pipeline", "cli")
+
+#: 纯透传消费者：自身无评分调用点，**不需要也不应该**加灰度分支。
+#: 它们通过下游已接入的消费者自动受益，只需纳入取证与契约冻结验证。
+#: 见 `docs/adr/0003-*.md` D6 / 坑表 P-58。
+PASSTHROUGH_CONSUMERS = ("api_score",)

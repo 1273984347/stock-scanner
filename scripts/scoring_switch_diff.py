@@ -9,11 +9,18 @@
 `pipeline.get_stock_score()`，对整份响应逐字段比对（容差 1e-9）。
 同进程 + 同一份注入数据 ⇒ 不存在跨进程/跨环境假红。
 
-**两条评分分支都要覆盖**（阶段 B 第 2 批起）：
+**三条评分分支都要覆盖**（阶段 B 第 4 批起）：
   - `realtime`   : rt_row 非空 -> score_with_realtime -> strategies 消费者
   - `no_realtime`: rt_row 置空 -> score_without_realtime -> pipeline 消费者
+  - `endpoint`   : 真正调用 `GET /api/score/{code}` 的 async 端点函数 -> strategies
 `no_realtime` 分支在 pin 上下文内把 `fetch_stock_data` 的返回改成
 `(hist, None, fin_data_dict, idx_df)`，从而进入真实的无实时行情路径。
+`endpoint` 分支验证的是**端点响应结构冻结**：该端点是三层纯透传，
+没有独立评分调用点，因此不加灰度分支，只纳入取证（ADR-0003 D6 / 坑表 P-58）。
+
+另外逐个校验 `GRAY_CONSUMERS` 里每个消费者：off 侧不建内核、on 侧必经内核，
+且两条路径的结果都等于 `comprehensive_score` 原值 —— 新增消费者名却没被取证
+覆盖时，这里会立刻暴露（坑表 P-57）。
 
 **自证有效性**（关键）：如果 on 侧根本没走网关，两边都跑旧实现，
 diff 也会是 0 ⇒ 空判据（坑表 P-56）。因此本工具 patch
@@ -25,6 +32,7 @@ diff 也会是 0 ⇒ 空判据（坑表 P-56）。因此本工具 patch
   python scripts/scoring_switch_diff.py --check
   python scripts/scoring_switch_diff.py --check --flag strategies
   python scripts/scoring_switch_diff.py --check --branch no_realtime
+  python scripts/scoring_switch_diff.py --check --branch endpoint
   python scripts/scoring_switch_diff.py --summary
 输出为纯 ASCII（Windows CI stdout 默认 cp1252）。
 """
@@ -48,8 +56,18 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 CODES = ["600519", "000858", "600036"]
-BRANCHES = ("realtime", "no_realtime")
-BRANCH_CONSUMER = {"realtime": "strategies", "no_realtime": "pipeline"}
+BRANCHES = ("realtime", "no_realtime", "endpoint")
+BRANCH_CONSUMER = {
+    "realtime": "strategies",
+    "no_realtime": "pipeline",
+    "endpoint": "strategies",  # 端点默认注入 rt_row 非空 -> 走 strategies 路径
+}
+
+
+async def _call_score_endpoint(code):
+    """直接调用 FastAPI 端点函数（`_=None` 绕过 Security 依赖，其余链路完全真实）。"""
+    import api
+    return await api.stock_score(code, _=None)
 
 
 def _load_dual_run():
@@ -88,11 +106,16 @@ def _capture(flag_value: str, drd, branch: str) -> dict:
                     return hist, None, fin, idx
                 steps.fetch_stock_data = fetch_no_rt
             try:
+                import asyncio
                 for code in CODES:
                     try:
+                        if branch == "endpoint":
+                            raw = asyncio.run(_call_score_endpoint(code))
+                        else:
+                            raw = drd.capture_score(code)
                         out[code] = {
                             "ok": True,
-                            "result": drd.normalize(drd.capture_score(code)),
+                            "result": drd.normalize(raw),
                         }
                     except Exception as exc:  # noqa: BLE001
                         out[code] = {
@@ -118,6 +141,36 @@ def _targeted(flag_value: str, consumer: str) -> bool:
             os.environ["FEATURE_UNIFIED_SCORING"] = old
 
 
+def _check_consumers(counter) -> tuple[list, list]:
+    """逐个校验已登记消费者：off 不建内核、on 必经内核、两条路径数值等于旧实现。"""
+    from lib.scoring.scorer import comprehensive_score
+    from lib.scoring.scoring_gateway import GRAY_CONSUMERS, score_4d
+
+    values = (7.3, 4.1, 6.2, 8.4)
+    expected = comprehensive_score(*values)
+    passed, failures = [], []
+    for consumer in GRAY_CONSUMERS:
+        os.environ["FEATURE_UNIFIED_SCORING"] = "off"
+        counter[0] = 0
+        off = score_4d(consumer, *values)
+        off_calls = counter[0]
+
+        os.environ["FEATURE_UNIFIED_SCORING"] = consumer
+        counter[0] = 0
+        on = score_4d(consumer, *values)
+        on_calls = counter[0]
+
+        if off != expected or on != expected:
+            failures.append(f"consumer '{consumer}': value drift vs comprehensive_score")
+        elif off_calls != 0 or on_calls == 0:
+            failures.append(
+                f"consumer '{consumer}': kernel calls off={off_calls} on={on_calls}"
+            )
+        else:
+            passed.append(consumer)
+    return passed, failures
+
+
 def main() -> int:
     global CODES
     ap = argparse.ArgumentParser()
@@ -129,16 +182,25 @@ def main() -> int:
     ap.add_argument("--codes", default=",".join(CODES))
     args = ap.parse_args()
 
-    from lib.scoring.scoring_gateway import GRAY_CONSUMERS
+    from lib.scoring.scoring_gateway import GRAY_CONSUMERS, PASSTHROUGH_CONSUMERS
     branches = BRANCHES if args.branch == "both" else (args.branch,)
     if args.summary:
         print(f"[INFO] gray consumers: {', '.join(GRAY_CONSUMERS)}")
+        print(f"[INFO] passthrough consumers (no flag branch needed): "
+              f"{', '.join(PASSTHROUGH_CONSUMERS)}")
         print(f"[INFO] branches: {', '.join(branches)}")
         print(f"[INFO] codes: {args.codes}")
         print(f"[INFO] on-side flag: FEATURE_UNIFIED_SCORING={args.flag}")
         return 0
 
     CODES = [c.strip() for c in args.codes.split(",") if c.strip()]
+    if "endpoint" in branches:
+        # 预热：api 模块导入会触发后台预取，不能让它发生在 pin/阻网上下文内
+        try:
+            import api  # noqa: F401
+        except Exception as exc:  # noqa: BLE001
+            print(f"[FAIL] cannot import api: {type(exc).__name__}: {exc}")
+            return 1
     drd = _load_dual_run()
     import lib.scoring.scoring_adapters as adapters
 
@@ -195,6 +257,12 @@ def main() -> int:
                 print(f"[PASS] branch {branch}: 0 field(s) differ "
                       f"({len(CODES)} codes, off vs {args.flag}; "
                       f"kernel calls off=0 on={on_calls}, consumer={consumer})")
+
+        passed, consumer_failures = _check_consumers(counter)
+        failures.extend(consumer_failures)
+        if passed:
+            print(f"[PASS] consumers: {len(passed)}/{len(GRAY_CONSUMERS)} "
+                  f"({', '.join(passed)}) -- off/on values equal to legacy")
     finally:
         adapters.build_kernel = orig_build
         if old_env is None:

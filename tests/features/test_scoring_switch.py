@@ -21,9 +21,9 @@ from lib.scoring.scoring_gateway import GRAY_CONSUMERS, score_4d
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 
 
-def _node(tree: ast.Module, name: str) -> ast.FunctionDef:
+def _node(tree: ast.Module, name: str):
     for n in ast.walk(tree):
-        if isinstance(n, ast.FunctionDef) and n.name == name:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
             return n
     raise AssertionError(f"function {name} not found")
 
@@ -76,6 +76,13 @@ def test_off_on_results_identical(monkeypatch, values):
 def test_gray_consumers_declared():
     assert "strategies" in GRAY_CONSUMERS
     assert "pipeline" in GRAY_CONSUMERS
+    assert "cli" in GRAY_CONSUMERS
+
+
+def test_passthrough_consumers_declared():
+    from lib.scoring.scoring_gateway import PASSTHROUGH_CONSUMERS
+    assert "api_score" in PASSTHROUGH_CONSUMERS
+    assert not (set(PASSTHROUGH_CONSUMERS) & set(GRAY_CONSUMERS))
 
 
 # ---------------------------------------------------------------- 消费者接入（AST 守卫）
@@ -99,6 +106,8 @@ def test_strategies_routes_through_gateway():
 @pytest.mark.parametrize("rel", [
     "lib/strategy/strategies.py",
     "lib/strategy/steps.py",
+    "run.py",
+    "api.py",
 ])
 def test_consumer_does_not_read_flag_itself(rel):
     """灰度判定只能存在于网关；消费者里出现环境变量读取 = 判定散落。"""
@@ -218,3 +227,57 @@ def test_dimension_extraction_is_deterministic(pinned_fund_flow):
         fin_data = _fin(fin)
         assert compute_4d_dimensions(code, factors, fin_data) == \
                compute_4d_dimensions(code, factors, fin_data)
+
+
+# ---------------------------------------------------------------- 第 3 个消费者：CLI / 端点透传
+
+def _gateway_call(fn: ast.AST) -> ast.Call:
+    calls = [n for n in ast.walk(fn)
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+             and n.func.id == "score_4d"]
+    assert calls, "expected a score_4d(...) call"
+    return calls[0]
+
+
+def test_cli_consumer_uses_gateway():
+    tree = ast.parse((ROOT / "run.py").read_text(encoding="utf-8"))
+    fn = _node(tree, "run_score_mode")
+    names = _call_names(fn)
+    assert "score_4d" in names, "CLI --score must use the gateway"
+    assert "comprehensive_score" not in names, "must not call legacy scorer directly"
+    assert _gateway_call(fn).args[0].value == "cli"
+
+
+def test_endpoint_is_pure_passthrough():
+    """`/api/score/{code}` 是三层纯透传，没有独立评分调用点。
+
+    硬给它加一个 flag 分支 = 为清单打勾加补丁（坑表 P-58）。
+    这里用 AST 钉住「它就是透传」，让 L6 的 endpoint 分支有明确语义。
+    """
+    tree = ast.parse((ROOT / "api.py").read_text(encoding="utf-8"))
+    fn = _node(tree, "stock_score")
+    names = _call_names(fn)
+    assert "get_stock_score" in names
+    assert "score_4d" not in names
+    assert "comprehensive_score" not in names
+    assert "unified_scoring_enabled" not in names
+
+
+def test_cli_off_on_identical(monkeypatch):
+    values = (7.3, 4.1, 6.2, 8.4)
+    monkeypatch.delenv("FEATURE_UNIFIED_SCORING", raising=False)
+    off = score_4d("cli", *values)
+    monkeypatch.setenv("FEATURE_UNIFIED_SCORING", "cli")
+    on = score_4d("cli", *values)
+    monkeypatch.setenv("FEATURE_UNIFIED_SCORING", "all")
+    on_all = score_4d("cli", *values)
+    assert off == on == on_all == comprehensive_score(*values)
+
+
+def test_endpoint_branch_is_registered_in_switch_diff():
+    """L6 必须真的覆盖端点，否则新增的透传消费者不会被跑到（P-57）。"""
+    tree = ast.parse((ROOT / "scripts/scoring_switch_diff.py").read_text(encoding="utf-8"))
+    src = ast.unparse(tree)
+    assert ("'endpoint'" in src or '"endpoint"' in src)
+    assert "_call_score_endpoint" in src
+    assert "api.stock_score" in src
