@@ -947,6 +947,39 @@ L3 却报 `capital_flow` 4.0→5.0 / `score` 3.0→3.35，L4 报 `equity_first[0
 
 ---
 
+### P-54 · 对拍基线「9/9 全绿」但**毫无鉴别力**
+
+**现象**：Phase 4 首版评分对拍 9 条链路全部 PASS、0 mismatches，看似安全网已就位。
+做 `distinct` 检查才发现 `judge_panel` 60 个样本输出**只有 1 种**
+（`evaluate_all()` 自 P0#13 起不再产生投票，恒返回 `HOLD/0`），`scorecard` 只有 2 种
+（L1–L4 被 pin 成常数）。这种基线只证明「没崩」，锁不住任何口径。
+
+**修复**：① `judge_panel` 改走 `evaluate_with_ml()`（生产主路径，产生 3 张 ML 票）；
+② `market_brief.l1` / `industry_ret` 由样本确定性派生而非写死；
+③ 采集后**强制检查每条链路的 `distinct` 与样本数**，8/9 链路达到 `distinct == sample_count`。
+
+**推广**：**「全绿」不等于「有效」**。这是 P-10「加了门禁但从没见它红过」的翻版：
+判据必须自证「输入变化时输出会变」，否则它只是个装饰。
+`strategies_quick` 只有 4 种属离散加分函数的固有行为，需单独归因，不能一律判死。
+
+---
+
+### P-55 · patch 类上的 `staticmethod` 时，还原要用 `__dict__` 取描述符
+
+**现象**：评分基线在 pin 上下文里把 `MarketFilter.layer1_market_trend` 等
+5 个 `staticmethod` 替换成固定 lambda，退出时用 `getattr(Class, name)` 保存的原值还原。
+`getattr` 返回的是**已解包的函数**，`setattr(Class, name, fn)` 会把它变成**实例方法**
+⇒ 还原后调用多出一个 `self` 参数，污染同进程后续调用方。
+
+**修复**：`orig = Class.__dict__.get(name)` 保存原始 `staticmethod` 描述符，
+还原时 `setattr(Class, name, orig)`；没有描述符的对象（如普通方法）才用 `getattr`。
+
+**推广**：**patch 的还原必须保持对象的描述符类型**。函数 / staticmethod / classmethod /
+property 在类字典里是不同对象，`getattr` 会把它们统统抹平成可调用对象。
+与 P-18（patch 目标用使用方）互补：一个管「改哪里」，一个管「怎么还原」。
+
+---
+
 
 ---
 
@@ -980,6 +1013,8 @@ L3 却报 `capital_flow` 4.0→5.0 / `score` 3.0→3.35，L4 报 `equity_first[0
 | 改动根本没进仓库 | P-43 / P-48 |
 | 基线改都没改就自己判红 / 数字随日期变 | P-52 |
 | 计划写「N 份重复实现」但越合并越不对 | P-53 |
+| 对拍全绿但感觉没锁住任何东西 | P-54 |
+| patch 类方法还原后多出 self / 报参数错 | P-55 |
 
 ---
 
@@ -995,8 +1030,10 @@ L3 却报 `capital_flow` 4.0→5.0 / `score` 3.0→3.35，L4 报 `equity_first[0
 | 双跑对拍基线（3 链路） | `docs/refactor/dual-run-baseline.json` |
 | 耗时与稳定性基线 | `docs/refactor/test-duration-baseline.md` |
 
-**文档状态**：2026-11-07 首版（Phase 0 → Phase 3，51 条）；2026-11-10 追加 P-52 / P-53（Phase 4 前置批次，共 **53 条**）。
+**文档状态**：2026-11-07 首版（Phase 0 → Phase 3，51 条）；2026-11-10 追加 P-52 / P-53（Phase 4 前置批次）
+与 P-54 / P-55（Phase 4 阶段 A），共 **55 条**。
 **核对基线**：本地全量 pytest 1162 passed / 12 skipped（13.02s）；CI run `42319502027` 3 job 全绿。
-2026-11-10 复测：1162 passed / 12 skipped；L2 契约 PASS、L3 对拍 PASS（重建后）、L4 回测 5/5 PASS。
+2026-11-10 阶段 A 收官复测：**1221 passed / 12 skipped**；L0 语法 / L1 全量 / L2 契约 /
+L3 双跑对拍 / L4 回测口径 / **L5 评分对拍（新增第 5 把尺子）** 全部 PASS。
 后续每批收官时**追加**新条目并在本行更新版本，不要重写已有条目 ——
 **踩坑记录的价值在于保留了当时的错误判据与被推翻的结论**。

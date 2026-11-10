@@ -71,3 +71,48 @@ def reset_opp_score_weights() -> None:
     """重置为从 config 读取（清除 set_opp_score_weights 的覆盖）"""
     global _active_weights
     _active_weights = None
+
+
+# =====================================================================
+# RF-01 Phase 4：评分权重的唯一定义点
+# ---------------------------------------------------------------------
+# 原先 WEIGHTS_4D / SIX_FACTOR_WEIGHTS 硬编码在 lib/scoring/scorer.py 里，
+# 与 opportunity_scorer 的权重状态（本模块上半部分）分处两地。
+# 现把两个常量的**定义**搬到这里，scorer.py 改为 re-export（同签名、同值、
+# 同一对象引用）⇒ 数值零变更，但「权重定义」此后再无第二个落点。
+# ⚠️ 这两个 dict 的值是评分口径，改动必须走 ADR + 对拍基线。
+# =====================================================================
+
+WEIGHTS_4D: Dict[str, float] = {
+    "fundamental": 0.35,
+    "capital_flow": 0.35,
+    "news": 0.20,
+    "technical": 0.10,
+}
+
+SIX_FACTOR_WEIGHTS: Dict[str, float] = {
+    "trend": 0.20,       # 趋势分
+    "momentum": 0.15,    # 动量分
+    "volume": 0.20,      # 量能分
+    "sector": 0.20,      # 板块分
+    "volatility": 0.10,  # 波动质量分
+    "structure": 0.15,   # 结构分
+}
+
+# 外部配置源：本身是合法的配置载体（不是模块内硬编码），故**不搬迁**，
+# 但必须在此登记，使「权重到底散落在哪」可被一个函数回答，而不是靠人记。
+EXTERNAL_WEIGHT_SOURCES = {
+    "scorecard.layer_weights": "config.LAYER_WEIGHTS（四层打分卡 0/0.5/1 加权）",
+    "judge_panel.groups": "config/judges.json（51 评委分组权重；P0#13 起 6 组禁用）",
+    "opportunity_scorer": "config.FactorConfig.opp_score_weights（可由本模块 set/get/reset 覆盖）",
+    "factor_weights": "config.FactorConfig.factor_weights（因子层，非评分层）",
+}
+
+
+def list_weight_sources() -> Dict[str, str]:
+    """列出全部评分权重来源 —— 供审计与 `tests/features/` 特征测试断言。"""
+    return {
+        "scorer.weights_4d": "lib.scoring.scoring_weights.WEIGHTS_4D",
+        "scorer.six_factor_weights": "lib.scoring.scoring_weights.SIX_FACTOR_WEIGHTS",
+        **EXTERNAL_WEIGHT_SOURCES,
+    }

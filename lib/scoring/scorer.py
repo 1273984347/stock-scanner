@@ -11,14 +11,9 @@ from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-# ========== 综合评分（4 维）权重 ==========
-# 4 维综合评分（0-10 分制）的固定权重 —— 在 comprehensive_score 中复用
-WEIGHTS_4D = {
-    "fundamental": 0.35,
-    "capital_flow": 0.35,
-    "news": 0.20,
-    "technical": 0.10,
-}
+# RF-01 Phase 4：权重定义已收口到唯一落点 lib/scoring/scoring_weights.py。
+# 这里保留 re-export（同签名、同值、同一对象引用）⇒ 旧 import 全部可用，数值零变更。
+from lib.scoring.scoring_weights import WEIGHTS_4D, SIX_FACTOR_WEIGHTS  # noqa: E402
 
 # ========== 评分阈值集中常量（避免散落 magic number）==========
 # 4 维综合（0-10 分制）
@@ -285,15 +280,7 @@ def check_anomaly_threshold(deviation: float, board_type: str) -> Dict:
 
 
 # ========== V6 六因子评分系统 ==========
-
-SIX_FACTOR_WEIGHTS = {
-    "trend": 0.20,       # 趋势分
-    "momentum": 0.15,    # 动量分
-    "volume": 0.20,      # 量能分
-    "sector": 0.20,      # 板块分
-    "volatility": 0.10,  # 波动质量分
-    "structure": 0.15,   # 结构分
-}
+# SIX_FACTOR_WEIGHTS 的定义已收口到 lib/scoring/scoring_weights.py（见文件头 re-export）。
 
 
 def score_trend(factors: dict) -> float:

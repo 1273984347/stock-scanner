@@ -89,6 +89,23 @@ infra  ←  data  ←  scoring  ←  strategy
 
 ---
 
+## 一·六、统一评分契约规约（RF-01 Phase 4 起强制）
+
+| # | 规约 | 理由 |
+|---|---|---|
+| S1 | **归一的是契约不是算法**：7 个评分模块 / 9 个入口语义互异，禁止「合并成一个算法」 | 合并会静默改评分数值；判据修正见 `docs/adr/0003-*.md` |
+| S2 | 评分结果统一经 `lib/scoring/scoring_contract.py::ScoringKernel` 分发；**适配器函数体不得含算术**（AST 硬守卫） | 权重算两次 = 口径漂移；`tests/features/test_scoring_contract.py` 自动判红 |
+| S3 | `ScoringResult.raw` 必须是旧实现返回值的**同一对象引用** | 与 B4 同构，是对拍取证的基准 |
+| S4 | 四维总分唯一真源 = `scorer.comprehensive_score`（`PRIMARY_4D_SOURCE`）；评委团 / Agent / 机会分是**各自量纲的附加维度，不混算** | 计划 §三 Phase 4 第 4 点 |
+| S5 | 权重定义只允许在 `lib/scoring/scoring_weights.py`；外部配置源必须在 `list_weight_sources()` 登记 | 消除「权重散落」的根因，而非只搬两个常量 |
+| S6 | `FEATURE_UNIFIED_SCORING` **默认 off**；每切一个消费者前必须跑 `python scripts/scoring_baseline.py --check` | 开关是唯一回滚手段；阶段 B 逐消费者灰度 |
+| S7 | 评分数值变化 > 1e-9 一律走 ADR + 迁移指南 | §2.3 B1 在评分域的具体化 |
+
+> **阶段边界**：当前 Phase 4 **仅完成阶段 A**（内核 + 适配器 + 对拍基线，零消费者切换）。
+> 「开关切换前后响应样例 diff = 0」属阶段 B 验收项，阶段 A 不得宣称达成。
+
+---
+
 ## 二、代码规约
 
 ### 2.1 import
@@ -151,8 +168,11 @@ python scripts/contract_snapshot.py --check
 # L3 双跑对拍（3 条链路逐字段比对，容差 1e-9）
 python scripts/dual_run_diff.py --check --out docs/refactor/dual-run-baseline.json
 
-# L4 回测口径基线（4 条链路：3 份 check_entry 判定序列 + 3 个引擎指标）
+# L4 回测口径基线（5 条链路：3 份 check_entry 判定序列 + 3 个引擎指标 + 统一入口 6 mode）
 python scripts/backtest_baseline.py --check --out docs/refactor/backtest-baseline.json
+
+# L5 评分对拍基线（9 个评分入口 × 285 样本，旧实现 vs 统一内核）
+python scripts/scoring_baseline.py --check --out docs/refactor/scoring-baseline.json
 ```
 
 | 判据 | 通过标准 |
@@ -161,6 +181,7 @@ python scripts/backtest_baseline.py --check --out docs/refactor/backtest-baselin
 | L2 | `[PASS] contract unchanged`（当前 72 路由） |
 | L3 | `[PASS] dual-run: 3 chains match baseline` |
 | L4 | `[PASS] backtest baseline: all chains match` |
+| L5 | `[PASS] scoring baseline: 9 sources match (285 samples)`，且每条链路 `mismatches = 0` |
 
 ### 4.2 覆盖率门禁
 
@@ -213,7 +234,7 @@ python scripts/backtest_baseline.py --check --out docs/refactor/backtest-baselin
 
 ## 六、遇到坑怎么办
 
-1. 先查 `docs/refactor/pitfalls.md`（48 条，按症状查）
+1. 先查 `docs/refactor/pitfalls.md`（55 条，按症状查）
 2. 再查 `docs/refactor/README.md`（尺子口径与自证记录）
 3. 新坑 **追加** 到 `pitfalls.md`（现象 → 根因 → 修复 → 推广），**不要改写已有条目** ——
    踩坑记录的价值在于保留了当时的错误判据

@@ -29,6 +29,27 @@ TDX_HOST = os.environ.get("TDX_HOST", "180.153.39.210")
 TDX_PORT = int(os.environ.get("TDX_PORT", "7709"))
 
 
+# ---- RF-01 Phase 4：统一评分内核开关（默认 off，可按消费者灰度）----------
+# 取值：
+#   0/off/false/no/""      -> 全部走旧路径（默认）
+#   1/on/true/yes/all      -> 全部消费者走统一内核
+#   "pipeline,api_score"   -> 仅列出的消费者走统一内核（按消费者粒度灰度）
+# 回滚：把环境变量改回 0 或删除即可，无需回滚部署。
+FEATURE_UNIFIED_SCORING_DEFAULT = "0"
+
+
+def unified_scoring_enabled(consumer: str = "default") -> bool:
+    """动态读环境变量（便于秒级切换，不依赖模块导入时的快照）。"""
+    raw = os.environ.get(
+        "FEATURE_UNIFIED_SCORING", FEATURE_UNIFIED_SCORING_DEFAULT
+    ).strip().lower()
+    if raw in ("1", "true", "yes", "on", "all", "*"):
+        return True
+    if raw in ("", "0", "false", "no", "off", "none"):
+        return False
+    return consumer in {part.strip() for part in raw.split(",") if part.strip()}
+
+
 @dataclass
 class FactorConfig:
     """因子配置 —— 定义使用的因子及权重"""
