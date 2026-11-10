@@ -9633,6 +9633,7 @@
   },
   "constraints": {
     "data_source": "synthetic (deterministic, zlib.crc32 seed) + pinned external inputs",
+    "feature_unified_scoring": "off (pinned; env var is an external input)",
     "heavy_sample_codes": [
       "600519",
       "000858",

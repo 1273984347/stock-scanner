@@ -980,6 +980,27 @@ property 在类字典里是不同对象，`getattr` 会把它们统统抹平成�
 
 ---
 
+### P-56 · 开关前后「0 差异」也可能是**两侧都没切**（空判据的 A/B 版）
+
+**现象**：阶段 B 用「`FEATURE_UNIFIED_SCORING` off vs on，整份 `get_stock_score`
+响应逐字段 diff = 0」证明灰度安全。但 diff 为 0 有**两种**可能：
+① 新旧路径数值确实一致（想要的结论）；② on 侧根本没走到内核，两次都跑旧实现
+（例如环境变量名写错、消费者名不匹配、网关没被调用）。只看 diff 无法区分。
+
+**修复**：`scripts/scoring_switch_diff.py` 在 on 侧 patch
+`scoring_adapters.build_kernel` 计数，断言 `off=0 / on>0`；
+再用 `tests/features/test_scoring_switch.py` 的 AST 守卫固定
+「消费者不许自读 flag、必须调 `score_4d("strategies", ...)`」。
+实测 `strategies` 与 `all` 两种取值均 off=0 / on=3。
+
+**推广**：**任何 A/B 对拍，先证明 B 侧真的走了 B**（P-54「全绿不等于有效」的 A/B 版）。
+另外：**环境变量也是外部输入** —— `scoring_baseline.py` 的 pin 环境必须固定
+`FEATURE_UNIFIED_SCORING=off` 并写进 `constraints`，否则「今天谁开了灰度」会改读数（P-52 的推广）。
+但 `dual_run_diff.pinned_environment()` **不能**固定它：开关取证脚本复用该上下文做同进程切换，
+固定即失效 ⇒ pin 工具链的接口约束要写进 ADR，不能靠默契。
+
+---
+
 
 ---
 
@@ -1015,6 +1036,7 @@ property 在类字典里是不同对象，`getattr` 会把它们统统抹平成�
 | 计划写「N 份重复实现」但越合并越不对 | P-53 |
 | 对拍全绿但感觉没锁住任何东西 | P-54 |
 | patch 类方法还原后多出 self / 报参数错 | P-55 |
+| 开关前后 0 差异 / 灰度好像没生效 | P-56 |
 
 ---
 
@@ -1031,9 +1053,10 @@ property 在类字典里是不同对象，`getattr` 会把它们统统抹平成�
 | 耗时与稳定性基线 | `docs/refactor/test-duration-baseline.md` |
 
 **文档状态**：2026-11-07 首版（Phase 0 → Phase 3，51 条）；2026-11-10 追加 P-52 / P-53（Phase 4 前置批次）
-与 P-54 / P-55（Phase 4 阶段 A），共 **55 条**。
+与 P-54 / P-55（阶段 A）+ P-56（阶段 B 首批），共 **56 条**。
 **核对基线**：本地全量 pytest 1162 passed / 12 skipped（13.02s）；CI run `42319502027` 3 job 全绿。
-2026-11-10 阶段 A 收官复测：**1221 passed / 12 skipped**；L0 语法 / L1 全量 / L2 契约 /
-L3 双跑对拍 / L4 回测口径 / **L5 评分对拍（新增第 5 把尺子）** 全部 PASS。
+2026-11-10 阶段 A 收官：**1221 passed / 12 skipped**，L0–L5 全 PASS。
+2026-11-10 阶段 B 首批收官：**1235 passed / 12 skipped**；
+L0–**L6 开关响应 diff**（新增第 6 把尺子）全部 PASS。
 后续每批收官时**追加**新条目并在本行更新版本，不要重写已有条目 ——
 **踩坑记录的价值在于保留了当时的错误判据与被推翻的结论**。

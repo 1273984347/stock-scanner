@@ -15,7 +15,9 @@ from lib.risk.position_size import RiskSizedPosition, PositionSizeConfig
 from lib.scoring.technical_signals import calc_composite_verdict
 from lib.monitoring.market_regime import HS300_CODE  # P2-#11 修复: 统一 HS300 指数代码
 from lib.scoring.scorer import (score_fundamental, score_capital_flow,
-                         score_news, score_technical, comprehensive_score)
+                         score_news, score_technical)
+# RF-01 Phase 4 阶段 B：四维综合评分改经统一网关（flag 默认 off => 数值零变更）
+from lib.scoring.scoring_gateway import score_4d
 # P0-2 修复: 删除模块级 _risk_manager 单例（2026-06-07）
 # 原代码: from lib.risk.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
 # 原代码: _risk_manager = VolCorrRiskManager(VolCorrRiskConfig())
@@ -228,7 +230,8 @@ def _compute_base_scores(row: pd.Series, code: str, tech_return_short: float,
         return_10d=tech_return_short,
         return_20d=tech_return_long,
     )
-    return comprehensive_score(fund, cap, news, tech)
+    # 阶段 B 首个灰度消费者："strategies"。off 时网关直调旧实现，行为不变。
+    return score_4d("strategies", fund, cap, news, tech)
 
 
 def quick_score(row: pd.Series,
