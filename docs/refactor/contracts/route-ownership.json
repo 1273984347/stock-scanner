@@ -1,0 +1,715 @@
+{
+  "constraints": {
+    "auth_must_not_decrease": true,
+    "declared_path_count": 65,
+    "router_count": 17,
+    "source": "runtime app.routes via scripts/contract_snapshot.py::collect()"
+  },
+  "counts": {
+    "by_router": {
+      "alerts": 5,
+      "analysis": 1,
+      "backtest": 3,
+      "backup": 4,
+      "export": 8,
+      "factor": 5,
+      "market": 9,
+      "notifications": 2,
+      "portfolio": 3,
+      "risk": 4,
+      "scan": 2,
+      "scoring": 1,
+      "settings": 2,
+      "signals_audit": 4,
+      "stock": 1,
+      "strategy": 10,
+      "system": 4
+    },
+    "endpoints": 68,
+    "unassigned": 0,
+    "unique_paths": 65
+  },
+  "endpoints": [
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "ab_test_presets",
+      "method": "GET",
+      "path": "/api/ab-test/presets",
+      "router": "strategy"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "ab_test_run",
+      "method": "POST",
+      "path": "/api/ab-test/run",
+      "router": "strategy"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "check_alerts",
+      "method": "POST",
+      "path": "/api/alerts/check",
+      "router": "alerts"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "get_alert_rules",
+      "method": "GET",
+      "path": "/api/alerts/rules",
+      "router": "alerts"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "create_alert_rule",
+      "method": "POST",
+      "path": "/api/alerts/rules",
+      "router": "alerts"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "delete_alert_rule",
+      "method": "DELETE",
+      "path": "/api/alerts/rules/{rule_id}",
+      "router": "alerts"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "update_alert_rule",
+      "method": "PATCH",
+      "path": "/api/alerts/rules/{rule_id}",
+      "router": "alerts"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "return_attribution",
+      "method": "GET",
+      "path": "/api/attribution",
+      "router": "analysis"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "audit_history",
+      "method": "GET",
+      "path": "/api/audit",
+      "router": "signals_audit"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "audit_detail",
+      "method": "GET",
+      "path": "/api/audit/{scan_id}",
+      "router": "signals_audit"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "run_backtest",
+      "method": "POST",
+      "path": "/api/backtest",
+      "router": "backtest"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "compare_strategies",
+      "method": "POST",
+      "path": "/api/backtest/compare",
+      "router": "backtest"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "backup_create",
+      "method": "POST",
+      "path": "/api/backup/create",
+      "router": "backup"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "backup_list",
+      "method": "GET",
+      "path": "/api/backup/list",
+      "router": "backup"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "backup_restore",
+      "method": "POST",
+      "path": "/api/backup/restore",
+      "router": "backup"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "backup_delete",
+      "method": "DELETE",
+      "path": "/api/backup/{backup_file}",
+      "router": "backup"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "dashboard",
+      "method": "GET",
+      "path": "/api/dashboard",
+      "router": "system"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 0,
+      "auth_required": false,
+      "dependency_count": 0,
+      "handler": "report_frontend_error",
+      "method": "POST",
+      "path": "/api/errors",
+      "router": "system"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "export_config",
+      "method": "GET",
+      "path": "/api/export/config",
+      "router": "export"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "export_pdf",
+      "method": "POST",
+      "path": "/api/export/pdf",
+      "router": "export"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "export_pdf_status",
+      "method": "GET",
+      "path": "/api/export/pdf/status",
+      "router": "export"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "export_positions",
+      "method": "GET",
+      "path": "/api/export/positions",
+      "router": "export"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "export_positions_excel",
+      "method": "GET",
+      "path": "/api/export/positions/excel",
+      "router": "export"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "export_trades",
+      "method": "GET",
+      "path": "/api/export/trades",
+      "router": "export"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "export_trades_excel",
+      "method": "GET",
+      "path": "/api/export/trades/excel",
+      "router": "export"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "factor_exposures",
+      "method": "GET",
+      "path": "/api/exposures",
+      "router": "risk"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "factor_contribution",
+      "method": "GET",
+      "path": "/api/factor-contribution",
+      "router": "factor"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "factor_evaluation",
+      "method": "GET",
+      "path": "/api/factor-eval",
+      "router": "factor"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "factor_ic_history",
+      "method": "GET",
+      "path": "/api/factor-ic-history",
+      "router": "factor"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "factor_scatter",
+      "method": "GET",
+      "path": "/api/factor-scatter",
+      "router": "factor"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "factor_weights",
+      "method": "GET",
+      "path": "/api/factor-weights",
+      "router": "factor"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 0,
+      "auth_required": false,
+      "dependency_count": 0,
+      "handler": "health",
+      "method": "GET",
+      "path": "/api/health",
+      "router": "system"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "import_config",
+      "method": "POST",
+      "path": "/api/import/config",
+      "router": "export"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "kline_data",
+      "method": "GET",
+      "path": "/api/kline/{code}",
+      "router": "market"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "market_overview",
+      "method": "GET",
+      "path": "/api/market",
+      "router": "market"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "get_notifications",
+      "method": "GET",
+      "path": "/api/notifications",
+      "router": "notifications"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "get_notification_stats",
+      "method": "GET",
+      "path": "/api/notifications/stats",
+      "router": "notifications"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "position_distribution",
+      "method": "GET",
+      "path": "/api/position-distribution",
+      "router": "portfolio"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "position_detail",
+      "method": "GET",
+      "path": "/api/position/{code}",
+      "router": "portfolio"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "positions",
+      "method": "GET",
+      "path": "/api/positions",
+      "router": "portfolio"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "regime_history",
+      "method": "GET",
+      "path": "/api/regime-history",
+      "router": "market"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "report_history",
+      "method": "GET",
+      "path": "/api/reports",
+      "router": "system"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "risk_assessment",
+      "method": "GET",
+      "path": "/api/risk",
+      "router": "risk"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "risk_exposure",
+      "method": "GET",
+      "path": "/api/risk-exposure",
+      "router": "risk"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "risk_correlation",
+      "method": "GET",
+      "path": "/api/risk/correlation",
+      "router": "risk"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "sankey_flow",
+      "method": "GET",
+      "path": "/api/sankey/flow",
+      "router": "market"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "scan",
+      "method": "GET",
+      "path": "/api/scan",
+      "router": "scan"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 0,
+      "auth_required": false,
+      "dependency_count": 0,
+      "handler": "scan_status",
+      "method": "GET",
+      "path": "/api/scan/status",
+      "router": "scan"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "stock_score",
+      "method": "GET",
+      "path": "/api/score/{code}",
+      "router": "scoring"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "sector_flow",
+      "method": "GET",
+      "path": "/api/sector-flow",
+      "router": "market"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "sector_heatmap",
+      "method": "GET",
+      "path": "/api/sector-heatmap",
+      "router": "market"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "get_settings",
+      "method": "GET",
+      "path": "/api/settings",
+      "router": "settings"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "save_settings",
+      "method": "POST",
+      "path": "/api/settings",
+      "router": "settings"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "signal_accuracy",
+      "method": "GET",
+      "path": "/api/signals",
+      "router": "signals_audit"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "signals_accuracy_trend",
+      "method": "GET",
+      "path": "/api/signals/accuracy-trend",
+      "router": "signals_audit"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "stock_detail",
+      "method": "GET",
+      "path": "/api/stock/{code}",
+      "router": "stock"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "strategy_history",
+      "method": "GET",
+      "path": "/api/strategy/history",
+      "router": "strategy"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "strategy_ranking",
+      "method": "GET",
+      "path": "/api/strategy/ranking",
+      "router": "strategy"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "strategy_recommend",
+      "method": "GET",
+      "path": "/api/strategy/recommend",
+      "router": "strategy"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "strategy_save",
+      "method": "POST",
+      "path": "/api/strategy/save",
+      "router": "strategy"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "strategy_snapshot_save",
+      "method": "POST",
+      "path": "/api/strategy/snapshot",
+      "router": "strategy"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "strategy_snapshot_delete",
+      "method": "DELETE",
+      "path": "/api/strategy/snapshot/{snapshot_id}",
+      "router": "strategy"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "strategy_snapshot_apply",
+      "method": "POST",
+      "path": "/api/strategy/snapshot/{snapshot_id}/apply",
+      "router": "strategy"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "strategy_snapshots_list",
+      "method": "GET",
+      "path": "/api/strategy/snapshots",
+      "router": "strategy"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "trade_history",
+      "method": "GET",
+      "path": "/api/trade-history",
+      "router": "market"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "treemap_factors",
+      "method": "GET",
+      "path": "/api/treemap/factors",
+      "router": "market"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "treemap_sectors",
+      "method": "GET",
+      "path": "/api/treemap/sectors",
+      "router": "market"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "run_walkforward",
+      "method": "POST",
+      "path": "/api/walkforward",
+      "router": "backtest"
+    }
+  ],
+  "schema_version": 1
+}

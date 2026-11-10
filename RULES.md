@@ -109,7 +109,11 @@ infra  ←  data  ←  scoring  ←  strategy
 > **阶段边界**：**Phase 4 阶段 B 已收官**（逐条核验见 `docs/plans/2026-11-07-refactor-plan.md` §七 收官验收）。
 > 3 个灰度消费者 + 1 个透传 + 1 个间接 + 1 个域外端点全部登记并取证；
 > 端点侧评分接口形状已定 ⇒ 满足 §2.2 中 Phase 5 拆 `api.py` 的进入条件。
-> **下一阶段：Phase 5（`api.py` 按域拆 router）。**
+> **Phase 5 进行中 · 第 1 批已完成（基线固化，零业务代码改动）**：
+> 17 域 / 68 端点归属表 + 前端 36 条路径清单已入库，L7 门禁就位（ADR-0004）。
+> **拆 `api.py` 前后都必须跑 `python scripts/route_ownership_check.py --check`**；
+> 鉴权依赖数不得减少，三条免鉴权端点（`POST /api/errors`、`GET /api/health`、
+> `GET /api/scan/status`）不得新增。下一批才动文件。
 
 ---
 
@@ -183,6 +187,9 @@ python scripts/scoring_baseline.py --check --out docs/refactor/scoring-baseline.
 
 # L6 开关前后响应样例 diff（阶段 B 起；off vs on，整份 get_stock_score 响应逐字段）
 python scripts/scoring_switch_diff.py --check
+
+# L7 端点归属表 + 契约基线（Phase 5 起；拆分前后必跑）
+python scripts/route_ownership_check.py --check
 ```
 
 | 判据 | 通过标准 |
@@ -193,6 +200,7 @@ python scripts/scoring_switch_diff.py --check
 | L4 | `[PASS] backtest baseline: all chains match` |
 | L5 | `[PASS] scoring baseline: 9 sources match (285 samples)`，且每条链路 `mismatches = 0` |
 | L6 | `[PASS] switch diff: 3 branch(es), 9 responses, 0 field(s) differ`；三条分支各自 `kernel calls off=0 on>0`，且 `[PASS] consumers: 3/3` |
+| L7 | `[PASS] route ownership: 68 endpoints / 17 routers / 36 frontend paths`；鉴权依赖数不得减少、契约 diff = 0 |
 
 ### 4.2 覆盖率门禁
 
@@ -245,7 +253,7 @@ python scripts/scoring_switch_diff.py --check
 
 ## 六、遇到坑怎么办
 
-1. 先查 `docs/refactor/pitfalls.md`（60 条，按症状查）
+1. 先查 `docs/refactor/pitfalls.md`（61 条，按症状查）
 2. 再查 `docs/refactor/README.md`（尺子口径与自证记录）
 3. 新坑 **追加** 到 `pitfalls.md`（现象 → 根因 → 修复 → 推广），**不要改写已有条目** ——
    踩坑记录的价值在于保留了当时的错误判据

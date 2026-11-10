@@ -366,7 +366,7 @@ curl http://localhost:8000/api/scan
 | `cache/models/` | ML 模型存储 |
 | `scripts/update_tdx_data.py` | TDX 日K线数据更新脚本 |
 | `RULES.md` | **项目规约** (目录结构/import/路径基准/**回测调用规约**/验证分层硬约束)。改代码前先读 |
-| `docs/refactor/pitfalls.md` | **踩坑集** (RF-01 执行期 60 条真实坑：现象→根因→修复→推广)。动 `lib/`、`tests/`、CI 前先读 |
+| `docs/refactor/pitfalls.md` | **踩坑集** (RF-01 执行期 61 条真实坑：现象→根因→修复→推广)。动 `lib/`、`tests/`、CI 前先读 |
 | `docs/refactor/README.md` | 重构度量基线说明 (契约/覆盖率/对拍三把尺子的口径与自证记录) |
 | `docs/plans/2026-11-07-refactor-plan.md` | RF-01 分阶段重构计划 (§七 为逐批执行记录/验收/复盘) |
 | `lib/scoring/scoring_contract.py` | **统一评分契约**：`ScoringResult` / `ScoringKernel` / 四维真源声明（RF-01 Phase 4） |
@@ -377,6 +377,10 @@ curl http://localhost:8000/api/scan
 | `scripts/scoring_switch_diff.py` | 第 6 把尺子：三分支开关前后整份响应 diff + 自证内核被调用 + 逐个消费者自证（`--check` / `--branch endpoint`） |
 | `docs/refactor/scoring-baseline.json` | 评分对拍基线读数（改动评分前后必比对） |
 | `docs/adr/0003-*.md` | 基线 pin 修复 + Phase 4 归一范围 / 覆盖率判据修正 |
+| `docs/adr/0004-*.md` | Phase 5 端点归属表基线 + 前端路径读数 18→36 修正 |
+| `scripts/route_ownership_check.py` | 第 7 把尺子：17 域 / 68 端点归属 + 鉴权/async + 契约五重校验（`--capture` / `--check`） |
+| `docs/refactor/contracts/route-ownership.json` | 68 端点归属表（Phase 5 拆分前后比对的权威读数） |
+| `docs/refactor/contracts/frontend-api-paths.json` | 前端 36 条 API 路径清单（Phase 5 实跑验收依据） |
 
 ---
 

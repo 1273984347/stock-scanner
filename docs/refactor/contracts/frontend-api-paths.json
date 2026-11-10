@@ -1,0 +1,313 @@
+{
+  "constraints": {
+    "normalization": "exact path, then ${...}/{...} placeholder, then single-param prefix",
+    "plan_stated_count": 18,
+    "source": "static/**/*.js|html|json literal /api/ strings"
+  },
+  "counts": {
+    "normalized_paths": 36,
+    "raw_strings": 36,
+    "unmapped": 0
+  },
+  "normalized_paths": [
+    "/api/alerts/rules",
+    "/api/alerts/rules/{rule_id}",
+    "/api/audit",
+    "/api/audit/{scan_id}",
+    "/api/dashboard",
+    "/api/errors",
+    "/api/export/positions",
+    "/api/export/positions/excel",
+    "/api/export/trades",
+    "/api/export/trades/excel",
+    "/api/exposures",
+    "/api/factor-eval",
+    "/api/factor-ic-history",
+    "/api/factor-scatter",
+    "/api/factor-weights",
+    "/api/import/config",
+    "/api/kline/{code}",
+    "/api/position-distribution",
+    "/api/position/{code}",
+    "/api/regime-history",
+    "/api/reports",
+    "/api/risk",
+    "/api/risk-exposure",
+    "/api/risk/correlation",
+    "/api/scan",
+    "/api/scan/status",
+    "/api/score/{code}",
+    "/api/sector-heatmap",
+    "/api/settings",
+    "/api/signals",
+    "/api/signals/accuracy-trend",
+    "/api/stock/{code}",
+    "/api/strategy/history",
+    "/api/strategy/recommend",
+    "/api/strategy/save",
+    "/api/trade-history"
+  ],
+  "records": [
+    {
+      "normalized": "/api/alerts/rules",
+      "raw": "/api/alerts/rules",
+      "sources": [
+        "static\\js\\components\\AlertEditor.js"
+      ]
+    },
+    {
+      "normalized": "/api/alerts/rules/{rule_id}",
+      "raw": "/api/alerts/rules/${ruleId}",
+      "sources": [
+        "static\\js\\components\\AlertEditor.js"
+      ]
+    },
+    {
+      "normalized": "/api/audit",
+      "raw": "/api/audit",
+      "sources": [
+        "static\\js\\main.js"
+      ]
+    },
+    {
+      "normalized": "/api/audit/{scan_id}",
+      "raw": "/api/audit/",
+      "sources": [
+        "static\\js\\main.js"
+      ]
+    },
+    {
+      "normalized": "/api/dashboard",
+      "raw": "/api/dashboard",
+      "sources": [
+        "static\\js\\main.js",
+        "static\\js\\polling.js"
+      ]
+    },
+    {
+      "normalized": "/api/errors",
+      "raw": "/api/errors",
+      "sources": [
+        "static\\js\\error_tracker.js"
+      ]
+    },
+    {
+      "normalized": "/api/export/positions",
+      "raw": "/api/export/positions",
+      "sources": [
+        "static\\js\\main.js"
+      ]
+    },
+    {
+      "normalized": "/api/export/positions/excel",
+      "raw": "/api/export/positions/excel",
+      "sources": [
+        "static\\js\\main.js"
+      ]
+    },
+    {
+      "normalized": "/api/export/trades",
+      "raw": "/api/export/trades",
+      "sources": [
+        "static\\js\\main.js"
+      ]
+    },
+    {
+      "normalized": "/api/export/trades/excel",
+      "raw": "/api/export/trades/excel",
+      "sources": [
+        "static\\js\\main.js"
+      ]
+    },
+    {
+      "normalized": "/api/exposures",
+      "raw": "/api/exposures",
+      "sources": [
+        "static\\js\\main.js",
+        "static\\js\\polling.js"
+      ]
+    },
+    {
+      "normalized": "/api/factor-eval",
+      "raw": "/api/factor-eval",
+      "sources": [
+        "static\\js\\renderers\\eval.js"
+      ]
+    },
+    {
+      "normalized": "/api/factor-ic-history",
+      "raw": "/api/factor-ic-history",
+      "sources": [
+        "static\\js\\renderers\\eval.js"
+      ]
+    },
+    {
+      "normalized": "/api/factor-scatter",
+      "raw": "/api/factor-scatter",
+      "sources": [
+        "static\\js\\renderers\\eval.js"
+      ]
+    },
+    {
+      "normalized": "/api/factor-weights",
+      "raw": "/api/factor-weights",
+      "sources": [
+        "static\\js\\renderers\\eval.js"
+      ]
+    },
+    {
+      "normalized": "/api/import/config",
+      "raw": "/api/import/config",
+      "sources": [
+        "static\\js\\main.js"
+      ]
+    },
+    {
+      "normalized": "/api/kline/{code}",
+      "raw": "/api/kline/${code}",
+      "sources": [
+        "static\\js\\renderers\\kline.js",
+        "static\\js\\renderers\\scanner.js"
+      ]
+    },
+    {
+      "normalized": "/api/position-distribution",
+      "raw": "/api/position-distribution",
+      "sources": [
+        "static\\js\\renderers\\positions.js"
+      ]
+    },
+    {
+      "normalized": "/api/position/{code}",
+      "raw": "/api/position/",
+      "sources": [
+        "static\\js\\renderers\\positions.js"
+      ]
+    },
+    {
+      "normalized": "/api/regime-history",
+      "raw": "/api/regime-history",
+      "sources": [
+        "static\\js\\renderers\\portfolio.js"
+      ]
+    },
+    {
+      "normalized": "/api/reports",
+      "raw": "/api/reports",
+      "sources": [
+        "static\\js\\main.js"
+      ]
+    },
+    {
+      "normalized": "/api/risk",
+      "raw": "/api/risk",
+      "sources": [
+        "static\\js\\main.js",
+        "static\\js\\polling.js"
+      ]
+    },
+    {
+      "normalized": "/api/risk-exposure",
+      "raw": "/api/risk-exposure",
+      "sources": [
+        "static\\js\\renderers\\risk.js"
+      ]
+    },
+    {
+      "normalized": "/api/risk/correlation",
+      "raw": "/api/risk/correlation",
+      "sources": [
+        "static\\js\\renderers\\risk.js"
+      ]
+    },
+    {
+      "normalized": "/api/scan",
+      "raw": "/api/scan",
+      "sources": [
+        "static\\js\\main.js",
+        "static\\js\\polling.js"
+      ]
+    },
+    {
+      "normalized": "/api/scan/status",
+      "raw": "/api/scan/status",
+      "sources": [
+        "static\\js\\main.js"
+      ]
+    },
+    {
+      "normalized": "/api/score/{code}",
+      "raw": "/api/score/",
+      "sources": [
+        "static\\js\\main.js"
+      ]
+    },
+    {
+      "normalized": "/api/sector-heatmap",
+      "raw": "/api/sector-heatmap",
+      "sources": [
+        "static\\js\\renderers\\scanner.js"
+      ]
+    },
+    {
+      "normalized": "/api/settings",
+      "raw": "/api/settings",
+      "sources": [
+        "static\\js\\renderers\\settings.js"
+      ]
+    },
+    {
+      "normalized": "/api/signals",
+      "raw": "/api/signals",
+      "sources": [
+        "static\\js\\main.js",
+        "static\\js\\renderers\\signals.js"
+      ]
+    },
+    {
+      "normalized": "/api/signals/accuracy-trend",
+      "raw": "/api/signals/accuracy-trend",
+      "sources": [
+        "static\\js\\renderers\\signals.js"
+      ]
+    },
+    {
+      "normalized": "/api/stock/{code}",
+      "raw": "/api/stock/",
+      "sources": [
+        "static\\js\\components\\SearchBar.js",
+        "static\\js\\main.js"
+      ]
+    },
+    {
+      "normalized": "/api/strategy/history",
+      "raw": "/api/strategy/history",
+      "sources": [
+        "static\\js\\renderers\\strategy-compare.js"
+      ]
+    },
+    {
+      "normalized": "/api/strategy/recommend",
+      "raw": "/api/strategy/recommend",
+      "sources": [
+        "static\\js\\renderers\\strategy-compare.js"
+      ]
+    },
+    {
+      "normalized": "/api/strategy/save",
+      "raw": "/api/strategy/save",
+      "sources": [
+        "static\\js\\renderers\\strategy-compare.js"
+      ]
+    },
+    {
+      "normalized": "/api/trade-history",
+      "raw": "/api/trade-history",
+      "sources": [
+        "static\\js\\renderers\\kline.js",
+        "static\\js\\renderers\\trades.js"
+      ]
+    }
+  ],
+  "schema_version": 1
+}
