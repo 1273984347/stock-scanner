@@ -253,6 +253,63 @@ class TestBorrow2AtomicWrite:
 
 
 # ============================================================================
+# P-66 回归：portalocker「打开 .lock 文件」瞬时 PermissionError 必须被重试
+# （原实现该异常逃出 portalocker 重试循环 → 被包成 IOError 误判为「拿不到锁」）
+# ============================================================================
+
+class TestPortalockerOpenContentionRetry:
+    """P-66: _acquire_portalocker_with_retry 把打开/加锁瞬时争用当可重试事件。"""
+
+    def test_transient_permissionerror_is_retried_then_succeeds(self, isolated_signal_dir):
+        """Windows 抢开 .lock 首次 PermissionError，重试后应成功拿到锁（根因修法）。"""
+        pytest.importorskip("portalocker", reason="portalocker not installed")
+
+        from lib.scoring.signal_tracker import (
+            _acquire_portalocker_with_retry, _HAS_PORTALOCKER,
+        )
+        if not _HAS_PORTALOCKER:
+            pytest.skip("portalocker not available (env fcntl fallback)")
+
+        mock_pl = MagicMock()
+        mock_lock = MagicMock()
+        # 第一次 acquire 模拟 Windows 抢开 .lock 的 PermissionError，第二次成功
+        mock_lock.acquire.side_effect = [
+            PermissionError("[Errno 13] Permission denied: signal_history.lock"),
+            mock_lock,
+        ]
+        mock_pl.Lock.return_value = mock_lock
+        with patch("lib.scoring.signal_tracker._HAS_PORTALOCKER", True), \
+             patch("lib.scoring.signal_tracker.portalocker", mock_pl):
+            lock = _acquire_portalocker_with_retry(
+                str(isolated_signal_dir / "x.lock"), timeout=5,
+            )
+        assert lock is mock_lock, "瞬时 PermissionError 应被重试而非 fail-fast"
+        assert mock_lock.acquire.call_count >= 2, "应至少重试一次 acquire"
+
+    def test_exhaustion_after_timeout_raises(self, isolated_signal_dir):
+        """重试窗口耗尽仍失败 → 抛出最后异常（不静默、不死循环）。"""
+        pytest.importorskip("portalocker", reason="portalocker not installed")
+
+        from lib.scoring.signal_tracker import (
+            _acquire_portalocker_with_retry, _HAS_PORTALOCKER,
+        )
+        if not _HAS_PORTALOCKER:
+            pytest.skip("portalocker not available (env fcntl fallback)")
+
+        mock_pl = MagicMock()
+        mock_lock = MagicMock()
+        mock_lock.acquire.side_effect = PermissionError("[Errno 13] Permission denied")
+        mock_pl.Lock.return_value = mock_lock
+        with patch("lib.scoring.signal_tracker._HAS_PORTALOCKER", True), \
+             patch("lib.scoring.signal_tracker.portalocker", mock_pl):
+            with pytest.raises(PermissionError):
+                _acquire_portalocker_with_retry(
+                    str(isolated_signal_dir / "x.lock"), timeout=0.2,
+                )
+        assert mock_lock.acquire.call_count >= 1
+
+
+# ============================================================================
 # P1-5 + P2-4 + Borrow 3 + Borrow 4 测试
 # ============================================================================
 

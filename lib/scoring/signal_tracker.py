@@ -112,6 +112,40 @@ class SignalRecord:
     is_correct: bool = False
 
 
+def _acquire_portalocker_with_retry(lock_path: str, timeout: float = 30):
+    """包 portalocker.Lock 的「打开 + 加锁」，对瞬时争用重试（根因修法 P-66）。
+
+    portalocker 3.2 的 acquire() 重试循环只覆盖「加锁 syscall」(_get_lock)，
+    漏掉「打开 .lock 文件」(_get_fh)。Windows 上多个进程抢开同一 .lock 文件会
+    间歇抛 PermissionError [Errno 13]，该异常**不进** portalocker 重试循环，
+    直接上抛 ⇒ 原实现把它包成 IOError 当成「拿不到锁」失败。
+
+    本函数在门户层兜底：打开/加锁任一瞬时失败，都在 timeout 窗口内重试；
+    timeout 耗尽仍失败则抛出最后异常（由 _acquire_lock 包成 IOError，保持既有语义）。
+    内层 acquire 用 0.1s 短超时，把「持锁被占」也归入瞬时争用，外层 30s 预算不变。
+    """
+    import time as _time
+    from portalocker import exceptions as _pl_exc
+
+    deadline = _time.monotonic() + timeout
+    last_exc = None
+    while True:
+        try:
+            lock = portalocker.Lock(lock_path, timeout=0.1, fail_when_locked=False)
+            lock.acquire()
+            return lock
+        except (PermissionError, _pl_exc.LockException) as e:
+            # PermissionError: 抢开 .lock 的瞬时争用（Windows [Errno 13]）
+            # LockException: 加锁被其它进程占（内层 0.1s 超时），归瞬时争用
+            last_exc = e
+        if _time.monotonic() >= deadline:
+            break
+        _time.sleep(0.05)
+    if last_exc is None:
+        last_exc = RuntimeError("portalocker lock acquisition failed (unknown)")
+    raise last_exc
+
+
 class SignalTracker:
     """信号追踪器"""
 
@@ -244,11 +278,11 @@ class SignalTracker:
             lock_file.parent.mkdir(parents=True, exist_ok=True)
         try:
             if _HAS_PORTALOCKER:
-                self._lock_file = portalocker.Lock(
-                    str(lock_file), timeout=30,
-                    fail_when_locked=False  # 30s 等待, 不 fail-fast
-                )
-                self._lock_file.acquire()
+                # portalocker 的 acquire() 重试只覆盖「加锁 syscall」，不覆盖
+                # 「打开 .lock 文件」。Windows 上多进程抢开同一 .lock 会间歇抛
+                # PermissionError [Errno 13] 并逃出重试 ⇒ 交由 _acquire_portalocker_with_retry
+                # 在 30s 窗口内把「打开失败」当瞬时争用重试（P-66 根因修法；不 skip / 不降门禁 / 不改断言）。
+                self._lock_file = _acquire_portalocker_with_retry(str(lock_file), timeout=30)
             elif _HAS_FCNTL:
                 self._lock_file = open(lock_file, "a+")
                 fcntl.flock(

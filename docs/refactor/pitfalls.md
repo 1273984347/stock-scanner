@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**61 条**（P-01～P-61），分八类。
+> **规模**：**66 条**（P-01～P-66），分八类。
 > **姊妹文档**：执行过程与逐批验收见 `docs/plans/2026-11-07-refactor-plan.md` 第七节；
 > 基线读数见 `docs/refactor/baseline.md`；尺子口径见 `docs/refactor/README.md`。
 
@@ -1114,6 +1114,30 @@ AST 扫描调用名集合后发现三者性质完全不同：
 
 ---
 
+---
+
+### P-66 · portalocker 的 acquire() 重试只覆盖「加锁」不覆盖「打开文件」，Windows 多进程抢开 .lock 会误判「拿不到锁」
+
+**现象**：`lib/scoring/signal_tracker.py` 用 `portalocker.Lock(...).acquire()` 加锁，
+`timeout=30` 以为能扛并发。但 `test_concurrent_save_history_no_data_loss`（2 进程 spawn 抢写）
+间歇 `OSError: 无法获取信号历史文件锁`，根因是 `PermissionError: [Errno 13] Permission denied`
+发生在 `portalocker/utils.py::_get_fh`——即**打开** `signal_history.lock` 那一步，而非加锁 syscall。
+该异常逃出 `acquire()` 的（仅覆盖加锁的）重试循环，被我们的代码包成「拿不到锁」的 IOError。
+
+**根因**：portalocker 3.2 的 `acquire()` 先把 `_get_fh()` 放在重试循环**外**，循环内只重试 `_get_lock`；
+Windows 上多进程同时 `open()` 同一 `.lock` 文件会间歇抢不到（文件共享语义），抛 PermissionError 直接上抛。
+
+**修复（门户层兜底，不 skip / 不降门禁 / 不改断言）**：新增 `_acquire_portalocker_with_retry()`，
+把「打开」和「加锁」任一瞬时失败（PermissionError / `portalocker.exceptions.LockException`）
+都在 30s 窗口内重试；内层 `acquire(timeout=0.1)` 把「持锁被占」也归入瞬时争用。
+回归测试 `TestPortalockerOpenContentionRetry` 用 mock 验证「首次 PermissionError 重试后成功」
+与「耗尽超时仍抛出」，使下批不可能再犯。
+
+**推广**：**第三方库的「重试」覆盖到哪一步，必须读源码确认**。任何「超时=安全」的假设，
+要先看它的重试循环到底包住了哪些步骤；漏掉的那一步（如打开文件）就是间歇失败的藏身处。
+
+---
+
 ## 附 · 一句话索引（按症状查）
 
 | 症状 | 去查 |
@@ -1127,7 +1151,7 @@ AST 扫描调用名集合后发现三者性质完全不同：
 | 搜出来的候选里漏了最慢的那个 | P-08 |
 | 两三轮数据看不出稳定不稳定 | P-09 |
 | 加了门禁但从没见它红过 | P-10 |
-| Windows 上偶发 PermissionError | P-11 / P-13 |
+| Windows 上偶发 PermissionError（含 portalocker 抢开 .lock 误判「拿不到锁」） | P-11 / P-13 / P-66 |
 | 并发写丢数据 | P-12 |
 | 回测结果有未来数据 | P-34 / P-35 / P-36 |
 | mock 了却没生效 | P-18 / P-19 |
@@ -1156,6 +1180,7 @@ AST 扫描调用名集合后发现三者性质完全不同：
 | 端点函数搬进子包后 `__file__` 落到 `routers/`，`Path(__file__).parent` 让静态/缓存目录漂移 | P-63 |
 | `app.include_router` 后顶层是 `_IncludedRouter`（无 `.routes`），门禁遍历直接丢端点 | P-64 |
 | 顶层模块 `api.py` 用 `from .routers...` 相对 import 必崩 `no known parent package` | P-65 |
+| portalocker 的 acquire() 重试循环只覆盖「加锁 syscall」不覆盖「打开 .lock 文件」，Windows 多进程抢开同一 .lock 间歇 PermissionError 逃出重试 → 误判「拿不到锁」 | P-66 |
 
 ---
 
@@ -1172,7 +1197,7 @@ AST 扫描调用名集合后发现三者性质完全不同：
 | 耗时与稳定性基线 | `docs/refactor/test-duration-baseline.md` |
 
 **文档状态**：2026-11-07 首版（Phase 0 → Phase 3，51 条）；2026-11-10 追加 P-52 / P-53（Phase 4 前置批次）
-与 P-54 / P-55（阶段 A）+ P-56～P-60（阶段 B）+ P-61 / P-62～P-65（Phase 5 拆 api.py 单体），共 **65 条**。
+与 P-54 / P-55（阶段 A）+ P-56～P-60（阶段 B）+ P-61 / P-62～P-65（Phase 5 拆 api.py 单体）+ P-66（portalocker 打开争用重试），共 **66 条**。
 **核对基线**：本地全量 pytest 1162 passed / 12 skipped（13.02s）；CI run `42319502027` 3 job 全绿。
 2026-11-10 阶段 A 收官：**1221 passed / 12 skipped**，L0–L5 全 PASS。
 2026-11-10 阶段 B 首批：**1235 passed / 12 skipped**。
@@ -1180,10 +1205,11 @@ AST 扫描调用名集合后发现三者性质完全不同：
 2026-11-10 阶段 B 第 4 批：**1249 passed / 12 skipped**。
 2026-11-10 **Phase 4 收官**：**1253 passed / 12 skipped**（串行干净复跑）；
 L0–L6 全 PASS（L6 = `realtime` / `no_realtime` / `endpoint` 三分支 + 消费者级自证）。
-既有间歇性用例 `test_signal_tracker.py::TestBorrow2AtomicWrite` 已在 README §五 / P-60 登记。
+既有间歇性用例 `test_signal_tracker.py::TestBorrow2AtomicWrite` 的 portalocker 抢开 `.lock` 瞬时 `PermissionError` 已**根因修复**（P-66 + 回归测试 `TestPortalockerOpenContentionRetry`），不再间歇失败；P-60 仍作为「收官被无关红灯打断别急着改断言」的纪律条目保留。
 2026-11-10 **Phase 5 第 2 批收官（拆 api.py 单体）**：`api.py` 3087→~200 行装配层，68 端点按 17 域落 `routers/`；
 **1262 passed / 12 skipped / 0 failed**，L0–L7 全 PASS（L2 72 routes diff=0；L7 68 端点/17 router/36 前端路径，
-auth+async+contract 不变）。新增 P-62～P-65（AST 装饰器截断 / `__file__` 漂移 / `_IncludedRouter` 遍历 / 顶层模块相对 import）。
+auth+async+contract 不变）。新增 P-62～P-65（AST 装饰器截断 / `__file__` 漂移 / `_IncludedRouter` 遍历 / 顶层模块相对 import）；
+P-66 修复 portalocker「打开 .lock 文件」瞬时 PermissionError 逃出重试循环 → 门户层 `_acquire_portalocker_with_retry` 把打开/加锁争用统一重试，新增 2 例回归测试。
 决策见 `docs/adr/0005-phase5-api-split.md`。
 后续每批收官时**追加**新条目并在本行更新版本，不要重写已有条目 ——
 **踩坑记录的价值在于保留了当时的错误判据与被推翻的结论**。
