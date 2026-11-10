@@ -366,7 +366,7 @@ curl http://localhost:8000/api/scan
 | `cache/models/` | ML 模型存储 |
 | `scripts/update_tdx_data.py` | TDX 日K线数据更新脚本 |
 | `RULES.md` | **项目规约** (目录结构/import/路径基准/**回测调用规约**/验证分层硬约束)。改代码前先读 |
-| `docs/refactor/pitfalls.md` | **踩坑集** (RF-01 执行期 58 条真实坑：现象→根因→修复→推广)。动 `lib/`、`tests/`、CI 前先读 |
+| `docs/refactor/pitfalls.md` | **踩坑集** (RF-01 执行期 60 条真实坑：现象→根因→修复→推广)。动 `lib/`、`tests/`、CI 前先读 |
 | `docs/refactor/README.md` | 重构度量基线说明 (契约/覆盖率/对拍三把尺子的口径与自证记录) |
 | `docs/plans/2026-11-07-refactor-plan.md` | RF-01 分阶段重构计划 (§七 为逐批执行记录/验收/复盘) |
 | `lib/scoring/scoring_contract.py` | **统一评分契约**：`ScoringResult` / `ScoringKernel` / 四维真源声明（RF-01 Phase 4） |

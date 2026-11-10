@@ -104,12 +104,12 @@ infra  ←  data  ←  scoring  ←  strategy
 | S9 | 每切一个消费者，必须跑 `python scripts/scoring_switch_diff.py --check`，且**自证 on 侧真的经过了内核**（内核调用数 off=0 / on>0） | 两侧都走旧实现时 diff 也恒为 0 ⇒ 空判据（坑表 P-56） |
 | S10 | 切「自行算维度分的消费者」时，把维度提取**原样抽成纯函数**，消费者只调网关；**禁止把策略层函数注册成评分适配器** | 保持「适配器 = 评分实现」边界与 9 入口不变；抽取期间任何「顺手优化」都会改口径（ADR-0003 D5） |
 | S11 | **纯透传消费者不加灰度分支**：自身无评分调用点的端点登记进 `PASSTHROUGH_CONSUMERS`，改为纳入 L6 取证 + 契约冻结验证；禁止为清单打勾硬塞 `if` | `/api/score/{code}` 是三层纯透传，下游已接入 ⇒ 加分支零收益且破坏 S8（坑表 P-58） |
+| S12 | 端点按**四类互斥**登记：`GRAY` / `PASSTHROUGH` / `INDIRECT` / `OUT_OF_SCOPE`。域外端点与缓存聚合端点**不做** off/on 端点实跑取证（diff 恒 0 = 空判据），改为 AST 边界守卫 + L2 契约快照 | 坑表 P-59 / ADR-0003 D7；判据必须能区分「真的没变」和「压根没跑到」 |
 
-> **阶段边界**：阶段 A ✅；阶段 B 已切 **3 个灰度消费者**
-> `strategies` / `pipeline` / `cli`，并登记 **1 个纯透传消费者** `api_score`。
-> 端点侧评分接口形状已定，满足计划 §2.2 中 Phase 5 拆 `api.py` 的进入条件。
-> 剩余：`/api/dashboard`、`/api/strategy/recommend` 等端点消费者（多为透传，按 S11 处理）。
-> 新增消费者须按 S8/S9/S10/S11 接入与取证，不得一次切完不留痕。
+> **阶段边界**：**Phase 4 阶段 B 已收官**（逐条核验见 `docs/plans/2026-11-07-refactor-plan.md` §七 收官验收）。
+> 3 个灰度消费者 + 1 个透传 + 1 个间接 + 1 个域外端点全部登记并取证；
+> 端点侧评分接口形状已定 ⇒ 满足 §2.2 中 Phase 5 拆 `api.py` 的进入条件。
+> **下一阶段：Phase 5（`api.py` 按域拆 router）。**
 
 ---
 
@@ -245,7 +245,7 @@ python scripts/scoring_switch_diff.py --check
 
 ## 六、遇到坑怎么办
 
-1. 先查 `docs/refactor/pitfalls.md`（58 条，按症状查）
+1. 先查 `docs/refactor/pitfalls.md`（60 条，按症状查）
 2. 再查 `docs/refactor/README.md`（尺子口径与自证记录）
 3. 新坑 **追加** 到 `pitfalls.md`（现象 → 根因 → 修复 → 推广），**不要改写已有条目** ——
    踩坑记录的价值在于保留了当时的错误判据

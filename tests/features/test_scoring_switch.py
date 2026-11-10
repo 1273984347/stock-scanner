@@ -281,3 +281,53 @@ def test_endpoint_branch_is_registered_in_switch_diff():
     assert ("'endpoint'" in src or '"endpoint"' in src)
     assert "_call_score_endpoint" in src
     assert "api.stock_score" in src
+
+
+# ---------------------------------------------------------------- 端点分类（阶段 B 收官）
+
+SCORING_SYMBOLS = (
+    "score_4d", "comprehensive_score", "get_stock_score",
+    "unified_scoring_enabled", "ScoringKernel", "FEATURE_UNIFIED_SCORING",
+)
+
+
+def test_endpoint_classification_is_disjoint_and_complete():
+    from lib.scoring.scoring_gateway import (
+        GRAY_CONSUMERS, PASSTHROUGH_CONSUMERS, INDIRECT_CONSUMERS,
+        OUT_OF_SCOPE_ENDPOINTS,
+    )
+    groups = [set(GRAY_CONSUMERS), set(PASSTHROUGH_CONSUMERS),
+              set(INDIRECT_CONSUMERS), set(OUT_OF_SCOPE_ENDPOINTS)]
+    assert sum(len(g) for g in groups) == len(set().union(*groups)), "classes must be disjoint"
+    all_endpoints = set().union(*groups)
+    assert {"api_score", "api_dashboard", "api_strategy_recommend"} <= all_endpoints
+
+
+def test_dashboard_is_aggregator_not_scorer():
+    """`/api/dashboard` 是缓存聚合端点，评分只经 run_all_strategies 间接受益。"""
+    tree = ast.parse((ROOT / "api.py").read_text(encoding="utf-8"))
+    fn = _node(tree, "dashboard")
+    names = _call_names(fn)
+    for symbol in SCORING_SYMBOLS:
+        assert symbol not in names, f"dashboard unexpectedly calls {symbol}"
+    assert "_cache_get" in names and "_cache_set" in names
+    attrs = {n.attr for n in ast.walk(fn) if isinstance(n, ast.Attribute)}
+    assert "run_all_strategies" in attrs, "indirect scoring path must stay visible"
+
+
+def test_recommend_is_out_of_scoring_domain():
+    """`/api/strategy/recommend` 属因子权重优化域，根本不消费评分结果。"""
+    tree = ast.parse((ROOT / "api.py").read_text(encoding="utf-8"))
+    fn = _node(tree, "strategy_recommend")
+    names = _call_names(fn)
+    assert "FactorOptimizer" in names and "evaluate_weights" in names
+    for symbol in SCORING_SYMBOLS:
+        assert symbol not in names, f"recommend unexpectedly calls {symbol}"
+
+
+def test_no_l6_branch_for_out_of_scope_endpoint():
+    """给域外端点做 off/on diff = 恒 0 的空判据（P-54），不应进 L6。"""
+    tree = ast.parse((ROOT / "scripts/scoring_switch_diff.py").read_text(encoding="utf-8"))
+    src = ast.unparse(tree)
+    assert "api_strategy_recommend" not in src
+    assert "OUT_OF_SCOPE_ENDPOINTS" in src

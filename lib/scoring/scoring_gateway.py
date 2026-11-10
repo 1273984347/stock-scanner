@@ -84,3 +84,13 @@ GRAY_CONSUMERS = ("strategies", "pipeline", "cli")
 #: 它们通过下游已接入的消费者自动受益，只需纳入取证与契约冻结验证。
 #: 见 `docs/adr/0003-*.md` D6 / 坑表 P-58。
 PASSTHROUGH_CONSUMERS = ("api_score",)
+
+#: 间接消费者：缓存/聚合端点，不直接调评分函数；
+#: 其评分经 `run_all_strategies -> strategies` 间接受益，已被 L6 `realtime` 分支覆盖。
+#: 端点本身实跑取证无鉴别力（缓存命中会让 off/on 返回同一对象）。
+#: 见 `docs/adr/0003-*.md` D7 / 坑表 P-59。
+INDIRECT_CONSUMERS = ("api_dashboard",)
+
+#: 域外端点：计划里列了，但实测**完全不消费评分结果**（因子权重优化域）。
+#: 既不接网关，也不算透传/间接消费者；用 AST 守卫固定这个边界。
+OUT_OF_SCOPE_ENDPOINTS = ("api_strategy_recommend",)

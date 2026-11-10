@@ -1043,6 +1043,53 @@ flag 未命中的分支只报 `[INFO]`，其 diff 不作为证据。
 
 ---
 
+### P-59 · 「没有切点」也分三种，别全塞进一个「透传」抽屉
+
+**现象**：收官阶段 B 时，把剩余两个端点按 P-58 的经验一律当纯透传处理。
+AST 扫描调用名集合后发现三者性质完全不同：
+
+| 端点 | 调用 | 真相 |
+|---|---|---|
+| `/api/score/{code}` | `get_stock_score` | **透传**：下游评分路径已接网关 |
+| `/api/dashboard` | `_cache_get` / `_cache_set` / `get_market_sentiment` | **聚合**：评分仅经 `run_all_strategies → strategies` 间接受益 |
+| `/api/strategy/recommend` | `FactorOptimizer` / `evaluate_weights` | **域外**：因子权重优化，根本不消费评分结果 |
+
+**修复**：网关拆成互斥四类登记（`GRAY` / `PASSTHROUGH` / `INDIRECT` / `OUT_OF_SCOPE`），
+测试断言四类无交集且覆盖三个端点；`--summary` 全部列出。
+
+**推广**：① **给域外端点做 off/on diff，结果是恒 0 的空判据**（它根本不调网关，
+内核调用也恒 0）⇒ 改用 AST 守卫钉住「它不消费评分结果」；
+② **给缓存聚合端点做端点实跑，缓存命中会让 off/on 返回同一对象**，
+同样是无鉴别力绿灯，且自动触发 scan 带超时/网络依赖会让门禁 flaky
+⇒ 改判据为「分类登记 + AST 边界守卫 + L2 契约快照」，并留 ADR（本项目第 4 次判据修正）。
+**判据必须能区分「真的没变」和「压根没跑到」。**
+
+---
+
+### P-60 · 收官验收被**既有间歇性用例**假红打断，别急着改断言
+
+**现象**：阶段 B 收官时全量 L1 报
+`test_signal_tracker.py::TestBorrow2AtomicWrite::test_concurrent_save_history_no_data_loss`
+失败（`OSError: 无法获取信号历史文件锁`）。该用例是 `multiprocessing spawn` 真并发
++ portalocker 文件锁，README §五 早就登记为「三平台既有失败」。
+
+**诊断**（三步取证，顺序不能反）：
+1. **改动范围**：`git diff --name-only HEAD` ⇒ 本批 10 个文件全是文档 / 网关常量 /
+   L6 脚本 / 测试，**没有** `lib/scoring/signal_tracker.py` 或 `tests/test_signal_tracker.py`。
+2. **单独复跑**：同一用例串行单跑 5 次 ⇒ **4 通过 / 1 失败**，确认间歇性而非回归。
+   并行跑其它重负载取证任务时失败率明显升高（首轮曾连续 3 次失败）。
+3. **干净全量复跑**：不并行任何其它任务 ⇒ **1253 passed / 12 skipped，0 failed**。
+
+**修复**：**没有修它**。根因在 portalocker 跨平台锁超时/重试策略与并发测试设计，
+属独立批次；本批不动 `signal_tracker`，不加 `skip`，不改断言，不放宽门禁。
+如实登记为收官「已知遗留」并给出独立批次建议。
+
+**推广**：**判红先问「我这次改的东西能不能碰到它」**，用 `git diff` 而不是直觉作答。
+再区分「稳定失败」与「间歇性」：连续单跑 ≥5 次 + 一次无并行干扰的全量复跑。
+切忌为了让收官好看而加 `skipif` 或调容忍度 —— 那是把真实盲区压下去（P-51 同构）。
+
+---
+
 
 ---
 
@@ -1081,6 +1128,8 @@ flag 未命中的分支只报 `[INFO]`，其 diff 不作为证据。
 | 开关前后 0 差异 / 灰度好像没生效 | P-56 |
 | 新切的消费者好像从没被测到 | P-57 |
 | 清单里的「消费者」只是转发，没什么可切 | P-58 |
+| 端点没切点 / diff 恒 0 但说不清为什么 | P-59 |
+| 验收时冒出一个跟本次改动无关的红灯 | P-60 |
 
 ---
 
@@ -1097,12 +1146,14 @@ flag 未命中的分支只报 `[INFO]`，其 diff 不作为证据。
 | 耗时与稳定性基线 | `docs/refactor/test-duration-baseline.md` |
 
 **文档状态**：2026-11-07 首版（Phase 0 → Phase 3，51 条）；2026-11-10 追加 P-52 / P-53（Phase 4 前置批次）
-与 P-54 / P-55（阶段 A）+ P-56 / P-57 / P-58（阶段 B），共 **58 条**。
+与 P-54 / P-55（阶段 A）+ P-56～P-60（阶段 B），共 **60 条**。
 **核对基线**：本地全量 pytest 1162 passed / 12 skipped（13.02s）；CI run `42319502027` 3 job 全绿。
 2026-11-10 阶段 A 收官：**1221 passed / 12 skipped**，L0–L5 全 PASS。
 2026-11-10 阶段 B 首批：**1235 passed / 12 skipped**。
 2026-11-10 阶段 B 第 3 批：**1242 passed / 12 skipped**。
-2026-11-10 阶段 B 第 4 批收官：**1249 passed / 12 skipped**；
-L0–L6 全 PASS（L6 已扩为 `realtime` / `no_realtime` / `endpoint` 三分支 + 消费者级自证）。
+2026-11-10 阶段 B 第 4 批：**1249 passed / 12 skipped**。
+2026-11-10 **Phase 4 收官**：**1253 passed / 12 skipped**（串行干净复跑）；
+L0–L6 全 PASS（L6 = `realtime` / `no_realtime` / `endpoint` 三分支 + 消费者级自证）。
+既有间歇性用例 `test_signal_tracker.py::TestBorrow2AtomicWrite` 已在 README §五 / P-60 登记。
 后续每批收官时**追加**新条目并在本行更新版本，不要重写已有条目 ——
 **踩坑记录的价值在于保留了当时的错误判据与被推翻的结论**。

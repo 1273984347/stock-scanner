@@ -182,12 +182,17 @@ def main() -> int:
     ap.add_argument("--codes", default=",".join(CODES))
     args = ap.parse_args()
 
-    from lib.scoring.scoring_gateway import GRAY_CONSUMERS, PASSTHROUGH_CONSUMERS
+    from lib.scoring.scoring_gateway import (
+        GRAY_CONSUMERS, PASSTHROUGH_CONSUMERS, INDIRECT_CONSUMERS,
+        OUT_OF_SCOPE_ENDPOINTS,
+    )
     branches = BRANCHES if args.branch == "both" else (args.branch,)
     if args.summary:
-        print(f"[INFO] gray consumers: {', '.join(GRAY_CONSUMERS)}")
-        print(f"[INFO] passthrough consumers (no flag branch needed): "
-              f"{', '.join(PASSTHROUGH_CONSUMERS)}")
+        print(f"[INFO] gray consumers (flag branches): {', '.join(GRAY_CONSUMERS)}")
+        print(f"[INFO] passthrough (no flag branch): {', '.join(PASSTHROUGH_CONSUMERS)}")
+        print(f"[INFO] indirect (covered by realtime branch): {', '.join(INDIRECT_CONSUMERS)}")
+        print(f"[INFO] out-of-scope (not a scoring consumer): "
+              f"{', '.join(OUT_OF_SCOPE_ENDPOINTS)}")
         print(f"[INFO] branches: {', '.join(branches)}")
         print(f"[INFO] codes: {args.codes}")
         print(f"[INFO] on-side flag: FEATURE_UNIFIED_SCORING={args.flag}")
