@@ -16,7 +16,8 @@
 
 ```
 stock-scanner/
-├── api.py                # FastAPI 应用入口（唯一对外契约载体）
+├── api.py                # FastAPI 装配层（仅 app 定义 + 17 个 include_router；契约见 routers/）
+├── routers/              # 域路由包：common.py 聚合 import/状态/helper，17 个域模块按 ROUTERS 归属
 ├── run.py / run_v2.py    # CLI 入口
 ├── config.py             # 全局配置（策略/风控/LLM/ML）
 ├── scanner.py            # 选股策略入口
@@ -109,11 +110,13 @@ infra  ←  data  ←  scoring  ←  strategy
 > **阶段边界**：**Phase 4 阶段 B 已收官**（逐条核验见 `docs/plans/2026-11-07-refactor-plan.md` §七 收官验收）。
 > 3 个灰度消费者 + 1 个透传 + 1 个间接 + 1 个域外端点全部登记并取证；
 > 端点侧评分接口形状已定 ⇒ 满足 §2.2 中 Phase 5 拆 `api.py` 的进入条件。
-> **Phase 5 进行中 · 第 1 批已完成（基线固化，零业务代码改动）**：
-> 17 域 / 68 端点归属表 + 前端 36 条路径清单已入库，L7 门禁就位（ADR-0004）。
-> **拆 `api.py` 前后都必须跑 `python scripts/route_ownership_check.py --check`**；
+> **Phase 5 第 2 批已完成（拆 `api.py` 单体）**：`api.py` 从 3087 行收窄到约 200 行装配层，
+> 68 端点按 17 域落 `routers/`（含 `common.py` 约 507 行聚合层）；决策见 `docs/adr/0005-phase5-api-split.md`。
+> L0–L7 全 PASS（L1 **1262 passed / 12 skipped / 0 failed**；L2 72 routes diff=0；
+> L7 68 端点 / 17 router / 36 前端路径，auth+async+contract 不变）。
+> **拆 `api.py` 后改动 `routers/` 仍必须跑 `python scripts/route_ownership_check.py --check`**；
 > 鉴权依赖数不得减少，三条免鉴权端点（`POST /api/errors`、`GET /api/health`、
-> `GET /api/scan/status`）不得新增。下一批才动文件。
+> `GET /api/scan/status`）不得新增。
 
 ---
 

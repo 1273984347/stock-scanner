@@ -254,7 +254,7 @@ def test_endpoint_is_pure_passthrough():
     硬给它加一个 flag 分支 = 为清单打勾加补丁（坑表 P-58）。
     这里用 AST 钉住「它就是透传」，让 L6 的 endpoint 分支有明确语义。
     """
-    tree = ast.parse((ROOT / "api.py").read_text(encoding="utf-8"))
+    tree = ast.parse((ROOT / "routers/scoring.py").read_text(encoding="utf-8"))
     fn = _node(tree, "stock_score")
     names = _call_names(fn)
     assert "get_stock_score" in names
@@ -275,12 +275,16 @@ def test_cli_off_on_identical(monkeypatch):
 
 
 def test_endpoint_branch_is_registered_in_switch_diff():
-    """L6 必须真的覆盖端点，否则新增的透传消费者不会被跑到（P-57）。"""
+    """L6 必须真的覆盖端点，否则新增的透传消费者不会被跑到（P-57）。
+
+    Phase 5 后端点迁至 routers/scoring.py，故断言检查规范引用而非 `api.stock_score`。
+    """
     tree = ast.parse((ROOT / "scripts/scoring_switch_diff.py").read_text(encoding="utf-8"))
     src = ast.unparse(tree)
     assert ("'endpoint'" in src or '"endpoint"' in src)
     assert "_call_score_endpoint" in src
-    assert "api.stock_score" in src
+    assert "routers.scoring" in src
+    assert "stock_score" in src
 
 
 # ---------------------------------------------------------------- 端点分类（阶段 B 收官）
@@ -305,7 +309,7 @@ def test_endpoint_classification_is_disjoint_and_complete():
 
 def test_dashboard_is_aggregator_not_scorer():
     """`/api/dashboard` 是缓存聚合端点，评分只经 run_all_strategies 间接受益。"""
-    tree = ast.parse((ROOT / "api.py").read_text(encoding="utf-8"))
+    tree = ast.parse((ROOT / "routers/system.py").read_text(encoding="utf-8"))
     fn = _node(tree, "dashboard")
     names = _call_names(fn)
     for symbol in SCORING_SYMBOLS:
@@ -317,7 +321,7 @@ def test_dashboard_is_aggregator_not_scorer():
 
 def test_recommend_is_out_of_scoring_domain():
     """`/api/strategy/recommend` 属因子权重优化域，根本不消费评分结果。"""
-    tree = ast.parse((ROOT / "api.py").read_text(encoding="utf-8"))
+    tree = ast.parse((ROOT / "routers/strategy.py").read_text(encoding="utf-8"))
     fn = _node(tree, "strategy_recommend")
     names = _call_names(fn)
     assert "FactorOptimizer" in names and "evaluate_weights" in names

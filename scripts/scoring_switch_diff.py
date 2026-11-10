@@ -65,9 +65,12 @@ BRANCH_CONSUMER = {
 
 
 async def _call_score_endpoint(code):
-    """直接调用 FastAPI 端点函数（`_=None` 绕过 Security 依赖，其余链路完全真实）。"""
-    import api
-    return await api.stock_score(code, _=None)
+    """直接调用 FastAPI 端点函数（`_=None` 绕过 Security 依赖，其余链路完全真实）。
+
+    Phase 5 后端点已迁至 routers/scoring.py，故从此处导入（不再经 api 模块）。
+    """
+    from routers.scoring import stock_score
+    return await stock_score(code, _=None)
 
 
 def _load_dual_run():

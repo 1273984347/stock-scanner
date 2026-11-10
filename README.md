@@ -73,7 +73,8 @@ stock-scanner/
 ├── factors.py             # 因子库 (技术指标/市场体制/宏观门控)
 ├── scanner.py             # 选股策略主模块 (legacy)
 ├── backtest.py            # 回测引擎
-├── api.py                 # FastAPI 端点 (需要 API_SECRET_KEY)
+├── api.py                 # FastAPI 装配层 (仅 include_router；端点见 routers/)
+├── routers/               # 域路由包 (common.py + 17 域模块)
 ├── run.py                 # CLI 入口
 ├── notifier.py            # 飞书推送
 ├── lib/                   # 核心业务模块

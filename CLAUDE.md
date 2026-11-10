@@ -40,7 +40,8 @@
 
 ```
 stock-scanner/
-├── api.py                 # FastAPI 端点
+├── api.py                 # FastAPI 装配层（仅 include_router；端点见 routers/）
+├── routers/               # 域路由包（common.py + 17 域模块）
 ├── config.py              # 全局配置 (策略/风控/LLM/ML/组合)
 ├── dashboard.py           # Streamlit Dashboard
 ├── factors.py             # 因子库 (技术指标/市场体制/宏观门控)

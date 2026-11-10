@@ -148,9 +148,26 @@ def collect() -> dict:
     openapi = app.openapi()
     openapi_paths = openapi.get("paths", {})
 
+    def _iter_leaf_routes(node):
+        """递归展平 `app.include_router` 产生的嵌套路由（Starlette _IncludedRouter）。
+
+        Phase 5 后端点经 `app.include_router(domain.router)` 挂载，app.routes 顶层是
+        _IncludedRouter 容器而非 APIRoute，必须下钻 `original_router.routes` 才能拿到真实路由。
+        路径 / 方法 / 鉴权 / handler 名 / async 等契约字段与拆分前完全一致（仅少了一层包装）。
+        """
+        for r in node.routes:
+            if isinstance(r, Mount):
+                yield ("mount", r)
+            elif hasattr(r, "original_router"):  # Starlette _IncludedRouter
+                yield from _iter_leaf_routes(r.original_router)
+            elif hasattr(r, "routes"):  # APIRouter 等容器
+                yield from _iter_leaf_routes(r)
+            else:
+                yield ("leaf", r)
+
     routes, counts = [], collections.Counter()
-    for r in app.routes:
-        if isinstance(r, Mount):
+    for kind, r in _iter_leaf_routes(app):
+        if kind == "mount":
             counts["static_mount"] += 1
             continue
         if isinstance(r, APIWebSocketRoute):
@@ -237,24 +254,35 @@ def collect() -> dict:
 # ---------------------------------------------------------------- AST 交叉校验
 
 def ast_pairs() -> set:
-    """从 api.py 源码 AST 提取 (path, method) 集合，与运行时互证。
+    """从 api.py + routers/*.py 源码 AST 提取 (path, method) 集合，与运行时互证。
 
     目的：防止「用 app.add_api_route 注册的端点」被 AST 漏掉，
     或「源码删了装饰器但路由还在」这类漂移悄悄发生。
+
+    Phase 5 后端点分散在 routers/ 各域模块（装饰器为 `@router.get` 等），
+    故扫描范围需覆盖 api.py 装配层 + routers 包；匹配器只看函数装饰器列表，
+    不会误伤 `dict.get(...)` 之类的普通调用。
     """
-    tree = ast.parse((ROOT / "api.py").read_text(encoding="utf-8"))
+    files = [ROOT / "api.py"]
+    routers_dir = ROOT / "routers"
+    if routers_dir.is_dir():
+        files.extend(sorted(routers_dir.glob("*.py")))
     pairs = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+    for path in files:
+        if not path.exists():
             continue
-        for d in node.decorator_list:
-            c = d.func if isinstance(d, ast.Call) else d
-            if isinstance(c, ast.Attribute) and c.attr in (
-                "get", "post", "put", "delete", "patch", "api_route", "websocket",
-            ):
-                if isinstance(d, ast.Call) and d.args and isinstance(d.args[0], ast.Constant):
-                    method = "WEBSOCKET" if c.attr == "websocket" else c.attr.upper()
-                    pairs.add((d.args[0].value, method))
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for d in node.decorator_list:
+                c = d.func if isinstance(d, ast.Call) else d
+                if isinstance(c, ast.Attribute) and c.attr in (
+                    "get", "post", "put", "delete", "patch", "api_route", "websocket",
+                ):
+                    if isinstance(d, ast.Call) and d.args and isinstance(d.args[0], ast.Constant):
+                        method = "WEBSOCKET" if c.attr == "websocket" else c.attr.upper()
+                        pairs.add((d.args[0].value, method))
     return pairs
 
 

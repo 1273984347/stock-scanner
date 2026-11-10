@@ -1152,6 +1152,10 @@ AST 扫描调用名集合后发现三者性质完全不同：
 | 端点没切点 / diff 恒 0 但说不清为什么 | P-59 |
 | 验收时冒出一个跟本次改动无关的红灯 | P-60 |
 | 拆大文件前说不清原来有哪些端点/鉴权 | P-61 |
+| AST `FunctionDef.lineno` 指向 `def` 行而非装饰器行，按它切会把 `@app.xxx` 截断 ⇒ 0 路由 | P-62 |
+| 端点函数搬进子包后 `__file__` 落到 `routers/`，`Path(__file__).parent` 让静态/缓存目录漂移 | P-63 |
+| `app.include_router` 后顶层是 `_IncludedRouter`（无 `.routes`），门禁遍历直接丢端点 | P-64 |
+| 顶层模块 `api.py` 用 `from .routers...` 相对 import 必崩 `no known parent package` | P-65 |
 
 ---
 
@@ -1168,7 +1172,7 @@ AST 扫描调用名集合后发现三者性质完全不同：
 | 耗时与稳定性基线 | `docs/refactor/test-duration-baseline.md` |
 
 **文档状态**：2026-11-07 首版（Phase 0 → Phase 3，51 条）；2026-11-10 追加 P-52 / P-53（Phase 4 前置批次）
-与 P-54 / P-55（阶段 A）+ P-56～P-60（阶段 B）+ P-61（Phase 5），共 **61 条**。
+与 P-54 / P-55（阶段 A）+ P-56～P-60（阶段 B）+ P-61 / P-62～P-65（Phase 5 拆 api.py 单体），共 **65 条**。
 **核对基线**：本地全量 pytest 1162 passed / 12 skipped（13.02s）；CI run `42319502027` 3 job 全绿。
 2026-11-10 阶段 A 收官：**1221 passed / 12 skipped**，L0–L5 全 PASS。
 2026-11-10 阶段 B 首批：**1235 passed / 12 skipped**。
@@ -1177,5 +1181,9 @@ AST 扫描调用名集合后发现三者性质完全不同：
 2026-11-10 **Phase 4 收官**：**1253 passed / 12 skipped**（串行干净复跑）；
 L0–L6 全 PASS（L6 = `realtime` / `no_realtime` / `endpoint` 三分支 + 消费者级自证）。
 既有间歇性用例 `test_signal_tracker.py::TestBorrow2AtomicWrite` 已在 README §五 / P-60 登记。
+2026-11-10 **Phase 5 第 2 批收官（拆 api.py 单体）**：`api.py` 3087→~200 行装配层，68 端点按 17 域落 `routers/`；
+**1262 passed / 12 skipped / 0 failed**，L0–L7 全 PASS（L2 72 routes diff=0；L7 68 端点/17 router/36 前端路径，
+auth+async+contract 不变）。新增 P-62～P-65（AST 装饰器截断 / `__file__` 漂移 / `_IncludedRouter` 遍历 / 顶层模块相对 import）。
+决策见 `docs/adr/0005-phase5-api-split.md`。
 后续每批收官时**追加**新条目并在本行更新版本，不要重写已有条目 ——
 **踩坑记录的价值在于保留了当时的错误判据与被推翻的结论**。

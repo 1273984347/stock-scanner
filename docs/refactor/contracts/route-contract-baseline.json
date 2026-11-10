@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-06T20:32:13+00:00",
+  "generated_at": "2026-11-10T12:16:13+00:00",
   "app_version": "3.0.0",
   "auth_mechanism": "APIKeyHeader via Depends 链（本项目不使用 FastAPI SecurityRequirement，\n                            故 OpenAPI 中不存在 apiKey security scheme；鉴权只能靠依赖名识别）",
   "source": {
-    "commit": "a7c2265",
+    "commit": "a14b6bd",
     "branch": "master",
-    "api_py_sha256": "e5e1965db13873597b1f067b24445644cb2d92e008f76ab67297fbaccbb1856e"
+    "api_py_sha256": "df06f4eff608ac361515d98e11a80ea08170fdafa80ab7cd12fa82a1bfa605b8"
   },
   "counts": {
-    "total_routes": 78,
+    "total_routes": 27,
     "http_api": 68,
     "http_non_api": 3,
     "websocket": 1,
