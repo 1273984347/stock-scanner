@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-06T23:39:52+00:00",
+  "generated_at": "2026-11-10T09:30:38+00:00",
   "constraints": {
     "as_of_date": "2026-05-30",
     "data_sources": [
@@ -52,13 +52,13 @@
         "regime": {},
         "score": {
           "breakdown": {
-            "capital_flow": 4.0,
+            "capital_flow": 8.0,
             "fundamental": 2.0,
             "news": 2.0,
             "technical": 5.0
           },
-          "rating": "谨慎",
-          "score": 3.0,
+          "rating": "持有",
+          "score": 4.4,
           "weights": {
             "capital_flow": 0.35,
             "fundamental": 0.35,

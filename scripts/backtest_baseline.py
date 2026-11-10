@@ -31,6 +31,7 @@ import pathlib
 import sys
 import traceback
 import zlib
+from datetime import datetime, timedelta
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -42,6 +43,19 @@ DAYS = 320
 SYMBOLS = ["600519", "000858", "600036"]
 AS_OF_DATE = "2026-05-30"
 TOLERANCE = 1e-9
+
+# ---- 基线窗口锚定（RF-01 Phase 4 前置批次）-------------------------------
+# engine.run_backtest 在**未传 start_date** 时用
+#   datetime.now() - timedelta(days=days) 推导窗口起点（engine.py:642），
+# 并把该字符串直接写进 equity_curve[0]（engine.py:679）。
+# 旧基线采集于 2026-11-07 => equity_first[0] = "2025-12-22"；
+# 2026-11-10 重跑变成 "2025-12-25"（+3 天 == 日历推进 3 天），门禁假红。
+# 修法：把「采集日」显式固化为常量，让窗口起点由常量推导，不依赖运行当天。
+# 验证：datetime(2026,11,7) - timedelta(days=320) == 2025-12-22（与旧基线逐字一致）。
+BASELINE_ANCHOR_DATE = "2026-11-07"
+PIN_START_DATE = (
+    datetime.strptime(BASELINE_ANCHOR_DATE, "%Y-%m-%d") - timedelta(days=DAYS)
+).strftime("%Y-%m-%d")
 
 
 def _seed(text: str) -> int:
@@ -321,6 +335,8 @@ def _run_engine_chain(multi_signal: bool):
             days=DAYS,
             parallel=False,
             multi_signal_entry=multi_signal,
+            # 显式 pin 窗口起点：不传则由 datetime.now() 推导 => 基线随日历漂移
+            start_date=PIN_START_DATE,
         )
     finally:
         engine.get_stock_hist_multi_source = orig_multi_engine

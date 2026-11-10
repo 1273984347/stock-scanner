@@ -184,6 +184,20 @@ python scripts/backtest_baseline.py --check --out docs/refactor/backtest-baselin
 | 挪文件/改包结构 | **AST 建依赖图验无循环** + 全量测试 + 契约 + 对拍 + **路径基准复核** |
 | 新增 API 端点 | 安全 Checklist（输入校验 → 认证 → 鉴权 → 错误消息 → 资源限制） |
 
+### 4.5 对拍基线 pin 规约（RF-01 Phase 4 前置批次起强制）
+
+| # | 规约 | 理由 |
+|---|---|---|
+| G1 | **基线捕获链路内禁止 `datetime.now()` / `date.today()`**；回测窗口起点必须由显式锚定常量推导并显式传参 | 2026-11-10 实测：未传 `start_date` 时 `engine.py:642` 用 `now()-320d`，`equity_curve[0]` 随日历漂移 3 天（pitfalls P-52） |
+| G2 | **链路所有外部取数函数必须注入固定值**；模块级 from-import patch **使用方**，函数内延迟 import patch **定义方**，两处都要 pin | P-18/P-19 的复发；`get_stock_fund_flow` 未注入导致 `capital_flow` 4→5 |
+| G3 | **基线判红时先证明漂移来源**，禁止改基线数字、更禁止挑一组「刚好能对上旧值」的注入值 | 为迎合脆弱判据补数据 = 补丁加补丁；正确顺序：修 pin → 重建无效基线 → 留 ADR |
+| G4 | **重建基线必须字段级取证**：只有预期链路变化、其余链路逐字节一致；两次独立 `--capture` 的 `chains` 逐字节一致 | ADR-0003 |
+| G5 | 每条 pin 规约必须有**机器判据**（`tests/test_baseline_pinning.py`），不能只写进文档等人记住 | 硬守卫优于文档提醒 |
+
+> **已知边界**：`unified_modes` 链路的 `simple` mode 内部仍由 `datetime.now()` 推导
+> `start_date`，但该链路指纹只含 `metrics` / `trades` / `rounds` 等、**不含 equity 日期字段**，
+> 故不判红。**若将来把 equity 日期纳入指纹，必须先按 G1 同步 pin。**
+
 ---
 
 ## 五、Git 提交节奏

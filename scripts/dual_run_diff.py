@@ -350,6 +350,43 @@ def _inject_shared_data(codes):
         out["is_suspend"] = out["volume"].fillna(0) == 0
         return out
 
+    # ---- RF-01 Phase 4 前置批次：补齐评分链路的外部输入 pin -------------
+    # 根因：get_stock_score -> full_score -> _compute_base_scores 会调用
+    #   get_stock_fund_flow / get_news_signals / get_sector_score_for_stock，
+    # 这三个入口原先未注入 => 读到本地随时间更新的资金流/新闻/板块数据，
+    # 基线随日历漂移（实测 2026-11-07 采集的 capital_flow=4.0，11-10 变 5.0）。
+    # 按 P-18/P-19 教训：模块级 from-import 已绑定在**使用方**，必须 patch 使用方；
+    # 函数内延迟 import（steps.score_without_realtime / full_score 的板块评分）
+    # 则 patch **定义方**。两处都 pin，才不存在漏网路径。
+    import lib.strategy.strategies as strategies
+    import lib.data.data_layer as data_layer
+
+    fixed_fund_flow = {"main_net_ratio": 0.06, "net_inflow_5d": 1.2e8}
+    fixed_news = {
+        "major_positive": False,
+        "institutional_buy": False,
+        "no_negative": True,
+        "earnings_positive": False,
+    }
+    saved_pins = []
+    for mod, name, fake in (
+        (strategies, "get_stock_fund_flow", lambda code, *a, **k: dict(fixed_fund_flow)),
+        (strategies, "get_news_signals", lambda code, *a, **k: dict(fixed_news)),
+        (data_layer, "get_stock_fund_flow", lambda code, *a, **k: dict(fixed_fund_flow)),
+        (data_layer, "get_news_signals", lambda code, *a, **k: dict(fixed_news)),
+    ):
+        if hasattr(mod, name):
+            saved_pins.append((mod, name, getattr(mod, name)))
+            setattr(mod, name, fake)
+    try:
+        import lib.strategy.sector_score as sector_score
+        if hasattr(sector_score, "get_sector_score_for_stock"):
+            saved_pins.append((sector_score, "get_sector_score_for_stock",
+                               sector_score.get_sector_score_for_stock))
+            sector_score.get_sector_score_for_stock = lambda code, *a, **k: 50.0
+    except ImportError:
+        pass
+
     steps.fetch_stock_data = fake_fetch
     btcore.get_stock_data = fake_bt_get
     try:
@@ -357,6 +394,8 @@ def _inject_shared_data(codes):
     finally:
         steps.fetch_stock_data = orig_fetch
         btcore.get_stock_data = orig_bt_get
+        for mod, name, orig in reversed(saved_pins):
+            setattr(mod, name, orig)
 
 
 class _StubML:
