@@ -102,9 +102,12 @@ infra  ←  data  ←  scoring  ←  strategy
 | S7 | 评分数值变化 > 1e-9 一律走 ADR + 迁移指南 | §2.3 B1 在评分域的具体化 |
 | S8 | **灰度判定只允许在 `lib/scoring/scoring_gateway.py`**；消费者不得自己读 `FEATURE_UNIFIED_SCORING` / 调 `unified_scoring_enabled()`，必须显式传 `consumer` 调网关函数 | 判定散落 N 份就无法回答「哪几个消费者切了」；`tests/features/test_scoring_switch.py` 用 AST 守卫 |
 | S9 | 每切一个消费者，必须跑 `python scripts/scoring_switch_diff.py --check`，且**自证 on 侧真的经过了内核**（内核调用数 off=0 / on>0） | 两侧都走旧实现时 diff 也恒为 0 ⇒ 空判据（坑表 P-56） |
+| S10 | 切「自行算维度分的消费者」时，把维度提取**原样抽成纯函数**，消费者只调网关；**禁止把策略层函数注册成评分适配器** | 保持「适配器 = 评分实现」边界与 9 入口不变；抽取期间任何「顺手优化」都会改口径（ADR-0003 D5） |
 
-> **阶段边界**：阶段 A（内核 + 适配器 + 对拍基线）✅；阶段 B **首批已切 `strategies`**（`_compute_base_scores`），
-> 其余消费者仍走旧路径。新增消费者须按 S8/S9 接入与取证，不得一次切完不留痕。
+> **阶段边界**：阶段 A ✅；阶段 B 已切 **2 个消费者**：
+> `strategies`（实时行情路径 `strategies._compute_base_scores`）与
+> `pipeline`（无实时行情路径 `steps.score_without_realtime`）。
+> `/api/*` 端点与 `run.py` 仍走旧路径。新增消费者须按 S8/S9/S10 接入与取证，不得一次切完不留痕。
 
 ---
 
@@ -187,7 +190,7 @@ python scripts/scoring_switch_diff.py --check
 | L3 | `[PASS] dual-run: 3 chains match baseline` |
 | L4 | `[PASS] backtest baseline: all chains match` |
 | L5 | `[PASS] scoring baseline: 9 sources match (285 samples)`，且每条链路 `mismatches = 0` |
-| L6 | `[PASS] switch diff: 0 field(s) differ`，且 `kernel calls off=0 on>0` |
+| L6 | `[PASS] switch diff: 2 branch(es), 6 responses, 0 field(s) differ`；两条分支各自 `kernel calls off=0 on>0` |
 
 ### 4.2 覆盖率门禁
 
@@ -240,7 +243,7 @@ python scripts/scoring_switch_diff.py --check
 
 ## 六、遇到坑怎么办
 
-1. 先查 `docs/refactor/pitfalls.md`（56 条，按症状查）
+1. 先查 `docs/refactor/pitfalls.md`（57 条，按症状查）
 2. 再查 `docs/refactor/README.md`（尺子口径与自证记录）
 3. 新坑 **追加** 到 `pitfalls.md`（现象 → 根因 → 修复 → 推广），**不要改写已有条目** ——
    踩坑记录的价值在于保留了当时的错误判据

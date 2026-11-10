@@ -35,8 +35,9 @@ def score_4d(
     """四维综合评分的接入点（唯一真源 `scorer_4d`）。
 
     Args:
-        consumer: 消费者标识，用于 `FEATURE_UNIFIED_SCORING` 按粒度灰度。
-            当前已接入：`"strategies"`（`lib/strategy/strategies.py::_compute_base_scores`）。
+        consumer: 消费者标识，用于 `FEATURE_UNIFIED_SCORING` 按粒度灰度。当前已接入：
+            - `"strategies"`：`lib/strategy/strategies.py::_compute_base_scores`（实时评分路径）
+            - `"pipeline"`：`lib/strategy/steps.py::score_without_realtime`（无实时行情路径）
         fundamental / capital_flow / news / technical: 四个维度分（0–10）。
 
     Returns:
@@ -76,4 +77,4 @@ def score_4d_result(
 
 
 #: 已接入灰度的消费者名单 —— 供取证脚本与文档核对，避免「以为切了其实没切」。
-GRAY_CONSUMERS = ("strategies",)
+GRAY_CONSUMERS = ("strategies", "pipeline")

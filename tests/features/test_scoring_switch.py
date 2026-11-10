@@ -75,6 +75,7 @@ def test_off_on_results_identical(monkeypatch, values):
 
 def test_gray_consumers_declared():
     assert "strategies" in GRAY_CONSUMERS
+    assert "pipeline" in GRAY_CONSUMERS
 
 
 # ---------------------------------------------------------------- 消费者接入（AST 守卫）
@@ -95,9 +96,13 @@ def test_strategies_routes_through_gateway():
     assert gateway_calls[0].args[0].value == "strategies"
 
 
-def test_consumer_does_not_read_flag_itself():
+@pytest.mark.parametrize("rel", [
+    "lib/strategy/strategies.py",
+    "lib/strategy/steps.py",
+])
+def test_consumer_does_not_read_flag_itself(rel):
     """灰度判定只能存在于网关；消费者里出现环境变量读取 = 判定散落。"""
-    tree = ast.parse((ROOT / "lib/strategy/strategies.py").read_text(encoding="utf-8"))
+    tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
     src = ast.unparse(tree)
     assert "FEATURE_UNIFIED_SCORING" not in src
     assert "unified_scoring_enabled" not in src
@@ -112,3 +117,104 @@ def test_gateway_has_no_mutable_module_state():
             assert not isinstance(value, (ast.Dict, ast.List, ast.Set)), (
                 "gateway must stay stateless; use function-local objects"
             )
+
+
+# ---------------------------------------------------------------- 第 2 个消费者：pipeline / 无实时行情
+
+def _steps_tree() -> ast.Module:
+    return ast.parse((ROOT / "lib/strategy/steps.py").read_text(encoding="utf-8"))
+
+
+def _call_names(fn: ast.FunctionDef) -> set[str]:
+    return {
+        (n.func.id if isinstance(n.func, ast.Name)
+         else n.func.attr if isinstance(n.func, ast.Attribute) else "")
+        for n in ast.walk(fn) if isinstance(n, ast.Call)
+    }
+
+
+def test_pipeline_consumer_uses_gateway():
+    tree = _steps_tree()
+    fn = _node(tree, "score_without_realtime")
+    names = _call_names(fn)
+    assert "score_4d" in names, "pipeline consumer must use the gateway"
+    assert "comprehensive_score" not in names, "must not call legacy scorer directly"
+    assert "compute_4d_dimensions" in names, "dimension extraction must be a separate pure function"
+    gateway = [n for n in ast.walk(fn)
+               if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+               and n.func.id == "score_4d"]
+    assert gateway[0].args[0].value == "pipeline"
+
+
+def test_dimension_extraction_is_pure():
+    """抽出的函数只做维度计算，不含评分决策 —— 否则就会算出两份分。"""
+    fn = _node(_steps_tree(), "compute_4d_dimensions")
+    names = _call_names(fn)
+    assert "comprehensive_score" not in names
+    assert "score_4d" not in names
+    assert any(isinstance(n, ast.Return) and isinstance(n.value, ast.Dict)
+               for n in ast.walk(fn)), "must return the 4 dimensions dict"
+
+
+CASES = [
+    ("600519", {"momentum_5": 5, "momentum_20": 10}, None),
+    ("000858", {"momentum_5": -3, "momentum_20": 18}, {
+        "pe": 20, "gross_margin": 0.4, "operating_cash_flow": 1e8,
+        "tdx_fundamentals": {
+            "profitability": {"ROE": 0.2, "gross_margin": 0.45},
+            "solvency": {"debt_to_asset": 0.3},
+            "growth": {"net_income_growth": 0.25},
+        },
+    }),
+    ("600036", {"momentum_5": 0, "momentum_20": 0}, "series"),
+]
+
+
+def _fin(case_value):
+    if case_value == "series":
+        import pandas as pd
+        return pd.Series({"_roe": 0.15, "_debt_to_asset": 0.5,
+                          "revenue_growth": 0.1})
+    return case_value
+
+
+@pytest.fixture
+def pinned_fund_flow(monkeypatch):
+    import lib.data.data_layer as data_layer
+    monkeypatch.setattr(
+        data_layer, "get_stock_fund_flow",
+        lambda code, *a, **k: {"main_net_ratio": 0.06, "net_inflow_5d": 1.2e8},
+    )
+
+
+@pytest.mark.parametrize("code,factors,fin", CASES)
+def test_extraction_preserves_legacy_formula(monkeypatch, pinned_fund_flow, code, factors, fin):
+    """旧函数 = 算出四维分 + 一次 comprehensive_score；这条等价式锁住抽取没改口径。
+
+    另有一次 `git show HEAD:lib/strategy/steps.py` 动态加载旧函数的实跑对拍，
+    覆盖 None / dict / pd.Series 三种 fin_data，结果见计划 §七 第 3 批。
+    """
+    from lib.strategy.steps import compute_4d_dimensions, score_without_realtime
+
+    fin_data = _fin(fin)
+    dims = compute_4d_dimensions(code, factors, fin_data)
+    assert set(dims) == {"fundamental", "capital_flow", "news", "technical"}
+    legacy = comprehensive_score(
+        dims["fundamental"], dims["capital_flow"], dims["news"], dims["technical"]
+    )
+
+    monkeypatch.delenv("FEATURE_UNIFIED_SCORING", raising=False)
+    off = score_without_realtime(code, factors, fin_data)
+    monkeypatch.setenv("FEATURE_UNIFIED_SCORING", "pipeline")
+    on = score_without_realtime(code, factors, fin_data)
+    monkeypatch.setenv("FEATURE_UNIFIED_SCORING", "all")
+    on_all = score_without_realtime(code, factors, fin_data)
+    assert off == on == on_all == legacy
+
+
+def test_dimension_extraction_is_deterministic(pinned_fund_flow):
+    from lib.strategy.steps import compute_4d_dimensions
+    for code, factors, fin in CASES:
+        fin_data = _fin(fin)
+        assert compute_4d_dimensions(code, factors, fin_data) == \
+               compute_4d_dimensions(code, factors, fin_data)

@@ -4,19 +4,19 @@
 > 目的：在动任何业务代码之前，先把「改动是否改变对外行为」变成**机器可判据**。
 > 原则：**没有尺子，「可破坏契约」等于盲改。**
 >
-> **执行期踩过的坑见 [`pitfalls.md`](pitfalls.md)**（56 条，附证据与推广判据）——
+> **执行期踩过的坑见 [`pitfalls.md`](pitfalls.md)**（57 条，附证据与推广判据）——
 > 改这块的代码前先读它，能省掉本会话里实际付出过的排查成本。
 >
 > **六把尺子**（改动是否改变对外行为 → 机器可判据）：
 > ① 契约快照（路径/schema） ② 覆盖率基线（回归幅度） ③ 双跑对拍（数值）
 > ④ **回测口径基线**（回测数值 = 策略决策依据，见 §七）
 > ⑤ **评分对拍基线**（评分数值 = 选股信号依据；9 入口 × 285 样本）
-> ⑥ **开关响应 diff**（灰度前后整份响应逐字段比对 + 自证内核确实被调用）
+> ⑥ **开关响应 diff**（两条评分分支 × 灰度前后整份响应逐字段比对 + 自证内核确实被调用）
 >
 > **RF-01 进度**：Phase 0（尺子）✅ · Phase 1（公共状态）✅ · Phase 2（数据层）✅ · Phase 3（回测引擎）✅
 > · Phase 4 阶段 A ✅（统一契约内核 + 9 适配器 + 评分对拍基线）
-> · **Phase 4 阶段 B 进行中**（首批已切 `strategies`，`FEATURE_UNIFIED_SCORING` 默认 off）
-> → 下一批：`steps.score_without_realtime`，见 `TODO.md` 阶段 B 清单
+> · **Phase 4 阶段 B 进行中**（已切 `strategies` + `pipeline` 两个消费者，`FEATURE_UNIFIED_SCORING` 默认 off）
+> → 下一批：`/api/score/{code}` 等端点消费者，见 `TODO.md` 阶段 B 清单
 >
 > ④ 的 5 条链路分工：`entry_signals`（三份 `check_entry` 判定序列，锁定**口径**）、
 > `core_factor_backtest` / `engine_donchian_entry` / `engine_multi_signal_entry`（锁定**引擎产出**）、
@@ -34,10 +34,10 @@
 | `contracts/openapi-baseline.json` | FastAPI 标准 OpenAPI 文档（给前端/网关/契约测试比对） | 同上（同一次运行一并产出） |
 | `test-duration-baseline.md` | **本地 pytest 耗时排序 + 稳定性基线**（慢用例定位与根因分析） | 人工维护 + 工具产出数据 |
 | `test-duration-baseline.json` | 上述基线的机器可读版（耗时排序 / 稳定性 min·median·max·CV） | `scripts/pytest_duration_baseline.py` |
-| `pitfalls.md` | **踩坑集**：RF-01 执行期真实踩过的 56 个坑（现象 → 根因 → 修复 → 推广），按度量/跨平台/测试/搬迁/数据/CI/工具链分七类 | 人工维护（每批收官追加） |
+| `pitfalls.md` | **踩坑集**：RF-01 执行期真实踩过的 57 个坑（现象 → 根因 → 修复 → 推广），按度量/跨平台/测试/搬迁/数据/CI/工具链分七类 | 人工维护（每批收官追加） |
 | `backtest-baseline.json` | **回测口径基线**：5 条链路的输出指纹（3 份 `check_entry` 判定序列 + 3 个回测引擎指标 + **统一入口 6 个 mode**） | `python scripts/backtest_baseline.py --capture --out docs/refactor/backtest-baseline.json` |
 | `scoring-baseline.json` | **评分对拍基线**（第 5 把尺子）：9 个评分入口 × 285 样本，「直接调旧实现」vs「经 ScoringKernel 调适配器」逐字段指纹 | `python scripts/scoring_baseline.py --capture --out docs/refactor/scoring-baseline.json` / `--check` |
-| `scripts/scoring_switch_diff.py` | **第 6 把尺子**：`FEATURE_UNIFIED_SCORING` off/on 两侧整份 `get_stock_score` 响应逐字段 diff，并计数证明 on 侧真走了内核 | `python scripts/scoring_switch_diff.py --check` |
+| `scripts/scoring_switch_diff.py` | **第 6 把尺子**：`realtime` / `no_realtime` 两条评分分支 × `FEATURE_UNIFIED_SCORING` off/on，整份 `get_stock_score` 响应逐字段 diff，并按分支计数证明 on 侧真走了内核 | `python scripts/scoring_switch_diff.py --check` |
 | `../plans/2026-11-07-refactor-plan.md` | 分阶段重构计划本体（阶段划分、兼容策略、验证方式、退出判据） | 人工维护 |
 
 ---

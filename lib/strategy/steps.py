@@ -20,9 +20,11 @@ from lib.data.data_layer import (
 )
 from lib.scoring.scorer import (
     score_fundamental, score_capital_flow, score_news, score_technical,
-    comprehensive_score, get_board_type, calc_deviation_value,
+    get_board_type, calc_deviation_value,
     check_anomaly_threshold,
 )
+# RF-01 Phase 4 阶段 B：四维评分决策统一经网关（flag 默认 off => 数值零变更）
+from lib.scoring.scoring_gateway import score_4d
 from lib.risk.selection_constraints import DeterministicConstraints
 from lib.ml.ml_predictor import MLPredictor
 
@@ -140,8 +142,15 @@ def score_with_realtime(code: str, hist: pd.DataFrame, factors: Dict, rt_row: pd
     return score_result
 
 
-def score_without_realtime(code: str, factors: Dict, fin_data: Optional[pd.Series] = None) -> Dict[str, Any]:
-    """无实时行情的四维评分路径
+def compute_4d_dimensions(code: str, factors: Dict,
+                          fin_data: Optional[pd.Series] = None) -> Dict[str, float]:
+    """提取四维评分的四个维度分（纯计算，不含评分决策）。
+
+    RF-01 Phase 4 阶段 B：本函数体是 `score_without_realtime` 原逻辑的**原样搬家**，
+    未改动任何一行计算。抽出的目的是让消费者只依赖网关 `score_4d`，
+    而不是把策略层函数注册进评分内核（那会模糊「适配器 = 评分实现」的边界）。
+
+    ⚠️ 这里每个分支都影响评分口径：任何「顺手优化」必须走 ADR + L5/L6 对拍。
 
     Args:
         code: 股票代码
@@ -149,7 +158,7 @@ def score_without_realtime(code: str, factors: Dict, fin_data: Optional[pd.Serie
         fin_data: 基本面数据（PE/PB/市值 + TDX财务指标）
 
     Returns:
-        评分结果字典
+        {fundamental, capital_flow, news, technical} 四个 0–10 的维度分
     """
     mom_5 = factors.get("momentum_5", 0) / 100
     mom_20 = factors.get("momentum_20", 0) / 100
@@ -218,8 +227,28 @@ def score_without_realtime(code: str, factors: Dict, fin_data: Optional[pd.Serie
                  "no_negative": True, "earnings_positive": False}
     news_score = score_news(**news_sig)
 
-    score_result = comprehensive_score(fund_score, cap_score, news_score, tech_score)
-    return score_result
+    return {
+        "fundamental": fund_score,
+        "capital_flow": cap_score,
+        "news": news_score,
+        "technical": tech_score,
+    }
+
+
+def score_without_realtime(code: str, factors: Dict,
+                           fin_data: Optional[pd.Series] = None) -> Dict[str, Any]:
+    """无实时行情的四维评分路径 —— 阶段 B 第二个灰度消费者 `pipeline`。
+
+    维度计算在 `compute_4d_dimensions`（原逻辑原样搬出），评分决策统一经
+    `scoring_gateway.score_4d("pipeline", ...)`；flag off 时网关直调旧实现，
+    数值与抽出前完全一致。
+    """
+    dims = compute_4d_dimensions(code, factors, fin_data)
+    return score_4d(
+        "pipeline",
+        dims["fundamental"], dims["capital_flow"],
+        dims["news"], dims["technical"],
+    )
 
 
 def evaluate_with_judge_ml(code: str, hist: pd.DataFrame, factors: Dict,
