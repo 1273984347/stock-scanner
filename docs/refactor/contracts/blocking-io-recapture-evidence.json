@@ -186,5 +186,85 @@
     },
     "untouched_endpoints": 63,
     "untouched_identical": true
+  },
+  {
+    "allowed_endpoints": [
+      "GET /api/factor-contribution",
+      "GET /api/market",
+      "GET /api/positions",
+      "GET /api/risk-exposure",
+      "GET /api/stock/{code}"
+    ],
+    "comparison": "endpoint records compared field-by-field; lineno excluded (implementation detail, see _normalize_endpoint)",
+    "mode": "offload",
+    "per_endpoint": [
+      {
+        "blocking_after": 1,
+        "blocking_before": 7,
+        "endpoint": "GET /api/factor-contribution",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 17
+      },
+      {
+        "blocking_after": 1,
+        "blocking_before": 8,
+        "endpoint": "GET /api/market",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 0,
+        "other_before": 14
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 5,
+        "endpoint": "GET /api/positions",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 0,
+        "other_before": 8
+      },
+      {
+        "blocking_after": 1,
+        "blocking_before": 8,
+        "endpoint": "GET /api/risk-exposure",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 28
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 4,
+        "endpoint": "GET /api/stock/{code}",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 13
+      }
+    ],
+    "reason": "RF-01 Phase 6: Tier A 端点阻塞调用 offload 进线程池",
+    "schema_version": 1,
+    "totals_after": {
+      "blocking_calls": 159,
+      "blocking_endpoints": 55,
+      "endpoints": 68,
+      "offloaded_calls": 14,
+      "offloaded_endpoints": 14,
+      "other_calls": 533,
+      "total_calls": 706
+    },
+    "totals_before": {
+      "blocking_calls": 188,
+      "blocking_endpoints": 57,
+      "endpoints": 68,
+      "offloaded_calls": 9,
+      "offloaded_endpoints": 9,
+      "other_calls": 610,
+      "total_calls": 807
+    },
+    "untouched_endpoints": 63,
+    "untouched_identical": true
   }
 ]

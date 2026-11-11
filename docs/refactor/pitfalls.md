@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**73 条**（P-01～P-73），分八类。
+> **规模**：**74 条**（P-01～P-74），分八类。
 > **姊妹文档**：执行过程与逐批验收见 `docs/plans/2026-11-07-refactor-plan.md` 第七节；
 > 基线读数见 `docs/refactor/baseline.md`；尺子口径见 `docs/refactor/README.md`。
 
@@ -1347,6 +1347,30 @@ for _ns in ("routers.factor", "routers.risk", "routers.export", "routers.common"
 （P-18 / P-19 同构）。另外：**AST 比对的两边必须套同一套归一化**，否则「旧 10 条 / 新 7 条」
 这类对称缺陷会让判据假红（P-45 的「比对前先归一」纪律）。
 
+### P-74 · 对拍 mock 返回 falsy `{}` 撞上 `is not None` 缓存判断，被测路径根本没执行
+
+**现象**：Phase 6 第 5 批把 `/api/risk-exposure` 接入 L9 对拍，首跑即
+`switch diff GET /api/risk-exposure: on-side did NOT use thread pool (count=0)`。
+而响应 off/on diff 是 0——两项判据一红一绿，红的那项才是真的。
+
+**根因**：`routers.risk._cache_get` 的既有 mock 是
+`lambda key, **k: None if key == "risk" else {}`——为第 4 批 `/api/risk` 设计
+（`_compute_risk` 里 `scan_cache = _cache_get(...) or {}`，`{}` 恰好表示「空缓存」）。
+但 `/api/risk-exposure` 端点判的是 `if cached is not None: return cached`，
+`{}` 不是 `None` ⇒ 缓存命中分支直接返回 ⇒ **`run_blocking` 一次都没被调用**。
+off/on 响应当然恒等（都是同一个 `{}`），对拍成了空判据——和 P-56 同构，
+但方向相反：P-56 是「两侧都没走到 ⇒ 0 差异」，这次是「根本没进被测路径 ⇒ 0 差异」。
+
+**修复**：mock 按 key 精确放行：`None if key in ("risk", "risk_exposure") else {}`。
+命中由 L10 的线程池自证抓出（`on-side pool_calls` 必须 == 1），响应 diff 单独存在时
+**证明不了** anything——这正是第 2 批坚持「off=0 / on=1 + 工作线程 ident 不同」
+三层自证的原因（T4）。
+
+**推广**：**给带缓存的端点写对拍 mock，必须先读端点的缓存判断写法**
+（`is not None` vs `or {}` vs `if cached:`），falsy 值只在「or {} / if cached」语义下等价于
+未命中。同一命名空间的 mock 被多个端点共用时，新增消费者要重新核对每个 key 的
+分支语义，不能假设旧 mock 的「空值」对新端点也是「未命中」（P-57 同源）。
+
 ---
 
 ## 附 · 一句话索引（按症状查）
@@ -1382,6 +1406,7 @@ for _ns in ("routers.factor", "routers.risk", "routers.export", "routers.common"
 | 优化后压测反而慢一个数量级 | P-70 |
 | 「逐条留痕」表里遗留被改名成已完成 | P-71 |
 | L9 对拍因 `datetime` 不可变类型 `patch` 崩 / 旧新语句数不对称假红 | P-73 |
+| 对拍全绿但被测路径根本没执行（mock 空值撞上 `is not None`） | P-56 / P-74 |
 | A/B 对照里 OpenAPI / schema 比较恒等 | P-54 / ADR-0009 D3 |
 | Actions 额度消耗太快 | P-40 |
 | commit 失败却把旧代码推上去了 | P-43 |
@@ -1425,6 +1450,8 @@ P-68（lineno 进基线使逐字节比较不可执行）与 P-69（导入期 HS3
 2026-11-11 **Phase 6 第 4 批**：追加 P-72（L8 端点顶层 lineno 漏剥，recapture 误报 21 条漂移的根因修）
 与 P-73（L9 冻结 datetime.now 用 Mock(wraps=datetime) 按命名空间 patch，攻克 C 扩展不可变类型），
 共 **73 条**。
+2026-11-11 **Phase 6 第 5 批**：追加 P-74（对拍 mock 返回 falsy `{}` 撞上端点 `is not None` 缓存判断，
+on 侧根本没进 `run_blocking`——响应 diff 恒 0 的「假通过」，靠线程池自证兜住），共 **74 条**。
 **核对基线**：本地全量 pytest 1162 passed / 12 skipped（13.02s）；CI run `42319502027` 3 job 全绿。
 2026-11-10 阶段 A 收官：**1221 passed / 12 skipped**，L0–L5 全 PASS。
 2026-11-10 阶段 B 首批：**1235 passed / 12 skipped**。

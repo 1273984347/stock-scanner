@@ -76,6 +76,12 @@ ENDPOINTS = (
     ("kline", "GET /api/kline/{code}"),
     ("risk", "GET /api/risk"),
     ("export_config", "GET /api/export/config"),
+    # Phase 6 第 5 批 Tier A 候选（blocking ≥4；dashboard 因 try 体含 await 不在本批）
+    ("factor_contribution", "GET /api/factor-contribution"),
+    ("market", "GET /api/market"),
+    ("positions", "GET /api/positions"),
+    ("risk_exposure", "GET /api/risk-exposure"),
+    ("stock", "GET /api/stock/{code}"),
 )
 
 FIXED_RAW = {
@@ -163,10 +169,28 @@ def _install_mocks(stack: ExitStack) -> list[int]:
             return {"regime": regime, "level": level}
         def full_risk_assessment(self, **kwargs):
             return {"alerts": []}
+        def compute_var_cvar(self, market_data, tickers, weights, total_value):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return {"var_95": -0.02, "cvar_95": -0.03}
+        def compute_correlation_matrix(self, market_data, tickers):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return {"avg_correlation": 0.3, "diversification_score": 0.7,
+                    "high_corr_pairs": []}
 
     class _FakePosMgr:
+        # risk_exposure 需要：非空持仓表（risk 端点不用该属性，互不影响）
+        positions = {
+            "000001": types.SimpleNamespace(weight=0.6, shares=1000.0, buy_price=10.0),
+            "600519": types.SimpleNamespace(weight=0.4, shares=100.0, buy_price=1500.0),
+        }
         def get_portfolio_summary(self, *a, **k):
             return {}
+        def check_stop_loss(self, prices):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return []
 
     def fake_compute_all_signals(hist):
         worker_idents.append(threading.get_ident())
@@ -205,6 +229,51 @@ def _install_mocks(stack: ExitStack) -> list[int]:
         time.sleep(BLOCK_SECONDS)
         return []
 
+    def fake_risk_batch(codes, days=120, **kwargs):
+        # 第 5 批 risk_exposure 需要：非空行情（risk 端点 tickers 为空，不触此 mock）
+        worker_idents.append(threading.get_ident())
+        time.sleep(BLOCK_SECONDS)
+        return {c: pd.DataFrame({"date": ["2024-01-01", "2024-01-02"],
+                                 "close": [10.0, 10.5]}) for c in codes}
+
+    class _FakeTracker:
+        def update_actual_returns(self):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+        def get_recent_signals(self, days=30):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return [
+                {"source": "volume_ratio", "actual_return_5d": 0.05},
+                {"source": "volume_ratio", "actual_return_5d": -0.02},
+                {"source": "adx", "actual_return_5d": 0.03},
+                {"source": "adx", "actual_return_5d": 0.0},
+            ]
+
+    class _FakeOrchMarket:
+        def get_market_sentiment(self):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return 0.5
+
+    class _FakeQuotesOrch:
+        def get_realtime_quotes(self):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return pd.DataFrame({
+                "代码": ["000001", "600519"],
+                "最新价": [10.0, 1500.0],
+            })
+
+    class _FakeOrchStock:
+        def get_stock_hist(self, code, days=180):
+            return fake_get_stock_hist(code, days=days)
+
+    def fake_composite_verdict(hist):
+        worker_idents.append(threading.get_ident())
+        time.sleep(BLOCK_SECONDS)
+        return {"verdict": "buy", "signals": {"ema_above": True}, "summary": "ok"}
+
     def noop_cache(*a, **k):
         return None
 
@@ -215,8 +284,7 @@ def _install_mocks(stack: ExitStack) -> list[int]:
     stack.enter_context(patch("routers.factor._cache_set", noop_cache))
     stack.enter_context(patch("routers.risk._cache_set", noop_cache))
     stack.enter_context(patch("routers.risk._cache_get", lambda *a, **k: None))
-    stack.enter_context(patch("routers.risk._batch_get_stock_hist",
-                              lambda *a, **k: {}))
+    stack.enter_context(patch("routers.risk._batch_get_stock_hist", fake_risk_batch))
     stack.enter_context(patch("factors.compute_all_signals", fake_compute_all_signals))
     stack.enter_context(patch("factors.evaluate_macro_gate", fake_evaluate_macro_gate))
     stack.enter_context(patch("lib.scoring.alpha.AlphaSynthesizer", _FakeAlpha))
@@ -228,6 +296,19 @@ def _install_mocks(stack: ExitStack) -> list[int]:
     stack.enter_context(patch("lib.risk.position_manager.PositionManager", _FakePosMgr))
     stack.enter_context(patch("routers.risk._run_stress_tests", fake_run_stress_tests))
     stack.enter_context(patch("config.get_config", fake_get_config))
+
+    # ---- Phase 6 第 5 批端点 mock（与 offload_switch_diff 同构，确定性零触网）----
+    stack.enter_context(patch("lib.scoring.signal_tracker.SignalTracker", _FakeTracker))
+    stack.enter_context(patch("routers.market._get_orchestrator",
+                              lambda *a, **k: _FakeOrchMarket()))
+    stack.enter_context(patch("routers.market._cache_get", noop_cache))
+    stack.enter_context(patch("routers.market._cache_set", noop_cache))
+    stack.enter_context(patch("routers.portfolio._get_orchestrator",
+                              lambda *a, **k: _FakeQuotesOrch()))
+    stack.enter_context(patch("routers.stock._get_orchestrator",
+                              lambda *a, **k: _FakeOrchStock()))
+    stack.enter_context(patch("lib.scoring.technical_signals.calc_composite_verdict",
+                              fake_composite_verdict))
 
     # 冻结 datetime.now，消除带时间戳端点的逐请求 shape 差异（测试伪影）。
     # datetime 是 C 扩展不可变类型，无法 patch 其 .now 属性；改用 Mock(wraps=...)
@@ -271,6 +352,21 @@ async def _call(consumer: str, bt):
     if consumer == "export_config":
         from routers import export as re_
         return await re_.export_config(preset="balanced")
+    if consumer == "factor_contribution":
+        from routers import factor as rf
+        return await rf.factor_contribution(days=30)
+    if consumer == "market":
+        from routers import market as rm
+        return await rm.market_overview(_=None)
+    if consumer == "positions":
+        from routers import portfolio as rp
+        return await rp.positions(_=None)
+    if consumer == "risk_exposure":
+        from routers import risk as rr
+        return await rr.risk_exposure()
+    if consumer == "stock":
+        from routers import stock as rs
+        return await rs.stock_detail(code="000001", _=None)
     raise ValueError(f"unknown consumer {consumer}")
 
 

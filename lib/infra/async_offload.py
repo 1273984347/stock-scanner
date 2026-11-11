@@ -41,6 +41,13 @@ OFFLOAD_CONSUMERS: tuple[str, ...] = (
     "kline",
     "risk",
     "export_config",
+    # Phase 6 第 5 批（Tier A 候选，blocking ≥4；/api/dashboard 因 try 体含
+    # await（asyncio.to_thread）无法逐字搬迁，留待单独处理）
+    "factor_contribution",
+    "market",
+    "positions",
+    "risk_exposure",
+    "stock",
 )
 
 

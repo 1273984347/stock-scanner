@@ -205,6 +205,48 @@ async def factor_weights(preset: str = Query("balanced")):
         return {"ic_weights": {}, "strategy_weights": {}}
 
 
+def _compute_factor_contribution(days):
+    """原 `GET /api/factor-contribution` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.scoring.signal_tracker import SignalTracker
+    import numpy as np
+
+    tracker = SignalTracker()
+    tracker.update_actual_returns()
+    recent = tracker.get_recent_signals(days=days)
+
+    if not recent:
+        return {"contributions": {}, "message": "暂无信号数据"}
+
+    # Group by source (factor) and compute avg return
+    by_source = {}
+    for s in recent:
+        src = s.get("source", "unknown")
+        ret = s.get("actual_return_5d", 0)
+        if ret != 0:
+            if src not in by_source:
+                by_source[src] = []
+            by_source[src].append(ret)
+
+    contributions = {}
+    for src, returns in by_source.items():
+        arr = np.array(returns)
+        contributions[src] = {
+            "count": len(returns),
+            "avg_return": round(float(arr.mean()) * 100, 2),
+            "win_rate": round(float((arr > 0).mean()) * 100, 1),
+            "total_contribution": round(float(arr.sum()) * 100, 2),
+        }
+
+    result = {
+        "contributions": contributions,
+        "total_signals": len(recent),
+        "period_days": days,
+        "timestamp": datetime.now().isoformat(),
+    }
+    _cache_set("factor_contribution", result)
+    return result
+
+
 @router.get("/api/factor-contribution", dependencies=[Security(verify_api_key)])
 async def factor_contribution(days: int = Query(default=30, ge=1, le=365)):
     """因子贡献度分析"""
@@ -213,44 +255,7 @@ async def factor_contribution(days: int = Query(default=30, ge=1, le=365)):
         return cached
 
     try:
-        from lib.scoring.signal_tracker import SignalTracker
-        import numpy as np
-
-        tracker = SignalTracker()
-        tracker.update_actual_returns()
-        recent = tracker.get_recent_signals(days=days)
-
-        if not recent:
-            return {"contributions": {}, "message": "暂无信号数据"}
-
-        # Group by source (factor) and compute avg return
-        by_source = {}
-        for s in recent:
-            src = s.get("source", "unknown")
-            ret = s.get("actual_return_5d", 0)
-            if ret != 0:
-                if src not in by_source:
-                    by_source[src] = []
-                by_source[src].append(ret)
-
-        contributions = {}
-        for src, returns in by_source.items():
-            arr = np.array(returns)
-            contributions[src] = {
-                "count": len(returns),
-                "avg_return": round(float(arr.mean()) * 100, 2),
-                "win_rate": round(float((arr > 0).mean()) * 100, 1),
-                "total_contribution": round(float(arr.sum()) * 100, 2),
-            }
-
-        result = {
-            "contributions": contributions,
-            "total_signals": len(recent),
-            "period_days": days,
-            "timestamp": datetime.now().isoformat(),
-        }
-        _cache_set("factor_contribution", result)
-        return result
+        return await run_blocking("factor_contribution", _compute_factor_contribution, days)
     except Exception as e:
         logger.error(f"因子贡献度分析失败: {e}")
         return {"contributions": {}}

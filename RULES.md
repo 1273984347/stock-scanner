@@ -6,7 +6,7 @@
 > - `RULES.md` 说**什么不许做 / 必须怎么做**（硬约束）
 > - `docs/refactor/pitfalls.md` 说**为什么**（每条规矩背后的真实坑）
 >
-> 最后更新：2026-11-11（RF-01 Phase 6 第 3 批：缓存范围裁剪 / L10 并发压测 / Tier B 留痕 / 收官前核验）
+> 最后更新：2026-11-12（RF-01 Phase 6 第 5 批：Tier A 候选 5 端点 offload / L9 无 try 迁移模式 / dashboard 因 await 体跳过，ADR-0011）
 
 ---
 
@@ -140,8 +140,12 @@ infra  ←  data  ←  scoring  ←  strategy
 > **35 个 Tier A 候选端点尚未 offload**（ADR-0009 D5）。
 > **第 4 批 ✅**（Tier A 候选 Top5 端点 offload + 两处门禁判据根因修，ADR-0010）：
 > `factor_eval` / `factor_scatter` / `kline` / `risk` / `export_config`；
-> L8/L9/L10 全绿，Tier B 候选 **35 → 30**；**30 个 Tier A 候选端点尚未 offload**，
-> 收官待清零（ADR-0010）。Phase 6 仍**未收官**（ADR-0006 D2）。
+> L8/L9/L10 全绿，Tier B 候选 **35 → 30**（ADR-0010）。
+> **第 5 批 ✅**（Tier A 候选 5 端点 offload + L9 无 try 迁移模式，ADR-0011）：
+> `factor_contribution` / `market` / `positions` / `risk_exposure` / `stock`
+> （**dashboard 因 try 体含 await 跳过**）；blocking **188 → 159**，offloaded **9 → 14**，
+> Tier B 候选 **30 → 25**；**25 个 Tier A 候选端点尚未 offload**，
+> 收官待清零（ADR-0011）。Phase 6 仍**未收官**（ADR-0006 D2）。
 > 完整遗留清单见 `docs/refactor/contracts/blocking-io-tier-b.json`。
 > 改 `routers/` 后必须同时跑 L7、L8、L9、L10。
 
@@ -226,7 +230,7 @@ python scripts/blocking_io_check.py --check
 python scripts/blocking_io_check.py --selftest
 
 # L9 offload 开关对拍（Phase 6 第 2 批起；迁移 AST 等价 + off/on 响应 + 线程池自证）
-# 覆盖 8 个迁移：3 个回测端点（基线 commit 523b353）+ 第 4 批 5 个端点（基线 commit 77bc366）
+# 覆盖 13 个迁移：3 个回测端点（523b353）+ 第 4 批 5 个端点（77bc366）+ 第 5 批 5 个端点（6d0e434）
 python scripts/offload_switch_diff.py --check
 
 # L10 并发压测 + Tier B 留痕（Phase 6 第 3 批起）

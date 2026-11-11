@@ -6,13 +6,8 @@ from lib.infra.async_offload import run_blocking
 
 router = APIRouter()
 
-@router.get("/api/market")
-async def market_overview(_=Security(verify_api_key)):
-    """市场概况 + 风控评估"""
-    cached = _cache_get("market", max_age=1800)
-    if cached is not None:
-        return cached
-
+def _compute_market():
+    """原 `GET /api/market` 缓存守卫之后的函数体，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
     from factors import evaluate_macro_gate, calc_market_exposure
     from lib.risk.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
 
@@ -52,6 +47,15 @@ async def market_overview(_=Security(verify_api_key)):
     }
     _cache_set("market", result)
     return result
+
+
+@router.get("/api/market")
+async def market_overview(_=Security(verify_api_key)):
+    """市场概况 + 风控评估"""
+    cached = _cache_get("market", max_age=1800)
+    if cached is not None:
+        return cached
+    return await run_blocking("market", _compute_market)
 
 
 @router.get("/api/regime-history", dependencies=[Security(verify_api_key)])

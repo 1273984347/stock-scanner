@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import ast
 import copy
 import importlib.util
 import json
@@ -67,15 +68,36 @@ def test_all_endpoints_remain_async():
 
 
 def test_helper_expansion_catches_blocking_calls_moved_into_helpers():
-    """把 `open` / `json.load` 搬进 `_load_alert_rules` 也必须被计入。"""
+    """把 `open` / `json.load` 搬进 `_load_alert_rules` 也必须被计入。
+
+    两级嵌套展开（端点 → helper → helper）用合成 AST 直接钉死：第 5 批后唯一
+    真实 depth-2 链（/api/risk-exposure → _batch_get_stock_hist → _get_orchestrator）
+    已整体进入 offload 边界，真实基线只剩 depth-1 链 —— 嵌套能力是尺子的属性，
+    不能押在「哪个端点恰好未 offload」上（见 ADR-0011）。
+    """
     base = json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
     expanded = [c for e in base["endpoints"] for c in e["calls"] if c["depth"] > 0]
     assert expanded, "helper expansion produced no calls -- the gate is blind"
-    assert any(c["depth"] == 2 for c in expanded), "nested helpers must be reachable"
     alerts = next(e for e in base["endpoints"] if e["path"] == "/api/alerts/rules")
     helper_calls = {(c["callee"], c["depth"]) for c in alerts["calls"] if c["depth"] > 0}
     assert ("open", 1) in helper_calls
     assert ("json.load", 1) in helper_calls
+
+    mod = _load_script()
+    src = (
+        "def _inner():\n"
+        "    open('x.txt')\n"
+        "def _outer():\n"
+        "    _inner()\n"
+        "async def endpoint():\n"
+        "    _outer()\n"
+    )
+    tree = ast.parse(src)
+    helpers = mod._helper_index({pathlib.Path("fake.py"): tree})
+    ep = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef))
+    calls = mod._scan_endpoint(ep, "fake.py", helpers)
+    depth2 = [(c["callee"], c["depth"]) for c in calls if c["depth"] == 2]
+    assert ("open", 2) in depth2, f"nested helpers must be reachable: {depth2}"
 
 
 def test_baseline_counts_are_internally_consistent():

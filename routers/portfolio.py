@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 from .common import *  # noqa: F401,F403
+from lib.infra.async_offload import run_blocking
 
 router = APIRouter()
 
@@ -75,25 +76,31 @@ async def position_detail(code: str):
         raise HTTPException(status_code=500, detail="内部服务器错误")
 
 
+def _compute_positions():
+    """原 `GET /api/positions` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.risk.position_manager import PositionManager
+
+    pm = PositionManager()
+    orchestrator = _get_orchestrator()
+    quotes = orchestrator.get_realtime_quotes()
+    prices = {}
+    if not quotes.empty:
+        for _, row in quotes.iterrows():
+            code = str(row.get("代码", ""))
+            price = row.get("最新价")
+            if code and price:
+                prices[code] = float(price)
+
+    summary = pm.get_portfolio_summary(prices)
+    alerts = pm.check_stop_loss(prices)
+    return {"summary": summary, "alerts": alerts}
+
+
 @router.get("/api/positions")
 async def positions(_=Security(verify_api_key)):
     """持仓概况"""
-    from lib.risk.position_manager import PositionManager
     try:
-        pm = PositionManager()
-        orchestrator = _get_orchestrator()
-        quotes = orchestrator.get_realtime_quotes()
-        prices = {}
-        if not quotes.empty:
-            for _, row in quotes.iterrows():
-                code = str(row.get("代码", ""))
-                price = row.get("最新价")
-                if code and price:
-                    prices[code] = float(price)
-
-        summary = pm.get_portfolio_summary(prices)
-        alerts = pm.check_stop_loss(prices)
-        return {"summary": summary, "alerts": alerts}
+        return await run_blocking("positions", _compute_positions)
     except Exception as e:
         return {"summary": {"total_positions": 0}, "alerts": [], "error": "服务暂时不可用"}
 

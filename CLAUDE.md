@@ -1,6 +1,6 @@
 # CLAUDE.md — Stock Scanner (个人量化选股系统)
 
-> 最后更新：2026-11-11 | 本次更新：RF-01 Phase 6 第 4 批 —— Top5 端点 offload（ADR-0010）、L9 扩至 8 迁移、L10 扩至 8 端点、L8/L9 两处门禁判据根因修（P-72/P-73）；**Phase 6 仍未收官：30 个 Tier A 候选端点待切换**
+> 最后更新：2026-11-12 | 本次更新：RF-01 Phase 6 第 5 批 —— Tier A 候选 5 端点 offload（ADR-0011：factor_contribution/market/positions/risk_exposure/stock）、L9 扩至 13 迁移（新增无 try 模式）、L10 扩至 13 端点 13/13 改善、blocking 188→159、Tier B 候选 30→25；dashboard 因 try 体含 await 跳过；**Phase 6 仍未收官：25 个候选端点待切换**
 
 ## 工作流
 
