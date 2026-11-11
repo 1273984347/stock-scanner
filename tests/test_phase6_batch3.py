@@ -101,8 +101,11 @@ def test_tier_a_candidates_are_listed_not_hidden():
     assert all(c["status"] == "not_offloaded" for c in cands)
     assert all(c["callees"] and c["blocking_calls"] > 0 for c in cands)
     keys = {c["endpoint"] for c in cands}
-    assert "GET /api/factor-eval" in keys  # 实测最大遗留端点
-    # Phase 6 不能宣称收官：这些端点还没有 offload 取证
-    offloaded = {"POST /api/backtest", "POST /api/backtest/compare",
-                 "POST /api/walkforward"}
+    assert "GET /api/market" in keys  # 第 4 批后仍为最大遗留端点之一
+    # Phase 6 不能宣称收官：30 个候选端点还没有 offload 取证
+    offloaded = {
+        "POST /api/backtest", "POST /api/backtest/compare", "POST /api/walkforward",
+        "GET /api/factor-eval", "GET /api/factor-scatter", "GET /api/kline/{code}",
+        "GET /api/risk", "GET /api/export/config",
+    }
     assert keys.isdisjoint(offloaded)

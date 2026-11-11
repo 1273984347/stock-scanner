@@ -26,18 +26,31 @@
         "blocking_before": 228,
         "mode": "refactor",
         "reason": "RF-01 Phase 6 batch 2: shared state access collapsed into locked APIs"
+      },
+      {
+        "allowed_endpoints": [
+          "GET /api/export/config",
+          "GET /api/factor-eval",
+          "GET /api/factor-scatter",
+          "GET /api/kline/{code}",
+          "GET /api/risk"
+        ],
+        "blocking_after": 188,
+        "blocking_before": 228,
+        "mode": "offload",
+        "reason": "RF-01 Phase 6: Tier A 端点阻塞调用 offload 进线程池"
       }
     ],
     "source": "AST over api.py + routers/*.py, endpoint set cross-checked against runtime route-ownership.json"
   },
   "counts": {
-    "blocking_calls": 228,
-    "blocking_endpoints": 60,
+    "blocking_calls": 188,
+    "blocking_endpoints": 57,
     "endpoints": 68,
-    "offloaded_calls": 4,
-    "offloaded_endpoints": 4,
-    "other_calls": 734,
-    "total_calls": 966
+    "offloaded_calls": 9,
+    "offloaded_endpoints": 9,
+    "other_calls": 610,
+    "total_calls": 807
   },
   "endpoints": [
     {
@@ -2056,137 +2069,30 @@
       "path": "/api/errors"
     },
     {
-      "blocking": {
-        "get_config": 1,
-        "to_dict": 4
-      },
+      "blocking": {},
       "calls": [
         {
           "callee": "HTTPException",
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 241,
+          "lineno": 268,
           "tail": "HTTPException"
         },
         {
-          "callee": "get_config",
-          "category": "blocking",
+          "callee": "run_blocking",
+          "category": "offloaded",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 246,
-          "tail": "get_config"
-        },
-        {
-          "callee": "dataclasses.is_dataclass",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 249,
-          "tail": "is_dataclass"
-        },
-        {
-          "callee": "dataclasses.asdict",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 250,
-          "tail": "asdict"
-        },
-        {
-          "callee": "items",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 250,
-          "tail": "items"
-        },
-        {
-          "callee": "to_dict",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 250,
-          "tail": "to_dict"
-        },
-        {
-          "callee": "isinstance",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 251,
-          "tail": "isinstance"
-        },
-        {
-          "callee": "to_dict",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 252,
-          "tail": "to_dict"
-        },
-        {
-          "callee": "isinstance",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 253,
-          "tail": "isinstance"
-        },
-        {
-          "callee": "obj.items",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 254,
-          "tail": "items"
-        },
-        {
-          "callee": "to_dict",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 254,
-          "tail": "to_dict"
-        },
-        {
-          "callee": "to_dict",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 257,
-          "tail": "to_dict"
-        },
-        {
-          "callee": "datetime.now",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 259,
-          "tail": "now"
-        },
-        {
-          "callee": "isoformat",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 259,
-          "tail": "isoformat"
-        },
-        {
-          "callee": "JSONResponse",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 261,
-          "tail": "JSONResponse"
+          "lineno": 270,
+          "tail": "run_blocking"
         },
         {
           "callee": "logger.error",
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 266,
+          "lineno": 272,
           "tail": "error"
         },
         {
@@ -2194,27 +2100,21 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 267,
+          "lineno": 273,
           "tail": "HTTPException"
         }
       ],
       "file": "routers/export.py",
       "handler": "export_config",
       "key": "GET /api/export/config",
-      "lineno": 238,
+      "lineno": 265,
       "method": "GET",
-      "offloaded": {},
+      "offloaded": {
+        "run_blocking": 1
+      },
       "other": {
         "HTTPException": 2,
-        "JSONResponse": 1,
-        "dataclasses.asdict": 1,
-        "dataclasses.is_dataclass": 1,
-        "datetime.now": 1,
-        "isinstance": 2,
-        "isoformat": 1,
-        "items": 1,
-        "logger.error": 1,
-        "obj.items": 1
+        "logger.error": 1
       },
       "path": "/api/export/config"
     },
@@ -2229,7 +2129,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 303,
+          "lineno": 309,
           "tail": "_cache_get"
         },
         {
@@ -2237,7 +2137,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 304,
+          "lineno": 310,
           "tail": "_cache_get"
         },
         {
@@ -2245,7 +2145,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 305,
+          "lineno": 311,
           "tail": "_cache_get"
         },
         {
@@ -2253,7 +2153,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 306,
+          "lineno": 312,
           "tail": "_cache_get"
         },
         {
@@ -2261,7 +2161,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 307,
+          "lineno": 313,
           "tail": "_cache_get"
         },
         {
@@ -2269,7 +2169,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 312,
+          "lineno": 318,
           "tail": "isinstance"
         },
         {
@@ -2277,7 +2177,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 312,
+          "lineno": 318,
           "tail": "get"
         },
         {
@@ -2285,7 +2185,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 313,
+          "lineno": 319,
           "tail": "isinstance"
         },
         {
@@ -2293,7 +2193,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 313,
+          "lineno": 319,
           "tail": "get"
         },
         {
@@ -2301,7 +2201,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 314,
+          "lineno": 320,
           "tail": "isinstance"
         },
         {
@@ -2309,7 +2209,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 314,
+          "lineno": 320,
           "tail": "get"
         },
         {
@@ -2317,7 +2217,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 320,
+          "lineno": 326,
           "tail": "generate"
         },
         {
@@ -2325,7 +2225,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 322,
+          "lineno": 328,
           "tail": "StreamingResponse"
         },
         {
@@ -2333,7 +2233,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 323,
+          "lineno": 329,
           "tail": "BytesIO"
         },
         {
@@ -2341,7 +2241,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 325,
+          "lineno": 331,
           "tail": "now"
         },
         {
@@ -2349,7 +2249,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 325,
+          "lineno": 331,
           "tail": "strftime"
         },
         {
@@ -2357,7 +2257,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 328,
+          "lineno": 334,
           "tail": "HTTPException"
         },
         {
@@ -2365,7 +2265,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 328,
+          "lineno": 334,
           "tail": "str"
         },
         {
@@ -2373,7 +2273,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 330,
+          "lineno": 336,
           "tail": "error"
         },
         {
@@ -2381,14 +2281,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 331,
+          "lineno": 337,
           "tail": "HTTPException"
         }
       ],
       "file": "routers/export.py",
       "handler": "export_pdf",
       "key": "POST /api/export/pdf",
-      "lineno": 297,
+      "lineno": 303,
       "method": "POST",
       "offloaded": {},
       "other": {
@@ -2413,14 +2313,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 345,
+          "lineno": 351,
           "tail": "str"
         }
       ],
       "file": "routers/export.py",
       "handler": "export_pdf_status",
       "key": "GET /api/export/pdf/status",
-      "lineno": 335,
+      "lineno": 341,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -2440,7 +2340,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 13,
+          "lineno": 14,
           "tail": "PositionManager"
         },
         {
@@ -2448,7 +2348,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 16,
+          "lineno": 17,
           "tail": "StringIO"
         },
         {
@@ -2456,7 +2356,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 17,
+          "lineno": 18,
           "tail": "writer"
         },
         {
@@ -2464,7 +2364,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 18,
+          "lineno": 19,
           "tail": "writerow"
         },
         {
@@ -2472,7 +2372,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 21,
+          "lineno": 22,
           "tail": "items"
         },
         {
@@ -2480,7 +2380,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 24,
+          "lineno": 25,
           "tail": "strptime"
         },
         {
@@ -2488,7 +2388,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 25,
+          "lineno": 26,
           "tail": "now"
         },
         {
@@ -2496,7 +2396,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 28,
+          "lineno": 29,
           "tail": "writerow"
         },
         {
@@ -2504,7 +2404,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 40,
+          "lineno": 41,
           "tail": "seek"
         },
         {
@@ -2512,7 +2412,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 41,
+          "lineno": 42,
           "tail": "StreamingResponse"
         },
         {
@@ -2520,7 +2420,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 42,
+          "lineno": 43,
           "tail": "iter"
         },
         {
@@ -2528,7 +2428,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 42,
+          "lineno": 43,
           "tail": "getvalue"
         },
         {
@@ -2536,7 +2436,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 47,
+          "lineno": 48,
           "tail": "error"
         },
         {
@@ -2544,14 +2444,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 48,
+          "lineno": 49,
           "tail": "HTTPException"
         }
       ],
       "file": "routers/export.py",
       "handler": "export_positions",
       "key": "GET /api/export/positions",
-      "lineno": 9,
+      "lineno": 10,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -2579,7 +2479,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 94,
+          "lineno": 95,
           "tail": "PositionManager"
         },
         {
@@ -2587,7 +2487,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 97,
+          "lineno": 98,
           "tail": "Workbook"
         },
         {
@@ -2595,7 +2495,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 102,
+          "lineno": 103,
           "tail": "Font"
         },
         {
@@ -2603,7 +2503,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 103,
+          "lineno": 104,
           "tail": "PatternFill"
         },
         {
@@ -2611,7 +2511,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 104,
+          "lineno": 105,
           "tail": "Alignment"
         },
         {
@@ -2619,7 +2519,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 105,
+          "lineno": 106,
           "tail": "Border"
         },
         {
@@ -2627,22 +2527,6 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 106,
-          "tail": "Side"
-        },
-        {
-          "callee": "Side",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 106,
-          "tail": "Side"
-        },
-        {
-          "callee": "Side",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
           "lineno": 107,
           "tail": "Side"
         },
@@ -2652,6 +2536,22 @@
           "depth": 0,
           "file": "routers/export.py",
           "lineno": 107,
+          "tail": "Side"
+        },
+        {
+          "callee": "Side",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/export.py",
+          "lineno": 108,
+          "tail": "Side"
+        },
+        {
+          "callee": "Side",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/export.py",
+          "lineno": 108,
           "tail": "Side"
         },
         {
@@ -2659,7 +2559,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 111,
+          "lineno": 112,
           "tail": "enumerate"
         },
         {
@@ -2667,7 +2567,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 112,
+          "lineno": 113,
           "tail": "cell"
         },
         {
@@ -2675,7 +2575,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 121,
+          "lineno": 122,
           "tail": "items"
         },
         {
@@ -2683,7 +2583,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 124,
+          "lineno": 125,
           "tail": "strptime"
         },
         {
@@ -2691,7 +2591,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 125,
+          "lineno": 126,
           "tail": "now"
         },
         {
@@ -2699,7 +2599,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 133,
+          "lineno": 134,
           "tail": "enumerate"
         },
         {
@@ -2707,7 +2607,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 134,
+          "lineno": 135,
           "tail": "cell"
         },
         {
@@ -2715,7 +2615,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 137,
+          "lineno": 138,
           "tail": "Alignment"
         },
         {
@@ -2723,7 +2623,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 142,
+          "lineno": 143,
           "tail": "len"
         },
         {
@@ -2731,7 +2631,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 142,
+          "lineno": 143,
           "tail": "max"
         },
         {
@@ -2739,7 +2639,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 142,
+          "lineno": 143,
           "tail": "str"
         },
         {
@@ -2747,7 +2647,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 143,
+          "lineno": 144,
           "tail": "min"
         },
         {
@@ -2755,7 +2655,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 145,
+          "lineno": 146,
           "tail": "BytesIO"
         },
         {
@@ -2763,7 +2663,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 146,
+          "lineno": 147,
           "tail": "save"
         },
         {
@@ -2771,7 +2671,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 147,
+          "lineno": 148,
           "tail": "seek"
         },
         {
@@ -2779,7 +2679,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 148,
+          "lineno": 149,
           "tail": "StreamingResponse"
         },
         {
@@ -2787,7 +2687,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 149,
+          "lineno": 150,
           "tail": "iter"
         },
         {
@@ -2795,7 +2695,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 149,
+          "lineno": 150,
           "tail": "getvalue"
         },
         {
@@ -2803,7 +2703,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 154,
+          "lineno": 155,
           "tail": "HTTPException"
         },
         {
@@ -2811,7 +2711,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 156,
+          "lineno": 157,
           "tail": "error"
         },
         {
@@ -2819,14 +2719,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 157,
+          "lineno": 158,
           "tail": "HTTPException"
         }
       ],
       "file": "routers/export.py",
       "handler": "export_positions_excel",
       "key": "GET /api/export/positions/excel",
-      "lineno": 87,
+      "lineno": 88,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -2868,7 +2768,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 56,
+          "lineno": 57,
           "tail": "TradeLogger"
         },
         {
@@ -2876,7 +2776,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 57,
+          "lineno": 58,
           "tail": "get_recent_trades"
         },
         {
@@ -2884,7 +2784,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 59,
+          "lineno": 60,
           "tail": "StringIO"
         },
         {
@@ -2892,7 +2792,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 60,
+          "lineno": 61,
           "tail": "writer"
         },
         {
@@ -2900,7 +2800,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 61,
+          "lineno": 62,
           "tail": "writerow"
         },
         {
@@ -2908,16 +2808,8 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 64,
-          "tail": "writerow"
-        },
-        {
-          "callee": "t.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
           "lineno": 65,
-          "tail": "get"
+          "tail": "writerow"
         },
         {
           "callee": "t.get",
@@ -2952,20 +2844,20 @@
           "tail": "get"
         },
         {
-          "callee": "round",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 70,
-          "tail": "round"
-        },
-        {
           "callee": "t.get",
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
           "lineno": 70,
           "tail": "get"
+        },
+        {
+          "callee": "round",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/export.py",
+          "lineno": 71,
+          "tail": "round"
         },
         {
           "callee": "t.get",
@@ -2984,11 +2876,19 @@
           "tail": "get"
         },
         {
+          "callee": "t.get",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/export.py",
+          "lineno": 73,
+          "tail": "get"
+        },
+        {
           "callee": "output.seek",
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 75,
+          "lineno": 76,
           "tail": "seek"
         },
         {
@@ -2996,7 +2896,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 76,
+          "lineno": 77,
           "tail": "StreamingResponse"
         },
         {
@@ -3004,7 +2904,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 77,
+          "lineno": 78,
           "tail": "iter"
         },
         {
@@ -3012,7 +2912,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 77,
+          "lineno": 78,
           "tail": "getvalue"
         },
         {
@@ -3020,7 +2920,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 82,
+          "lineno": 83,
           "tail": "error"
         },
         {
@@ -3028,14 +2928,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 83,
+          "lineno": 84,
           "tail": "HTTPException"
         }
       ],
       "file": "routers/export.py",
       "handler": "export_trades",
       "key": "GET /api/export/trades",
-      "lineno": 52,
+      "lineno": 53,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -3063,7 +2963,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 168,
+          "lineno": 169,
           "tail": "TradeLogger"
         },
         {
@@ -3071,7 +2971,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 169,
+          "lineno": 170,
           "tail": "get_recent_trades"
         },
         {
@@ -3079,7 +2979,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 171,
+          "lineno": 172,
           "tail": "Workbook"
         },
         {
@@ -3087,7 +2987,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 175,
+          "lineno": 176,
           "tail": "Font"
         },
         {
@@ -3095,7 +2995,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 176,
+          "lineno": 177,
           "tail": "PatternFill"
         },
         {
@@ -3103,7 +3003,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 177,
+          "lineno": 178,
           "tail": "Alignment"
         },
         {
@@ -3111,7 +3011,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 178,
+          "lineno": 179,
           "tail": "Border"
         },
         {
@@ -3119,22 +3019,6 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 179,
-          "tail": "Side"
-        },
-        {
-          "callee": "Side",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 179,
-          "tail": "Side"
-        },
-        {
-          "callee": "Side",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
           "lineno": 180,
           "tail": "Side"
         },
@@ -3144,6 +3028,22 @@
           "depth": 0,
           "file": "routers/export.py",
           "lineno": 180,
+          "tail": "Side"
+        },
+        {
+          "callee": "Side",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/export.py",
+          "lineno": 181,
+          "tail": "Side"
+        },
+        {
+          "callee": "Side",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/export.py",
+          "lineno": 181,
           "tail": "Side"
         },
         {
@@ -3151,7 +3051,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 184,
+          "lineno": 185,
           "tail": "enumerate"
         },
         {
@@ -3159,16 +3059,8 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 185,
+          "lineno": 186,
           "tail": "cell"
-        },
-        {
-          "callee": "PatternFill",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 192,
-          "tail": "PatternFill"
         },
         {
           "callee": "PatternFill",
@@ -3179,11 +3071,19 @@
           "tail": "PatternFill"
         },
         {
+          "callee": "PatternFill",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/export.py",
+          "lineno": 194,
+          "tail": "PatternFill"
+        },
+        {
           "callee": "enumerate",
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 195,
+          "lineno": 196,
           "tail": "enumerate"
         },
         {
@@ -3191,7 +3091,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 196,
+          "lineno": 197,
           "tail": "round"
         },
         {
@@ -3199,15 +3099,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 196,
-          "tail": "get"
-        },
-        {
-          "callee": "t.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/export.py",
-          "lineno": 198,
+          "lineno": 197,
           "tail": "get"
         },
         {
@@ -3247,7 +3139,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 204,
+          "lineno": 203,
           "tail": "get"
         },
         {
@@ -3259,11 +3151,19 @@
           "tail": "get"
         },
         {
+          "callee": "t.get",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/export.py",
+          "lineno": 206,
+          "tail": "get"
+        },
+        {
           "callee": "enumerate",
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 207,
+          "lineno": 208,
           "tail": "enumerate"
         },
         {
@@ -3271,7 +3171,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 208,
+          "lineno": 209,
           "tail": "cell"
         },
         {
@@ -3279,7 +3179,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 211,
+          "lineno": 212,
           "tail": "Alignment"
         },
         {
@@ -3287,7 +3187,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 219,
+          "lineno": 220,
           "tail": "len"
         },
         {
@@ -3295,7 +3195,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 219,
+          "lineno": 220,
           "tail": "max"
         },
         {
@@ -3303,7 +3203,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 219,
+          "lineno": 220,
           "tail": "str"
         },
         {
@@ -3311,7 +3211,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 220,
+          "lineno": 221,
           "tail": "min"
         },
         {
@@ -3319,7 +3219,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 222,
+          "lineno": 223,
           "tail": "BytesIO"
         },
         {
@@ -3327,7 +3227,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 223,
+          "lineno": 224,
           "tail": "save"
         },
         {
@@ -3335,7 +3235,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 224,
+          "lineno": 225,
           "tail": "seek"
         },
         {
@@ -3343,7 +3243,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 225,
+          "lineno": 226,
           "tail": "StreamingResponse"
         },
         {
@@ -3351,7 +3251,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 226,
+          "lineno": 227,
           "tail": "iter"
         },
         {
@@ -3359,7 +3259,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 226,
+          "lineno": 227,
           "tail": "getvalue"
         },
         {
@@ -3367,7 +3267,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 231,
+          "lineno": 232,
           "tail": "HTTPException"
         },
         {
@@ -3375,7 +3275,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 233,
+          "lineno": 234,
           "tail": "error"
         },
         {
@@ -3383,14 +3283,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 234,
+          "lineno": 235,
           "tail": "HTTPException"
         }
       ],
       "file": "routers/export.py",
       "handler": "export_trades_excel",
       "key": "GET /api/export/trades/excel",
-      "lineno": 161,
+      "lineno": 162,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -3431,7 +3331,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 172,
+          "lineno": 177,
           "tail": "HTTPException"
         },
         {
@@ -3439,7 +3339,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 174,
+          "lineno": 179,
           "tail": "_cache_get"
         },
         {
@@ -3447,7 +3347,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 179,
+          "lineno": 184,
           "tail": "_get_orchestrator"
         },
         {
@@ -3455,7 +3355,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 181,
+          "lineno": 186,
           "tail": "_cache_get"
         },
         {
@@ -3463,7 +3363,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 182,
+          "lineno": 187,
           "tail": "get"
         },
         {
@@ -3471,7 +3371,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 182,
+          "lineno": 187,
           "tail": "get"
         },
         {
@@ -3479,7 +3379,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 188,
+          "lineno": 193,
           "tail": "get"
         },
         {
@@ -3487,7 +3387,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 192,
+          "lineno": 197,
           "tail": "get_stock_score"
         },
         {
@@ -3495,7 +3395,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 193,
+          "lineno": 198,
           "tail": "get"
         },
         {
@@ -3503,7 +3403,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 194,
+          "lineno": 199,
           "tail": "items"
         },
         {
@@ -3511,7 +3411,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 195,
+          "lineno": 200,
           "tail": "isinstance"
         },
         {
@@ -3519,7 +3419,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 203,
+          "lineno": 208,
           "tail": "items"
         },
         {
@@ -3527,7 +3427,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 203,
+          "lineno": 208,
           "tail": "round"
         },
         {
@@ -3535,7 +3435,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 203,
+          "lineno": 208,
           "tail": "sorted"
         },
         {
@@ -3543,7 +3443,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 205,
+          "lineno": 210,
           "tail": "now"
         },
         {
@@ -3551,7 +3451,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 205,
+          "lineno": 210,
           "tail": "isoformat"
         },
         {
@@ -3559,7 +3459,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 210,
+          "lineno": 215,
           "tail": "_cache_set"
         },
         {
@@ -3567,7 +3467,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 213,
+          "lineno": 218,
           "tail": "error"
         },
         {
@@ -3598,7 +3498,7 @@
       "file": "routers/risk.py",
       "handler": "factor_exposures",
       "key": "GET /api/exposures",
-      "lineno": 170,
+      "lineno": 175,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -3637,7 +3537,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 200,
+          "lineno": 211,
           "tail": "_cache_get"
         },
         {
@@ -3645,7 +3545,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 208,
+          "lineno": 219,
           "tail": "SignalTracker"
         },
         {
@@ -3653,7 +3553,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 209,
+          "lineno": 220,
           "tail": "update_actual_returns"
         },
         {
@@ -3661,7 +3561,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 210,
+          "lineno": 221,
           "tail": "get_recent_signals"
         },
         {
@@ -3669,7 +3569,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 218,
+          "lineno": 229,
           "tail": "get"
         },
         {
@@ -3677,7 +3577,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 219,
+          "lineno": 230,
           "tail": "get"
         },
         {
@@ -3685,7 +3585,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 223,
+          "lineno": 234,
           "tail": "append"
         },
         {
@@ -3693,7 +3593,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 226,
+          "lineno": 237,
           "tail": "items"
         },
         {
@@ -3701,7 +3601,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 227,
+          "lineno": 238,
           "tail": "array"
         },
         {
@@ -3709,7 +3609,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 229,
+          "lineno": 240,
           "tail": "len"
         },
         {
@@ -3717,7 +3617,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 230,
+          "lineno": 241,
           "tail": "mean"
         },
         {
@@ -3725,7 +3625,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 230,
+          "lineno": 241,
           "tail": "float"
         },
         {
@@ -3733,7 +3633,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 230,
+          "lineno": 241,
           "tail": "round"
         },
         {
@@ -3741,7 +3641,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 231,
+          "lineno": 242,
           "tail": "float"
         },
         {
@@ -3749,7 +3649,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 231,
+          "lineno": 242,
           "tail": "mean"
         },
         {
@@ -3757,7 +3657,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 231,
+          "lineno": 242,
           "tail": "round"
         },
         {
@@ -3765,7 +3665,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 232,
+          "lineno": 243,
           "tail": "sum"
         },
         {
@@ -3773,7 +3673,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 232,
+          "lineno": 243,
           "tail": "float"
         },
         {
@@ -3781,7 +3681,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 232,
+          "lineno": 243,
           "tail": "round"
         },
         {
@@ -3789,7 +3689,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 237,
+          "lineno": 248,
           "tail": "len"
         },
         {
@@ -3797,7 +3697,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 239,
+          "lineno": 250,
           "tail": "now"
         },
         {
@@ -3805,7 +3705,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 239,
+          "lineno": 250,
           "tail": "isoformat"
         },
         {
@@ -3813,7 +3713,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 241,
+          "lineno": 252,
           "tail": "_cache_set"
         },
         {
@@ -3821,14 +3721,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 244,
+          "lineno": 255,
           "tail": "error"
         }
       ],
       "file": "routers/factor.py",
       "handler": "factor_contribution",
       "key": "GET /api/factor-contribution",
-      "lineno": 198,
+      "lineno": 209,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -3848,19 +3748,7 @@
     },
     {
       "blocking": {
-        "_cache_get": 1,
-        "_cache_set": 1,
-        "_get_orchestrator": 1,
-        "compute_all_signals": 1,
-        "corr.columns.tolist": 1,
-        "factor_df.apply": 1,
-        "factor_df.corr": 1,
-        "orchestrator.get_realtime_quotes": 1,
-        "orchestrator.get_stock_hist_multi_source": 1,
-        "quotes.head": 1,
-        "quotes.nlargest": 1,
-        "synth.compute_ic": 1,
-        "top.iterrows": 2
+        "_cache_get": 1
       },
       "calls": [
         {
@@ -3868,383 +3756,23 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 13,
+          "lineno": 113,
           "tail": "_cache_get"
         },
         {
-          "callee": "_get_orchestrator",
-          "category": "blocking",
+          "callee": "run_blocking",
+          "category": "offloaded",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 24,
-          "tail": "_get_orchestrator"
-        },
-        {
-          "callee": "orchestrator.get_realtime_quotes",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 26,
-          "tail": "get_realtime_quotes"
-        },
-        {
-          "callee": "quotes.nlargest",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 32,
-          "tail": "nlargest"
-        },
-        {
-          "callee": "quotes.head",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 34,
-          "tail": "head"
-        },
-        {
-          "callee": "top.iterrows",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 38,
-          "tail": "iterrows"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 39,
-          "tail": "get"
-        },
-        {
-          "callee": "str",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 39,
-          "tail": "str"
-        },
-        {
-          "callee": "orchestrator.get_stock_hist_multi_source",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 43,
-          "tail": "get_stock_hist_multi_source"
-        },
-        {
-          "callee": "len",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 44,
-          "tail": "len"
-        },
-        {
-          "callee": "compute_all_signals",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 46,
-          "tail": "compute_all_signals"
-        },
-        {
-          "callee": "result.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 49,
-          "tail": "get"
-        },
-        {
-          "callee": "len",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 54,
-          "tail": "len"
-        },
-        {
-          "callee": "pd.DataFrame",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 58,
-          "tail": "DataFrame"
-        },
-        {
-          "callee": "factor_df.apply",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 59,
-          "tail": "apply"
-        },
-        {
-          "callee": "pd.Series",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 62,
-          "tail": "Series"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 63,
-          "tail": "float"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 63,
-          "tail": "get"
-        },
-        {
-          "callee": "top.iterrows",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 64,
-          "tail": "iterrows"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 65,
-          "tail": "get"
-        },
-        {
-          "callee": "str",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 65,
-          "tail": "str"
-        },
-        {
-          "callee": "factor_df.index.intersection",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 68,
-          "tail": "intersection"
-        },
-        {
-          "callee": "AlphaSynthesizer",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 73,
-          "tail": "AlphaSynthesizer"
-        },
-        {
-          "callee": "synth.compute_ic",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 77,
-          "tail": "compute_ic"
-        },
-        {
-          "callee": "ic.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 78,
-          "tail": "get"
-        },
-        {
-          "callee": "np.isnan",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 78,
-          "tail": "isnan"
-        },
-        {
-          "callee": "ic.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 80,
-          "tail": "get"
-        },
-        {
-          "callee": "np.isnan",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 80,
-          "tail": "isnan"
-        },
-        {
-          "callee": "round",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 80,
-          "tail": "round"
-        },
-        {
-          "callee": "round",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 81,
-          "tail": "round"
-        },
-        {
-          "callee": "ic.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 82,
-          "tail": "get"
-        },
-        {
-          "callee": "round",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 82,
-          "tail": "round"
-        },
-        {
-          "callee": "logger.debug",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 85,
-          "tail": "debug"
-        },
-        {
-          "callee": "factor_df.corr",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 90,
-          "tail": "corr"
-        },
-        {
-          "callee": "corr.columns.tolist",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 93,
-          "tail": "tolist"
-        },
-        {
-          "callee": "len",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 94,
-          "tail": "len"
-        },
-        {
-          "callee": "range",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 94,
-          "tail": "range"
-        },
-        {
-          "callee": "len",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 95,
-          "tail": "len"
-        },
-        {
-          "callee": "range",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 95,
-          "tail": "range"
-        },
-        {
-          "callee": "abs",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 96,
-          "tail": "abs"
-        },
-        {
-          "callee": "high_corr_pairs.append",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 97,
-          "tail": "append"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 100,
-          "tail": "float"
-        },
-        {
-          "callee": "round",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 100,
-          "tail": "round"
-        },
-        {
-          "callee": "len",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 106,
-          "tail": "len"
-        },
-        {
-          "callee": "datetime.now",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 109,
-          "tail": "now"
-        },
-        {
-          "callee": "isoformat",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 109,
-          "tail": "isoformat"
-        },
-        {
-          "callee": "_cache_set",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 111,
-          "tail": "_cache_set"
+          "lineno": 117,
+          "tail": "run_blocking"
         },
         {
           "callee": "logger.error",
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 114,
+          "lineno": 119,
           "tail": "error"
         },
         {
@@ -4252,64 +3780,21 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 115,
+          "lineno": 120,
           "tail": "HTTPException"
-        },
-        {
-          "callee": "_orchestrator_cache.get",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/factor.py",
-          "lineno": 232,
-          "tail": "get"
-        },
-        {
-          "callee": "ScanOrchestrator",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/factor.py",
-          "lineno": 234,
-          "tail": "ScanOrchestrator"
-        },
-        {
-          "callee": "_orchestrator_cache.set",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/factor.py",
-          "lineno": 235,
-          "tail": "set"
         }
       ],
       "file": "routers/factor.py",
       "handler": "factor_evaluation",
       "key": "GET /api/factor-eval",
-      "lineno": 9,
+      "lineno": 109,
       "method": "GET",
-      "offloaded": {},
+      "offloaded": {
+        "run_blocking": 1
+      },
       "other": {
-        "AlphaSynthesizer": 1,
         "HTTPException": 1,
-        "ScanOrchestrator": 1,
-        "_orchestrator_cache.get": 1,
-        "_orchestrator_cache.set": 1,
-        "abs": 1,
-        "datetime.now": 1,
-        "factor_df.index.intersection": 1,
-        "float": 2,
-        "high_corr_pairs.append": 1,
-        "ic.get": 3,
-        "isoformat": 1,
-        "len": 5,
-        "logger.debug": 1,
-        "logger.error": 1,
-        "np.isnan": 2,
-        "pd.DataFrame": 1,
-        "pd.Series": 1,
-        "range": 2,
-        "result.get": 1,
-        "round": 4,
-        "row.get": 3,
-        "str": 2
+        "logger.error": 1
       },
       "path": "/api/factor-eval"
     },
@@ -4323,7 +3808,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 253,
+          "lineno": 264,
           "tail": "SignalTracker"
         },
         {
@@ -4331,7 +3816,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 254,
+          "lineno": 265,
           "tail": "evaluate_signals"
         },
         {
@@ -4339,7 +3824,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 258,
+          "lineno": 269,
           "tail": "now"
         },
         {
@@ -4347,7 +3832,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 258,
+          "lineno": 269,
           "tail": "range"
         },
         {
@@ -4355,7 +3840,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 258,
+          "lineno": 269,
           "tail": "strftime"
         },
         {
@@ -4363,7 +3848,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 258,
+          "lineno": 269,
           "tail": "timedelta"
         },
         {
@@ -4371,7 +3856,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 262,
+          "lineno": 273,
           "tail": "get"
         },
         {
@@ -4379,7 +3864,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 263,
+          "lineno": 274,
           "tail": "normal"
         },
         {
@@ -4387,7 +3872,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 263,
+          "lineno": 274,
           "tail": "round"
         },
         {
@@ -4395,14 +3880,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 266,
+          "lineno": 277,
           "tail": "error"
         }
       ],
       "file": "routers/factor.py",
       "handler": "factor_ic_history",
       "key": "GET /api/factor-ic-history",
-      "lineno": 249,
+      "lineno": 260,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -4419,244 +3904,35 @@
       "path": "/api/factor-ic-history"
     },
     {
-      "blocking": {
-        "_get_orchestrator": 1,
-        "compute_all_signals": 1,
-        "get_stock_hist": 1,
-        "orchestrator.get_realtime_quotes": 1,
-        "quotes.head": 1,
-        "quotes.nlargest": 1,
-        "top.iterrows": 1
-      },
+      "blocking": {},
       "calls": [
         {
-          "callee": "_get_orchestrator",
-          "category": "blocking",
+          "callee": "run_blocking",
+          "category": "offloaded",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 130,
-          "tail": "_get_orchestrator"
-        },
-        {
-          "callee": "orchestrator.get_realtime_quotes",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 131,
-          "tail": "get_realtime_quotes"
-        },
-        {
-          "callee": "quotes.nlargest",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 136,
-          "tail": "nlargest"
-        },
-        {
-          "callee": "quotes.head",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 138,
-          "tail": "head"
-        },
-        {
-          "callee": "top.iterrows",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 141,
-          "tail": "iterrows"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 142,
-          "tail": "get"
-        },
-        {
-          "callee": "str",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 142,
-          "tail": "str"
-        },
-        {
-          "callee": "get_stock_hist",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 146,
-          "tail": "get_stock_hist"
-        },
-        {
-          "callee": "len",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 147,
-          "tail": "len"
-        },
-        {
-          "callee": "compute_all_signals",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 149,
-          "tail": "compute_all_signals"
-        },
-        {
-          "callee": "result.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 152,
-          "tail": "get"
-        },
-        {
-          "callee": "factors.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 153,
-          "tail": "get"
-        },
-        {
-          "callee": "factors.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 154,
-          "tail": "get"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 155,
-          "tail": "float"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 155,
-          "tail": "get"
-        },
-        {
-          "callee": "points.append",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 158,
-          "tail": "append"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 160,
-          "tail": "float"
-        },
-        {
-          "callee": "round",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 160,
-          "tail": "round"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 161,
-          "tail": "float"
-        },
-        {
-          "callee": "round",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 161,
-          "tail": "round"
-        },
-        {
-          "callee": "round",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 162,
-          "tail": "round"
-        },
-        {
-          "callee": "len",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/factor.py",
-          "lineno": 171,
-          "tail": "len"
+          "lineno": 182,
+          "tail": "run_blocking"
         },
         {
           "callee": "logger.error",
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 174,
+          "lineno": 185,
           "tail": "error"
-        },
-        {
-          "callee": "_orchestrator_cache.get",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/factor.py",
-          "lineno": 232,
-          "tail": "get"
-        },
-        {
-          "callee": "ScanOrchestrator",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/factor.py",
-          "lineno": 234,
-          "tail": "ScanOrchestrator"
-        },
-        {
-          "callee": "_orchestrator_cache.set",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/factor.py",
-          "lineno": 235,
-          "tail": "set"
         }
       ],
       "file": "routers/factor.py",
       "handler": "factor_scatter",
       "key": "GET /api/factor-scatter",
-      "lineno": 119,
+      "lineno": 175,
       "method": "GET",
-      "offloaded": {},
+      "offloaded": {
+        "run_blocking": 1
+      },
       "other": {
-        "ScanOrchestrator": 1,
-        "_orchestrator_cache.get": 1,
-        "_orchestrator_cache.set": 1,
-        "factors.get": 2,
-        "float": 3,
-        "len": 2,
-        "logger.error": 1,
-        "points.append": 1,
-        "result.get": 1,
-        "round": 3,
-        "row.get": 2,
-        "str": 1
+        "logger.error": 1
       },
       "path": "/api/factor-scatter"
     },
@@ -4670,7 +3946,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 185,
+          "lineno": 196,
           "tail": "get_config"
         },
         {
@@ -4678,7 +3954,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 188,
+          "lineno": 199,
           "tail": "dict"
         },
         {
@@ -4686,7 +3962,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 189,
+          "lineno": 200,
           "tail": "dict"
         },
         {
@@ -4694,14 +3970,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/factor.py",
-          "lineno": 193,
+          "lineno": 204,
           "tail": "error"
         }
       ],
       "file": "routers/factor.py",
       "handler": "factor_weights",
       "key": "GET /api/factor-weights",
-      "lineno": 179,
+      "lineno": 190,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -4893,7 +4169,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 274,
+          "lineno": 280,
           "tail": "json"
         },
         {
@@ -4901,7 +4177,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 276,
+          "lineno": 282,
           "tail": "isinstance"
         },
         {
@@ -4909,7 +4185,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 277,
+          "lineno": 283,
           "tail": "HTTPException"
         },
         {
@@ -4917,7 +4193,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 281,
+          "lineno": 287,
           "tail": "pop"
         },
         {
@@ -4925,7 +4201,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 283,
+          "lineno": 289,
           "tail": "Path"
         },
         {
@@ -4933,7 +4209,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 284,
+          "lineno": 290,
           "tail": "write_text"
         },
         {
@@ -4941,7 +4217,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 284,
+          "lineno": 290,
           "tail": "dumps"
         },
         {
@@ -4949,7 +4225,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 290,
+          "lineno": 296,
           "tail": "HTTPException"
         },
         {
@@ -4957,7 +4233,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 292,
+          "lineno": 298,
           "tail": "error"
         },
         {
@@ -4965,14 +4241,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/export.py",
-          "lineno": 293,
+          "lineno": 299,
           "tail": "HTTPException"
         }
       ],
       "file": "routers/export.py",
       "handler": "import_config",
       "key": "POST /api/import/config",
-      "lineno": 271,
+      "lineno": 277,
       "method": "POST",
       "offloaded": {},
       "other": {
@@ -4987,399 +4263,44 @@
       "path": "/api/import/config"
     },
     {
-      "blocking": {
-        "compute_atr": 1,
-        "df.iterrows": 1,
-        "get_stock_hist": 1,
-        "rolling": 2
-      },
+      "blocking": {},
       "calls": [
         {
           "callee": "_validate_stock_code",
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 146,
+          "lineno": 194,
           "tail": "_validate_stock_code"
         },
         {
-          "callee": "get_stock_hist",
-          "category": "blocking",
+          "callee": "run_blocking",
+          "category": "offloaded",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 153,
-          "tail": "get_stock_hist"
-        },
-        {
-          "callee": "ema",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 159,
-          "tail": "ema"
-        },
-        {
-          "callee": "ema",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 160,
-          "tail": "ema"
-        },
-        {
-          "callee": "ema",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 161,
-          "tail": "ema"
-        },
-        {
-          "callee": "compute_atr",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 164,
-          "tail": "compute_atr"
-        },
-        {
-          "callee": "max",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 169,
-          "tail": "max"
-        },
-        {
-          "callee": "rolling",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 169,
-          "tail": "rolling"
-        },
-        {
-          "callee": "min",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 170,
-          "tail": "min"
-        },
-        {
-          "callee": "rolling",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 170,
-          "tail": "rolling"
-        },
-        {
-          "callee": "df.iterrows",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 173,
-          "tail": "iterrows"
-        },
-        {
-          "callee": "kline.append",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 174,
-          "tail": "append"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 175,
-          "tail": "get"
-        },
-        {
-          "callee": "str",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 175,
-          "tail": "str"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 176,
-          "tail": "float"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 176,
-          "tail": "get"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 177,
-          "tail": "float"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 177,
-          "tail": "get"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 178,
-          "tail": "float"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 178,
-          "tail": "get"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 179,
-          "tail": "float"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 179,
-          "tail": "get"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 180,
-          "tail": "float"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 180,
-          "tail": "get"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 181,
-          "tail": "float"
-        },
-        {
-          "callee": "pd.notna",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 181,
-          "tail": "notna"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 181,
-          "tail": "get"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 182,
-          "tail": "float"
-        },
-        {
-          "callee": "pd.notna",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 182,
-          "tail": "notna"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 182,
-          "tail": "get"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 183,
-          "tail": "float"
-        },
-        {
-          "callee": "pd.notna",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 183,
-          "tail": "notna"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 183,
-          "tail": "get"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 184,
-          "tail": "float"
-        },
-        {
-          "callee": "pd.notna",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 184,
-          "tail": "notna"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 184,
-          "tail": "get"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 185,
-          "tail": "float"
-        },
-        {
-          "callee": "pd.notna",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 185,
-          "tail": "notna"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 185,
-          "tail": "get"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 186,
-          "tail": "float"
-        },
-        {
-          "callee": "pd.notna",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 186,
-          "tail": "notna"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 186,
-          "tail": "get"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 187,
-          "tail": "float"
-        },
-        {
-          "callee": "pd.notna",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 187,
-          "tail": "notna"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 187,
-          "tail": "get"
+          "lineno": 196,
+          "tail": "run_blocking"
         },
         {
           "callee": "logger.error",
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 192,
+          "lineno": 198,
           "tail": "error"
         }
       ],
       "file": "routers/market.py",
       "handler": "kline_data",
       "key": "GET /api/kline/{code}",
-      "lineno": 144,
+      "lineno": 192,
       "method": "GET",
-      "offloaded": {},
+      "offloaded": {
+        "run_blocking": 1
+      },
       "other": {
         "_validate_stock_code": 1,
-        "ema": 3,
-        "float": 12,
-        "kline.append": 1,
-        "logger.error": 1,
-        "max": 1,
-        "min": 1,
-        "pd.notna": 7,
-        "row.get": 13,
-        "str": 1
+        "logger.error": 1
       },
       "path": "/api/kline/{code}"
     },
@@ -5399,7 +4320,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 11,
+          "lineno": 12,
           "tail": "_cache_get"
         },
         {
@@ -5407,7 +4328,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 18,
+          "lineno": 19,
           "tail": "_get_orchestrator"
         },
         {
@@ -5415,7 +4336,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 19,
+          "lineno": 20,
           "tail": "get_market_sentiment"
         },
         {
@@ -5423,7 +4344,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 20,
+          "lineno": 21,
           "tail": "evaluate_macro_gate"
         },
         {
@@ -5431,16 +4352,8 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 23,
+          "lineno": 24,
           "tail": "_cache_get"
-        },
-        {
-          "callee": "idx_cache.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 25,
-          "tail": "get"
         },
         {
           "callee": "idx_cache.get",
@@ -5459,20 +4372,20 @@
           "tail": "get"
         },
         {
-          "callee": "len",
+          "callee": "idx_cache.get",
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
           "lineno": 28,
-          "tail": "len"
+          "tail": "get"
         },
         {
-          "callee": "pd.Series",
+          "callee": "len",
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 30,
-          "tail": "Series"
+          "lineno": 29,
+          "tail": "len"
         },
         {
           "callee": "pd.Series",
@@ -5491,11 +4404,19 @@
           "tail": "Series"
         },
         {
+          "callee": "pd.Series",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/market.py",
+          "lineno": 33,
+          "tail": "Series"
+        },
+        {
           "callee": "calc_market_exposure",
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 33,
+          "lineno": 34,
           "tail": "calc_market_exposure"
         },
         {
@@ -5503,7 +4424,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 35,
+          "lineno": 36,
           "tail": "VolCorrRiskConfig"
         },
         {
@@ -5511,7 +4432,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 35,
+          "lineno": 36,
           "tail": "VolCorrRiskManager"
         },
         {
@@ -5519,7 +4440,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 36,
+          "lineno": 37,
           "tail": "get_risk_budget"
         },
         {
@@ -5527,7 +4448,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 37,
+          "lineno": 38,
           "tail": "get"
         },
         {
@@ -5535,7 +4456,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 42,
+          "lineno": 43,
           "tail": "round"
         },
         {
@@ -5543,7 +4464,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 52,
+          "lineno": 53,
           "tail": "_cache_set"
         },
         {
@@ -5574,7 +4495,7 @@
       "file": "routers/market.py",
       "handler": "market_overview",
       "key": "GET /api/market",
-      "lineno": 9,
+      "lineno": 10,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -6240,7 +5161,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 59,
+          "lineno": 60,
           "tail": "_cache_get"
         },
         {
@@ -6248,7 +5169,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 67,
+          "lineno": 68,
           "tail": "get_index_hist"
         },
         {
@@ -6256,7 +5177,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 74,
+          "lineno": 75,
           "tail": "len"
         },
         {
@@ -6264,7 +5185,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 74,
+          "lineno": 75,
           "tail": "range"
         },
         {
@@ -6272,7 +5193,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 77,
+          "lineno": 78,
           "tail": "detect_market_regime"
         },
         {
@@ -6280,7 +5201,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 78,
+          "lineno": 79,
           "tail": "isinstance"
         },
         {
@@ -6288,7 +5209,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 78,
+          "lineno": 79,
           "tail": "get"
         },
         {
@@ -6296,7 +5217,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 78,
+          "lineno": 79,
           "tail": "str"
         },
         {
@@ -6304,7 +5225,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 79,
+          "lineno": 80,
           "tail": "get"
         },
         {
@@ -6312,7 +5233,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 79,
+          "lineno": 80,
           "tail": "hasattr"
         },
         {
@@ -6320,7 +5241,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 81,
+          "lineno": 82,
           "tail": "str"
         },
         {
@@ -6328,7 +5249,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 82,
+          "lineno": 83,
           "tail": "append"
         },
         {
@@ -6336,7 +5257,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 82,
+          "lineno": 83,
           "tail": "str"
         },
         {
@@ -6344,7 +5265,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 92,
+          "lineno": 93,
           "tail": "append"
         },
         {
@@ -6352,7 +5273,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 94,
+          "lineno": 95,
           "tail": "len"
         },
         {
@@ -6360,7 +5281,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 95,
+          "lineno": 96,
           "tail": "_cache_set"
         },
         {
@@ -6368,14 +5289,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 98,
+          "lineno": 99,
           "tail": "error"
         }
       ],
       "file": "routers/market.py",
       "handler": "regime_history",
       "key": "GET /api/regime-history",
-      "lineno": 57,
+      "lineno": 58,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -6549,15 +5470,7 @@
     },
     {
       "blocking": {
-        "_batch_get_stock_hist": 1,
-        "_cache_get": 2,
-        "_cache_set": 1,
-        "_get_orchestrator": 2,
-        "evaluate_macro_gate": 1,
-        "orchestrator.get_market_sentiment": 1,
-        "pm.get_portfolio_summary": 1,
-        "risk_mgr.full_risk_assessment": 1,
-        "risk_mgr.get_risk_budget": 1
+        "_cache_get": 1
       },
       "calls": [
         {
@@ -6565,215 +5478,23 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 11,
+          "lineno": 96,
           "tail": "_cache_get"
         },
         {
-          "callee": "_get_orchestrator",
-          "category": "blocking",
+          "callee": "run_blocking",
+          "category": "offloaded",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 19,
-          "tail": "_get_orchestrator"
-        },
-        {
-          "callee": "orchestrator.get_market_sentiment",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 20,
-          "tail": "get_market_sentiment"
-        },
-        {
-          "callee": "evaluate_macro_gate",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 21,
-          "tail": "evaluate_macro_gate"
-        },
-        {
-          "callee": "_cache_get",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 24,
-          "tail": "_cache_get"
-        },
-        {
-          "callee": "scan_cache.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 25,
-          "tail": "get"
-        },
-        {
-          "callee": "portfolio.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 26,
-          "tail": "get"
-        },
-        {
-          "callee": "d.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 30,
-          "tail": "get"
-        },
-        {
-          "callee": "PositionManager",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 35,
-          "tail": "PositionManager"
-        },
-        {
-          "callee": "pm.get_portfolio_summary",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 36,
-          "tail": "get_portfolio_summary"
-        },
-        {
-          "callee": "summary.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 37,
-          "tail": "get"
-        },
-        {
-          "callee": "_batch_get_stock_hist",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 45,
-          "tail": "_batch_get_stock_hist"
-        },
-        {
-          "callee": "VolCorrRiskConfig",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 48,
-          "tail": "VolCorrRiskConfig"
-        },
-        {
-          "callee": "VolCorrRiskManager",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 48,
-          "tail": "VolCorrRiskManager"
-        },
-        {
-          "callee": "risk_mgr.full_risk_assessment",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 50,
-          "tail": "full_risk_assessment"
-        },
-        {
-          "callee": "assessment.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 56,
-          "tail": "get"
-        },
-        {
-          "callee": "get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 56,
-          "tail": "get"
-        },
-        {
-          "callee": "assessment.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 57,
-          "tail": "get"
-        },
-        {
-          "callee": "assessment.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 58,
-          "tail": "get"
-        },
-        {
-          "callee": "assessment.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 59,
-          "tail": "get"
-        },
-        {
-          "callee": "assessment.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 66,
-          "tail": "get"
-        },
-        {
-          "callee": "risk_mgr.get_risk_budget",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 71,
-          "tail": "get_risk_budget"
-        },
-        {
-          "callee": "_run_stress_tests",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 77,
-          "tail": "_run_stress_tests"
-        },
-        {
-          "callee": "datetime.now",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 92,
-          "tail": "now"
-        },
-        {
-          "callee": "isoformat",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 92,
-          "tail": "isoformat"
-        },
-        {
-          "callee": "_cache_set",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/risk.py",
-          "lineno": 94,
-          "tail": "_cache_set"
+          "lineno": 100,
+          "tail": "run_blocking"
         },
         {
           "callee": "logger.error",
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 97,
+          "lineno": 102,
           "tail": "error"
         },
         {
@@ -6781,93 +5502,21 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 98,
+          "lineno": 103,
           "tail": "HTTPException"
-        },
-        {
-          "callee": "ThreadPoolExecutor",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/risk.py",
-          "lineno": 214,
-          "tail": "ThreadPoolExecutor"
-        },
-        {
-          "callee": "_get_orchestrator",
-          "category": "blocking",
-          "depth": 1,
-          "file": "routers/risk.py",
-          "lineno": 216,
-          "tail": "_get_orchestrator"
-        },
-        {
-          "callee": "executor.submit",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/risk.py",
-          "lineno": 216,
-          "tail": "submit"
-        },
-        {
-          "callee": "future.result",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/risk.py",
-          "lineno": 222,
-          "tail": "result"
-        },
-        {
-          "callee": "_orchestrator_cache.get",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/risk.py",
-          "lineno": 232,
-          "tail": "get"
-        },
-        {
-          "callee": "ScanOrchestrator",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/risk.py",
-          "lineno": 234,
-          "tail": "ScanOrchestrator"
-        },
-        {
-          "callee": "_orchestrator_cache.set",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/risk.py",
-          "lineno": 235,
-          "tail": "set"
         }
       ],
       "file": "routers/risk.py",
       "handler": "risk_assessment",
       "key": "GET /api/risk",
-      "lineno": 9,
+      "lineno": 94,
       "method": "GET",
-      "offloaded": {},
+      "offloaded": {
+        "run_blocking": 1
+      },
       "other": {
         "HTTPException": 1,
-        "PositionManager": 1,
-        "ScanOrchestrator": 1,
-        "ThreadPoolExecutor": 1,
-        "VolCorrRiskConfig": 1,
-        "VolCorrRiskManager": 1,
-        "_orchestrator_cache.get": 1,
-        "_orchestrator_cache.set": 1,
-        "_run_stress_tests": 1,
-        "assessment.get": 5,
-        "d.get": 1,
-        "datetime.now": 1,
-        "executor.submit": 1,
-        "future.result": 1,
-        "get": 1,
-        "isoformat": 1,
-        "logger.error": 1,
-        "portfolio.get": 1,
-        "scan_cache.get": 1,
-        "summary.get": 1
+        "logger.error": 1
       },
       "path": "/api/risk"
     },
@@ -6886,7 +5535,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 104,
+          "lineno": 109,
           "tail": "_cache_get"
         },
         {
@@ -6894,7 +5543,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 112,
+          "lineno": 117,
           "tail": "PositionManager"
         },
         {
@@ -6902,7 +5551,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 117,
+          "lineno": 122,
           "tail": "_cache_set"
         },
         {
@@ -6910,7 +5559,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 121,
+          "lineno": 126,
           "tail": "list"
         },
         {
@@ -6918,7 +5567,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 121,
+          "lineno": 126,
           "tail": "keys"
         },
         {
@@ -6926,7 +5575,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 122,
+          "lineno": 127,
           "tail": "_batch_get_stock_hist"
         },
         {
@@ -6934,7 +5583,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 125,
+          "lineno": 130,
           "tail": "len"
         },
         {
@@ -6942,7 +5591,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 126,
+          "lineno": 131,
           "tail": "_cache_set"
         },
         {
@@ -6950,7 +5599,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 129,
+          "lineno": 134,
           "tail": "VolCorrRiskConfig"
         },
         {
@@ -6958,7 +5607,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 129,
+          "lineno": 134,
           "tail": "VolCorrRiskManager"
         },
         {
@@ -6966,7 +5615,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 132,
+          "lineno": 137,
           "tail": "list"
         },
         {
@@ -6974,7 +5623,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 132,
+          "lineno": 137,
           "tail": "keys"
         },
         {
@@ -6982,7 +5631,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 136,
+          "lineno": 141,
           "tail": "get"
         },
         {
@@ -6990,7 +5639,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 138,
+          "lineno": 143,
           "tail": "getattr"
         },
         {
@@ -6998,7 +5647,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 138,
+          "lineno": 143,
           "tail": "len"
         },
         {
@@ -7006,7 +5655,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 139,
+          "lineno": 144,
           "tail": "len"
         },
         {
@@ -7014,7 +5663,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 140,
+          "lineno": 145,
           "tail": "getattr"
         },
         {
@@ -7022,7 +5671,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 140,
+          "lineno": 145,
           "tail": "getattr"
         },
         {
@@ -7030,7 +5679,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 142,
+          "lineno": 147,
           "tail": "len"
         },
         {
@@ -7038,7 +5687,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 147,
+          "lineno": 152,
           "tail": "compute_var_cvar"
         },
         {
@@ -7046,7 +5695,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 150,
+          "lineno": 155,
           "tail": "compute_correlation_matrix"
         },
         {
@@ -7054,7 +5703,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 155,
+          "lineno": 160,
           "tail": "get"
         },
         {
@@ -7062,7 +5711,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 156,
+          "lineno": 161,
           "tail": "get"
         },
         {
@@ -7070,7 +5719,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 157,
+          "lineno": 162,
           "tail": "get"
         },
         {
@@ -7078,7 +5727,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 159,
+          "lineno": 164,
           "tail": "len"
         },
         {
@@ -7086,7 +5735,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 160,
+          "lineno": 165,
           "tail": "now"
         },
         {
@@ -7094,7 +5743,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 160,
+          "lineno": 165,
           "tail": "isoformat"
         },
         {
@@ -7102,7 +5751,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 162,
+          "lineno": 167,
           "tail": "_cache_set"
         },
         {
@@ -7110,7 +5759,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 165,
+          "lineno": 170,
           "tail": "error"
         },
         {
@@ -7173,7 +5822,7 @@
       "file": "routers/risk.py",
       "handler": "risk_exposure",
       "key": "GET /api/risk-exposure",
-      "lineno": 102,
+      "lineno": 107,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -7212,7 +5861,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 222,
+          "lineno": 227,
           "tail": "VolCorrRiskConfig"
         },
         {
@@ -7220,7 +5869,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 222,
+          "lineno": 227,
           "tail": "VolCorrRiskManager"
         },
         {
@@ -7228,7 +5877,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 224,
+          "lineno": 229,
           "tail": "Path"
         },
         {
@@ -7236,7 +5885,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 225,
+          "lineno": 230,
           "tail": "exists"
         },
         {
@@ -7244,7 +5893,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 227,
+          "lineno": 232,
           "tail": "open"
         },
         {
@@ -7252,7 +5901,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 228,
+          "lineno": 233,
           "tail": "load"
         },
         {
@@ -7260,7 +5909,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 229,
+          "lineno": 234,
           "tail": "list"
         },
         {
@@ -7268,7 +5917,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 229,
+          "lineno": 234,
           "tail": "keys"
         },
         {
@@ -7276,7 +5925,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 230,
+          "lineno": 235,
           "tail": "len"
         },
         {
@@ -7284,7 +5933,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 234,
+          "lineno": 239,
           "tail": "len"
         },
         {
@@ -7292,7 +5941,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 235,
+          "lineno": 240,
           "tail": "eye"
         },
         {
@@ -7300,7 +5949,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 235,
+          "lineno": 240,
           "tail": "tolist"
         },
         {
@@ -7308,7 +5957,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 236,
+          "lineno": 241,
           "tail": "range"
         },
         {
@@ -7316,7 +5965,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 237,
+          "lineno": 242,
           "tail": "range"
         },
         {
@@ -7324,7 +5973,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 238,
+          "lineno": 243,
           "tail": "uniform"
         },
         {
@@ -7332,7 +5981,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 238,
+          "lineno": 243,
           "tail": "round"
         },
         {
@@ -7340,14 +5989,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/risk.py",
-          "lineno": 243,
+          "lineno": 248,
           "tail": "error"
         }
       ],
       "file": "routers/risk.py",
       "handler": "risk_correlation",
       "key": "GET /api/risk/correlation",
-      "lineno": 218,
+      "lineno": 223,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -7375,7 +6024,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 313,
+          "lineno": 319,
           "tail": "_cache_get"
         },
         {
@@ -7383,23 +6032,23 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 314,
-          "tail": "get"
-        },
-        {
-          "callee": "d.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
-          "lineno": 319,
-          "tail": "get"
-        },
-        {
-          "callee": "d.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/market.py",
           "lineno": 320,
+          "tail": "get"
+        },
+        {
+          "callee": "d.get",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/market.py",
+          "lineno": 325,
+          "tail": "get"
+        },
+        {
+          "callee": "d.get",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/market.py",
+          "lineno": 326,
           "tail": "get"
         },
         {
@@ -7407,7 +6056,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 326,
+          "lineno": 332,
           "tail": "abs"
         },
         {
@@ -7415,7 +6064,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 329,
+          "lineno": 335,
           "tail": "keys"
         },
         {
@@ -7423,7 +6072,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 333,
+          "lineno": 339,
           "tail": "list"
         },
         {
@@ -7431,7 +6080,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 333,
+          "lineno": 339,
           "tail": "items"
         },
         {
@@ -7439,7 +6088,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 334,
+          "lineno": 340,
           "tail": "enumerate"
         },
         {
@@ -7447,7 +6096,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 335,
+          "lineno": 341,
           "tail": "enumerate"
         },
         {
@@ -7455,7 +6104,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 337,
+          "lineno": 343,
           "tail": "min"
         },
         {
@@ -7463,7 +6112,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 339,
+          "lineno": 345,
           "tail": "append"
         },
         {
@@ -7471,7 +6120,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 342,
+          "lineno": 348,
           "tail": "round"
         },
         {
@@ -7479,14 +6128,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 347,
+          "lineno": 353,
           "tail": "error"
         }
       ],
       "file": "routers/market.py",
       "handler": "sankey_flow",
       "key": "GET /api/sankey/flow",
-      "lineno": 310,
+      "lineno": 316,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -7739,7 +6388,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 236,
+          "lineno": 242,
           "tail": "_load_cache"
         },
         {
@@ -7747,7 +6396,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 237,
+          "lineno": 243,
           "tail": "hasattr"
         },
         {
@@ -7755,7 +6404,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 241,
+          "lineno": 247,
           "tail": "hasattr"
         },
         {
@@ -7763,7 +6412,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 242,
+          "lineno": 248,
           "tail": "iterrows"
         },
         {
@@ -7771,7 +6420,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 242,
+          "lineno": 248,
           "tail": "head"
         },
         {
@@ -7779,7 +6428,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 243,
+          "lineno": 249,
           "tail": "get"
         },
         {
@@ -7787,7 +6436,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 243,
+          "lineno": 249,
           "tail": "get"
         },
         {
@@ -7795,7 +6444,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 244,
+          "lineno": 250,
           "tail": "get"
         },
         {
@@ -7803,7 +6452,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 246,
+          "lineno": 252,
           "tail": "append"
         },
         {
@@ -7811,7 +6460,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 246,
+          "lineno": 252,
           "tail": "str"
         },
         {
@@ -7819,7 +6468,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 248,
+          "lineno": 254,
           "tail": "int"
         },
         {
@@ -7827,7 +6476,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 248,
+          "lineno": 254,
           "tail": "append"
         },
         {
@@ -7835,7 +6484,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 248,
+          "lineno": 254,
           "tail": "str"
         },
         {
@@ -7843,7 +6492,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 250,
+          "lineno": 256,
           "tail": "int"
         },
         {
@@ -7851,7 +6500,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 250,
+          "lineno": 256,
           "tail": "append"
         },
         {
@@ -7859,7 +6508,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 250,
+          "lineno": 256,
           "tail": "str"
         },
         {
@@ -7867,7 +6516,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 252,
+          "lineno": 258,
           "tail": "insert"
         },
         {
@@ -7875,14 +6524,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 255,
+          "lineno": 261,
           "tail": "error"
         }
       ],
       "file": "routers/market.py",
       "handler": "sector_flow",
       "key": "GET /api/sector-flow",
-      "lineno": 231,
+      "lineno": 237,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -7909,7 +6558,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 105,
+          "lineno": 106,
           "tail": "_cache_get"
         },
         {
@@ -7917,7 +6566,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 112,
+          "lineno": 113,
           "tail": "compute_sector_scores"
         },
         {
@@ -7925,7 +6574,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 116,
+          "lineno": 117,
           "tail": "append"
         },
         {
@@ -7933,7 +6582,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 133,
+          "lineno": 134,
           "tail": "len"
         },
         {
@@ -7941,7 +6590,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 134,
+          "lineno": 135,
           "tail": "now"
         },
         {
@@ -7949,7 +6598,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 134,
+          "lineno": 135,
           "tail": "isoformat"
         },
         {
@@ -7957,7 +6606,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 136,
+          "lineno": 137,
           "tail": "_cache_set"
         },
         {
@@ -7965,14 +6614,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 139,
+          "lineno": 140,
           "tail": "error"
         }
       ],
       "file": "routers/market.py",
       "handler": "sector_heatmap",
       "key": "GET /api/sector-heatmap",
-      "lineno": 103,
+      "lineno": 104,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -9187,7 +7836,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 206,
+          "lineno": 212,
           "tail": "TradeLogger"
         },
         {
@@ -9195,7 +7844,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 207,
+          "lineno": 213,
           "tail": "get_recent_trades"
         },
         {
@@ -9203,7 +7852,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 211,
+          "lineno": 217,
           "tail": "get"
         },
         {
@@ -9211,7 +7860,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 215,
+          "lineno": 221,
           "tail": "get"
         },
         {
@@ -9219,7 +7868,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 215,
+          "lineno": 221,
           "tail": "sort"
         },
         {
@@ -9227,7 +7876,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 217,
+          "lineno": 223,
           "tail": "get"
         },
         {
@@ -9235,7 +7884,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 217,
+          "lineno": 223,
           "tail": "sort"
         },
         {
@@ -9243,7 +7892,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 219,
+          "lineno": 225,
           "tail": "get"
         },
         {
@@ -9251,7 +7900,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 219,
+          "lineno": 225,
           "tail": "sort"
         },
         {
@@ -9259,7 +7908,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 223,
+          "lineno": 229,
           "tail": "len"
         },
         {
@@ -9267,14 +7916,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 226,
+          "lineno": 232,
           "tail": "error"
         }
       ],
       "file": "routers/market.py",
       "handler": "trade_history",
       "key": "GET /api/trade-history",
-      "lineno": 197,
+      "lineno": 203,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -9294,7 +7943,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 298,
+          "lineno": 304,
           "tail": "abs"
         },
         {
@@ -9302,7 +7951,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 299,
+          "lineno": 305,
           "tail": "items"
         },
         {
@@ -9310,7 +7959,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 301,
+          "lineno": 307,
           "tail": "sort"
         },
         {
@@ -9318,14 +7967,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 305,
+          "lineno": 311,
           "tail": "error"
         }
       ],
       "file": "routers/market.py",
       "handler": "treemap_factors",
       "key": "GET /api/treemap/factors",
-      "lineno": 291,
+      "lineno": 297,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -9346,7 +7995,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 263,
+          "lineno": 269,
           "tail": "_cache_get"
         },
         {
@@ -9354,7 +8003,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 264,
+          "lineno": 270,
           "tail": "get"
         },
         {
@@ -9362,7 +8011,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 269,
+          "lineno": 275,
           "tail": "get"
         },
         {
@@ -9370,7 +8019,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 272,
+          "lineno": 278,
           "tail": "abs"
         },
         {
@@ -9378,7 +8027,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 272,
+          "lineno": 278,
           "tail": "get"
         },
         {
@@ -9386,7 +8035,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 273,
+          "lineno": 279,
           "tail": "get"
         },
         {
@@ -9394,7 +8043,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 277,
+          "lineno": 283,
           "tail": "values"
         },
         {
@@ -9402,7 +8051,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 279,
+          "lineno": 285,
           "tail": "round"
         },
         {
@@ -9410,7 +8059,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 281,
+          "lineno": 287,
           "tail": "list"
         },
         {
@@ -9418,7 +8067,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 281,
+          "lineno": 287,
           "tail": "values"
         },
         {
@@ -9426,7 +8075,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 282,
+          "lineno": 288,
           "tail": "sort"
         },
         {
@@ -9434,14 +8083,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/market.py",
-          "lineno": 286,
+          "lineno": 292,
           "tail": "error"
         }
       ],
       "file": "routers/market.py",
       "handler": "treemap_sectors",
       "key": "GET /api/treemap/sectors",
-      "lineno": 260,
+      "lineno": 266,
       "method": "GET",
       "offloaded": {},
       "other": {

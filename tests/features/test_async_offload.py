@@ -122,7 +122,11 @@ def test_off_and_on_propagate_exceptions_identically(monkeypatch):
 # ---------------------------------------------------------------- 边界守卫
 
 def test_consumer_registry_is_explicit_and_unique():
-    assert OFFLOAD_CONSUMERS == ("backtest", "backtest_compare", "walkforward")
+    assert OFFLOAD_CONSUMERS == (
+        "backtest", "backtest_compare", "walkforward",
+        # Phase 6 第 4 批（Tier A 候选 Top5）
+        "factor_eval", "factor_scatter", "kline", "risk", "export_config",
+    )
     assert len(set(OFFLOAD_CONSUMERS)) == len(OFFLOAD_CONSUMERS)
 
 

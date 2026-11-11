@@ -2,8 +2,108 @@
 
 from fastapi import APIRouter
 from .common import *  # noqa: F401,F403
+from lib.infra.async_offload import run_blocking
 
 router = APIRouter()
+
+def _compute_factor_evaluation(n_stocks):
+    """原 `GET /api/factor-eval` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    import numpy as np
+    import pandas as pd
+    from lib.scoring.evaluator import FactorEvaluator, EvalConfig
+    from lib.scoring.alpha import AlphaSynthesizer
+    from factors import compute_all_signals
+
+    orchestrator = _get_orchestrator()
+    # 取沪深300成分股或活跃股
+    quotes = orchestrator.get_realtime_quotes()
+    if quotes.empty:
+        return {"error": "无法获取实时行情"}
+
+    # 按成交额排序取前 N 只
+    if "成交额" in quotes.columns:
+        top = quotes.nlargest(n_stocks, "成交额")
+    else:
+        top = quotes.head(n_stocks)
+
+    # 构建因子面板
+    factor_panel = {}
+    for _, row in top.iterrows():
+        code = str(row.get("代码", ""))
+        if not code:
+            continue
+        try:
+            hist = orchestrator.get_stock_hist_multi_source(code, days=120, source="auto")
+            if hist is None or hist.empty or len(hist) < 60:
+                continue
+            result = compute_all_signals(hist)
+            if not result:
+                continue
+            factors = result.get("factors", {})
+            factor_panel[code] = factors
+        except Exception:
+            continue
+
+    if len(factor_panel) < 5:
+        return {"error": "有效因子数据不足"}
+
+    # 构建因子 DataFrame
+    factor_df = pd.DataFrame(factor_panel).T
+    factor_df = factor_df.apply(pd.to_numeric, errors="coerce")
+
+    # 用涨跌幅做简化前向收益代理
+    forward_returns = pd.Series({
+        code: float(row.get("涨跌幅", 0)) / 100
+        for code, row in top.iterrows()
+        if str(row.get("代码", "")) in factor_df.index
+    })
+    # 重新对齐 index
+    common = factor_df.index.intersection(forward_returns.index)
+    factor_df = factor_df.loc[common]
+    forward_returns = forward_returns.loc[common]
+
+    # IC 分析
+    synth = AlphaSynthesizer()
+    ic_results = {}
+    for col in factor_df.columns:
+        try:
+            ic = synth.compute_ic(factor_df[col], forward_returns)
+            if not np.isnan(ic.get("rank_ic", np.nan)):
+                ic_results[col] = {
+                    "ic": round(ic["ic"], 4) if not np.isnan(ic.get("ic", np.nan)) else None,
+                    "rank_ic": round(ic["rank_ic"], 4),
+                    "pvalue": round(ic.get("rank_ic_pvalue", 1), 4),
+                }
+        except Exception as ic_err:
+            logger.debug(f"IC computation failed for {col}: {ic_err}")
+            continue
+
+    # 因子相关性
+    try:
+        corr = factor_df.corr()
+        # 找高相关对
+        high_corr_pairs = []
+        cols = corr.columns.tolist()
+        for i in range(len(cols)):
+            for j in range(i + 1, len(cols)):
+                if abs(corr.iloc[i, j]) > 0.7:
+                    high_corr_pairs.append({
+                        "factor_a": cols[i],
+                        "factor_b": cols[j],
+                        "correlation": round(float(corr.iloc[i, j]), 3),
+                    })
+    except Exception:
+        high_corr_pairs = []
+
+    result = {
+        "n_stocks": len(factor_panel),
+        "factor_ic": ic_results,
+        "high_corr_pairs": high_corr_pairs,
+        "timestamp": datetime.now().isoformat(),
+    }
+    _cache_set("factor_eval", result)
+    return result
+
 
 @router.get("/api/factor-eval", dependencies=[Security(verify_api_key)])
 async def factor_evaluation(
@@ -13,106 +113,62 @@ async def factor_evaluation(
     cached = _cache_get("factor_eval", max_age=7200)
     if cached is not None:
         return cached
-
     try:
-        import numpy as np
-        import pandas as pd
-        from lib.scoring.evaluator import FactorEvaluator, EvalConfig
-        from lib.scoring.alpha import AlphaSynthesizer
-        from factors import compute_all_signals
-
-        orchestrator = _get_orchestrator()
-        # 取沪深300成分股或活跃股
-        quotes = orchestrator.get_realtime_quotes()
-        if quotes.empty:
-            return {"error": "无法获取实时行情"}
-
-        # 按成交额排序取前 N 只
-        if "成交额" in quotes.columns:
-            top = quotes.nlargest(n_stocks, "成交额")
-        else:
-            top = quotes.head(n_stocks)
-
-        # 构建因子面板
-        factor_panel = {}
-        for _, row in top.iterrows():
-            code = str(row.get("代码", ""))
-            if not code:
-                continue
-            try:
-                hist = orchestrator.get_stock_hist_multi_source(code, days=120, source="auto")
-                if hist is None or hist.empty or len(hist) < 60:
-                    continue
-                result = compute_all_signals(hist)
-                if not result:
-                    continue
-                factors = result.get("factors", {})
-                factor_panel[code] = factors
-            except Exception:
-                continue
-
-        if len(factor_panel) < 5:
-            return {"error": "有效因子数据不足"}
-
-        # 构建因子 DataFrame
-        factor_df = pd.DataFrame(factor_panel).T
-        factor_df = factor_df.apply(pd.to_numeric, errors="coerce")
-
-        # 用涨跌幅做简化前向收益代理
-        forward_returns = pd.Series({
-            code: float(row.get("涨跌幅", 0)) / 100
-            for code, row in top.iterrows()
-            if str(row.get("代码", "")) in factor_df.index
-        })
-        # 重新对齐 index
-        common = factor_df.index.intersection(forward_returns.index)
-        factor_df = factor_df.loc[common]
-        forward_returns = forward_returns.loc[common]
-
-        # IC 分析
-        synth = AlphaSynthesizer()
-        ic_results = {}
-        for col in factor_df.columns:
-            try:
-                ic = synth.compute_ic(factor_df[col], forward_returns)
-                if not np.isnan(ic.get("rank_ic", np.nan)):
-                    ic_results[col] = {
-                        "ic": round(ic["ic"], 4) if not np.isnan(ic.get("ic", np.nan)) else None,
-                        "rank_ic": round(ic["rank_ic"], 4),
-                        "pvalue": round(ic.get("rank_ic_pvalue", 1), 4),
-                    }
-            except Exception as ic_err:
-                logger.debug(f"IC computation failed for {col}: {ic_err}")
-                continue
-
-        # 因子相关性
-        try:
-            corr = factor_df.corr()
-            # 找高相关对
-            high_corr_pairs = []
-            cols = corr.columns.tolist()
-            for i in range(len(cols)):
-                for j in range(i + 1, len(cols)):
-                    if abs(corr.iloc[i, j]) > 0.7:
-                        high_corr_pairs.append({
-                            "factor_a": cols[i],
-                            "factor_b": cols[j],
-                            "correlation": round(float(corr.iloc[i, j]), 3),
-                        })
-        except Exception:
-            high_corr_pairs = []
-
-        result = {
-            "n_stocks": len(factor_panel),
-            "factor_ic": ic_results,
-            "high_corr_pairs": high_corr_pairs,
-            "timestamp": datetime.now().isoformat(),
-        }
-        _cache_set("factor_eval", result)
-        return result
+        return await run_blocking("factor_eval", _compute_factor_evaluation, n_stocks)
     except Exception as e:
         logger.error(f"因子评估失败: {e}")
         raise HTTPException(status_code=500, detail="内部服务器错误")
+
+
+def _compute_factor_scatter(x_factor, y_factor, n_stocks):
+    """原 `GET /api/factor-scatter` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from factors import compute_all_signals
+    from lib.data.data_layer import get_stock_hist
+    import numpy as np
+
+    orchestrator = _get_orchestrator()
+    quotes = orchestrator.get_realtime_quotes()
+    if quotes.empty:
+        return {"points": [], "x_factor": x_factor, "y_factor": y_factor}
+
+    if "成交额" in quotes.columns:
+        top = quotes.nlargest(n_stocks, "成交额")
+    else:
+        top = quotes.head(n_stocks)
+
+    points = []
+    for _, row in top.iterrows():
+        code = str(row.get("代码", ""))
+        if not code:
+            continue
+        try:
+            hist = get_stock_hist(code, days=120)
+            if hist.empty or len(hist) < 60:
+                continue
+            result = compute_all_signals(hist)
+            if not result:
+                continue
+            factors = result.get("factors", {})
+            x_val = factors.get(x_factor)
+            y_val = factors.get(y_factor)
+            ret = float(row.get("涨跌幅", 0)) / 100
+
+            if x_val is not None and y_val is not None:
+                points.append({
+                    "code": code,
+                    "x": round(float(x_val), 4),
+                    "y": round(float(y_val), 4),
+                    "return": round(ret, 4),
+                })
+        except Exception:
+            continue
+
+    return {
+        "points": points,
+        "x_factor": x_factor,
+        "y_factor": y_factor,
+        "n_stocks": len(points),
+    }
 
 
 @router.get("/api/factor-scatter", dependencies=[Security(verify_api_key)])
@@ -123,53 +179,8 @@ async def factor_scatter(
 ):
     """因子散点图数据"""
     try:
-        from factors import compute_all_signals
-        from lib.data.data_layer import get_stock_hist
-        import numpy as np
-
-        orchestrator = _get_orchestrator()
-        quotes = orchestrator.get_realtime_quotes()
-        if quotes.empty:
-            return {"points": [], "x_factor": x_factor, "y_factor": y_factor}
-
-        if "成交额" in quotes.columns:
-            top = quotes.nlargest(n_stocks, "成交额")
-        else:
-            top = quotes.head(n_stocks)
-
-        points = []
-        for _, row in top.iterrows():
-            code = str(row.get("代码", ""))
-            if not code:
-                continue
-            try:
-                hist = get_stock_hist(code, days=120)
-                if hist.empty or len(hist) < 60:
-                    continue
-                result = compute_all_signals(hist)
-                if not result:
-                    continue
-                factors = result.get("factors", {})
-                x_val = factors.get(x_factor)
-                y_val = factors.get(y_factor)
-                ret = float(row.get("涨跌幅", 0)) / 100
-
-                if x_val is not None and y_val is not None:
-                    points.append({
-                        "code": code,
-                        "x": round(float(x_val), 4),
-                        "y": round(float(y_val), 4),
-                        "return": round(ret, 4),
-                    })
-            except Exception:
-                continue
-
-        return {
-            "points": points,
-            "x_factor": x_factor,
-            "y_factor": y_factor,
-            "n_stocks": len(points),
-        }
+        return await run_blocking("factor_scatter", _compute_factor_scatter,
+                                  x_factor, y_factor, n_stocks)
     except Exception as e:
         logger.error(f"因子散点图失败: {e}")
         return {"points": [], "x_factor": x_factor, "y_factor": y_factor}

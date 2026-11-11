@@ -1,6 +1,6 @@
 # CLAUDE.md — Stock Scanner (个人量化选股系统)
 
-> 最后更新：2026-11-11 | 本次更新：RF-01 Phase 6 第 3 批 —— 缓存范围裁剪（ADR-0008）、L10 并发压测、Tier B 201 条留痕、收官前核验；**Phase 6 仍未收官：35 个 Tier A 候选端点待切换**（ADR-0009）
+> 最后更新：2026-11-11 | 本次更新：RF-01 Phase 6 第 4 批 —— Top5 端点 offload（ADR-0010）、L9 扩至 8 迁移、L10 扩至 8 端点、L8/L9 两处门禁判据根因修（P-72/P-73）；**Phase 6 仍未收官：30 个 Tier A 候选端点待切换**
 
 ## 工作流
 
@@ -374,7 +374,7 @@ curl http://localhost:8000/api/scan
 | `cache/models/` | ML 模型存储 |
 | `scripts/update_tdx_data.py` | TDX 日K线数据更新脚本 |
 | `RULES.md` | **项目规约** (目录结构/import/路径基准/**回测调用规约**/验证分层硬约束)。改代码前先读 |
-| `docs/refactor/pitfalls.md` | **踩坑集** (RF-01 执行期 61 条真实坑：现象→根因→修复→推广)。动 `lib/`、`tests/`、CI 前先读 |
+| `docs/refactor/pitfalls.md` | **踩坑集** (RF-01 执行期 73 条真实坑：现象→根因→修复→推广)。动 `lib/`、`tests/`、CI 前先读 |
 | `docs/refactor/README.md` | 重构度量基线说明 (契约/覆盖率/对拍三把尺子的口径与自证记录) |
 | `docs/plans/2026-11-07-refactor-plan.md` | RF-01 分阶段重构计划 (§七 为逐批执行记录/验收/复盘) |
 | `lib/scoring/scoring_contract.py` | **统一评分契约**：`ScoringResult` / `ScoringKernel` / 四维真源声明（RF-01 Phase 4） |
@@ -394,12 +394,12 @@ curl http://localhost:8000/api/scan
 | `docs/adr/0006-*.md` | 第 6 次判据修正：绝对阈值「≤1」→ 单调下降 + Tier A/B 分层退出判据 |
 | `tests/test_blocking_io_check.py` | L8 的 11 例机器判据（含 helper 展开、表外符号判红、尺子自证） |
 | `lib/infra/async_offload.py` | **Phase 6 唯一 offload 入口**：`run_blocking(consumer, fn, ...)`，off 同步直调 / on 走线程池；`OFFLOAD_CONSUMERS` 显式登记 |
-| `scripts/offload_switch_diff.py` | **L9 门禁**：固定 commit `523b353` 源码 AST 逐语句等价 + off/on 整份响应 + 线程池调用自证 + 消费者登记双向对齐 |
+| `scripts/offload_switch_diff.py` | **L9 门禁**：固定 commit `523b353`（backtest 系）+ `77bc366`（第 4 批）源码 AST 逐语句等价 + off/on 整份响应 + 线程池调用自证 + 消费者登记双向对齐（8 迁移） |
 | `docs/refactor/contracts/blocking-io-recapture-evidence.json` | L8 基线历次重建的 G4 字段级取证（历史数组，不覆盖） |
 | `docs/adr/0007-*.md` | 第 2 批决策：灰度入口 / Tier A 切换 / 共享状态加锁 / 分层重建基线 |
 | `tests/features/test_async_offload.py` / `tests/test_shared_state_locks.py` / `tests/test_phase6_batch2.py` | 19 + 5 + 5 例：开关两条路径、并发状态流转、收口 AST 守卫与取证一致性 |
 | `scripts/concurrency_probe.py` | **L10**：20 并发 × 3 轮 P95（批次发起计时，坑表 P-70）+ 36 条前端路径契约冻结 |
-| `docs/refactor/contracts/blocking-io-tier-b.json` | Tier B 201 条逐条理由 + **35 个 Tier A 候选端点**显式遗留（收官判据依据） |
+| `docs/refactor/contracts/blocking-io-tier-b.json` | Tier B 168 条逐条理由 + **30 个 Tier A 候选端点**显式遗留（收官判据依据） |
 | `docs/adr/0008-*.md` / `docs/adr/0009-*.md` | 缓存范围裁剪；压测口径修订与收官前核验结论 |
 | `tests/test_phase6_batch3.py` | 7 例：既有缓存证据、禁止偷偷加缓存开关、压测口径、Tier B 机械分类与遗留不可隐藏 |
 

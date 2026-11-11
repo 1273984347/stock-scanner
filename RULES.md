@@ -136,8 +136,12 @@ infra  ←  data  ←  scoring  ←  strategy
 > 3 个 Tier A 回测端点 offload、共享状态收口加锁、L9 对拍，ADR-0007）。
 > 实测：blocking **242 → 228**，offloaded **1 → 4**；两次基线重建均按 G4 字段级取证并留历史。
 > **第 3 批 ✅**（TTL 缓存按 ADR-0008 裁剪、L10 并发压测、Tier B 201 条逐条留痕、
-> 收官前核验表）；**Phase 6 仍未收官** —— Tier B 登记实测出
-> **35 个 Tier A 候选端点尚未 offload**，按 ADR-0006 D2 不能宣布收官（ADR-0009 D5）。
+> 收官前核验表）；batch 3 结束时 Tier B 登记实测出
+> **35 个 Tier A 候选端点尚未 offload**（ADR-0009 D5）。
+> **第 4 批 ✅**（Tier A 候选 Top5 端点 offload + 两处门禁判据根因修，ADR-0010）：
+> `factor_eval` / `factor_scatter` / `kline` / `risk` / `export_config`；
+> L8/L9/L10 全绿，Tier B 候选 **35 → 30**；**30 个 Tier A 候选端点尚未 offload**，
+> 收官待清零（ADR-0010）。Phase 6 仍**未收官**（ADR-0006 D2）。
 > 完整遗留清单见 `docs/refactor/contracts/blocking-io-tier-b.json`。
 > 改 `routers/` 后必须同时跑 L7、L8、L9、L10。
 
@@ -222,6 +226,7 @@ python scripts/blocking_io_check.py --check
 python scripts/blocking_io_check.py --selftest
 
 # L9 offload 开关对拍（Phase 6 第 2 批起；迁移 AST 等价 + off/on 响应 + 线程池自证）
+# 覆盖 8 个迁移：3 个回测端点（基线 commit 523b353）+ 第 4 批 5 个端点（基线 commit 77bc366）
 python scripts/offload_switch_diff.py --check
 
 # L10 并发压测 + Tier B 留痕（Phase 6 第 3 批起）
@@ -239,8 +244,8 @@ python scripts/concurrency_probe.py --check
 | L6 | `[PASS] switch diff: 3 branch(es), 9 responses, 0 field(s) differ`；三条分支各自 `kernel calls off=0 on>0`，且 `[PASS] consumers: 3/3` |
 | L7 | `[PASS] route ownership: 68 endpoints / 17 routers / 36 frontend paths`；鉴权依赖数不得减少、契约 diff = 0 |
 | L8 | `[PASS] blocking-io: 68 endpoints / N blocking calls`；`--selftest` 全绿（4 类回归各自命中指定门禁 + 合法修复全绿）；blocking 只准降、offloaded 只准升、`other` 逐字段不变、端点集合与 L7 一致、async 全 true |
-| L9 | `[PASS] offload switch: 3 endpoints`；固定 commit `523b353` 源码 AST 逐语句等价；off/on 整份响应字段顺序一致；线程池 off=0 / on=1 且工作线程与主线程不同；消费者登记与实际调用点双向对齐 |
-| L10 | `[PASS] concurrency: 3 endpoints x 20 concurrent x 3 rounds`；P95 按**批次发起**计时、`on <= off × 1.10`（不得放宽阈值）、3/3 改善；36 条前端路径成员+数量双校验且 off/on OpenAPI 一致；Tier B 登记 0 未分类、新增阻塞符号未登记即判红 |
+| L9 | `[PASS] offload switch: 8 endpoints`；固定 commit `523b353`（3 回测）+ `77bc366`（第 4 批 5 端点）源码 AST 逐语句等价；off/on 整份响应字段顺序一致；线程池 off=0 / on=1 且工作线程与主线程不同；消费者登记与实际调用点双向对齐 |
+| L10 | `[PASS] concurrency: 8 endpoints x 20 concurrent x 3 rounds`；P95 按**批次发起**计时、`on <= off × 1.10`（不得放宽阈值）、8/8 改善；36 条前端路径成员+数量双校验且 off/on OpenAPI 一致；Tier B 登记 0 未分类、新增阻塞符号未登记即判红 |
 
 ### 4.2 覆盖率门禁
 

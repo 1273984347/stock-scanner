@@ -69,11 +69,13 @@ def test_baseline_constraints_keep_the_rejected_plan_target():
 
 def test_pre_migration_commit_is_pinned_and_readable():
     mod = _load_script("_offload_switch", ROOT / "scripts" / "offload_switch_diff.py")
-    assert mod.PRE_MIGRATION_COMMIT == "523b353"
-    out = subprocess.run(
-        ["git", "cat-file", "-e", f"{mod.PRE_MIGRATION_COMMIT}:{mod.SOURCE_REL}"],
-        cwd=ROOT, capture_output=True, text=True, timeout=20)
-    assert out.returncode == 0
+    # L9 已泛化为多迁移：每个迁移自带 pinned pre_commit（backtest 系 523b353，第 4 批 77bc366）
+    assert len(mod.MIGRATIONS) >= 8
+    for m in mod.MIGRATIONS:
+        out = subprocess.run(
+            ["git", "cat-file", "-e", f"{m.pre_commit}:{m.source_rel}"],
+            cwd=ROOT, capture_output=True, text=True, timeout=20)
+        assert out.returncode == 0, f"pinned commit unreadable: {m.pre_commit}:{m.source_rel}"
     assert mod.check_migration() == []
 
 

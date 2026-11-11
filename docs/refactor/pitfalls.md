@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**71 条**（P-01～P-71），分八类。
+> **规模**：**73 条**（P-01～P-73），分八类。
 > **姊妹文档**：执行过程与逐批验收见 `docs/plans/2026-11-07-refactor-plan.md` 第七节；
 > 基线读数见 `docs/refactor/baseline.md`；尺子口径见 `docs/refactor/README.md`。
 
@@ -1281,6 +1281,74 @@ offload 快一倍。
 
 ---
 
+### P-72 · L8 `recapture` 误报「未改端点漂移」：端点顶层 `lineno` 漏剥（P-68 复发，根因修）
+
+**现象**：Phase 6 第 4 批在 4 个 router 顶部各加一行
+`from lib.infra.async_offload import run_blocking`，随后按 G4 重建 L8 基线，
+`--recapture --mode offload` 报 **21 个「UNEXPECTED drift in untouched endpoint」**，
+但这 21 个端点一行业务代码都没改。`--check` 只报了 5 个真正变化的端点。
+
+**根因**：第 2 批 P-68 只修到「剥 `calls[].lineno`」，漏了端点**顶层** `lineno`。
+在 router 顶部加 import 使下方所有 handler 行号整体下移，于是所有经 helper 展开、
+其调用点记录挂在端点顶层 `lineno` 下的端点整条被判 drift。两个口径（recapture 逐字节 vs
+`--check` 只比 callee 计数）给出不同结论 —— 与 P-68 同源，只是漏剥的位置不同。
+
+**修复**：`_normalize_endpoint()` 在剥 `calls[].lineno` 的同时，**同步 `pop` 端点顶层 `lineno`**：
+```python
+out = copy.deepcopy(record)
+out.pop("lineno", None)
+for call in out.get("calls", []):
+    call.pop("lineno", None)
+return out
+```
+`lineno` 仍保留在基线 JSON 里供人排查「这个调用在哪」，但**不进机器比较口径**。
+
+**推广**：**「在模块顶部加 import / 删一个函数体」这类无关编辑，会让所有下游行号漂移；
+凡基线字段会随无关编辑变化，就都不能进机器比较**（P-68 同构）。
+本次是 P-68 的复发：只补一处漏剥不够，要确认所有层级的 `lineno` 都被排除。
+判据要能区分「记录变了」和「行为变了」；漏剥诱使执行者把无关端点塞进
+`--allow-endpoints` 白名单 = 补丁加补丁，根因修法是改口径（ADR-0010 D3）。
+
+---
+
+### P-73 · L9 对拍 `patch("datetime.datetime.now", ...)` 对 C 扩展不可变类型直接崩
+
+**现象**：Phase 6 第 4 批把 L9 扩展到 8 个迁移，首跑即
+`TypeError: cannot set 'now' attribute of immutable type 'datetime.datetime'`
+—— `datetime.datetime` 是 C 扩展不可变类型，不能给它的类属性 `.now` 赋值。
+同时 `_old_try_body` 返回旧 try 体、**未剥前导 import**，而 `_new_fn_body` 剥了，
+导致「旧 10 条 / 新 7 条」的假计数差，L9 误报 7 处 statement count 不一致。
+
+**根因**：两处独立缺陷。
+① 冻结 `datetime.now` 想用 `patch("datetime.datetime.now", return_value=...)`，但 `datetime` 类型的
+   方法不是可写属性；且 router 经 `from .common import *` 持有自己的 `datetime` 名字绑定，
+   即便 patch 模块级 `datetime` 也改不到各 router 命名空间。
+② `_strip_leading_imports` 只套在 `_new_fn_body` 上，`_old_try_body` 没套 ⇒ 旧新不对称，
+   语句数天然不等。
+
+**修复**：① 改用 `Mock(wraps=datetime.datetime)` 保留真实方法、只钉 `.now` / `.utcnow`，
+   并**逐 router 命名空间** patch 才能改到经 `from .common import *` 持有的绑定：
+```python
+from unittest.mock import Mock, patch
+frozen_dt = Mock(wraps=_dt.datetime)
+frozen_dt.now.return_value = FIXED_DT
+frozen_dt.utcnow.return_value = FIXED_DT
+for _ns in ("routers.factor", "routers.risk", "routers.export", "routers.common"):
+    try:
+        stack.enter_context(patch(_ns + ".datetime", frozen_dt))
+    except AttributeError:
+        pass
+```
+② `_old_try_body` 的返回也套上 `_strip_leading_imports`，与 `_new_fn_body` 对称归一。
+
+**推广**：**冻结标准库不可变类型（C 扩展：`datetime.datetime` / `decimal.Decimal` 等），
+不要 `patch` 其类属性，用 `Mock(wraps=真实类型)` + 只钉要控的方法**；且名字绑定可能
+分散在多个命名空间（star-import / 局部 `import as`），要逐个命名空间 patch，不能只动定义方
+（P-18 / P-19 同构）。另外：**AST 比对的两边必须套同一套归一化**，否则「旧 10 条 / 新 7 条」
+这类对称缺陷会让判据假红（P-45 的「比对前先归一」纪律）。
+
+---
+
 ## 附 · 一句话索引（按症状查）
 
 | 症状 | 去查 |
@@ -1308,11 +1376,12 @@ offload 快一倍。
 | 「扫描函数体」显示干净，实际还在阻塞事件循环 | P-67 |
 | 计划里的绝对阈值（≤N）根本达不到 | P-67 / ADR-0006 |
 | 门禁红了但说不清是哪条判据红的 | P-10 / P-54 / P-67 |
-| 没改的端点被判「基线漂移」，一查只是行号变了 | P-68 |
+| 没改的端点被判「基线漂移」，一查只是行号变了（这次是端点顶层 lineno 漏剥） | P-68 / P-72 |
 | A/B 对拍里冒出后台预取 / 缓存预热日志 | P-69 / P-33 |
 | 只给调用处补锁，下次又从别处漏进来 | P-68 推广 / ADR-0007 D4 |
 | 优化后压测反而慢一个数量级 | P-70 |
 | 「逐条留痕」表里遗留被改名成已完成 | P-71 |
+| L9 对拍因 `datetime` 不可变类型 `patch` 崩 / 旧新语句数不对称假红 | P-73 |
 | A/B 对照里 OpenAPI / schema 比较恒等 | P-54 / ADR-0009 D3 |
 | Actions 额度消耗太快 | P-40 |
 | commit 失败却把旧代码推上去了 | P-43 |
@@ -1352,8 +1421,10 @@ offload 快一倍。
 与 P-54 / P-55（阶段 A）+ P-56～P-60（阶段 B）+ P-61 / P-62～P-65（Phase 5 拆 api.py 单体）+ P-66（portalocker 打开争用重试）；
 2026-11-11 追加 P-67（Phase 6 第 1 批：阻塞 IO 扫描是空判据 + 绝对阈值被实测推翻），
 P-68（lineno 进基线使逐字节比较不可执行）与 P-69（导入期 HS300 预取污染 A/B 取证）；
-再追加 P-70（异步压测协程内计时被调度方式带偏）与 P-71（人工分类会把遗留改名成已完成），
-共 **71 条**。
+再追加 P-70（异步压测协程内计时被调度方式带偏）与 P-71（人工分类会把遗留改名成已完成），共 **71 条**；
+2026-11-11 **Phase 6 第 4 批**：追加 P-72（L8 端点顶层 lineno 漏剥，recapture 误报 21 条漂移的根因修）
+与 P-73（L9 冻结 datetime.now 用 Mock(wraps=datetime) 按命名空间 patch，攻克 C 扩展不可变类型），
+共 **73 条**。
 **核对基线**：本地全量 pytest 1162 passed / 12 skipped（13.02s）；CI run `42319502027` 3 job 全绿。
 2026-11-10 阶段 A 收官：**1221 passed / 12 skipped**，L0–L5 全 PASS。
 2026-11-10 阶段 B 首批：**1235 passed / 12 skipped**。
@@ -1390,6 +1461,10 @@ Tier B 201 条机械分类逐条留痕、0 未分类，35 个 Tier A 候选端�
 新增 P-70 / P-71；决策见 `docs/adr/0008-*.md` / `0009-*.md`。
 第 3 批验收：**L0–L10 全 PASS，1312 passed / 12 skipped / 0 failed（61.93s）**；
 L10 off P95 389–404ms → on 208–220ms（3/3 改善），36 条路径 + off/on OpenAPI 冻结。
-**收官前核验结论：Phase 6 未收官**（35 个 Tier A 候选端点未 offload，ADR-0009 D5）。
+2026-11-11 **Phase 6 第 4 批（Top5 端点 offload + 两处门禁判据根因修）**：5 个 Tier A 候选端点
+（`factor_eval`/`factor_scatter`/`kline`/`risk`/`export_config`）切到 `run_blocking`；
+L9 扩至 8 迁移、L10 扩至 8 端点（8/8 P95 改善）；门禁两处判据根因修（P-72 / P-73）；
+Tier A 候选 **35 → 30**；**1312 passed / 12 skipped / 0 failed**；L8 188 blocking、9 offloaded、selftest 全绿。
+**收官前核验结论：Phase 6 未收官**（30 个 Tier A 候选端点未 offload，ADR-0010 D6）。
 后续每批收官时**追加**新条目并在本行更新版本，不要重写已有条目 ——
 **踩坑记录的价值在于保留了当时的错误判据与被推翻的结论**。

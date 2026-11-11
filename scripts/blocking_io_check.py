@@ -314,8 +314,17 @@ def _normalize_endpoint(record: dict) -> dict:
     把它纳入比较会让 G4「其余链路逐字节一致」退化为无法执行的判据，
     进而诱使执行者把无关端点加进白名单 —— 那才是真正的补丁加补丁。
     `lineno` 仍保留在基线里供人排查，只是不参与机器比较。
+
+    注意：端点**顶层也有一个 `lineno`**（handler 定义所在行），不止 `calls`
+    内部有。在 router 顶部新增一行 import（如 Phase 6 第 4 批给 4 个 router
+    加 `from lib.infra.async_offload import run_blocking`）会把其下方所有
+    handler 行号整体下移，若只剥 calls 内的 lineno、漏掉端点顶层 lineno，
+    会令十几个未改动的端点整条记录被判 drift（即本批初遇的 21 条误报）。
+    端点顶层 lineno 同样是位置实现细节，一并剥掉才是根因修，而非把无关
+    端点塞进白名单。
     """
     out = copy.deepcopy(record)
+    out.pop("lineno", None)
     for call in out.get("calls", []):
         call.pop("lineno", None)
     return out
@@ -389,9 +398,9 @@ def recapture(allowed: set[tuple[str, str]], mode: str = "offload") -> tuple[lis
     evidence = {
         "schema_version": SCHEMA_VERSION,
         "mode": mode,
-        "reason": ("RF-01 Phase 6 batch 2: Tier A backtest endpoints offloaded"
+        "reason": ("RF-01 Phase 6: Tier A 端点阻塞调用 offload 进线程池"
                    if mode == "offload"
-                   else "RF-01 Phase 6 batch 2: shared state access collapsed into locked APIs"),
+                   else "RF-01 Phase 6: 共享状态访问收口为加锁 API"),
         "allowed_endpoints": [f"{m} {p}" for m, p in sorted(allowed)],
         "comparison": "endpoint records compared field-by-field; lineno excluded "
                       "(implementation detail, see _normalize_endpoint)",

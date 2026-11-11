@@ -2,8 +2,93 @@
 
 from fastapi import APIRouter
 from .common import *  # noqa: F401,F403
+from lib.infra.async_offload import run_blocking
 
 router = APIRouter()
+
+def _compute_risk():
+    """原 `GET /api/risk` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.risk.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
+    from factors import evaluate_macro_gate
+
+    orchestrator = _get_orchestrator()
+    sentiment = orchestrator.get_market_sentiment()
+    macro = evaluate_macro_gate(sentiment)
+
+    # 获取组合持仓（从最近 scan 缓存）
+    scan_cache = _cache_get("scan_balanced", max_age=7200) or {}
+    portfolio = scan_cache.get("portfolio", {})
+    details = portfolio.get("details", [])
+
+    # 构建风控需要的数据
+    tickers = [d["code"] for d in details] if details else []
+    positions = {d["code"]: {"weight": d.get("weight", 0)} for d in details} if details else {}
+    # 尝试从持仓管理器获取实际资金
+    total_value = 1_000_000  # 默认100万
+    try:
+        from lib.risk.position_manager import PositionManager
+        pm = PositionManager()
+        summary = pm.get_portfolio_summary({})
+        total_value = summary.get("total_value", 1_000_000)
+    except Exception:
+        pass
+
+    # 获取市场数据（用于波动率/相关性/VaR计算）
+    # 并行批量获取，避免 N+1 串行查询
+    market_data = {}
+    if tickers:
+        market_data = _batch_get_stock_hist(tickers[:15], days=120, source="auto")
+
+    # 调用 full_risk_assessment
+    risk_mgr = VolCorrRiskManager(VolCorrRiskConfig())
+    if tickers and market_data:
+        assessment = risk_mgr.full_risk_assessment(
+            market_data=market_data,
+            tickers=tickers,
+            positions=positions,
+            total_value=total_value,
+        )
+        vol_regime = assessment.get("volatility", {}).get("regime", "normal")
+        risk_budget = assessment.get("risk_budget", {})
+        var_metrics = assessment.get("var", {})
+        corr_metrics = assessment.get("correlation", {})
+        risk_alerts = [
+            {
+                "rule": a.rule_name,
+                "level": a.level,
+                "message": a.message,
+            }
+            for a in assessment.get("alerts", [])
+        ]
+    else:
+        # 无持仓时仍给基本数据
+        vol_regime = "normal"
+        risk_budget = risk_mgr.get_risk_budget("normal", 0.5)
+        var_metrics = {}
+        corr_metrics = {}
+        risk_alerts = []
+
+    # 压力测试
+    stress_tests = _run_stress_tests()
+
+    result = {
+        "macro_gate": {
+            "state": macro.state,
+            "regime": macro.regime,
+            "multiplier": macro.position_multiplier,
+            "reasoning": macro.reasoning,
+        },
+        "risk_budget": risk_budget,
+        "vol_regime": vol_regime,
+        "var": var_metrics,
+        "correlation": corr_metrics,
+        "alerts": risk_alerts,
+        "stress_tests": stress_tests,
+        "timestamp": datetime.now().isoformat(),
+    }
+    _cache_set("risk", result)
+    return result
+
 
 @router.get("/api/risk")
 async def risk_assessment(_=Security(verify_api_key)):
@@ -11,88 +96,8 @@ async def risk_assessment(_=Security(verify_api_key)):
     cached = _cache_get("risk", max_age=1800)
     if cached is not None:
         return cached
-
-    from lib.risk.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
-    from factors import evaluate_macro_gate
-
     try:
-        orchestrator = _get_orchestrator()
-        sentiment = orchestrator.get_market_sentiment()
-        macro = evaluate_macro_gate(sentiment)
-
-        # 获取组合持仓（从最近 scan 缓存）
-        scan_cache = _cache_get("scan_balanced", max_age=7200) or {}
-        portfolio = scan_cache.get("portfolio", {})
-        details = portfolio.get("details", [])
-
-        # 构建风控需要的数据
-        tickers = [d["code"] for d in details] if details else []
-        positions = {d["code"]: {"weight": d.get("weight", 0)} for d in details} if details else {}
-        # 尝试从持仓管理器获取实际资金
-        total_value = 1_000_000  # 默认100万
-        try:
-            from lib.risk.position_manager import PositionManager
-            pm = PositionManager()
-            summary = pm.get_portfolio_summary({})
-            total_value = summary.get("total_value", 1_000_000)
-        except Exception:
-            pass
-
-        # 获取市场数据（用于波动率/相关性/VaR计算）
-        # 并行批量获取，避免 N+1 串行查询
-        market_data = {}
-        if tickers:
-            market_data = _batch_get_stock_hist(tickers[:15], days=120, source="auto")
-
-        # 调用 full_risk_assessment
-        risk_mgr = VolCorrRiskManager(VolCorrRiskConfig())
-        if tickers and market_data:
-            assessment = risk_mgr.full_risk_assessment(
-                market_data=market_data,
-                tickers=tickers,
-                positions=positions,
-                total_value=total_value,
-            )
-            vol_regime = assessment.get("volatility", {}).get("regime", "normal")
-            risk_budget = assessment.get("risk_budget", {})
-            var_metrics = assessment.get("var", {})
-            corr_metrics = assessment.get("correlation", {})
-            risk_alerts = [
-                {
-                    "rule": a.rule_name,
-                    "level": a.level,
-                    "message": a.message,
-                }
-                for a in assessment.get("alerts", [])
-            ]
-        else:
-            # 无持仓时仍给基本数据
-            vol_regime = "normal"
-            risk_budget = risk_mgr.get_risk_budget("normal", 0.5)
-            var_metrics = {}
-            corr_metrics = {}
-            risk_alerts = []
-
-        # 压力测试
-        stress_tests = _run_stress_tests()
-
-        result = {
-            "macro_gate": {
-                "state": macro.state,
-                "regime": macro.regime,
-                "multiplier": macro.position_multiplier,
-                "reasoning": macro.reasoning,
-            },
-            "risk_budget": risk_budget,
-            "vol_regime": vol_regime,
-            "var": var_metrics,
-            "correlation": corr_metrics,
-            "alerts": risk_alerts,
-            "stress_tests": stress_tests,
-            "timestamp": datetime.now().isoformat(),
-        }
-        _cache_set("risk", result)
-        return result
+        return await run_blocking("risk", _compute_risk)
     except Exception as e:
         logger.error(f"风控评估失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="内部服务器错误")

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime as _dt
 import json
 import math
 import os
@@ -37,7 +38,8 @@ import threading
 import time
 import types
 from contextlib import ExitStack
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from fastapi.responses import JSONResponse
 
 for _s in (sys.stdout, sys.stderr):
     try:
@@ -60,11 +62,20 @@ CONCURRENCY = 20
 ROUNDS = 3
 BLOCK_SECONDS = 0.02
 P95_TOLERANCE = 1.10  # on 侧允许 10% 噪声；实测应远低于 off 侧
+# 冻结时间戳，消除 factor-eval/risk/export_config 内嵌 datetime.now() 造成的
+# 逐请求 shape 差异（属测试伪影，非 offload 引入）。
+FIXED_DT = _dt.datetime(2026, 1, 1, 0, 0, 0)
 
 ENDPOINTS = (
     ("backtest", "POST /api/backtest"),
     ("backtest_compare", "POST /api/backtest/compare"),
     ("walkforward", "POST /api/walkforward"),
+    # Phase 6 第 4 批 Tier A 候选 Top5（同 run_blocking 机制，L10 需覆盖）
+    ("factor_eval", "GET /api/factor-eval"),
+    ("factor_scatter", "GET /api/factor-scatter"),
+    ("kline", "GET /api/kline/{code}"),
+    ("risk", "GET /api/risk"),
+    ("export_config", "GET /api/export/config"),
 )
 
 FIXED_RAW = {
@@ -113,6 +124,122 @@ def _install_mocks(stack: ExitStack) -> list[int]:
                               lambda self, **kwargs: []))
     stack.enter_context(patch("lib.strategy.walkforward.summarize_rounds",
                               lambda rounds: {"rounds": len(rounds)}))
+
+    # ---- Phase 6 第 4 批端点 mock（与 offload_switch_diff 同构，确定性零触网）----
+    # 重计算/取数符号所在端点属 Tier A 候选；这里把「阻塞」位置用 sleep 模拟，
+    # 让 20 并发下 off(阻塞事件循环) vs on(线程池) 的 P95 差异真实可测。
+    class _FakeOrchFactor:
+        def get_realtime_quotes(self):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return pd.DataFrame({
+                "代码": [f"{i:06d}" for i in range(1, 7)],
+                "成交额": [100.0 * i for i in range(1, 7)],
+                "涨跌幅": [0.01 * i for i in range(1, 7)],
+            })
+        def get_stock_hist_multi_source(self, code, days=120, source="auto"):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return pd.DataFrame({"close": [10.0 + i for i in range(65)],
+                                 "date": [f"2024-01-{i % 28 + 1:02d}"
+                                          for i in range(65)]})
+        def get_market_sentiment(self):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return object()
+
+    class _FakeMacro:
+        state = "normal"; regime = "stable"
+        position_multiplier = 1.0; reasoning = "test"
+
+    class _FakeAlpha:
+        def compute_ic(self, a, b):
+            return {"ic": 0.1, "rank_ic": 0.2, "rank_ic_pvalue": 0.3}
+
+    class _FakeRiskMgr:
+        def __init__(self, *a, **k):
+            pass
+        def get_risk_budget(self, regime, level):
+            return {"regime": regime, "level": level}
+        def full_risk_assessment(self, **kwargs):
+            return {"alerts": []}
+
+    class _FakePosMgr:
+        def get_portfolio_summary(self, *a, **k):
+            return {}
+
+    def fake_compute_all_signals(hist):
+        worker_idents.append(threading.get_ident())
+        time.sleep(BLOCK_SECONDS)
+        return {"factors": {"volume_ratio": 1.0, "adx": 2.0, "rsi": 3.0}}
+
+    def fake_get_stock_hist(code, days=120, **kwargs):
+        worker_idents.append(threading.get_ident())
+        time.sleep(BLOCK_SECONDS)
+        n = 65
+        return pd.DataFrame({
+            "date": [f"2024-01-{i % 28 + 1:02d}" for i in range(1, n + 1)],
+            "open": [10.0 + (i % 5) for i in range(n)],
+            "high": [11.0 + (i % 5) for i in range(n)],
+            "low": [9.0 + (i % 5) for i in range(n)],
+            "close": [10.5 + (i % 5) for i in range(n)],
+            "volume": [1000 + i for i in range(n)],
+        })
+
+    def fake_ema(series, n):
+        return pd.Series(list(series), dtype="float64")
+
+    def fake_compute_atr(df):
+        return 1.0
+
+    def fake_get_config(preset):
+        worker_idents.append(threading.get_ident())
+        time.sleep(BLOCK_SECONDS)
+        return {"preset": preset, "key": "value", "nested": {"a": 1}}
+
+    def fake_evaluate_macro_gate(sentiment):
+        return _FakeMacro()
+
+    def fake_run_stress_tests():
+        worker_idents.append(threading.get_ident())
+        time.sleep(BLOCK_SECONDS)
+        return []
+
+    def noop_cache(*a, **k):
+        return None
+
+    stack.enter_context(patch("routers.factor._get_orchestrator",
+                              lambda *a, **k: _FakeOrchFactor()))
+    stack.enter_context(patch("routers.risk._get_orchestrator",
+                              lambda *a, **k: _FakeOrchFactor()))
+    stack.enter_context(patch("routers.factor._cache_set", noop_cache))
+    stack.enter_context(patch("routers.risk._cache_set", noop_cache))
+    stack.enter_context(patch("routers.risk._cache_get", lambda *a, **k: None))
+    stack.enter_context(patch("routers.risk._batch_get_stock_hist",
+                              lambda *a, **k: {}))
+    stack.enter_context(patch("factors.compute_all_signals", fake_compute_all_signals))
+    stack.enter_context(patch("factors.evaluate_macro_gate", fake_evaluate_macro_gate))
+    stack.enter_context(patch("lib.scoring.alpha.AlphaSynthesizer", _FakeAlpha))
+    stack.enter_context(patch("lib.data.data_layer.get_stock_hist", fake_get_stock_hist))
+    stack.enter_context(patch("lib.scoring.technical_signals.ema", fake_ema))
+    stack.enter_context(patch("backtest.utils.compute_atr", fake_compute_atr))
+    stack.enter_context(patch("lib.risk.risk_manager.VolCorrRiskManager", _FakeRiskMgr))
+    stack.enter_context(patch("lib.risk.risk_manager.VolCorrRiskConfig", object))
+    stack.enter_context(patch("lib.risk.position_manager.PositionManager", _FakePosMgr))
+    stack.enter_context(patch("routers.risk._run_stress_tests", fake_run_stress_tests))
+    stack.enter_context(patch("config.get_config", fake_get_config))
+
+    # 冻结 datetime.now，消除带时间戳端点的逐请求 shape 差异（测试伪影）。
+    # datetime 是 C 扩展不可变类型，无法 patch 其 .now 属性；改用 Mock(wraps=...)
+    # 钉住 .now，并 patch 各 router 命名空间自己的 datetime 名字（经 common import *）。
+    frozen_dt = Mock(wraps=_dt.datetime)
+    frozen_dt.now.return_value = FIXED_DT
+    frozen_dt.utcnow.return_value = FIXED_DT
+    for _ns in ("routers.factor", "routers.risk", "routers.export", "routers.common"):
+        try:
+            stack.enter_context(patch(_ns + ".datetime", frozen_dt))
+        except AttributeError:
+            pass
     return worker_idents
 
 
@@ -125,9 +252,26 @@ async def _call(consumer: str, bt):
             risk_per_trade_pct=0.5, preset="balanced", _=None)
     if consumer == "backtest_compare":
         return await bt.compare_strategies(symbols="000001,600519", days=250, _=None)
-    return await bt.run_walkforward(
-        symbols="000001,600519", train_days=120,
-        validation_days=30, step_days=30, _=None)
+    if consumer == "walkforward":
+        return await bt.run_walkforward(
+            symbols="000001,600519", train_days=120,
+            validation_days=30, step_days=30, _=None)
+    if consumer == "factor_eval":
+        from routers import factor as rf
+        return await rf.factor_evaluation(n_stocks=30)
+    if consumer == "factor_scatter":
+        from routers import factor as rf
+        return await rf.factor_scatter(x_factor="volume_ratio", y_factor="adx", n_stocks=30)
+    if consumer == "kline":
+        from routers import market as rm
+        return await rm.kline_data(code="000001", days=120)
+    if consumer == "risk":
+        from routers import risk as rr
+        return await rr.risk_assessment(_=None)
+    if consumer == "export_config":
+        from routers import export as re_
+        return await re_.export_config(preset="balanced")
+    raise ValueError(f"unknown consumer {consumer}")
 
 
 async def _one_round(consumer: str, bt, flag: str, worker_idents: list[int]):
@@ -148,8 +292,14 @@ async def _one_round(consumer: str, bt, flag: str, worker_idents: list[int]):
     async def one():
         resp = await _call(consumer, bt)
         elapsed = (time.perf_counter() - batch_start) * 1000.0
-        assert isinstance(resp, dict) and resp, "empty/corrupt response"
-        shapes.add(json.dumps(resp, sort_keys=True, default=str))
+        # export_config 返回 JSONResponse（非 dict）；统一剥成可比对 payload
+        if isinstance(resp, JSONResponse):
+            payload = json.loads(resp.body.decode())
+            assert payload, "empty/corrupt response"
+            shapes.add(json.dumps(payload, sort_keys=True, default=str))
+        else:
+            assert isinstance(resp, dict) and resp, "empty/corrupt response"
+            shapes.add(json.dumps(resp, sort_keys=True, default=str))
         return elapsed
 
     durations = await asyncio.gather(*[one() for _ in range(CONCURRENCY)])

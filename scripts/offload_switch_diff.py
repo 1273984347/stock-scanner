@@ -1,15 +1,15 @@
 #!/usr/bin/env python
-"""Offload 开关前后响应 diff + 迁移等价性 —— RF-01 Phase 6 第 2 批取证（T4）。
+"""Offload 开关前后响应 diff + 迁移等价性 —— RF-01 Phase 6 取证（T4）。
 
 Phase 6 承诺「只改调度方式，不改可观测结果」。本工具把这句话变成三层机器判据：
 
-  1. **迁移等价**：`git show 523b353:routers/backtest.py` 取出改造前源码，
-     把每个端点 `try:` 块的语句序列与现文件 `_compute_*` 函数体逐语句
-     `ast.dump` 对比。任何「顺手优化」都会立刻判红（ADR-0003 D5 的纪律）。
-     固定 commit 而非 HEAD，保证提交之后仍可复算。
+  1. **迁移等价**：每条迁移记录改造前源码（固定 commit）中 `try:` 块语句序列，
+     与现文件 `_compute_*` 同步函数体逐语句 `ast.dump` 对比。任何「顺手优化」都会
+     立刻判红（ADR-0003 D5）。每条迁移自带 `source_rel` + `pre_commit`，
+     提交之后仍可复算（backtest 固定 523b353；第 4 批固定 77bc366）。
   2. **off/on 等价**：同一进程、同一份确定性注入数据，分别以
-     `FEATURE_ASYNC_OFFLOAD=0` 与 `=all` 调用 3 个端点函数，
-     整份响应按字段顺序 JSON 序列化后逐字符比对。
+     `FEATURE_ASYNC_OFFLOAD=0` 与 `=all` 调用端点函数，
+     整份响应按字段顺序 JSON 序列化后逐字符比对（JSONResponse 取 `.body`）。
   3. **自证真的换了线程**：把 `anyio.to_thread.run_sync` 换成真实
      `loop.run_in_executor` 并记录工作线程 ident —— off 侧计数 0，
      on 侧计数 1 且线程 ident 与主线程不同。
@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import ast
 import asyncio
+import datetime as _dt
 import functools
 import json
 import os
@@ -34,8 +35,9 @@ import subprocess
 import sys
 import threading
 import types
+from collections import namedtuple
 from contextlib import ExitStack
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pandas as pd
 
@@ -54,15 +56,32 @@ if str(ROOT) not in sys.path:
 # 与 scripts/contract_snapshot.py 的 collect() 同一处理口径。
 os.environ["SKIP_HS300_PREFETCH"] = "1"
 
-PRE_MIGRATION_COMMIT = "523b353"
-SOURCE_REL = "routers/backtest.py"
+# 每条迁移：消费者名 / 端点 key / 改造前端点函数名 / 现同步计算函数名 /
+# 源码相对路径 / 改造前基线 commit（未 offload 状态）。
+Migration = namedtuple("Migration", "consumer key old_fn new_fn source_rel pre_commit")
 
-# (consumer, endpoint key, old endpoint function, new sync compute function)
 MIGRATIONS = (
-    ("backtest", "POST /api/backtest", "run_backtest", "_compute_factor_backtest"),
-    ("backtest_compare", "POST /api/backtest/compare", "compare_strategies", "_compute_compare"),
-    ("walkforward", "POST /api/walkforward", "run_walkforward", "_compute_walkforward"),
+    Migration("backtest", "POST /api/backtest", "run_backtest", "_compute_factor_backtest",
+              "routers/backtest.py", "523b353"),
+    Migration("backtest_compare", "POST /api/backtest/compare", "compare_strategies", "_compute_compare",
+              "routers/backtest.py", "523b353"),
+    Migration("walkforward", "POST /api/walkforward", "run_walkforward", "_compute_walkforward",
+              "routers/backtest.py", "523b353"),
+    # Phase 6 第 4 批 Tier A 候选 Top5（基线 commit 77bc366 = batch4 起点，均未 offload）
+    Migration("factor_eval", "GET /api/factor-eval", "factor_evaluation", "_compute_factor_evaluation",
+              "routers/factor.py", "77bc366"),
+    Migration("factor_scatter", "GET /api/factor-scatter", "factor_scatter", "_compute_factor_scatter",
+              "routers/factor.py", "77bc366"),
+    Migration("kline", "GET /api/kline/{code}", "kline_data", "_compute_kline",
+              "routers/market.py", "77bc366"),
+    Migration("risk", "GET /api/risk", "risk_assessment", "_compute_risk",
+              "routers/risk.py", "77bc366"),
+    Migration("export_config", "GET /api/export/config", "export_config", "_compute_export_config",
+              "routers/export.py", "77bc366"),
 )
+
+# 冻结时间，消除 off/on 两侧 datetime.now() 时间戳差异（属测试伪影，非 offload 引入）
+FIXED_DT = _dt.datetime(2026, 1, 1, 0, 0, 0)
 
 FIXED_RAW = {
     "metrics": {"sharpe": 1.23, "total_return": 0.15, "max_drawdown": -0.08},
@@ -82,10 +101,10 @@ FIXED_FACTOR_RESULT = {
 
 # ---------------------------------------------------------------- 1. 迁移等价
 
-def _old_source() -> str:
+def _old_source(rel: str, commit: str) -> str:
     return subprocess.run(
-        ["git", "show", f"{PRE_MIGRATION_COMMIT}:{SOURCE_REL}"],
-        cwd=ROOT, capture_output=True, text=True, timeout=20, check=True,
+        ["git", "show", f"{commit}:{rel}"],
+        cwd=ROOT, capture_output=True, text=True, timeout=30, check=True,
     ).stdout
 
 
@@ -96,14 +115,38 @@ def _find_fn(tree: ast.Module, name: str) -> ast.FunctionDef | ast.AsyncFunction
     raise LookupError(f"function {name} not found")
 
 
+def _parent_map(node):
+    parents = {}
+    for n in ast.walk(node):
+        for child in ast.iter_child_nodes(n):
+            parents[child] = n
+    return parents
+
+
 def _old_try_body(fn: ast.AST) -> list[ast.stmt]:
-    """改造前端点：`async with` -> `try` -> body。"""
-    for node in ast.walk(fn):
-        if isinstance(node, ast.AsyncWith):
-            for inner in node.body:
-                if isinstance(inner, ast.Try):
-                    return inner.body
-    raise LookupError("no async-with/try body in old endpoint")
+    """改造前端点：取最外层 `try:` 块的 body。
+    最外层 try 的父节点是函数定义或 async-with（而非 for/if 内的内层 try）。"""
+    parents = _parent_map(fn)
+    tries = [n for n in ast.walk(fn) if isinstance(n, ast.Try)]
+    if not tries:
+        raise LookupError("no try block in old endpoint")
+    def depth(n):
+        d, cur = 0, n
+        while cur in parents:
+            cur = parents[cur]
+            d += 1
+        return d
+    tries.sort(key=depth)
+    return tries[0].body
+
+
+def _strip_leading_imports(stmts):
+    """原 try 体与现函数体的 import 可能位置不同（函数内 vs try 内），
+    统一剥掉前导 import 后再比对，只关心计算逻辑是否逐字一致。"""
+    i = 0
+    while i < len(stmts) and isinstance(stmts[i], (ast.Import, ast.ImportFrom)):
+        i += 1
+    return stmts[i:]
 
 
 def _new_fn_body(fn: ast.AST) -> list[ast.stmt]:
@@ -111,53 +154,116 @@ def _new_fn_body(fn: ast.AST) -> list[ast.stmt]:
     if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) \
             and isinstance(body[0].value.value, str):
         body = body[1:]  # skip the docstring added during migration
-    return body
+    return _strip_leading_imports(body)
 
 
 def check_migration() -> list[str]:
-    try:
-        old_src = _old_source()
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        return [f"cannot read pre-migration source at {PRE_MIGRATION_COMMIT}: {e}"]
-    old_tree = ast.parse(old_src)
-    new_tree = ast.parse((ROOT / SOURCE_REL).read_text(encoding="utf-8"))
     failures = []
-    for consumer, key, old_name, new_name in MIGRATIONS:
+    for m in MIGRATIONS:
         try:
-            old_body = _old_try_body(_find_fn(old_tree, old_name))
-            new_body = _new_fn_body(_find_fn(new_tree, new_name))
+            old_src = _old_source(m.source_rel, m.pre_commit)
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            failures.append(f"migration {m.consumer}: cannot read {m.pre_commit}:{m.source_rel}: {e}")
+            continue
+        old_tree = ast.parse(old_src)
+        new_tree = ast.parse((ROOT / m.source_rel).read_text(encoding="utf-8"))
+        try:
+            old_body = _strip_leading_imports(
+                _old_try_body(_find_fn(old_tree, m.old_fn)))
+            new_body = _new_fn_body(_find_fn(new_tree, m.new_fn))
         except LookupError as e:
-            failures.append(f"migration {consumer}: {e}")
+            failures.append(f"migration {m.consumer}: {e}")
             continue
         if len(old_body) != len(new_body):
-            failures.append(f"migration {consumer}: statement count "
+            failures.append(f"migration {m.consumer}: statement count "
                             f"{len(old_body)} -> {len(new_body)}")
             continue
         for i, (a, b) in enumerate(zip(old_body, new_body)):
             if ast.dump(a) != ast.dump(b):
-                failures.append(f"migration {consumer}: statement #{i} changed "
+                failures.append(f"migration {m.consumer}: statement #{i} changed "
                                 f"({type(a).__name__} vs {type(b).__name__})")
     return failures
 
 
 # ---------------------------------------------------------------- 2. off/on 对拍
 
+class _FakeOrch:
+    """factor / factor-scatter 共用的假 orchestrator：零网络、确定性。"""
+    def get_realtime_quotes(self):
+        return pd.DataFrame({
+            "代码": [f"{i:06d}" for i in range(1, 7)],
+            "成交额": [100.0] * 6,
+            "涨跌幅": [0.01 * i for i in range(1, 7)],
+        })
+    def get_stock_hist_multi_source(self, code, days=120, source="auto"):
+        return pd.DataFrame({"涨跌幅": [0.02] * 65})
+
+
+def _fake_compute_all_signals(hist):
+    return {"factors": {"volume_ratio": 1.0, "adx": 2.0, "rsi": 3.0}}
+
+
+class _FakeAlpha:
+    def compute_ic(self, a, b):
+        return {"ic": 0.1, "rank_ic": 0.2, "rank_ic_pvalue": 0.3}
+
+
+def _fake_get_stock_hist(code, days=120, **kwargs):
+    n = 65
+    return pd.DataFrame({
+        "date": [f"2024-01-{i % 28 + 1:02d}" for i in range(1, n + 1)],
+        "open": [10.0 + (i % 5) for i in range(n)],
+        "high": [11.0 + (i % 5) for i in range(n)],
+        "low": [9.0 + (i % 5) for i in range(n)],
+        "close": [10.5 + (i % 5) for i in range(n)],
+        "volume": [1000 + i for i in range(n)],
+    })
+
+
+def _fake_ema(series, n):
+    return pd.Series(list(series), dtype="float64")
+
+
+class _FakeOrchRisk:
+    def get_market_sentiment(self):
+        return object()
+
+
+class _FakeMacro:
+    state = "normal"
+    regime = "stable"
+    position_multiplier = 1.0
+    reasoning = "test"
+
+
+class _FakeRiskMgr:
+    def __init__(self, *a, **k):
+        pass
+    def get_risk_budget(self, regime, mult):
+        return {"regime": regime, "budget": 0.5}
+
+
+class _FakePositionMgr:
+    def __init__(self, *a, **k):
+        pass
+    def get_portfolio_summary(self, portfolio):
+        return {"total_value": 1_000_000}
+
+
 def _install_mocks(stack: ExitStack):
-    """确定性注入：不触网、不跑真回测、不写文件。"""
+    """确定性注入：不触网、不跑真回测/真风控、不写缓存。"""
     thread_id_box: list[int] = []
 
+    # ---- backtest（3 个，基线 523b353）----
     def fake_unified_run(self, **kwargs):
         thread_id_box.append(threading.get_ident())
         return types.SimpleNamespace(raw=FIXED_RAW)
-
     def fake_factor(syms, days=250, preset="balanced", **kwargs):
         thread_id_box.append(threading.get_ident())
         return dict(FIXED_FACTOR_RESULT)
-
     def fake_batch(codes, days=120, source="auto"):
         return {c: pd.DataFrame({"date": ["2024-01-01", "2024-01-02"],
                                  "close": [10.0, 10.5]}) for c in codes}
-
     stack.enter_context(patch("backtest.unified.BacktestRunner.run", fake_unified_run))
     stack.enter_context(patch("backtest.core.run_factor_backtest", fake_factor))
     stack.enter_context(patch("routers.backtest._batch_get_stock_hist", fake_batch))
@@ -166,30 +272,85 @@ def _install_mocks(stack: ExitStack):
                               lambda self, **kwargs: []))
     stack.enter_context(patch("lib.strategy.walkforward.summarize_rounds",
                               lambda rounds: {"rounds": len(rounds)}))
+
+    # ---- factor（factor-eval + factor-scatter）----
+    orch_factor = _FakeOrch()
+    stack.enter_context(patch("routers.factor._get_orchestrator", lambda *a, **k: orch_factor))
+    stack.enter_context(patch("factors.compute_all_signals", _fake_compute_all_signals))
+    stack.enter_context(patch("lib.scoring.alpha.AlphaSynthesizer", _FakeAlpha))
+    stack.enter_context(patch("routers.factor._cache_get", lambda *a, **k: None))
+    stack.enter_context(patch("routers.factor._cache_set", lambda *a, **k: None))
+
+    # ---- market（kline）----
+    stack.enter_context(patch("lib.data.data_layer.get_stock_hist", _fake_get_stock_hist))
+    stack.enter_context(patch("lib.scoring.technical_signals.ema", _fake_ema))
+    stack.enter_context(patch("backtest.utils.compute_atr", lambda df: 1.0))
+    stack.enter_context(patch("routers.market._cache_get", lambda *a, **k: None))
+    stack.enter_context(patch("routers.market._cache_set", lambda *a, **k: None))
+
+    # ---- risk ----
+    orch_risk = _FakeOrchRisk()
+    stack.enter_context(patch("routers.risk._get_orchestrator", lambda *a, **k: orch_risk))
+    stack.enter_context(patch("factors.evaluate_macro_gate", lambda s: _FakeMacro()))
+    stack.enter_context(patch("lib.risk.risk_manager.VolCorrRiskManager", _FakeRiskMgr))
+    stack.enter_context(patch("lib.risk.position_manager.PositionManager", _FakePositionMgr))
+    stack.enter_context(patch("routers.risk._batch_get_stock_hist", lambda *a, **k: {}))
+    stack.enter_context(patch("routers.risk._run_stress_tests",
+                              lambda: [{"name": "x", "result": "pass"}]))
+    stack.enter_context(patch("routers.risk._cache_get",
+                              lambda key, **k: None if key == "risk" else {}))
+    stack.enter_context(patch("routers.risk._cache_set", lambda *a, **k: None))
+
+    # ---- export（export_config）----
+    stack.enter_context(patch("config.get_config",
+                              lambda preset: {"weights": [0.5, 0.5], "meta": {"a": 1},
+                                              "nested": {"b": 2}}))
+    stack.enter_context(patch("routers.export._cache_get", lambda *a, **k: None))
+    stack.enter_context(patch("routers.export._cache_set", lambda *a, **k: None))
+
     return thread_id_box
 
 
-async def _call_endpoint(consumer: str, bt):
+def _normalize_response(obj) -> str:
+    """JSONResponse 取 `.body` 字节；普通 dict/list 直接序列化。off/on 一致比对用。"""
+    if hasattr(obj, "body"):
+        return obj.body.decode("utf-8")
+    return json.dumps(obj, ensure_ascii=False, sort_keys=False, default=str)
+
+
+async def _call_endpoint(consumer, bt_bt, bt_factor, bt_market, bt_risk, bt_export):
     if consumer == "backtest":
-        return await bt.run_backtest(
+        return await bt_bt.run_backtest(
             symbols="000001,600519,000858", days=250,
             stop_loss_atr_mult=2.0, take_profit_atr_mult=4.0,
             max_hold_days=10, confidence_threshold=0.3,
             risk_per_trade_pct=0.5, preset="balanced", _=None)
     if consumer == "backtest_compare":
-        return await bt.compare_strategies(symbols="000001,600519", days=250, _=None)
-    return await bt.run_walkforward(
-        symbols="000001,600519", train_days=120,
-        validation_days=30, step_days=30, _=None)
-
-
-def _serialize(obj) -> str:
-    return json.dumps(obj, ensure_ascii=False, sort_keys=False, default=str)
+        return await bt_bt.compare_strategies(symbols="000001,600519", days=250, _=None)
+    if consumer == "walkforward":
+        return await bt_bt.run_walkforward(
+            symbols="000001,600519", train_days=120,
+            validation_days=30, step_days=30, _=None)
+    if consumer == "factor_eval":
+        return await bt_factor.factor_evaluation(n_stocks=30)
+    if consumer == "factor_scatter":
+        return await bt_factor.factor_scatter(x_factor="volume_ratio", y_factor="adx", n_stocks=30)
+    if consumer == "kline":
+        return await bt_market.kline_data(code="000001", days=120)
+    if consumer == "risk":
+        return await bt_risk.risk_assessment(_=None)
+    if consumer == "export_config":
+        return await bt_export.export_config(preset="balanced")
+    raise ValueError(f"unknown consumer {consumer}")
 
 
 async def _collect_all() -> dict:
     """单事件循环跑完所有采集，避免模块级 asyncio.Semaphore 跨 loop 绑定问题。"""
-    from routers import backtest as bt
+    from routers import backtest as bt_bt
+    from routers import factor as bt_factor
+    from routers import market as bt_market
+    from routers import risk as bt_risk
+    from routers import export as bt_export
     import lib.infra.async_offload as offload
 
     results = {}
@@ -211,16 +372,30 @@ async def _collect_all() -> dict:
 
         stack.enter_context(patch.object(offload.anyio.to_thread,
                                          "run_sync", real_thread_run_sync))
+        # datetime 是 C 扩展不可变类型，patch("datetime.datetime.now") 会抛
+        # TypeError: cannot set 'now' attribute of immutable type。改用 Mock(wraps=...)
+        # 钉住 .now，并 patch 各 router 命名空间自己的 datetime 名字绑定
+        # （router 经 `from .common import *` 持有各自的 datetime 名字）。
+        frozen_dt = Mock(wraps=_dt.datetime)
+        frozen_dt.now.return_value = FIXED_DT
+        frozen_dt.utcnow.return_value = FIXED_DT
+        for _ns in ("routers.factor", "routers.risk", "routers.export",
+                    "routers.common"):
+            try:
+                stack.enter_context(patch(_ns + ".datetime", frozen_dt))
+            except AttributeError:
+                pass
 
-        for consumer, key, _old, _new in MIGRATIONS:
+        for m in MIGRATIONS:
             for flag in ("0", "all"):
                 os.environ["FEATURE_ASYNC_OFFLOAD"] = flag
                 thread_id_box.clear()
                 worker_idents.clear()
                 pool_counter["n"] = 0
-                response = await _call_endpoint(consumer, bt)
-                results[(consumer, flag)] = {
-                    "response": _serialize(response),
+                response = await _call_endpoint(
+                    m.consumer, bt_bt, bt_factor, bt_market, bt_risk, bt_export)
+                results[(m.consumer, flag)] = {
+                    "response": _normalize_response(response),
                     "pool_calls": pool_counter["n"],
                     "worker_idents": list(worker_idents),
                     "compute_idents": list(thread_id_box),
@@ -244,7 +419,7 @@ def check_consumer_registry() -> list[str]:
                     and isinstance(node.args[0].value, str)):
                 found.add(node.args[0].value)
     registered = set(OFFLOAD_CONSUMERS)
-    covered = {m[0] for m in MIGRATIONS}
+    covered = {m.consumer for m in MIGRATIONS}
     failures = []
     if found != registered:
         failures.append(f"consumer registry mismatch: unregistered={sorted(found - registered)} "
@@ -258,20 +433,20 @@ def check_consumer_registry() -> list[str]:
 def check_switch() -> tuple[list[str], dict]:
     results = asyncio.run(_collect_all())
     failures = []
-    for consumer, key, _old, _new in MIGRATIONS:
-        off = results[(consumer, "0")]
-        on = results[(consumer, "all")]
+    for m in MIGRATIONS:
+        off = results[(m.consumer, "0")]
+        on = results[(m.consumer, "all")]
         if off["response"] != on["response"]:
-            failures.append(f"switch diff {key}: response differs off vs on")
+            failures.append(f"switch diff {m.key}: response differs off vs on")
         if off["pool_calls"] != 0:
-            failures.append(f"switch diff {key}: off-side used thread pool")
+            failures.append(f"switch diff {m.key}: off-side used thread pool")
         if on["pool_calls"] != 1:
-            failures.append(f"switch diff {key}: on-side did NOT use thread pool "
+            failures.append(f"switch diff {m.key}: on-side did NOT use thread pool "
                             f"(count={on['pool_calls']})")
         if not on["worker_idents"] or on["worker_idents"][0] == on["main_ident"]:
-            failures.append(f"switch diff {key}: on-side ran on the main thread")
+            failures.append(f"switch diff {m.key}: on-side ran on the main thread")
         if any(i != off["main_ident"] for i in off["compute_idents"]):
-            failures.append(f"switch diff {key}: off-side compute left the main thread")
+            failures.append(f"switch diff {m.key}: off-side compute left the main thread")
     return failures, results
 
 
@@ -290,9 +465,10 @@ def main() -> int:
     failures = migration + registry + switch_failures
 
     if args.summary:
-        print(f"[INFO] pre-migration commit: {PRE_MIGRATION_COMMIT}")
-        for consumer, key, old, new in MIGRATIONS:
-            print(f"       {consumer:18s} {key:32s} {old} -> {new}")
+        print(f"[INFO] migrations: {len(MIGRATIONS)}")
+        for m in MIGRATIONS:
+            print(f"       {m.consumer:18s} {m.key:32s} {m.old_fn} -> {m.new_fn} "
+                  f"@ {m.pre_commit}:{m.source_rel}")
         for (consumer, flag), rec in sorted(results.items()):
             print(f"       {consumer:18s} flag={flag:3s} pool_calls={rec['pool_calls']} "
                   f"response_bytes={len(rec['response'])}")
@@ -300,7 +476,7 @@ def main() -> int:
 
     if failures:
         print(f"[FAIL] offload switch: {len(failures)} problem(s)")
-        for f in failures[:30]:
+        for f in failures[:40]:
             print("      " + f)
         return 1
     print(f"[PASS] offload switch: {len(MIGRATIONS)} endpoints, "

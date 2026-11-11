@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 from .common import *  # noqa: F401,F403
+from lib.infra.async_offload import run_blocking
 
 router = APIRouter()
 
@@ -234,34 +235,39 @@ async def export_trades_excel(days: int = Query(default=30, ge=1, le=365)):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+def _compute_export_config(preset):
+    """原 `GET /api/export/config` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    import dataclasses
+    from config import get_config
+
+    cfg = get_config(preset)
+
+    def to_dict(obj):
+        if dataclasses.is_dataclass(obj):
+            return {k: to_dict(v) for k, v in dataclasses.asdict(obj).items()}
+        elif isinstance(obj, (list, tuple)):
+            return [to_dict(item) for item in obj]
+        elif isinstance(obj, dict):
+            return {k: to_dict(v) for k, v in obj.items()}
+        return obj
+
+    config_dict = to_dict(cfg)
+    config_dict["_preset"] = preset
+    config_dict["_exported_at"] = datetime.now().isoformat()
+
+    return JSONResponse(
+        content=config_dict,
+        headers={"Content-Disposition": f"attachment; filename=config_{preset}.json"}
+    )
+
+
 @router.get("/api/export/config", dependencies=[Security(verify_api_key)])
 async def export_config(preset: str = Query("balanced")):
     """导出当前配置为 JSON"""
     if preset not in ALLOWED_PRESETS:
         raise HTTPException(status_code=400, detail=f"无效的preset: {preset}")
     try:
-        import dataclasses
-        from config import get_config
-
-        cfg = get_config(preset)
-
-        def to_dict(obj):
-            if dataclasses.is_dataclass(obj):
-                return {k: to_dict(v) for k, v in dataclasses.asdict(obj).items()}
-            elif isinstance(obj, (list, tuple)):
-                return [to_dict(item) for item in obj]
-            elif isinstance(obj, dict):
-                return {k: to_dict(v) for k, v in obj.items()}
-            return obj
-
-        config_dict = to_dict(cfg)
-        config_dict["_preset"] = preset
-        config_dict["_exported_at"] = datetime.now().isoformat()
-
-        return JSONResponse(
-            content=config_dict,
-            headers={"Content-Disposition": f"attachment; filename=config_{preset}.json"}
-        )
+        return await run_blocking("export_config", _compute_export_config, preset)
     except Exception as e:
         logger.error(f"配置导出失败: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

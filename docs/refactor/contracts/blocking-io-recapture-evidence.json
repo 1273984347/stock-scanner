@@ -106,5 +106,85 @@
     },
     "untouched_endpoints": 66,
     "untouched_identical": true
+  },
+  {
+    "allowed_endpoints": [
+      "GET /api/export/config",
+      "GET /api/factor-eval",
+      "GET /api/factor-scatter",
+      "GET /api/kline/{code}",
+      "GET /api/risk"
+    ],
+    "comparison": "endpoint records compared field-by-field; lineno excluded (implementation detail, see _normalize_endpoint)",
+    "mode": "offload",
+    "per_endpoint": [
+      {
+        "blocking_after": 0,
+        "blocking_before": 5,
+        "endpoint": "GET /api/export/config",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 3,
+        "other_before": 12
+      },
+      {
+        "blocking_after": 1,
+        "blocking_before": 14,
+        "endpoint": "GET /api/factor-eval",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 2,
+        "other_before": 38
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 7,
+        "endpoint": "GET /api/factor-scatter",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 19
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 5,
+        "endpoint": "GET /api/kline/{code}",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 2,
+        "other_before": 41
+      },
+      {
+        "blocking_after": 1,
+        "blocking_before": 11,
+        "endpoint": "GET /api/risk",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 2,
+        "other_before": 24
+      }
+    ],
+    "reason": "RF-01 Phase 6: Tier A 端点阻塞调用 offload 进线程池",
+    "schema_version": 1,
+    "totals_after": {
+      "blocking_calls": 188,
+      "blocking_endpoints": 57,
+      "endpoints": 68,
+      "offloaded_calls": 9,
+      "offloaded_endpoints": 9,
+      "other_calls": 610,
+      "total_calls": 807
+    },
+    "totals_before": {
+      "blocking_calls": 228,
+      "blocking_endpoints": 60,
+      "endpoints": 68,
+      "offloaded_calls": 4,
+      "offloaded_endpoints": 4,
+      "other_calls": 734,
+      "total_calls": 966
+    },
+    "untouched_endpoints": 63,
+    "untouched_identical": true
   }
 ]

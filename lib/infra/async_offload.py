@@ -35,6 +35,12 @@ OFFLOAD_CONSUMERS: tuple[str, ...] = (
     "backtest",
     "backtest_compare",
     "walkforward",
+    # Phase 6 第 4 批（Tier A 候选，按阻塞调用数 Top5 切入）
+    "factor_eval",
+    "factor_scatter",
+    "kline",
+    "risk",
+    "export_config",
 )
 
 
