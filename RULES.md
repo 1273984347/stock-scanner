@@ -6,7 +6,7 @@
 > - `RULES.md` 说**什么不许做 / 必须怎么做**（硬约束）
 > - `docs/refactor/pitfalls.md` 说**为什么**（每条规矩背后的真实坑）
 >
-> 最后更新：2026-11-07（目录重构批次）
+> 最后更新：2026-11-11（RF-01 Phase 6 第 1 批：第 8 把尺子 + 阻塞 IO 判据修正）
 
 ---
 
@@ -120,6 +120,23 @@ infra  ←  data  ←  scoring  ←  strategy
 
 ---
 
+## 一·七、异步与阻塞 IO 规约（RF-01 Phase 6 起强制）
+
+| # | 规约 | 理由 |
+|---|---|---|
+| T1 | **`async def` 端点不得直接调用阻塞符号**（数据层取数 / parquet 读 / pandas 计算 / 文件写 / 网络）；必须经 `lib/infra/async_offload.py` 的唯一入口包裹 | 68 端点全为 async，阻塞调用会占住事件循环；契约快照单独冻结 async/sync 的原因见 `docs/refactor/README.md` §二 |
+| T2 | **灰度判定只允许在 offload 入口**；消费者不得自读 `FEATURE_ASYNC_OFFLOAD`，开关默认 off，按消费者粒度切换 | 与 S8 同构：判定散落就无法回答「到底哪几个消费者切了」 |
+| T3 | **保持 `async def` 签名**，禁止把端点改成 `def` 来「顺手」走线程池 | 会静默改变 FastAPI 调度语义与并发上限；契约快照冻结 async/sync，L2 会判红 |
+| T4 | 每切一个消费者必须跑 off/on 逐字段对拍，**并自证 on 侧真走了线程池**（off=0 / on>0） | 两侧都没切时 diff 也恒 0 = 空判据（坑表 P-56） |
+| T5 | 阻塞判据以 `scripts/blocking_io_check.py` 的 **L8** 为准：**blocking 只准降 / offloaded 只准升 / other 逐字段冻结**；新符号必须显式归类后才能推进 | 计划的绝对阈值「≤1」被实测 242 推翻（ADR-0006 D1）；表外符号由 `other` 冻结兜住，不假设阻塞表完整 |
+
+> **阶段边界**：**Phase 6 第 1 批已完成**（第 8 把尺子 + 基线，零业务代码改动，决策见 ADR-0006）。
+> 实测：68 端点 / 1052 调用 / **242 阻塞调用** / 63 个端点含阻塞点 / 1 个已 offload。
+> **Phase 6 未收官**：Tier A 重计算端点仍待逐批 offload，Tier B 轻量文件 IO 待逐条登记理由。
+> 改 `routers/` 后必须同时跑 L7 与 L8。
+
+---
+
 ## 二、代码规约
 
 ### 2.1 import
@@ -173,7 +190,7 @@ infra  ←  data  ←  scoring  ←  strategy
 # L0 语法
 python -m compileall -q lib scripts tests reporter backtest
 
-# L1 全量测试（当前基线：1157 passed / 12 skipped，约 13s）
+# L1 全量测试（当前基线：1275 passed / 12 skipped，约 55s；2026-11-11 Phase 6 第 1 批复跑）
 python -m pytest tests/ -q --tb=line -p no:warnings -o log_cli=false
 
 # L2 契约快照（API 对外契约漂移门禁）
@@ -193,6 +210,10 @@ python scripts/scoring_switch_diff.py --check
 
 # L7 端点归属表 + 契约基线（Phase 5 起；拆分前后必跑）
 python scripts/route_ownership_check.py --check
+
+# L8 阻塞 IO 基线（Phase 6 起；blocking 只准降 / other 冻结 / 尺子自证判红）
+python scripts/blocking_io_check.py --check
+python scripts/blocking_io_check.py --selftest
 ```
 
 | 判据 | 通过标准 |
@@ -204,6 +225,7 @@ python scripts/route_ownership_check.py --check
 | L5 | `[PASS] scoring baseline: 9 sources match (285 samples)`，且每条链路 `mismatches = 0` |
 | L6 | `[PASS] switch diff: 3 branch(es), 9 responses, 0 field(s) differ`；三条分支各自 `kernel calls off=0 on>0`，且 `[PASS] consumers: 3/3` |
 | L7 | `[PASS] route ownership: 68 endpoints / 17 routers / 36 frontend paths`；鉴权依赖数不得减少、契约 diff = 0 |
+| L8 | `[PASS] blocking-io: 68 endpoints / N blocking calls`；`--selftest` 全绿（4 类回归各自命中指定门禁 + 合法修复全绿）；blocking 只准降、offloaded 只准升、`other` 逐字段不变、端点集合与 L7 一致、async 全 true |
 
 ### 4.2 覆盖率门禁
 

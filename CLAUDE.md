@@ -1,6 +1,6 @@
 # CLAUDE.md — Stock Scanner (个人量化选股系统)
 
-> 最后更新：2026-05-30 | 本次更新：新增 21 个模块 + V6 自适应交易系统（多周期KDJ/统一板块评分/动态权重管理/策略-状态映射），60 个测试全部通过
+> 最后更新：2026-11-11 | 本次更新：RF-01 Phase 6 第 1 批 —— 第 8 把尺子（L8 阻塞 IO 门禁）、基线固化、ADR-0006 判据修正；Phase 5 已收官（`api.py` → `routers/` 17 域）
 
 ## 工作流
 
@@ -271,14 +271,19 @@ Tushare (主) → AkShare → WeStock → 通达信 → Baostock → 东方财�
 5. git commit
 ```
 
-## 验证标准 (分层)
+## 验证标准
 
-| 层级 | 命令 | 用途 |
+> **权威口径是 `RULES.md §4.1` 的 L0–L8 分层门禁**（提交前必跑，不可跳级）。
+> 下表仅为 CLI / 服务的快速手工验证，编号与门禁层级无关，避免两套 L2/L3 口径混淆。
+
+| 动作 | 命令 | 用途 |
 |:-----|:-----|:------|
-| **L0** | `python -m py_compile <file>.py` | 语法检查 |
-| **L1** | `pytest tests/ -v` | 单元测试 |
-| **L2** | `python run.py --help` | CLI 验证 |
-| **L3** | `uvicorn api:app --reload` | API 服务验证 |
+| 语法 | `python -m py_compile <file>.py` | 单文件语法检查 |
+| 单测 | `pytest tests/ -v` | 单元测试 |
+| CLI | `python run.py --help` | 命令行入口验证 |
+| 服务 | `uvicorn api:app --reload` | API 手工验证 |
+| **L8（新增）** | `python scripts/blocking_io_check.py --check` | 阻塞 IO 基线：blocking 只准降 / other 冻结 |
+| **L8 自证** | `python scripts/blocking_io_check.py --selftest` | 证明门禁会因回归判红 |
 
 ## 强制触发规则
 
@@ -382,6 +387,10 @@ curl http://localhost:8000/api/scan
 | `scripts/route_ownership_check.py` | 第 7 把尺子：17 域 / 68 端点归属 + 鉴权/async + 契约五重校验（`--capture` / `--check`） |
 | `docs/refactor/contracts/route-ownership.json` | 68 端点归属表（Phase 5 拆分前后比对的权威读数） |
 | `docs/refactor/contracts/frontend-api-paths.json` | 前端 36 条 API 路径清单（Phase 5 实跑验收依据） |
+| `scripts/blocking_io_check.py` | **第 8 把尺子 / L8 门禁**：阻塞 IO 基线采集、`--check`（blocking 只准降 / offloaded 只准升 / other 冻结 / 端点集合与 L7 一致）、`--selftest`（4 类回归各自命中指定门禁） |
+| `docs/refactor/contracts/blocking-io-baseline.json` | Phase 6 起点读数：68 端点 / 1052 调用 / 242 阻塞调用 / 63 端点含阻塞点；含 `plan_stated_target` 对照 |
+| `docs/adr/0006-*.md` | 第 6 次判据修正：绝对阈值「≤1」→ 单调下降 + Tier A/B 分层退出判据 |
+| `tests/test_blocking_io_check.py` | L8 的 11 例机器判据（含 helper 展开、表外符号判红、尺子自证） |
 
 ---
 

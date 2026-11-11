@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**66 条**（P-01～P-66），分八类。
+> **规模**：**67 条**（P-01～P-67），分八类。
 > **姊妹文档**：执行过程与逐批验收见 `docs/plans/2026-11-07-refactor-plan.md` 第七节；
 > 基线读数见 `docs/refactor/baseline.md`；尺子口径见 `docs/refactor/README.md`。
 
@@ -1138,6 +1138,42 @@ Windows 上多进程同时 `open()` 同一 `.lock` 文件会间歇抢不到（�
 
 ---
 
+### P-67 · 「扫描 async 端点体内直接调用同步 IO」是空判据：搬进 helper 就消失，且绝对阈值会被实测推翻
+
+**现象**：Phase 6 计划写退出判据「静态扫描 async 端点体内直接调用同步 IO，计数下降至 ≤ 1」。
+装好第 8 把尺子一采基线：**68 端点 / 1052 调用 / 242 个阻塞调用 / 63 个端点含阻塞点**，
+与「≤1」差两个数量级。更糟的是，第一版只扫端点函数体时，
+`routers/common.py::_load_alert_rules` 里的 `open` / `json.load` 完全不在扫描结果里 ——
+`/api/alerts/rules` 等 3 个端点看起来「干净」，实际每次请求都在事件循环里读文件。
+
+**根因**：两个独立的判据缺陷叠加。
+① **计数单位错**：把「调用次数」当绝对阈值，但 242 次里绝大多数是轻量缓存读
+（`_cache_get` 25 次、`exists`/`stat`/`glob` 元数据查询、`json.load` 2 次），
+要压到 ≤1 得把 63 个端点整体改成线程池调度，与「不改 `async def` 签名」直接冲突。
+② **扫描边界错**：只看端点函数体，没有跟随调用链；把阻塞调用搬进同步 helper 即可绕过，
+「修完」只是把符号藏起来了，事件循环照样被占住。
+
+**修复（改判据，不改数据去迎合判据）**：
+- 计数单位改为 `(endpoint, callee)`，判据改为**单调下降**（blocking 只准降 / offloaded 只准升）；
+- 端点调用 `api.py` / `routers/*.py` 顶层同步函数时**递归展开**（depth ≤ 2 + 访问集防环），
+  实测因此多捕获 95 次调用、覆盖 19 个端点（depth1=92 / depth2=3）；
+- `other` 逐字段冻结：阻塞符号表**不假设完整**，表外新符号（如 `requests.get`）会触发漂移判红；
+- 泛名 `get`/`load`/`run`/`save` 只按完整点号名分类，`dict.get` 不被误判为网络请求；
+- 保留 `plan_stated_target: "blocking call count <= 1"` 与实测 242 并列，不悄悄对齐（ADR-0006）。
+
+**推广**：**「扫描 X 体内有没有 Y」这类判据，必须先问「X 能不能把 Y 搬走」**。
+能搬走就必须跟随调用链，否则修法会退化成藏符号。
+另外，凡是**绝对计数阈值**，动手前先采一次基线：阈值来自计划估算而非实测时，
+它不是验收线，而是一个待验证的假设；判据被推翻要按先例改判据 + 留 ADR + 补机器判据，
+不能删条目、放宽阈值或挑一组刚好对得上的数据（G3 同构）。
+本项目这已是第 6 次清单数字被实测推翻。
+
+**证据**：`docs/refactor/contracts/blocking-io-baseline.json`；
+`python scripts/blocking_io_check.py --summary`；`--selftest` 4 类回归各自命中指定门禁；
+`docs/adr/0006-phase6-blocking-io-criteria.md`；`tests/test_blocking_io_check.py`（11 例）。
+
+---
+
 ## 附 · 一句话索引（按症状查）
 
 | 症状 | 去查 |
@@ -1162,6 +1198,9 @@ Windows 上多进程同时 `open()` 同一 `.lock` 文件会间歇抢不到（�
 | 搬完代码行为悄悄变了 | P-24 / P-25 / P-26 / P-27 |
 | 合并同名函数后财务数据变了 | P-28 / P-37 |
 | CI workflow 直接失败但看不出哪行 | P-39 |
+| 「扫描函数体」显示干净，实际还在阻塞事件循环 | P-67 |
+| 计划里的绝对阈值（≤N）根本达不到 | P-67 / ADR-0006 |
+| 门禁红了但说不清是哪条判据红的 | P-10 / P-54 / P-67 |
 | Actions 额度消耗太快 | P-40 |
 | commit 失败却把旧代码推上去了 | P-43 |
 | CI 红了但看不出是哪道门禁 | P-42 |
@@ -1197,7 +1236,8 @@ Windows 上多进程同时 `open()` 同一 `.lock` 文件会间歇抢不到（�
 | 耗时与稳定性基线 | `docs/refactor/test-duration-baseline.md` |
 
 **文档状态**：2026-11-07 首版（Phase 0 → Phase 3，51 条）；2026-11-10 追加 P-52 / P-53（Phase 4 前置批次）
-与 P-54 / P-55（阶段 A）+ P-56～P-60（阶段 B）+ P-61 / P-62～P-65（Phase 5 拆 api.py 单体）+ P-66（portalocker 打开争用重试），共 **66 条**。
+与 P-54 / P-55（阶段 A）+ P-56～P-60（阶段 B）+ P-61 / P-62～P-65（Phase 5 拆 api.py 单体）+ P-66（portalocker 打开争用重试）；
+2026-11-11 追加 P-67（Phase 6 第 1 批：阻塞 IO 扫描是空判据 + 绝对阈值被实测推翻），共 **67 条**。
 **核对基线**：本地全量 pytest 1162 passed / 12 skipped（13.02s）；CI run `42319502027` 3 job 全绿。
 2026-11-10 阶段 A 收官：**1221 passed / 12 skipped**，L0–L5 全 PASS。
 2026-11-10 阶段 B 首批：**1235 passed / 12 skipped**。
@@ -1211,5 +1251,13 @@ L0–L6 全 PASS（L6 = `realtime` / `no_realtime` / `endpoint` 三分支 + 消�
 auth+async+contract 不变）。新增 P-62～P-65（AST 装饰器截断 / `__file__` 漂移 / `_IncludedRouter` 遍历 / 顶层模块相对 import）；
 P-66 修复 portalocker「打开 .lock 文件」瞬时 PermissionError 逃出重试循环 → 门户层 `_acquire_portalocker_with_retry` 把打开/加锁争用统一重试，新增 2 例回归测试。
 决策见 `docs/adr/0005-phase5-api-split.md`。
+2026-11-11 **Phase 6 第 1 批（零业务代码改动）**：新增第 8 把尺子 `scripts/blocking_io_check.py` +
+`docs/refactor/contracts/blocking-io-baseline.json` + `tests/test_blocking_io_check.py`（11 例）。
+实测 68 端点 / 1052 调用 / **242 阻塞调用** / 63 端点含阻塞点 / 1 已 offload；
+helper 展开额外捕获 95 次调用（19 端点）。计划「≤1」判据按第 6 次修正改为单调下降 + 分层，
+决策见 `docs/adr/0006-phase6-blocking-io-criteria.md`；新增 P-67。
+本批全量复跑 **L0–L8 全 PASS**：**1275 passed / 12 skipped / 0 failed（54.95s）**；
+L2 72 routes / L3 3 链路 / L4 全链路 / L5 9 入口 285 样本 / L6 3 分支 9 响应 0 差异 /
+L7 68 端点 17 router 36 前端路径 / L8 242 blocking + selftest 5 场景全绿。
 后续每批收官时**追加**新条目并在本行更新版本，不要重写已有条目 ——
 **踩坑记录的价值在于保留了当时的错误判据与被推翻的结论**。

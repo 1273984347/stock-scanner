@@ -4,24 +4,28 @@
 > 目的：在动任何业务代码之前，先把「改动是否改变对外行为」变成**机器可判据**。
 > 原则：**没有尺子，「可破坏契约」等于盲改。**
 >
-> **执行期踩过的坑见 [`pitfalls.md`](pitfalls.md)**（61 条，附证据与推广判据）——
+> **执行期踩过的坑见 [`pitfalls.md`](pitfalls.md)**（67 条，附证据与推广判据）——
 > 改这块的代码前先读它，能省掉本会话里实际付出过的排查成本。
 >
-> **七把尺子**（改动是否改变对外行为 → 机器可判据）：
+> **八把尺子**（改动是否改变对外行为 → 机器可判据）：
 > ① 契约快照（路径/schema） ② 覆盖率基线（回归幅度） ③ 双跑对拍（数值）
 > ④ **回测口径基线**（回测数值 = 策略决策依据，见 §七）
 > ⑤ **评分对拍基线**（评分数值 = 选股信号依据；9 入口 × 285 样本）
 > ⑥ **开关响应 diff**（三条评分分支 × 灰度前后整份响应逐字段比对 + 自证内核确实被调用 + 逐个消费者自证）
 > ⑦ **端点归属基线**（17 域 × 68 端点 + 鉴权/async 冻结 + 前端 36 条路径，Phase 5 拆分前后必比）
+> ⑧ **阻塞 IO 基线**（Phase 6：68 端点 × 阻塞符号计数 + helper 调用链展开 + `other` 逐字段冻结；
+>    blocking 只准降 / offloaded 只准升，`--selftest` 自证判红）
 >
 > **RF-01 进度**：Phase 0（尺子）✅ · Phase 1（公共状态）✅ · Phase 2（数据层）✅ · Phase 3（回测引擎）✅
-> · Phase 4 阶段 A ✅（统一契约内核 + 9 适配器 + 评分对拍基线）
-> · **Phase 4 ✅ 收官**（阶段 A 契约内核 + 阶段 B 消费者灰度；逐条核验见计划 §七 收官验收）。
->   3 个灰度 / 1 透传 / 1 间接 / 1 域外端点四类登记完毕，`FEATURE_UNIFIED_SCORING` 默认 off。
->   端点侧评分接口形状已定 ⇒ 满足 §2.2 中 Phase 5 拆 `api.py` 的进入条件
-> · **Phase 5 第 1 批 ✅**（基线固化，未动 `api.py`）：17 域 / 68 端点归属表、
->   前端 36 条路径清单、L7 五重校验门禁（ADR-0004）
-> → **下一批：按域拆 `api/routers/`**，每拆一批跑一次 L7
+> · **Phase 4 ✅ 收官**（阶段 A 契约内核 + 阶段 B 消费者灰度；3 灰度 / 1 透传 / 1 间接 / 1 域外，
+>   `FEATURE_UNIFIED_SCORING` 默认 off；逐条核验见计划 §七 收官验收）
+> · **Phase 5 ✅ 收官**（第 1 批归属基线 + 第 2 批拆 `api.py` 单体为 `routers/` 17 域；
+>   `api.py` 3087→181 行，L0–L7 全 PASS，ADR-0004 / ADR-0005）
+> · **Phase 6 第 1 批 ✅**（第 8 把尺子 + 阻塞 IO 基线，**零业务代码改动**；
+>   实测 68 端点 / 1052 调用 / **242 阻塞调用** / 63 端点含阻塞点；
+>   计划「计数 ≤1」按第 6 次判据修正改为单调下降 + 分层，ADR-0006）
+> → **下一批：Phase 6 第 2 批** —— feature flag + offload 入口 + Tier A 端点逐批切换 + 共享状态加锁；
+>   每切一个消费者跑 L0–L8 与 off/on 对拍，并自证 on 侧真走线程池
 >
 > ④ 的 5 条链路分工：`entry_signals`（三份 `check_entry` 判定序列，锁定**口径**）、
 > `core_factor_backtest` / `engine_donchian_entry` / `engine_multi_signal_entry`（锁定**引擎产出**）、
@@ -39,13 +43,16 @@
 | `contracts/openapi-baseline.json` | FastAPI 标准 OpenAPI 文档（给前端/网关/契约测试比对） | 同上（同一次运行一并产出） |
 | `test-duration-baseline.md` | **本地 pytest 耗时排序 + 稳定性基线**（慢用例定位与根因分析） | 人工维护 + 工具产出数据 |
 | `test-duration-baseline.json` | 上述基线的机器可读版（耗时排序 / 稳定性 min·median·max·CV） | `scripts/pytest_duration_baseline.py` |
-| `pitfalls.md` | **踩坑集**：RF-01 执行期真实踩过的 61 个坑（现象 → 根因 → 修复 → 推广），按度量/跨平台/测试/搬迁/数据/CI/工具链分七类 | 人工维护（每批收官追加） |
+| `pitfalls.md` | **踩坑集**：RF-01 执行期真实踩过的 67 个坑（现象 → 根因 → 修复 → 推广），按度量/跨平台/测试/搬迁/数据/CI/工具链分七类 | 人工维护（每批收官追加） |
 | `backtest-baseline.json` | **回测口径基线**：5 条链路的输出指纹（3 份 `check_entry` 判定序列 + 3 个回测引擎指标 + **统一入口 6 个 mode**） | `python scripts/backtest_baseline.py --capture --out docs/refactor/backtest-baseline.json` |
 | `scoring-baseline.json` | **评分对拍基线**（第 5 把尺子）：9 个评分入口 × 285 样本，「直接调旧实现」vs「经 ScoringKernel 调适配器」逐字段指纹 | `python scripts/scoring_baseline.py --capture --out docs/refactor/scoring-baseline.json` / `--check` |
 | `scripts/scoring_switch_diff.py` | **第 6 把尺子**：`realtime` / `no_realtime` / `endpoint` 三条分支 × `FEATURE_UNIFIED_SCORING` off/on，整份响应逐字段 diff；按分支计数证明 on 侧真走了内核，并逐个校验 `GRAY_CONSUMERS` | `python scripts/scoring_switch_diff.py --check` |
 | `contracts/route-ownership.json` | **第 7 把尺子**：17 域 × 68 端点归属表（含每端点鉴权依赖数 / async） | `python scripts/route_ownership_check.py --capture` |
 | `contracts/frontend-api-paths.json` | 前端 `static/**` 实测 36 条 API 路径（原始字面量 + 规范化模板 + 来源文件） | 同上（同次 capture 一并产出） |
 | `scripts/route_ownership_check.py` | L7 五重校验：成员+数量 / 归属完整性 / 鉴权+async 不得减少 / 基线 diff / 契约 diff | `python scripts/route_ownership_check.py --check` |
+| `contracts/blocking-io-baseline.json` | **第 8 把尺子**：68 端点 × 阻塞符号计数基线（含 helper 展开的调用链、`other` 冻结清单、计划原阈值对照） | `python scripts/blocking_io_check.py --capture` |
+| `scripts/blocking_io_check.py` | **L8 门禁**：`--check` 校验 blocking 单调下降 / offloaded 单调上升 / other 冻结 / 端点集合与 L7 一致 / async 冻结；`--selftest` 自证判红 | `python scripts/blocking_io_check.py --check` |
+| `../adr/0006-phase6-blocking-io-criteria.md` | 第 6 次判据修正：绝对阈值「≤1」→ 单调下降 + 分层退出判据 | 人工维护 |
 | `../plans/2026-11-07-refactor-plan.md` | 分阶段重构计划本体（阶段划分、兼容策略、验证方式、退出判据） | 人工维护 |
 
 ---
