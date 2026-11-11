@@ -422,7 +422,7 @@ def _check_monitor_alerts(ml_ranking: dict = None):
                         logger.warning(f"IC衰减告警 [{alert['severity']}]: {alert['message']}")
                         # 尝试推送飞书通知
                         try:
-                            from notifier import send_feishu_message
+                            from reporter.scan_notify import send_feishu_message
                             send_feishu_message(
                                 {"type": "ic_decay_alert", "alerts": decay_alerts},
                                 preset="alert"

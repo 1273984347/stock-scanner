@@ -153,12 +153,3 @@ def test_get_judge_weight_known_uses_group_average():
             )
             break
 
-
-@pytest.mark.parametrize("fund,expected", [
-    (None, True), ({}, True),
-    ({"profitability": {"ROE": 0.1}}, False),
-    ({"solvency": {"debt_to_asset": 0.4}}, False),
-    ({"profitability": {}, "solvency": {}}, True),
-])
-def test_fund_data_missing(fund, expected):
-    assert JudgePanel(fundamentals=fund)._fund_data_missing() is expected

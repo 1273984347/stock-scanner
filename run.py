@@ -7,7 +7,7 @@ from typing import Dict
 from pathlib import Path
 import pandas as pd
 from scanner import run_all_strategies
-from notifier import send_feishu_message, print_results
+from reporter.scan_notify import send_feishu_message, print_results
 from config import FEISHU_RECEIVE_ID
 import logging
 

@@ -1,19 +1,24 @@
-"""飞书推送模块 — 已废弃，请使用 reporter.feishu_pusher"""
-import warnings
-warnings.warn(
-    "notifier.py 已废弃，请使用 reporter.feishu_pusher",
-    DeprecationWarning, stacklevel=1
-)
+"""盘后选股信号的飞书推送与控制台输出 —— RF-01 Phase 7 P7-2 自 notifier.py 平迁。
 
-import requests
+逐字搬迁自 notifier.py（原模块已删除，BC-08，见 docs/refactor/MIGRATION-GUIDE.md）：
+函数体零改动，payload 构造与 HTTP 发送路径与原实现完全一致；
+仅去掉模块顶部的 DeprecationWarning 与未使用的 `get_realtime_quotes` import。
+
+注意：本模块与 `reporter.feishu_pusher` 是**两条独立推送管线**（后者带 token 缓存 /
+图片上传 / push_log / 降级打印）。合并会改变推送行为，勿顺手合并。
+"""
+
 import json
-import pandas as pd
+import logging
 from datetime import datetime
+
+import pandas as pd
+import requests
+
 from config import (FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_RECEIVE_ID,
                     FEISHU_RECEIVE_ID_TYPE, get_config)
 from factors import evaluate_macro_gate
-from scanner import get_realtime_quotes, get_market_sentiment
-import logging
+from scanner import get_market_sentiment
 
 logger = logging.getLogger(__name__)
 

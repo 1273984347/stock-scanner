@@ -1,6 +1,6 @@
 # CLAUDE.md — Stock Scanner (个人量化选股系统)
 
-> 最后更新：2026-11-12 | 本次更新：RF-01 Phase 7 P7-1 —— MIGRATION-GUIDE.md 定稿（BC-01～07 破坏点表）+ 死代码清理（factors.detect_market_regime/MarketRegime 0 引用删除、api.py 不可达段、pipeline 未用 import），L0–L10 全 PASS 行为零变更；Phase 6 已收官（ADR-0013）；P7-2～P7-5 路线图见 MIGRATION-GUIDE §三
+> 最后更新：2026-11-12 | 本次更新：RF-01 Phase 7 P7-2 —— notifier.py 下线（活函数迁 reporter/scan_notify.py，payload 对拍一致）、judge_panel 6 死方法删除（679→224 行，L5 不变）、backtest/core.py 误导性标注改正；新发现 config/judges.json 配置与实现漂移（P7-2b 随 RF-02）；L0–L10 全 PASS（1307 passed）
 
 ## 工作流
 

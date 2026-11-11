@@ -142,6 +142,43 @@
 - **生效版本**：待 RF-02。
 - **回滚方式**：不适用。
 
+### BC-08 · `notifier.py` 下线 → `reporter/scan_notify.py`（Phase 7 P7-2）
+
+- **变更点**：根目录弃用壳 `notifier.py`（自 2026-05-31 起 emit DeprecationWarning）
+  删除；4 个活函数（`get_tenant_token` / `format_stock_table` /
+  `build_message_content` / `send_feishu_message` / `print_results`）**逐字**迁入
+  `reporter/scan_notify.py`。
+- **影响面**：仓内 2 个调用方（`run.py:10`、`lib/strategy/pipeline.py:425`）已同批改
+  import；无外部消费方。
+- **Before**：`from notifier import send_feishu_message, print_results`
+- **After**：`from reporter.scan_notify import send_feishu_message, print_results`
+- **payload 对拍**：旧（`git show HEAD:notifier.py`）vs 新 `build_message_content`
+  固定输入（patched sentiment / frozen datetime）**逐字节一致**；HTTP 发送路径逐字相同。
+  另：原模块未使用的 `get_realtime_quotes` import 未随迁（搬迁前即未使用）。
+- **迁移步骤**：改 import 行即可；函数签名与返回值不变。
+- **生效版本**：Phase 7 P7-2（2026-11-12）。
+- **回滚方式**：`git revert` P7-2 提交。
+- **注意**：`reporter.feishu_pusher` 是**另一条独立推送管线**（token 缓存 / 图片上传 /
+  push_log / 降级打印），本迁移未合并二者——合并会改变推送行为，如需合并须单独 ADR。
+
+### BC-09 · `judge_panel` 死方法删除（Phase 7 P7-2）
+
+- **变更点**：`_evaluate_value` / `_evaluate_growth` / `_evaluate_macro` /
+  `_evaluate_technical` / `_evaluate_cn_value` / `_evaluate_hot_money` 6 个方法
+  （150+ if/elif 硬编码规则，679→224 行）与 `_fund_data_missing` 删除；
+  顶层未用 import（numpy / Optional / field）清理。
+- **影响面**：无生产调用方（自 P0#13 / commit 938933d 起 `evaluate_all()` 不再调它们，
+  全仓 grep 调用点 = 0）；钉死私有方法的 5 个测试用例随删。
+  **`JUDGE_GROUPS` / `_DEFAULT_JUDGE_GROUPS` / `evaluate_all` /
+  `evaluate_with_ml` / `_evaluate_ml` / `get_summary` / `_get_judge_weight` 全部保留**，
+  L5 评分基线（285 样本）逐字段不变。
+- **Before / After**：无调用方式变化；`JudgePanel` 对外行为（`evaluate_with_ml` 返回值）
+  逐字节不变。
+- **迁移步骤**：无（死代码）。若未来要复活硬编码规则组，从 git 历史
+  （P7-2 前的提交）恢复，且必须先走 walk-forward 验证（P0#13 的原始结论）。
+- **生效版本**：Phase 7 P7-2（2026-11-12）。
+- **回滚方式**：`git revert` P7-2 提交。
+
 ---
 
 ## 三、Phase 7 路线图（2026-11-12 起）
@@ -149,7 +186,8 @@
 | 批次 | 内容 | 状态 |
 |---|---|---|
 | **P7-1** | MIGRATION-GUIDE 定稿（本文件）；删除 `factors.detect_market_regime` + `MarketRegime`（全仓 0 引用）；`api.py` 不可达死代码；`pipeline.py` 未用 import（`comprehensive_score`） | ✅ 2026-11-12 |
-| **P7-2** | `notifier.py` 弃用壳下线（2 个调用方迁 `reporter.feishu_pusher`：`run.py:10`、`lib/strategy/pipeline.py:425`，推送 payload 对拍）；`judge_panel.py` 6 组 weight=0 禁用规则清理；`backtest/full.py`/`rebalance.py` wrapper 引用收敛评估 + `core.py` 误导性标注改正 | 待推 |
+| **P7-2** | `notifier.py` 弃用壳下线（活函数逐字迁 `reporter/scan_notify.py`，2 个调用方改 import，payload 对拍逐字节一致）；`judge_panel.py` 6 个 `_evaluate_*` 死方法 + `_fund_data_missing` 删除（679→224 行，L5 基线不变）；`backtest/core.py` 误导性 deprecation 标注改正（import 警告 1→0；`run_factor_backtest` 是活实现）。**收敛评估结论**：`backtest/full.py` / `rebalance.py` wrapper 是包公共面（`__init__` 再导出 + 测试 patch 目标）且警告属实，**保留**，引用收敛推迟到有真实收益时 | ✅ 2026-11-12 |
+| **P7-2b** | judge_panel 清理时发现 `config/judges.json` 的 6 组权重非零但对应投票路径已死（`evaluate_all` 不再产生规则票）——**配置与实现漂移**，随 RF-02 一并处置（删 JSON 条目或复活规则组，须 walk-forward 验证） | 待推（登记） |
 | **P7-3** | scoring 灰度收口（`FEATURE_UNIFIED_SCORING` 删 flag 或翻默认 → 单独 ADR；L6 同步退役/改判——收口后 off/on 恒等属 P-54 空判据） | 待推 |
 | **P7-4** | 配置集中化收尾（TODO P8 增量）：`lib/` 内 6 处 `os.getenv` + 31 处硬编码周期常量并入 `config.py` | 待推 |
 | **P7-5** | 文档收口（CLAUDE.md / docs/architecture.md / TODO 关闭 P1/P8 已完成项 + 台账漂移项）；破坏点 ADR 编号连续性核查；推送触发 CI 三平台绿灯（破坏性删除的前置条件 ③） | 待推 |
@@ -186,6 +224,15 @@ grep -n "comprehensive_score" lib/strategy/pipeline.py   # → 0 命中（删除
 - `factors.MarketRegime`：唯一引用者是上述被删壳。
 - `pipeline.py comprehensive_score`：仅 import 行（grep 全文件）。
 - `api.py` 不可达段：`return` 之后的语句块（Python 语义上不可达）。
+
+P7-2 残留扫描证据（2026-11-12）：
+- `notifier.py`：删除后全仓 `from notifier import | import notifier` 命中 = **0**。
+- judge_panel 6 个 `_evaluate_*` + `_fund_data_missing`：删除前全仓调用点 = **0**
+  （`test_judge_panel.py` 只调 `evaluate_all` / `evaluate_with_ml` / `_evaluate_ml` /
+  `_get_judge_weight` / 私有 `_fund_data_missing`——后者 5 个用例随删）。
+- payload 对拍：旧 notifier（`git show HEAD:notifier.py`）vs `reporter.scan_notify`
+  的 `build_message_content`，固定输入逐字节一致（`get_market_sentiment` 与
+  `datetime.now` 双侧同 mock）。
 
 ---
 

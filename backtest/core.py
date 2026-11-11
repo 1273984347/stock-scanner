@@ -1,16 +1,18 @@
 """回测模块 - 基于 ABroker 的 A 股真实模拟回测
 
+模块定位（Phase 7 P7-2 勘误，2026-11-12）：本模块**不是**整体 deprecated——
+`run_factor_backtest` 是因子回测的活实现（`/api/backtest` 因子模式与
+L9 对拍 mock 均直接使用）；通用模拟回测路径已由 `backtest.engine` 承接。
+原先的模块级 DeprecationWarning 与 `.. deprecated::` 标注以偏概全，
+每次 import 都误报，已移除；wrapper 类的真实弃用入口
+（backtest/full.py、backtest/rebalance.py）保留其警告。
+
 核心改动（相比旧版）：
 1. 用 RiskSizedPosition 替代固定 20% 仓位
 2. 接入 RiskManager 做回测期间风控
 3. 波动率自适应止损替代硬编码百分比
 4. 支持 judge_panel 评委团评分（可选）
-
-.. deprecated:: 使用 backtest.engine 替代
 """
-
-import warnings
-warnings.warn("backtest.core is deprecated, use backtest.engine", DeprecationWarning, stacklevel=2)
 
 import pandas as pd
 import numpy as np
