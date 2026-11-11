@@ -266,5 +266,95 @@
     },
     "untouched_endpoints": 63,
     "untouched_identical": true
+  },
+  {
+    "allowed_endpoints": [
+      "GET /api/exposures",
+      "GET /api/position/{code}",
+      "GET /api/regime-history",
+      "GET /api/score/{code}",
+      "GET /api/sector-flow",
+      "GET /api/signals"
+    ],
+    "comparison": "endpoint records compared field-by-field; lineno excluded (implementation detail, see _normalize_endpoint)",
+    "mode": "offload",
+    "per_endpoint": [
+      {
+        "blocking_after": 1,
+        "blocking_before": 5,
+        "endpoint": "GET /api/exposures",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 2,
+        "other_before": 16
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 2,
+        "endpoint": "GET /api/position/{code}",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 3,
+        "other_before": 19
+      },
+      {
+        "blocking_after": 1,
+        "blocking_before": 4,
+        "endpoint": "GET /api/regime-history",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 13
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 2,
+        "endpoint": "GET /api/score/{code}",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 3,
+        "other_before": 7
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 3,
+        "endpoint": "GET /api/sector-flow",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 15
+      },
+      {
+        "blocking_after": 1,
+        "blocking_before": 5,
+        "endpoint": "GET /api/signals",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 7
+      }
+    ],
+    "reason": "RF-01 Phase 6: Tier A 端点阻塞调用 offload 进线程池",
+    "schema_version": 1,
+    "totals_after": {
+      "blocking_calls": 141,
+      "blocking_endpoints": 52,
+      "endpoints": 68,
+      "offloaded_calls": 20,
+      "offloaded_endpoints": 20,
+      "other_calls": 467,
+      "total_calls": 628
+    },
+    "totals_before": {
+      "blocking_calls": 159,
+      "blocking_endpoints": 55,
+      "endpoints": 68,
+      "offloaded_calls": 14,
+      "offloaded_endpoints": 14,
+      "other_calls": 533,
+      "total_calls": 706
+    },
+    "untouched_endpoints": 62,
+    "untouched_identical": true
   }
 ]

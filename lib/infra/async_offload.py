@@ -48,6 +48,13 @@ OFFLOAD_CONSUMERS: tuple[str, ...] = (
     "positions",
     "risk_exposure",
     "stock",
+    # Phase 6 第 6 批（Tier A 候选，blocking ≥2 且不含 await）
+    "signals",
+    "exposures",
+    "position",
+    "regime_history",
+    "score",
+    "sector_flow",
 )
 
 

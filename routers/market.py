@@ -58,6 +58,43 @@ async def market_overview(_=Security(verify_api_key)):
     return await run_blocking("market", _compute_market)
 
 
+def _compute_regime_history(days):
+    """原 `GET /api/regime-history` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.data.data_layer import get_index_hist
+    from lib.monitoring.market_regime import detect_market_regime
+
+    hs300 = get_index_hist("000300", days=days)
+    if hs300.empty:
+        return {"regimes": [], "message": "暂无数据"}
+
+    # 滑动窗口检测 regime
+    regimes = []
+    window = 20
+    for i in range(window, len(hs300)):
+        window_data = hs300.iloc[i - window:i]
+        try:
+            result = detect_market_regime(window_data)
+            regime = result.get("regime", "UNKNOWN") if isinstance(result, dict) else str(result)
+            date_val = hs300.iloc[i].get("date", "") if hasattr(hs300.iloc[i], 'get') else ""
+            if not date_val and "date" in hs300.columns:
+                date_val = str(hs300.iloc[i]["date"])
+            regimes.append({"date": str(date_val), "regime": regime})
+        except Exception:
+            continue
+
+    # 合并连续相同 regime
+    merged = []
+    for r in regimes:
+        if merged and merged[-1]["regime"] == r["regime"]:
+            merged[-1]["end_date"] = r["date"]
+        else:
+            merged.append({**r, "start_date": r["date"], "end_date": r["date"]})
+
+    result = {"regimes": merged[-30:], "total": len(merged)}
+    _cache_set("regime_history", result)
+    return result
+
+
 @router.get("/api/regime-history", dependencies=[Security(verify_api_key)])
 async def regime_history(days: int = Query(default=60, ge=10, le=365)):
     """市场状态历史（regime 切换时间线）"""
@@ -66,39 +103,7 @@ async def regime_history(days: int = Query(default=60, ge=10, le=365)):
         return cached
 
     try:
-        from lib.data.data_layer import get_index_hist
-        from lib.monitoring.market_regime import detect_market_regime
-
-        hs300 = get_index_hist("000300", days=days)
-        if hs300.empty:
-            return {"regimes": [], "message": "暂无数据"}
-
-        # 滑动窗口检测 regime
-        regimes = []
-        window = 20
-        for i in range(window, len(hs300)):
-            window_data = hs300.iloc[i - window:i]
-            try:
-                result = detect_market_regime(window_data)
-                regime = result.get("regime", "UNKNOWN") if isinstance(result, dict) else str(result)
-                date_val = hs300.iloc[i].get("date", "") if hasattr(hs300.iloc[i], 'get') else ""
-                if not date_val and "date" in hs300.columns:
-                    date_val = str(hs300.iloc[i]["date"])
-                regimes.append({"date": str(date_val), "regime": regime})
-            except Exception:
-                continue
-
-        # 合并连续相同 regime
-        merged = []
-        for r in regimes:
-            if merged and merged[-1]["regime"] == r["regime"]:
-                merged[-1]["end_date"] = r["date"]
-            else:
-                merged.append({**r, "start_date": r["date"], "end_date": r["date"]})
-
-        result = {"regimes": merged[-30:], "total": len(merged)}
-        _cache_set("regime_history", result)
-        return result
+        return await run_blocking("regime_history", _compute_regime_history, days)
     except Exception as e:
         logger.error(f"regime 历史查询失败: {e}")
         return {"regimes": []}
@@ -237,30 +242,35 @@ async def trade_history(
         return {"trades": [], "total": 0}
 
 
+def _compute_sector_flow(top_n):
+    """原 `GET /api/sector-flow` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.data.data_layer import _load_cache
+    import numpy as np
+    sectors_data = _load_cache("sectors/sector_scores", max_age_hours=24)
+    if sectors_data is None or (hasattr(sectors_data, 'empty') and sectors_data.empty):
+        return {"nodes": [], "links": []}
+    nodes = []
+    links = []
+    if hasattr(sectors_data, 'iterrows'):
+        for _, row in sectors_data.head(top_n).iterrows():
+            name = row.get("name", row.get("sector", ""))
+            score = row.get("score", 50)
+            if name:
+                nodes.append({"name": str(name)})
+                if score > 60:
+                    links.append({"source": "资金池", "target": str(name), "value": int(score)})
+                elif score < 40:
+                    links.append({"source": str(name), "target": "资金池", "value": int(100 - score)})
+    if nodes:
+        nodes.insert(0, {"name": "资金池"})
+    return {"nodes": nodes[:top_n + 1], "links": links[:top_n * 2]}
+
+
 @router.get("/api/sector-flow", dependencies=[Security(verify_api_key)])
 async def sector_flow(top_n: int = Query(20, ge=5, le=50)):
     """板块资金流向 — 桑基图数据"""
     try:
-        from lib.data.data_layer import _load_cache
-        import numpy as np
-        sectors_data = _load_cache("sectors/sector_scores", max_age_hours=24)
-        if sectors_data is None or (hasattr(sectors_data, 'empty') and sectors_data.empty):
-            return {"nodes": [], "links": []}
-        nodes = []
-        links = []
-        if hasattr(sectors_data, 'iterrows'):
-            for _, row in sectors_data.head(top_n).iterrows():
-                name = row.get("name", row.get("sector", ""))
-                score = row.get("score", 50)
-                if name:
-                    nodes.append({"name": str(name)})
-                    if score > 60:
-                        links.append({"source": "资金池", "target": str(name), "value": int(score)})
-                    elif score < 40:
-                        links.append({"source": str(name), "target": "资金池", "value": int(100 - score)})
-        if nodes:
-            nodes.insert(0, {"name": "资金池"})
-        return {"nodes": nodes[:top_n + 1], "links": links[:top_n * 2]}
+        return await run_blocking("sector_flow", _compute_sector_flow, top_n)
     except Exception as e:
         logger.error(f"Sector flow error: {e}")
         return {"nodes": [], "links": []}

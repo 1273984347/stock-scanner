@@ -128,6 +128,8 @@ def test_consumer_registry_is_explicit_and_unique():
         "factor_eval", "factor_scatter", "kline", "risk", "export_config",
         # Phase 6 第 5 批（Tier A 候选，blocking ≥4）
         "factor_contribution", "market", "positions", "risk_exposure", "stock",
+        # Phase 6 第 6 批（Tier A 候选，blocking ≥2 且不含 await）
+        "signals", "exposures", "position", "regime_history", "score", "sector_flow",
     )
     assert len(set(OFFLOAD_CONSUMERS)) == len(OFFLOAD_CONSUMERS)
 

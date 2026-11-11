@@ -42,8 +42,12 @@
 >   `factor_contribution` / `market` / `positions` / `risk_exposure` / `stock`（**dashboard 因 try 体
 >   含 await 跳过**）；L10 扩至 13 端点 13/13 改善；blocking **188→159**、offloaded **9→14**、
 >   Tier B 候选 **30→25**；depth-2 展开判据改合成 AST 自证
-> → **Phase 6 仍未收官**：按 ADR-0006 D2 不能宣布收官。继续逐批切换剩余 **25 个候选端点**
->   （top: `/api/dashboard` 4【含 await 需单独决策】、`/api/signals` 3 …），清单见
+> · **Phase 6 第 6 批 ✅**（Tier A 候选 6 端点 offload + 纯透传守卫随边界改写，ADR-0012）：
+>   `signals` / `exposures` / `position` / `regime_history` / `score` / `sector_flow`；
+>   L10 扩至 19 端点 19/19 改善；blocking **159→141**、offloaded **14→20**、
+>   Tier B 候选 **25→19**；P-74 复发留痕（mock 核对单位 = key）
+> → **Phase 6 仍未收官**：按 ADR-0006 D2 不能宣布收官。剩余 **19 个候选端点**
+>   （`/api/dashboard` 4【含 await 需单独决策】+ 18 个 1 调用端点可大批量清），清单见
 >   `contracts/blocking-io-tier-b.json`；每批需重跑 L0–L10、L9 对拍与 Tier B 重登记
 >
 > ④ 的 5 条链路分工：`entry_signals`（三份 `check_entry` 判定序列，锁定**口径**）、
@@ -72,10 +76,10 @@
 | `contracts/blocking-io-baseline.json` | **第 8 把尺子**：68 端点 × 阻塞符号计数基线（含 helper 展开的调用链、`other` 冻结清单、计划原阈值对照） | `python scripts/blocking_io_check.py --capture` |
 | `scripts/blocking_io_check.py` | **L8 门禁**：`--check` 校验 blocking 单调下降 / offloaded 单调上升 / other 冻结 / 端点集合与 L7 一致 / async 冻结；`--selftest` 自证判红 | `python scripts/blocking_io_check.py --check` |
 | `contracts/blocking-io-recapture-evidence.json` | L8 基线**历次重建**的字段级取证（mode / 允许端点 / 前后读数 / 其余端点是否逐字段一致），历史数组不覆盖 | `--recapture` 自动追加 |
-| `scripts/offload_switch_diff.py` | **L9 门禁**：13 端点迁移（3 回测 `523b353` + 第 4 批 5 端点 `77bc366` + 第 5 批 5 端点 `6d0e434`，无 try 端点按 `no_try_guard` 剥快守卫）源码 AST 逐语句等价 + off/on 响应 diff + 线程池调用自证 + 消费者登记双向对齐 | `python scripts/offload_switch_diff.py --check` |
+| `scripts/offload_switch_diff.py` | **L9 门禁**：19 端点迁移（3 回测 `523b353` + 第 4 批 5 端点 `77bc366` + 第 5 批 5 端点 `6d0e434` + 第 6 批 6 端点 `497550f`，无 try 端点按 `no_try_guard` 剥快守卫）源码 AST 逐语句等价 + off/on 响应 diff + 线程池调用自证 + 消费者登记双向对齐 | `python scripts/offload_switch_diff.py --check` |
 | `../adr/0006-phase6-blocking-io-criteria.md` | 第 6 次判据修正：绝对阈值「≤1」→ 单调下降 + 分层退出判据 | 人工维护 |
 | `../adr/0007-phase6-offload-and-locks.md` | 第 2 批决策：灰度入口 / Tier A 切换 / 共享状态加锁 / L9 / 分层重建基线 | 人工维护 |
-| `contracts/blocking-io-tier-b.json` | Tier B 逐条留痕：142 条 (端点, callee) 理由登记 + **25 个 Tier A 候选端点**显式遗留（201→168→142 / 35→30→25，第 5 批 offload 5 端点后）；0 未分类 | `python scripts/blocking_io_check.py --tier-b` |
+| `contracts/blocking-io-tier-b.json` | Tier B 逐条留痕：125 条 (端点, callee) 理由登记 + **19 个 Tier A 候选端点**显式遗留（201→168→142→125 / 35→30→25→19，第 6 批 offload 6 端点后）；0 未分类 | `python scripts/blocking_io_check.py --tier-b` |
 | `scripts/concurrency_probe.py` | **L10 门禁**：20 并发 × 3 轮 P95（批次发起计时）+ 36 条前端路径契约冻结 + 线程池自证 | `python scripts/concurrency_probe.py --check` |
 | `../adr/0008-phase6-cache-scope.md` | 第 3 批范围决策：不新增回测端点 TTL 缓存，冻结既有 `/api/scan` 缓存证据 | 人工维护 |
 | `../adr/0009-phase6-pre-close-review.md` | 压测计时口径修正、36 条路径判据修订、**收官前核验结论：Phase 6 未收官** | 人工维护 |

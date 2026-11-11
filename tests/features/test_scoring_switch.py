@@ -253,14 +253,20 @@ def test_endpoint_is_pure_passthrough():
 
     硬给它加一个 flag 分支 = 为清单打勾加补丁（坑表 P-58）。
     这里用 AST 钉住「它就是透传」，让 L6 的 endpoint 分支有明确语义。
+    Phase 6 第 6 批起端点把调用搬进 `_compute_stock_score`（run_blocking 边界）：
+    端点只准 run_blocking，评分调用只准在搬迁体里；禁止名单同时覆盖两处。
     """
     tree = ast.parse((ROOT / "routers/scoring.py").read_text(encoding="utf-8"))
-    fn = _node(tree, "stock_score")
-    names = _call_names(fn)
-    assert "get_stock_score" in names
-    assert "score_4d" not in names
-    assert "comprehensive_score" not in names
-    assert "unified_scoring_enabled" not in names
+    endpoint = _node(tree, "stock_score")
+    compute = _node(tree, "_compute_stock_score")
+    endpoint_names = _call_names(endpoint)
+    compute_names = _call_names(compute)
+    assert "run_blocking" in endpoint_names, "endpoint must go through the offload entry"
+    assert "get_stock_score" not in endpoint_names, "scoring call moved out of the endpoint"
+    assert "get_stock_score" in compute_names, "compute body must remain the passthrough call"
+    for forbidden in ("score_4d", "comprehensive_score", "unified_scoring_enabled"):
+        assert forbidden not in endpoint_names
+        assert forbidden not in compute_names
 
 
 def test_cli_off_on_identical(monkeypatch):

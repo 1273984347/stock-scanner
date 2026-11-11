@@ -6,69 +6,74 @@ from lib.infra.async_offload import run_blocking
 
 router = APIRouter()
 
+def _compute_position_detail(code):
+    """原 `GET /api/position/{code}` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.risk.position_manager import PositionManager
+    from datetime import datetime as _dt
+
+    pm = PositionManager()
+    pos = pm.positions.get(code)
+    if not pos:
+        raise HTTPException(status_code=404, detail=f"未持有 {code}")
+
+    # 获取实时行情
+    orchestrator = _get_orchestrator()
+    quotes = orchestrator.get_realtime_quotes()
+    current_price = 0.0
+    if not quotes.empty:
+        row = quotes[quotes["代码"].astype(str).str.zfill(6) == code]
+        if not row.empty:
+            current_price = float(row.iloc[0].get("最新价", 0))
+
+    # 计算盈亏
+    cost = pos.buy_price
+    shares = pos.shares
+    if current_price > 0 and cost > 0:
+        pnl_pct = (current_price - cost) / cost
+        pnl_amount = (current_price - cost) * shares
+        market_value = current_price * shares
+    else:
+        pnl_pct = 0
+        pnl_amount = 0
+        market_value = 0
+
+    # 持有天数
+    hold_days = 0
+    try:
+        buy_dt = _dt.strptime(pos.buy_date, "%Y-%m-%d")
+        hold_days = (_dt.now() - buy_dt).days
+    except Exception:
+        pass
+
+    return {
+        "code": code,
+        "name": pos.name,
+        "cost": cost,
+        "shares": shares,
+        "current_price": round(current_price, 2),
+        "pnl_pct": round(pnl_pct, 4),
+        "pnl_amount": round(pnl_amount, 2),
+        "market_value": round(market_value, 2),
+        "stop_loss": pos.stop_loss,
+        "take_profit": pos.take_profit,
+        "entry_date": pos.buy_date,
+        "hold_days": hold_days,
+        "notes": pos.notes,
+        "atr": pos.atr,
+        "atr_mult": pos.atr_mult,
+        "atr_stop_price": pos.atr_stop_price,
+        "peak_price": pos.peak_price,
+        "trailing_stop_price": pos.trailing_stop_price,
+        "atr_take_profit_price": pos.atr_take_profit_price,
+    }
+
+
 @router.get("/api/position/{code}", dependencies=[Security(verify_api_key)])
 async def position_detail(code: str):
     """单只持仓详情"""
     code = _validate_stock_code(code)
     try:
-        from lib.risk.position_manager import PositionManager
-        from datetime import datetime as _dt
-
-        pm = PositionManager()
-        pos = pm.positions.get(code)
-        if not pos:
-            raise HTTPException(status_code=404, detail=f"未持有 {code}")
-
-        # 获取实时行情
-        orchestrator = _get_orchestrator()
-        quotes = orchestrator.get_realtime_quotes()
-        current_price = 0.0
-        if not quotes.empty:
-            row = quotes[quotes["代码"].astype(str).str.zfill(6) == code]
-            if not row.empty:
-                current_price = float(row.iloc[0].get("最新价", 0))
-
-        # 计算盈亏
-        cost = pos.buy_price
-        shares = pos.shares
-        if current_price > 0 and cost > 0:
-            pnl_pct = (current_price - cost) / cost
-            pnl_amount = (current_price - cost) * shares
-            market_value = current_price * shares
-        else:
-            pnl_pct = 0
-            pnl_amount = 0
-            market_value = 0
-
-        # 持有天数
-        hold_days = 0
-        try:
-            buy_dt = _dt.strptime(pos.buy_date, "%Y-%m-%d")
-            hold_days = (_dt.now() - buy_dt).days
-        except Exception:
-            pass
-
-        return {
-            "code": code,
-            "name": pos.name,
-            "cost": cost,
-            "shares": shares,
-            "current_price": round(current_price, 2),
-            "pnl_pct": round(pnl_pct, 4),
-            "pnl_amount": round(pnl_amount, 2),
-            "market_value": round(market_value, 2),
-            "stop_loss": pos.stop_loss,
-            "take_profit": pos.take_profit,
-            "entry_date": pos.buy_date,
-            "hold_days": hold_days,
-            "notes": pos.notes,
-            "atr": pos.atr,
-            "atr_mult": pos.atr_mult,
-            "atr_stop_price": pos.atr_stop_price,
-            "peak_price": pos.peak_price,
-            "trailing_stop_price": pos.trailing_stop_price,
-            "atr_take_profit_price": pos.atr_take_profit_price,
-        }
+        return await run_blocking("position", _compute_position_detail, code)
     except HTTPException:
         raise
     except Exception as e:

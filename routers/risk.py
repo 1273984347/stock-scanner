@@ -176,6 +176,43 @@ async def risk_exposure():
         return {"var": {}, "correlation": {}, "n_positions": 0}
 
 
+def _compute_factor_exposures(preset):
+    """原 `GET /api/exposures` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    orchestrator = _get_orchestrator(preset)
+    # 用最近一次扫描结果计算暴露
+    scan_cache = _cache_get(f"scan_{preset}", max_age=7200)
+    if scan_cache and scan_cache.get("portfolio", {}).get("details"):
+        details = scan_cache["portfolio"]["details"]
+        # 计算加权平均因子暴露（限制数量避免超时）
+        factor_exp = {}
+        details_to_process = details[:20]  # 最多处理20只
+        for d in details_to_process:
+            weight = d.get("weight", 0)
+            if weight > 0:
+                code = d["code"]
+                try:
+                    score_data = orchestrator.get_stock_score(code)
+                    factors = score_data.get("factors", {})
+                    for fname, fval in factors.items():
+                        if isinstance(fval, (int, float)):
+                            if fname not in factor_exp:
+                                factor_exp[fname] = 0
+                            factor_exp[fname] += fval * weight
+                except Exception:
+                    continue
+
+        result = {
+            "exposures": {k: round(v, 4) for k, v in sorted(factor_exp.items())},
+            "positions": details,
+            "timestamp": datetime.now().isoformat(),
+        }
+    else:
+        result = {"exposures": {}, "positions": [], "message": "暂无扫描数据"}
+
+    _cache_set("exposures", result)
+    return result
+
+
 @router.get("/api/exposures", dependencies=[Security(verify_api_key)])
 async def factor_exposures(preset: str = Query("balanced", description="策略预设")):
     if preset not in ALLOWED_PRESETS:
@@ -186,39 +223,7 @@ async def factor_exposures(preset: str = Query("balanced", description="策略�
         return cached
 
     try:
-        orchestrator = _get_orchestrator(preset)
-        # 用最近一次扫描结果计算暴露
-        scan_cache = _cache_get(f"scan_{preset}", max_age=7200)
-        if scan_cache and scan_cache.get("portfolio", {}).get("details"):
-            details = scan_cache["portfolio"]["details"]
-            # 计算加权平均因子暴露（限制数量避免超时）
-            factor_exp = {}
-            details_to_process = details[:20]  # 最多处理20只
-            for d in details_to_process:
-                weight = d.get("weight", 0)
-                if weight > 0:
-                    code = d["code"]
-                    try:
-                        score_data = orchestrator.get_stock_score(code)
-                        factors = score_data.get("factors", {})
-                        for fname, fval in factors.items():
-                            if isinstance(fval, (int, float)):
-                                if fname not in factor_exp:
-                                    factor_exp[fname] = 0
-                                factor_exp[fname] += fval * weight
-                    except Exception:
-                        continue
-
-            result = {
-                "exposures": {k: round(v, 4) for k, v in sorted(factor_exp.items())},
-                "positions": details,
-                "timestamp": datetime.now().isoformat(),
-            }
-        else:
-            result = {"exposures": {}, "positions": [], "message": "暂无扫描数据"}
-
-        _cache_set("exposures", result)
-        return result
+        return await run_blocking("exposures", _compute_factor_exposures, preset)
     except Exception as e:
         logger.error(f"因子暴露计算失败: {e}")
         return {"exposures": {}, "positions": [], "error": "因子暴露计算失败"}

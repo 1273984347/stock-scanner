@@ -96,6 +96,20 @@ MIGRATIONS = (
               "routers/risk.py", "6d0e434"),
     Migration("stock", "GET /api/stock/{code}", "stock_detail", "_compute_stock_detail",
               "routers/stock.py", "6d0e434", 1),
+    # Phase 6 第 6 批 Tier A 候选（基线 commit 497550f = batch6 起点，均未 offload；
+    # /api/dashboard try 体含 await，不在本批）
+    Migration("signals", "GET /api/signals", "signal_accuracy", "_compute_signal_accuracy",
+              "routers/signals_audit.py", "497550f"),
+    Migration("exposures", "GET /api/exposures", "factor_exposures", "_compute_factor_exposures",
+              "routers/risk.py", "497550f"),
+    Migration("position", "GET /api/position/{code}", "position_detail", "_compute_position_detail",
+              "routers/portfolio.py", "497550f"),
+    Migration("regime_history", "GET /api/regime-history", "regime_history", "_compute_regime_history",
+              "routers/market.py", "497550f"),
+    Migration("score", "GET /api/score/{code}", "stock_score", "_compute_stock_score",
+              "routers/scoring.py", "497550f"),
+    Migration("sector_flow", "GET /api/sector-flow", "sector_flow", "_compute_sector_flow",
+              "routers/market.py", "497550f"),
 )
 
 # 冻结时间，消除 off/on 两侧 datetime.now() 时间戳差异（属测试伪影，非 offload 引入）
@@ -260,6 +274,14 @@ def _fake_ema(series, n):
 class _FakeOrchRisk:
     def get_market_sentiment(self):
         return object()
+    def get_stock_score(self, code):
+        # exposures 需要：非空因子评分（risk 端点不用该方法，互不影响）
+        return {"factors": {"momentum": 1.2, "value": 0.8}}
+
+
+class _FakeOrchScore:
+    def get_stock_score(self, code):
+        return {"score": 88, "factors": {"momentum": 1.2}}
 
 
 class _FakeMacro:
@@ -279,13 +301,33 @@ class _FakeRiskMgr:
     def compute_correlation_matrix(self, market_data, tickers):
         return {"avg_correlation": 0.3, "diversification_score": 0.7,
                 "high_corr_pairs": []}
+    def full_risk_assessment(self, **kwargs):
+        # scan_balanced 缓存非空时 /api/risk 走全量评估路径（第 6 批起）
+        return {
+            "volatility": {"regime": "normal"},
+            "risk_budget": {"equity": 0.65},
+            "var": {"var_95": -0.02},
+            "correlation": {"avg_correlation": 0.3},
+            "alerts": [types.SimpleNamespace(rule_name="position_limit",
+                                             level="low", message="ok")],
+        }
+
+
+def _fake_position(code, weight, shares, buy_price):
+    """position_detail 需要完整字段；weight/shares/buy_price 同时服务 risk_exposure。"""
+    return types.SimpleNamespace(
+        code=code, name=f"股{code}", weight=weight, shares=shares, buy_price=buy_price,
+        buy_date="2024-01-01", stop_loss=9.0, take_profit=15.0, notes="",
+        atr=0.5, atr_mult=2.0, atr_stop_price=9.0, peak_price=11.0,
+        trailing_stop_price=9.5, atr_take_profit_price=15.0,
+    )
 
 
 class _FakePositionMgr:
-    # risk_exposure 需要：非空持仓表（risk 端点不用该属性，互不影响）
+    # risk_exposure / position_detail 需要：非空持仓表（risk 端点不用该属性，互不影响）
     positions = {
-        "000001": types.SimpleNamespace(weight=0.6, shares=1000.0, buy_price=10.0),
-        "600519": types.SimpleNamespace(weight=0.4, shares=100.0, buy_price=1500.0),
+        "000001": _fake_position("000001", 0.6, 1000.0, 10.0),
+        "600519": _fake_position("600519", 0.4, 100.0, 1500.0),
     }
     def __init__(self, *a, **k):
         pass
@@ -300,11 +342,13 @@ class _FakeTracker:
         pass
     def get_recent_signals(self, days=30):
         return [
-            {"source": "volume_ratio", "actual_return_5d": 0.05},
-            {"source": "volume_ratio", "actual_return_5d": -0.02},
-            {"source": "adx", "actual_return_5d": 0.03},
-            {"source": "adx", "actual_return_5d": 0.0},
+            {"source": "volume_ratio", "actual_return_5d": 0.05, "is_correct": True},
+            {"source": "volume_ratio", "actual_return_5d": -0.02, "is_correct": False},
+            {"source": "adx", "actual_return_5d": 0.03, "is_correct": True},
+            {"source": "adx", "actual_return_5d": 0.0, "is_correct": False},
         ]
+    def evaluate_signals(self, days=30):
+        return {"total": 4, "accuracy": 0.5}
 
 
 class _FakeOrchMarket:
@@ -376,8 +420,14 @@ def _install_mocks(stack: ExitStack):
     stack.enter_context(patch("routers.risk._batch_get_stock_hist", fake_risk_batch))
     stack.enter_context(patch("routers.risk._run_stress_tests",
                               lambda: [{"name": "x", "result": "pass"}]))
+    # scan_balanced 非空：/api/risk 走全量评估、/api/exposures 走主路径（均确定性）。
+    # exposures/risk_exposure 键必须返回 None：两端点判 `is not None`（P-74），{} 会让
+    # 缓存命中分支直接返回、根本不进 run_blocking（线程池自证必红）。
+    fake_scan_cache = {"portfolio": {"details": [
+        {"code": "000001", "weight": 0.5}, {"code": "600519", "weight": 0.3}]}}
     stack.enter_context(patch("routers.risk._cache_get",
-                              lambda key, **k: None if key in ("risk", "risk_exposure") else {}))
+                              lambda key, **k: None if key in ("risk", "risk_exposure", "exposures")
+                              else (fake_scan_cache if key == "scan_balanced" else {})))
     stack.enter_context(patch("routers.risk._cache_set", lambda *a, **k: None))
 
     # ---- export（export_config）----
@@ -400,6 +450,29 @@ def _install_mocks(stack: ExitStack):
                                             "signals": {"ema_above": True},
                                             "summary": "ok"}))
 
+    # ---- Phase 6 第 6 批（signals / exposures / position / regime-history / score / sector-flow）----
+    stack.enter_context(patch("routers.signals_audit._cache_get", lambda *a, **k: None))
+    stack.enter_context(patch("routers.signals_audit._cache_set", lambda *a, **k: None))
+    stack.enter_context(patch("routers.scoring._get_orchestrator",
+                              lambda *a, **k: _FakeOrchScore()))
+    def fake_index_hist(code, days=60):
+        n = 26
+        return pd.DataFrame({
+            "date": [f"2024-01-{i % 28 + 1:02d}" for i in range(1, n + 1)],
+            "close": [10.0 + (i % 5) for i in range(n)],
+            "volume": [1000.0 + i for i in range(n)],
+        })
+    stack.enter_context(patch("lib.data.data_layer.get_index_hist", fake_index_hist))
+    stack.enter_context(patch("lib.monitoring.market_regime.detect_market_regime",
+                              lambda window: {"regime": "bull"}))
+    def fake_load_cache(key, **kwargs):
+        return pd.DataFrame([
+            {"name": "半导体", "score": 70},
+            {"name": "医药", "score": 45},
+            {"name": "银行", "score": 35},
+        ])
+    stack.enter_context(patch("lib.data.data_layer._load_cache", fake_load_cache))
+
     return thread_id_box
 
 
@@ -411,7 +484,7 @@ def _normalize_response(obj) -> str:
 
 
 async def _call_endpoint(consumer, bt_bt, bt_factor, bt_market, bt_risk, bt_export,
-                         bt_portfolio, bt_stock):
+                         bt_portfolio, bt_stock, bt_signals, bt_scoring):
     if consumer == "backtest":
         return await bt_bt.run_backtest(
             symbols="000001,600519,000858", days=250,
@@ -444,6 +517,18 @@ async def _call_endpoint(consumer, bt_bt, bt_factor, bt_market, bt_risk, bt_expo
         return await bt_risk.risk_exposure()
     if consumer == "stock":
         return await bt_stock.stock_detail(code="000001", _=None)
+    if consumer == "signals":
+        return await bt_signals.signal_accuracy(days=30)
+    if consumer == "exposures":
+        return await bt_risk.factor_exposures(preset="balanced")
+    if consumer == "position":
+        return await bt_portfolio.position_detail(code="000001")
+    if consumer == "regime_history":
+        return await bt_market.regime_history(days=60)
+    if consumer == "score":
+        return await bt_scoring.stock_score(code="000001", _=None)
+    if consumer == "sector_flow":
+        return await bt_market.sector_flow(top_n=20)
     raise ValueError(f"unknown consumer {consumer}")
 
 
@@ -456,6 +541,8 @@ async def _collect_all() -> dict:
     from routers import export as bt_export
     from routers import portfolio as bt_portfolio
     from routers import stock as bt_stock
+    from routers import signals_audit as bt_signals
+    from routers import scoring as bt_scoring
     import lib.infra.async_offload as offload
 
     results = {}
@@ -485,7 +572,7 @@ async def _collect_all() -> dict:
         frozen_dt.now.return_value = FIXED_DT
         frozen_dt.utcnow.return_value = FIXED_DT
         for _ns in ("routers.factor", "routers.risk", "routers.export",
-                    "routers.common"):
+                    "routers.signals_audit", "routers.common"):
             try:
                 stack.enter_context(patch(_ns + ".datetime", frozen_dt))
             except AttributeError:
@@ -499,7 +586,7 @@ async def _collect_all() -> dict:
                 pool_counter["n"] = 0
                 response = await _call_endpoint(
                     m.consumer, bt_bt, bt_factor, bt_market, bt_risk, bt_export,
-                    bt_portfolio, bt_stock)
+                    bt_portfolio, bt_stock, bt_signals, bt_scoring)
                 results[(m.consumer, flag)] = {
                     "response": _normalize_response(response),
                     "pool_calls": pool_counter["n"],

@@ -82,6 +82,13 @@ ENDPOINTS = (
     ("positions", "GET /api/positions"),
     ("risk_exposure", "GET /api/risk-exposure"),
     ("stock", "GET /api/stock/{code}"),
+    # Phase 6 第 6 批 Tier A 候选（blocking ≥2 且不含 await）
+    ("signals", "GET /api/signals"),
+    ("exposures", "GET /api/exposures"),
+    ("position", "GET /api/position/{code}"),
+    ("regime_history", "GET /api/regime-history"),
+    ("score", "GET /api/score/{code}"),
+    ("sector_flow", "GET /api/sector-flow"),
 )
 
 FIXED_RAW = {
@@ -153,6 +160,11 @@ def _install_mocks(stack: ExitStack) -> list[int]:
             worker_idents.append(threading.get_ident())
             time.sleep(BLOCK_SECONDS)
             return object()
+        def get_stock_score(self, code):
+            # exposures 需要（第 6 批）：经 routers.risk._get_orchestrator 复用本类
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return {"factors": {"momentum": 1.2, "value": 0.8}}
 
     class _FakeMacro:
         state = "normal"; regime = "stable"
@@ -179,11 +191,20 @@ def _install_mocks(stack: ExitStack) -> list[int]:
             return {"avg_correlation": 0.3, "diversification_score": 0.7,
                     "high_corr_pairs": []}
 
+    def _fake_position(code, weight, shares, buy_price):
+        """position_detail 需要完整字段；weight/shares/buy_price 同时服务 risk_exposure。"""
+        return types.SimpleNamespace(
+            code=code, name=f"股{code}", weight=weight, shares=shares, buy_price=buy_price,
+            buy_date="2024-01-01", stop_loss=9.0, take_profit=15.0, notes="",
+            atr=0.5, atr_mult=2.0, atr_stop_price=9.0, peak_price=11.0,
+            trailing_stop_price=9.5, atr_take_profit_price=15.0,
+        )
+
     class _FakePosMgr:
-        # risk_exposure 需要：非空持仓表（risk 端点不用该属性，互不影响）
+        # risk_exposure / position_detail 需要：非空持仓表（risk 端点不用该属性，互不影响）
         positions = {
-            "000001": types.SimpleNamespace(weight=0.6, shares=1000.0, buy_price=10.0),
-            "600519": types.SimpleNamespace(weight=0.4, shares=100.0, buy_price=1500.0),
+            "000001": _fake_position("000001", 0.6, 1000.0, 10.0),
+            "600519": _fake_position("600519", 0.4, 100.0, 1500.0),
         }
         def get_portfolio_summary(self, *a, **k):
             return {}
@@ -244,11 +265,15 @@ def _install_mocks(stack: ExitStack) -> list[int]:
             worker_idents.append(threading.get_ident())
             time.sleep(BLOCK_SECONDS)
             return [
-                {"source": "volume_ratio", "actual_return_5d": 0.05},
-                {"source": "volume_ratio", "actual_return_5d": -0.02},
-                {"source": "adx", "actual_return_5d": 0.03},
-                {"source": "adx", "actual_return_5d": 0.0},
+                {"source": "volume_ratio", "actual_return_5d": 0.05, "is_correct": True},
+                {"source": "volume_ratio", "actual_return_5d": -0.02, "is_correct": False},
+                {"source": "adx", "actual_return_5d": 0.03, "is_correct": True},
+                {"source": "adx", "actual_return_5d": 0.0, "is_correct": False},
             ]
+        def evaluate_signals(self, days=30):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return {"total": 4, "accuracy": 0.5}
 
     class _FakeOrchMarket:
         def get_market_sentiment(self):
@@ -274,6 +299,31 @@ def _install_mocks(stack: ExitStack) -> list[int]:
         time.sleep(BLOCK_SECONDS)
         return {"verdict": "buy", "signals": {"ema_above": True}, "summary": "ok"}
 
+    class _FakeOrchScore:
+        def get_stock_score(self, code):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return {"score": 88, "factors": {"momentum": 1.2}}
+
+    def fake_index_hist(code, days=60):
+        worker_idents.append(threading.get_ident())
+        time.sleep(BLOCK_SECONDS)
+        n = 26
+        return pd.DataFrame({
+            "date": [f"2024-01-{i % 28 + 1:02d}" for i in range(1, n + 1)],
+            "close": [10.0 + (i % 5) for i in range(n)],
+            "volume": [1000.0 + i for i in range(n)],
+        })
+
+    def fake_load_cache(key, **kwargs):
+        worker_idents.append(threading.get_ident())
+        time.sleep(BLOCK_SECONDS)
+        return pd.DataFrame([
+            {"name": "半导体", "score": 70},
+            {"name": "医药", "score": 45},
+            {"name": "银行", "score": 35},
+        ])
+
     def noop_cache(*a, **k):
         return None
 
@@ -283,7 +333,13 @@ def _install_mocks(stack: ExitStack) -> list[int]:
                               lambda *a, **k: _FakeOrchFactor()))
     stack.enter_context(patch("routers.factor._cache_set", noop_cache))
     stack.enter_context(patch("routers.risk._cache_set", noop_cache))
-    stack.enter_context(patch("routers.risk._cache_get", lambda *a, **k: None))
+    # scan_balanced 非空：/api/risk 走全量评估、/api/exposures 走主路径（均确定性）。
+    # exposures/risk_exposure 键必须返回 None：两端点判 `is not None`（P-74）。
+    fake_scan_cache = {"portfolio": {"details": [
+        {"code": "000001", "weight": 0.5}, {"code": "600519", "weight": 0.3}]}}
+    stack.enter_context(patch("routers.risk._cache_get",
+                              lambda key, **k: None if key in ("risk", "risk_exposure", "exposures")
+                              else (fake_scan_cache if key == "scan_balanced" else None)))
     stack.enter_context(patch("routers.risk._batch_get_stock_hist", fake_risk_batch))
     stack.enter_context(patch("factors.compute_all_signals", fake_compute_all_signals))
     stack.enter_context(patch("factors.evaluate_macro_gate", fake_evaluate_macro_gate))
@@ -310,13 +366,24 @@ def _install_mocks(stack: ExitStack) -> list[int]:
     stack.enter_context(patch("lib.scoring.technical_signals.calc_composite_verdict",
                               fake_composite_verdict))
 
+    # ---- Phase 6 第 6 批端点 mock（signals / exposures / position / regime-history / score / sector-flow）----
+    stack.enter_context(patch("routers.signals_audit._cache_get", noop_cache))
+    stack.enter_context(patch("routers.signals_audit._cache_set", noop_cache))
+    stack.enter_context(patch("routers.scoring._get_orchestrator",
+                              lambda *a, **k: _FakeOrchScore()))
+    stack.enter_context(patch("lib.data.data_layer.get_index_hist", fake_index_hist))
+    stack.enter_context(patch("lib.monitoring.market_regime.detect_market_regime",
+                              lambda window: {"regime": "bull"}))
+    stack.enter_context(patch("lib.data.data_layer._load_cache", fake_load_cache))
+
     # 冻结 datetime.now，消除带时间戳端点的逐请求 shape 差异（测试伪影）。
     # datetime 是 C 扩展不可变类型，无法 patch 其 .now 属性；改用 Mock(wraps=...)
     # 钉住 .now，并 patch 各 router 命名空间自己的 datetime 名字（经 common import *）。
     frozen_dt = Mock(wraps=_dt.datetime)
     frozen_dt.now.return_value = FIXED_DT
     frozen_dt.utcnow.return_value = FIXED_DT
-    for _ns in ("routers.factor", "routers.risk", "routers.export", "routers.common"):
+    for _ns in ("routers.factor", "routers.risk", "routers.export",
+                "routers.signals_audit", "routers.common"):
         try:
             stack.enter_context(patch(_ns + ".datetime", frozen_dt))
         except AttributeError:
@@ -367,6 +434,24 @@ async def _call(consumer: str, bt):
     if consumer == "stock":
         from routers import stock as rs
         return await rs.stock_detail(code="000001", _=None)
+    if consumer == "signals":
+        from routers import signals_audit as rsa
+        return await rsa.signal_accuracy(days=30)
+    if consumer == "exposures":
+        from routers import risk as rr
+        return await rr.factor_exposures(preset="balanced")
+    if consumer == "position":
+        from routers import portfolio as rp
+        return await rp.position_detail(code="000001")
+    if consumer == "regime_history":
+        from routers import market as rm
+        return await rm.regime_history(days=60)
+    if consumer == "score":
+        from routers import scoring as rsc
+        return await rsc.stock_score(code="000001", _=None)
+    if consumer == "sector_flow":
+        from routers import market as rm
+        return await rm.sector_flow(top_n=20)
     raise ValueError(f"unknown consumer {consumer}")
 
 

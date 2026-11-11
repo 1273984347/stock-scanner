@@ -6,7 +6,7 @@
 > - `RULES.md` 说**什么不许做 / 必须怎么做**（硬约束）
 > - `docs/refactor/pitfalls.md` 说**为什么**（每条规矩背后的真实坑）
 >
-> 最后更新：2026-11-12（RF-01 Phase 6 第 5 批：Tier A 候选 5 端点 offload / L9 无 try 迁移模式 / dashboard 因 await 体跳过，ADR-0011）
+> 最后更新：2026-11-12（RF-01 Phase 6 第 6 批：Tier A 候选 6 端点 offload / 纯透传守卫随 offload 边界改写，ADR-0012）
 
 ---
 
@@ -144,8 +144,12 @@ infra  ←  data  ←  scoring  ←  strategy
 > **第 5 批 ✅**（Tier A 候选 5 端点 offload + L9 无 try 迁移模式，ADR-0011）：
 > `factor_contribution` / `market` / `positions` / `risk_exposure` / `stock`
 > （**dashboard 因 try 体含 await 跳过**）；blocking **188 → 159**，offloaded **9 → 14**，
-> Tier B 候选 **30 → 25**；**25 个 Tier A 候选端点尚未 offload**，
-> 收官待清零（ADR-0011）。Phase 6 仍**未收官**（ADR-0006 D2）。
+> Tier B 候选 **30 → 25**（ADR-0011）。
+> **第 6 批 ✅**（Tier A 候选 6 端点 offload + 纯透传守卫随边界改写，ADR-0012）：
+> `signals` / `exposures` / `position` / `regime_history` / `score` / `sector_flow`；
+> blocking **159 → 141**，offloaded **14 → 20**，Tier B 候选 **25 → 19**；
+> **19 个 Tier A 候选端点尚未 offload**，收官待清零（ADR-0012）。
+> Phase 6 仍**未收官**（ADR-0006 D2）。
 > 完整遗留清单见 `docs/refactor/contracts/blocking-io-tier-b.json`。
 > 改 `routers/` 后必须同时跑 L7、L8、L9、L10。
 
@@ -230,7 +234,7 @@ python scripts/blocking_io_check.py --check
 python scripts/blocking_io_check.py --selftest
 
 # L9 offload 开关对拍（Phase 6 第 2 批起；迁移 AST 等价 + off/on 响应 + 线程池自证）
-# 覆盖 13 个迁移：3 个回测端点（523b353）+ 第 4 批 5 个端点（77bc366）+ 第 5 批 5 个端点（6d0e434）
+# 覆盖 19 个迁移：3 个回测端点（523b353）+ 第 4 批 5 端点（77bc366）+ 第 5 批 5 端点（6d0e434）+ 第 6 批 6 端点（497550f）
 python scripts/offload_switch_diff.py --check
 
 # L10 并发压测 + Tier B 留痕（Phase 6 第 3 批起）

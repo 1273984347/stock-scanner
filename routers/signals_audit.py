@@ -2,8 +2,40 @@
 
 from fastapi import APIRouter
 from .common import *  # noqa: F401,F403
+from lib.infra.async_offload import run_blocking
 
 router = APIRouter()
+
+def _compute_signal_accuracy(days):
+    """原 `GET /api/signals` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.scoring.signal_tracker import SignalTracker
+    tracker = SignalTracker()
+    tracker.update_actual_returns()
+    summary = tracker.evaluate_signals(days=days)
+    recent = tracker.get_recent_signals(days=days)
+
+    # 按 source 分组统计
+    by_source = {}
+    for s in recent:
+        src = s.get("source", "unknown")
+        if src not in by_source:
+            by_source[src] = {"count": 0, "correct": 0}
+        by_source[src]["count"] += 1
+        if s.get("is_correct"):
+            by_source[src]["correct"] += 1
+    for src in by_source:
+        cnt = by_source[src]["count"]
+        by_source[src]["accuracy"] = round(by_source[src]["correct"] / cnt, 4) if cnt > 0 else 0
+
+    result = {
+        "summary": summary,
+        "recent": recent,
+        "by_source": by_source,
+        "timestamp": datetime.now().isoformat(),
+    }
+    _cache_set("signals", result)
+    return result
+
 
 @router.get("/api/signals", dependencies=[Security(verify_api_key)])
 async def signal_accuracy(days: int = Query(default=30, ge=1, le=365)):
@@ -13,33 +45,7 @@ async def signal_accuracy(days: int = Query(default=30, ge=1, le=365)):
         return cached
 
     try:
-        from lib.scoring.signal_tracker import SignalTracker
-        tracker = SignalTracker()
-        tracker.update_actual_returns()
-        summary = tracker.evaluate_signals(days=days)
-        recent = tracker.get_recent_signals(days=days)
-
-        # 按 source 分组统计
-        by_source = {}
-        for s in recent:
-            src = s.get("source", "unknown")
-            if src not in by_source:
-                by_source[src] = {"count": 0, "correct": 0}
-            by_source[src]["count"] += 1
-            if s.get("is_correct"):
-                by_source[src]["correct"] += 1
-        for src in by_source:
-            cnt = by_source[src]["count"]
-            by_source[src]["accuracy"] = round(by_source[src]["correct"] / cnt, 4) if cnt > 0 else 0
-
-        result = {
-            "summary": summary,
-            "recent": recent,
-            "by_source": by_source,
-            "timestamp": datetime.now().isoformat(),
-        }
-        _cache_set("signals", result)
-        return result
+        return await run_blocking("signals", _compute_signal_accuracy, days)
     except Exception as e:
         logger.error(f"信号准确率查询失败: {e}")
         return {"summary": {}, "recent": [], "by_source": {}}
