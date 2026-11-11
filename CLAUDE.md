@@ -366,7 +366,9 @@ curl http://localhost:8000/api/scan
 
 | 文件 | 说明 |
 |:-----|:-----|
-| `config.py` | 全局配置 (策略/风控/LLM/ML) |
+| `config.py` | 全局配置 (策略/风控/LLM/ML；env 单一真相源 + 调用时 accessor) |
+| `docs/refactor/MIGRATION-GUIDE.md` | 迁移指南：RF-01 全部破坏点（BC-01~08b）before/after + 回滚方式 |
+| `reporter/scan_notify.py` | 盘后选股信号飞书推送/控制台输出（原 notifier.py，P7-2 平迁） |
 | `scanner.py` | 选股策略入口 |
 | `lib/strategy/pipeline.py` | 策略编排核心 |
 | `lib/data/data_layer.py` | 多源数据层 |
