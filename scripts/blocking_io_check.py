@@ -56,6 +56,7 @@ if str(ROOT) not in sys.path:
 CONTRACTS = ROOT / "docs" / "refactor" / "contracts"
 BASELINE_FILE = CONTRACTS / "blocking-io-baseline.json"
 EVIDENCE_FILE = CONTRACTS / "blocking-io-recapture-evidence.json"
+TIER_B_FILE = CONTRACTS / "blocking-io-tier-b.json"
 OWNERSHIP_FILE = CONTRACTS / "route-ownership.json"
 SCHEMA_VERSION = 1
 ROUTE_METHODS = ("get", "post", "put", "delete", "patch", "api_route")
@@ -412,6 +413,145 @@ def recapture(allowed: set[tuple[str, str]], mode: str = "offload") -> tuple[lis
     return failures, new, evidence
 
 
+# ---------------------------------------------------------------- Tier B 留痕
+# ADR-0006 D2 要求「Tier B 轻量文件 IO 逐条登记理由，不得新增、不得长成 Tier A」。
+# 关键诚实性约束：重计算/取数符号所在的端点**必须**进 tier_a_candidates，
+# 不允许为了好看把它登记成「轻量 IO」。group 由符号表机械判定，机器可校验。
+
+LIGHT_IO_TAILS = frozenset({
+    "_cache_get", "_cache_set", "_load_cache", "_load_alert_rules",
+    "_save_alert_rules", "_flush_metrics", "_record_metric",
+    "exists", "stat", "glob", "rglob", "mkdir", "unlink", "is_file", "is_dir",
+    "open", "read_text", "write_text", "read_bytes", "write_bytes",
+    "namelist", "extractall", "writerow", "seek", "write", "save", "read",
+    "read_csv", "read_parquet", "to_csv", "to_parquet", "read_excel", "to_excel",
+    "load", "dump", "ZipFile", "BytesIO", "StringIO", "sleep",
+})
+
+COMPUTE_TAILS = frozenset({
+    "_get_orchestrator", "_batch_get_stock_hist",
+    "get_realtime_quotes", "get_stock_hist", "get_stock_hist_multi_source",
+    "get_index_hist", "iterate", "iterrows", "to_dict", "tolist", "mean",
+    "head", "apply", "corr", "rolling", "nlargest", "compute_all_signals",
+    "compute_ic", "compute_sector_scores", "compute_atr", "compute_var_cvar",
+    "compute_correlation_matrix", "full_risk_assessment", "get_market_sentiment",
+    "evaluate_macro_gate", "detect_market_regime", "evaluate_signals",
+    "evaluate_weights", "get_portfolio_summary", "get_stock_score",
+    "get_recent_trades", "get_recent_signals", "get_scan_history",
+    "get_scan_detail", "get_notifications", "get_ranking", "get_risk_budget",
+    "get_stock_blocks", "check_stop_loss", "calc_market_exposure",
+    "calc_composite_verdict", "update_actual_returns", "run_test", "get_config",
+    "run_factor_backtest", "BacktestRunner", "WalkForwardBacktest",
+    "summarize_rounds", "run", "compute_ic_weighted_score",
+})
+
+# 泛名只按完整点号名归类：csv.writer 是内存写、pdf_generator.generate 是重计算，
+# 只看尾名会把二者混为一谈（坑表 P-28 同构）。
+TIER_B_FULL_OVERRIDES = {
+    "csv.writer": "light_io",
+    "t.start": "light_io",
+    "snapshot_manager.save": "light_io",
+    "snapshot_manager.list": "light_io",
+    "snapshot_manager.restore": "light_io",
+    "json.load": "light_io",
+    "json.dump": "light_io",
+    "wb.save": "light_io",
+    "zf.write": "light_io",
+    "f.write": "light_io",
+    "pdf_generator.generate": "compute_pending",
+    "arr.sum": "compute_pending",
+    "arr.mean": "compute_pending",
+    "wf.run": "compute_pending",
+    "unified.to_dict": "compute_pending",
+}
+
+REASON_BY_GROUP = {
+    "light_io": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；"
+                "单次开销低于线程调度成本，登记保留且禁止新增",
+    "compute_pending": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，"
+                       "明确列为 Phase 6 遗留，不伪装成 Tier B",
+    "unclassified": "未归类符号：必须先补分类规则并说明理由，否则不得推进",
+}
+
+
+def _tier_b_group(callee: str) -> str:
+    if callee in TIER_B_FULL_OVERRIDES:
+        return TIER_B_FULL_OVERRIDES[callee]
+    tail = callee.rsplit(".", 1)[-1]
+    if tail in LIGHT_IO_TAILS:
+        return "light_io"
+    if tail in COMPUTE_TAILS:
+        return "compute_pending"
+    return "unclassified"
+
+
+def capture_tier_b(base: dict | None = None) -> dict:
+    d = base if base is not None else json.loads(
+        BASELINE_FILE.read_text(encoding="utf-8"))
+    rows: list[dict] = []
+    candidates: dict[str, dict] = {}
+    for e in d["endpoints"]:
+        key = f"{e['method']} {e['path']}"
+        for callee, count in sorted(e["blocking"].items()):
+            group = _tier_b_group(callee)
+            rows.append({"endpoint": key, "callee": callee, "count": count,
+                         "group": group, "reason": REASON_BY_GROUP[group]})
+            if group == "compute_pending":
+                rec = candidates.setdefault(key, {
+                    "endpoint": key, "status": "not_offloaded",
+                    "callees": [], "blocking_calls": 0,
+                })
+                rec["callees"].append(callee)
+                rec["blocking_calls"] += count
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "source": "blocking-io-baseline.json",
+        "policy": {
+            "group_is_mechanical": True,
+            "new_blocking_must_be_registered": True,
+            "compute_endpoints_cannot_be_marked_light_io": True,
+        },
+        "counts": {
+            "registered": len(rows),
+            "blocking_calls": sum(r["count"] for r in rows),
+            "light_io_entries": sum(1 for r in rows if r["group"] == "light_io"),
+            "compute_pending_entries": sum(1 for r in rows
+                                           if r["group"] == "compute_pending"),
+            "unclassified_entries": sum(1 for r in rows
+                                        if r["group"] == "unclassified"),
+            "tier_a_candidate_endpoints": len(candidates),
+        },
+        "tier_a_candidates": [candidates[k] for k in sorted(candidates)],
+        "registered": rows,
+    }
+
+
+def check_tier_b(live: dict) -> list[str]:
+    if not TIER_B_FILE.exists():
+        return ["tier-b register missing (run --tier-b first)"]
+    reg = json.loads(TIER_B_FILE.read_text(encoding="utf-8"))
+    failures: list[str] = []
+    known = {(r["endpoint"], r["callee"]): r for r in reg["registered"]}
+    for e in live["endpoints"]:
+        key = f"{e['method']} {e['path']}"
+        for callee, count in e["blocking"].items():
+            entry = known.get((key, callee))
+            if entry is None:
+                failures.append(f"UNREGISTERED blocking symbol: {key} :: {callee}")
+                continue
+            expected_group = _tier_b_group(callee)
+            if entry["group"] != expected_group:
+                failures.append(f"tier-b group tampered: {key} :: {callee} "
+                                f"{entry['group']} != {expected_group}")
+            if count > entry["count"]:
+                failures.append(f"registered blocking count exceeded: {key} :: "
+                                f"{callee} {entry['count']} -> {count}")
+    if reg["counts"]["unclassified_entries"]:
+        failures.append(f"{reg['counts']['unclassified_entries']} unclassified "
+                        f"blocking symbol(s): add a classification rule first")
+    return failures
+
+
 def check(live: dict | None = None, baseline: dict | None = None) -> list[str]:
     live = live if live is not None else capture()
     base = baseline if baseline is not None else json.loads(
@@ -470,6 +610,9 @@ def check(live: dict | None = None, baseline: dict | None = None) -> list[str]:
     if recomputed != live["counts"]:
         failures.append(f"counts inconsistent: {recomputed} vs {live['counts']}")
 
+    # 6. Tier B 逐条登记：新出现的阻塞符号必须先写明理由，且不许把重计算端点
+    #    手工标成「轻量 IO」（ADR-0006 D2）
+    failures += check_tier_b(live)
     return failures
 
 
@@ -548,12 +691,34 @@ def main() -> int:
     g.add_argument("--summary", action="store_true")
     g.add_argument("--selftest", action="store_true")
     g.add_argument("--recapture", action="store_true")
+    g.add_argument("--tier-b", action="store_true")
     ap.add_argument("--allow-endpoints", default="",
                     help="comma-separated 'METHOD /path' keys allowed to change on --recapture")
     ap.add_argument("--mode", choices=("offload", "refactor"), default="offload",
                     help="offload requires blocking down + offloaded up; "
                          "refactor allows unchanged blocking but still forbids increases")
     args = ap.parse_args()
+
+    if args.tier_b:
+        data = capture_tier_b()
+        bad = [r for r in data["registered"] if r["group"] == "unclassified"]
+        if bad:
+            print(f"[FAIL] tier-b: {len(bad)} unclassified blocking symbol(s); "
+                  f"add a classification rule before registering")
+            for r in bad[:20]:
+                print(f"       {r['callee']}  {r['endpoint']}")
+            return 1
+        CONTRACTS.mkdir(parents=True, exist_ok=True)
+        TIER_B_FILE.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8")
+        c = data["counts"]
+        print(f"[OK] tier-b register written: {TIER_B_FILE.name} "
+              f"({c['registered']} entries / {c['blocking_calls']} blocking calls; "
+              f"light_io={c['light_io_entries']}, "
+              f"compute_pending={c['compute_pending_entries']}, "
+              f"Tier A candidate endpoints={c['tier_a_candidate_endpoints']})")
+        return 0
 
     if args.recapture:
         allowed = set()

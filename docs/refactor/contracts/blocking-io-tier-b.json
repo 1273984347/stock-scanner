@@ -1,0 +1,1762 @@
+{
+  "counts": {
+    "blocking_calls": 228,
+    "compute_pending_entries": 89,
+    "light_io_entries": 112,
+    "registered": 201,
+    "tier_a_candidate_endpoints": 35,
+    "unclassified_entries": 0
+  },
+  "policy": {
+    "compute_endpoints_cannot_be_marked_light_io": true,
+    "group_is_mechanical": true,
+    "new_blocking_must_be_registered": true
+  },
+  "registered": [
+    {
+      "callee": "ab_tester.run_test",
+      "count": 1,
+      "endpoint": "POST /api/ab-test/run",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "ALERT_RULES_FILE.exists",
+      "count": 1,
+      "endpoint": "POST /api/alerts/check",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_load_alert_rules",
+      "count": 1,
+      "endpoint": "POST /api/alerts/check",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "json.load",
+      "count": 1,
+      "endpoint": "POST /api/alerts/check",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "open",
+      "count": 1,
+      "endpoint": "POST /api/alerts/check",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "ALERT_RULES_FILE.exists",
+      "count": 1,
+      "endpoint": "GET /api/alerts/rules",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_load_alert_rules",
+      "count": 1,
+      "endpoint": "GET /api/alerts/rules",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "json.load",
+      "count": 1,
+      "endpoint": "GET /api/alerts/rules",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "open",
+      "count": 1,
+      "endpoint": "GET /api/alerts/rules",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "ALERT_RULES_FILE.exists",
+      "count": 1,
+      "endpoint": "POST /api/alerts/rules",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_load_alert_rules",
+      "count": 1,
+      "endpoint": "POST /api/alerts/rules",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_save_alert_rules",
+      "count": 1,
+      "endpoint": "POST /api/alerts/rules",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "json.dump",
+      "count": 1,
+      "endpoint": "POST /api/alerts/rules",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "json.load",
+      "count": 1,
+      "endpoint": "POST /api/alerts/rules",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "open",
+      "count": 2,
+      "endpoint": "POST /api/alerts/rules",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "ALERT_RULES_FILE.exists",
+      "count": 1,
+      "endpoint": "DELETE /api/alerts/rules/{rule_id}",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_load_alert_rules",
+      "count": 1,
+      "endpoint": "DELETE /api/alerts/rules/{rule_id}",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_save_alert_rules",
+      "count": 1,
+      "endpoint": "DELETE /api/alerts/rules/{rule_id}",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "json.dump",
+      "count": 1,
+      "endpoint": "DELETE /api/alerts/rules/{rule_id}",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "json.load",
+      "count": 1,
+      "endpoint": "DELETE /api/alerts/rules/{rule_id}",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "open",
+      "count": 2,
+      "endpoint": "DELETE /api/alerts/rules/{rule_id}",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "ALERT_RULES_FILE.exists",
+      "count": 1,
+      "endpoint": "PATCH /api/alerts/rules/{rule_id}",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_load_alert_rules",
+      "count": 1,
+      "endpoint": "PATCH /api/alerts/rules/{rule_id}",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_save_alert_rules",
+      "count": 1,
+      "endpoint": "PATCH /api/alerts/rules/{rule_id}",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "json.dump",
+      "count": 1,
+      "endpoint": "PATCH /api/alerts/rules/{rule_id}",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "json.load",
+      "count": 1,
+      "endpoint": "PATCH /api/alerts/rules/{rule_id}",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "open",
+      "count": 2,
+      "endpoint": "PATCH /api/alerts/rules/{rule_id}",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 1,
+      "endpoint": "GET /api/attribution",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_set",
+      "count": 1,
+      "endpoint": "GET /api/attribution",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "tl.get_recent_trades",
+      "count": 1,
+      "endpoint": "GET /api/attribution",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "get_scan_history",
+      "count": 1,
+      "endpoint": "GET /api/audit",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "get_scan_detail",
+      "count": 1,
+      "endpoint": "GET /api/audit/{scan_id}",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "backup_dir.mkdir",
+      "count": 1,
+      "endpoint": "POST /api/backup/create",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "backup_file.stat",
+      "count": 1,
+      "endpoint": "POST /api/backup/create",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "file_path.is_file",
+      "count": 1,
+      "endpoint": "POST /api/backup/create",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "target_path.is_dir",
+      "count": 1,
+      "endpoint": "POST /api/backup/create",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "target_path.is_file",
+      "count": 1,
+      "endpoint": "POST /api/backup/create",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "target_path.rglob",
+      "count": 1,
+      "endpoint": "POST /api/backup/create",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "zf.write",
+      "count": 2,
+      "endpoint": "POST /api/backup/create",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "zipfile.ZipFile",
+      "count": 1,
+      "endpoint": "POST /api/backup/create",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "backup_dir.exists",
+      "count": 1,
+      "endpoint": "GET /api/backup/list",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "backup_dir.glob",
+      "count": 1,
+      "endpoint": "GET /api/backup/list",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "file.stat",
+      "count": 2,
+      "endpoint": "GET /api/backup/list",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "backup_path.exists",
+      "count": 1,
+      "endpoint": "POST /api/backup/restore",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "extract_dir.mkdir",
+      "count": 1,
+      "endpoint": "POST /api/backup/restore",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "zf.extractall",
+      "count": 1,
+      "endpoint": "POST /api/backup/restore",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "zf.namelist",
+      "count": 1,
+      "endpoint": "POST /api/backup/restore",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "zipfile.ZipFile",
+      "count": 1,
+      "endpoint": "POST /api/backup/restore",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "backup_path.exists",
+      "count": 1,
+      "endpoint": "DELETE /api/backup/{backup_file}",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "backup_path.unlink",
+      "count": 1,
+      "endpoint": "DELETE /api/backup/{backup_file}",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 4,
+      "endpoint": "GET /api/dashboard",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_set",
+      "count": 3,
+      "endpoint": "GET /api/dashboard",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_get_orchestrator",
+      "count": 1,
+      "endpoint": "GET /api/dashboard",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "evaluate_macro_gate",
+      "count": 1,
+      "endpoint": "GET /api/dashboard",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "mean",
+      "count": 1,
+      "endpoint": "GET /api/dashboard",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "orchestrator.get_market_sentiment",
+      "count": 1,
+      "endpoint": "GET /api/dashboard",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "error_file.parent.mkdir",
+      "count": 1,
+      "endpoint": "POST /api/errors",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "f.write",
+      "count": 1,
+      "endpoint": "POST /api/errors",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "open",
+      "count": 1,
+      "endpoint": "POST /api/errors",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "get_config",
+      "count": 1,
+      "endpoint": "GET /api/export/config",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "to_dict",
+      "count": 4,
+      "endpoint": "GET /api/export/config",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 5,
+      "endpoint": "POST /api/export/pdf",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "pdf_generator.generate",
+      "count": 1,
+      "endpoint": "POST /api/export/pdf",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "csv.writer",
+      "count": 1,
+      "endpoint": "GET /api/export/positions",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "output.seek",
+      "count": 1,
+      "endpoint": "GET /api/export/positions",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "writer.writerow",
+      "count": 2,
+      "endpoint": "GET /api/export/positions",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "output.seek",
+      "count": 1,
+      "endpoint": "GET /api/export/positions/excel",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "wb.save",
+      "count": 1,
+      "endpoint": "GET /api/export/positions/excel",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "csv.writer",
+      "count": 1,
+      "endpoint": "GET /api/export/trades",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "output.seek",
+      "count": 1,
+      "endpoint": "GET /api/export/trades",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "tl.get_recent_trades",
+      "count": 1,
+      "endpoint": "GET /api/export/trades",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "writer.writerow",
+      "count": 2,
+      "endpoint": "GET /api/export/trades",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "output.seek",
+      "count": 1,
+      "endpoint": "GET /api/export/trades/excel",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "tl.get_recent_trades",
+      "count": 1,
+      "endpoint": "GET /api/export/trades/excel",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "wb.save",
+      "count": 1,
+      "endpoint": "GET /api/export/trades/excel",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 2,
+      "endpoint": "GET /api/exposures",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_set",
+      "count": 1,
+      "endpoint": "GET /api/exposures",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_get_orchestrator",
+      "count": 1,
+      "endpoint": "GET /api/exposures",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "orchestrator.get_stock_score",
+      "count": 1,
+      "endpoint": "GET /api/exposures",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 1,
+      "endpoint": "GET /api/factor-contribution",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_set",
+      "count": 1,
+      "endpoint": "GET /api/factor-contribution",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "arr.mean",
+      "count": 1,
+      "endpoint": "GET /api/factor-contribution",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "arr.sum",
+      "count": 1,
+      "endpoint": "GET /api/factor-contribution",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "mean",
+      "count": 1,
+      "endpoint": "GET /api/factor-contribution",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "tracker.get_recent_signals",
+      "count": 1,
+      "endpoint": "GET /api/factor-contribution",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "tracker.update_actual_returns",
+      "count": 1,
+      "endpoint": "GET /api/factor-contribution",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 1,
+      "endpoint": "GET /api/factor-eval",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_set",
+      "count": 1,
+      "endpoint": "GET /api/factor-eval",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_get_orchestrator",
+      "count": 1,
+      "endpoint": "GET /api/factor-eval",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "compute_all_signals",
+      "count": 1,
+      "endpoint": "GET /api/factor-eval",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "corr.columns.tolist",
+      "count": 1,
+      "endpoint": "GET /api/factor-eval",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "factor_df.apply",
+      "count": 1,
+      "endpoint": "GET /api/factor-eval",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "factor_df.corr",
+      "count": 1,
+      "endpoint": "GET /api/factor-eval",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "orchestrator.get_realtime_quotes",
+      "count": 1,
+      "endpoint": "GET /api/factor-eval",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "orchestrator.get_stock_hist_multi_source",
+      "count": 1,
+      "endpoint": "GET /api/factor-eval",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "quotes.head",
+      "count": 1,
+      "endpoint": "GET /api/factor-eval",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "quotes.nlargest",
+      "count": 1,
+      "endpoint": "GET /api/factor-eval",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "synth.compute_ic",
+      "count": 1,
+      "endpoint": "GET /api/factor-eval",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "top.iterrows",
+      "count": 2,
+      "endpoint": "GET /api/factor-eval",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "tracker.evaluate_signals",
+      "count": 1,
+      "endpoint": "GET /api/factor-ic-history",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_get_orchestrator",
+      "count": 1,
+      "endpoint": "GET /api/factor-scatter",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "compute_all_signals",
+      "count": 1,
+      "endpoint": "GET /api/factor-scatter",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "get_stock_hist",
+      "count": 1,
+      "endpoint": "GET /api/factor-scatter",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "orchestrator.get_realtime_quotes",
+      "count": 1,
+      "endpoint": "GET /api/factor-scatter",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "quotes.head",
+      "count": 1,
+      "endpoint": "GET /api/factor-scatter",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "quotes.nlargest",
+      "count": 1,
+      "endpoint": "GET /api/factor-scatter",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "top.iterrows",
+      "count": 1,
+      "endpoint": "GET /api/factor-scatter",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "get_config",
+      "count": 1,
+      "endpoint": "GET /api/factor-weights",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "cache_dir.exists",
+      "count": 1,
+      "endpoint": "GET /api/health",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "cache_dir.glob",
+      "count": 1,
+      "endpoint": "GET /api/health",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "f.stat",
+      "count": 1,
+      "endpoint": "GET /api/health",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "config_file.write_text",
+      "count": 1,
+      "endpoint": "POST /api/import/config",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "compute_atr",
+      "count": 1,
+      "endpoint": "GET /api/kline/{code}",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "df.iterrows",
+      "count": 1,
+      "endpoint": "GET /api/kline/{code}",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "get_stock_hist",
+      "count": 1,
+      "endpoint": "GET /api/kline/{code}",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "rolling",
+      "count": 2,
+      "endpoint": "GET /api/kline/{code}",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 2,
+      "endpoint": "GET /api/market",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_set",
+      "count": 1,
+      "endpoint": "GET /api/market",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_get_orchestrator",
+      "count": 1,
+      "endpoint": "GET /api/market",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "calc_market_exposure",
+      "count": 1,
+      "endpoint": "GET /api/market",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "evaluate_macro_gate",
+      "count": 1,
+      "endpoint": "GET /api/market",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "orchestrator.get_market_sentiment",
+      "count": 1,
+      "endpoint": "GET /api/market",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "risk_mgr.get_risk_budget",
+      "count": 1,
+      "endpoint": "GET /api/market",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "notification_logger.get_notifications",
+      "count": 1,
+      "endpoint": "GET /api/notifications",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "notification_logger.get_notifications",
+      "count": 1,
+      "endpoint": "GET /api/notifications/stats",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "get_stock_blocks",
+      "count": 1,
+      "endpoint": "GET /api/position-distribution",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_get_orchestrator",
+      "count": 1,
+      "endpoint": "GET /api/position/{code}",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "orchestrator.get_realtime_quotes",
+      "count": 1,
+      "endpoint": "GET /api/position/{code}",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_get_orchestrator",
+      "count": 1,
+      "endpoint": "GET /api/positions",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "orchestrator.get_realtime_quotes",
+      "count": 1,
+      "endpoint": "GET /api/positions",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "pm.check_stop_loss",
+      "count": 1,
+      "endpoint": "GET /api/positions",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "pm.get_portfolio_summary",
+      "count": 1,
+      "endpoint": "GET /api/positions",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "quotes.iterrows",
+      "count": 1,
+      "endpoint": "GET /api/positions",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 1,
+      "endpoint": "GET /api/regime-history",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_set",
+      "count": 1,
+      "endpoint": "GET /api/regime-history",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "detect_market_regime",
+      "count": 1,
+      "endpoint": "GET /api/regime-history",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "get_index_hist",
+      "count": 1,
+      "endpoint": "GET /api/regime-history",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "f.read_text",
+      "count": 1,
+      "endpoint": "GET /api/reports",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "log_path.exists",
+      "count": 1,
+      "endpoint": "GET /api/reports",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "log_path.read_text",
+      "count": 1,
+      "endpoint": "GET /api/reports",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "reports_dir.exists",
+      "count": 1,
+      "endpoint": "GET /api/reports",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "reports_dir.glob",
+      "count": 1,
+      "endpoint": "GET /api/reports",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_batch_get_stock_hist",
+      "count": 1,
+      "endpoint": "GET /api/risk",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 2,
+      "endpoint": "GET /api/risk",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_set",
+      "count": 1,
+      "endpoint": "GET /api/risk",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_get_orchestrator",
+      "count": 2,
+      "endpoint": "GET /api/risk",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "evaluate_macro_gate",
+      "count": 1,
+      "endpoint": "GET /api/risk",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "orchestrator.get_market_sentiment",
+      "count": 1,
+      "endpoint": "GET /api/risk",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "pm.get_portfolio_summary",
+      "count": 1,
+      "endpoint": "GET /api/risk",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "risk_mgr.full_risk_assessment",
+      "count": 1,
+      "endpoint": "GET /api/risk",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "risk_mgr.get_risk_budget",
+      "count": 1,
+      "endpoint": "GET /api/risk",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_batch_get_stock_hist",
+      "count": 1,
+      "endpoint": "GET /api/risk-exposure",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 1,
+      "endpoint": "GET /api/risk-exposure",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_set",
+      "count": 3,
+      "endpoint": "GET /api/risk-exposure",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_get_orchestrator",
+      "count": 1,
+      "endpoint": "GET /api/risk-exposure",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "risk_mgr.compute_correlation_matrix",
+      "count": 1,
+      "endpoint": "GET /api/risk-exposure",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "risk_mgr.compute_var_cvar",
+      "count": 1,
+      "endpoint": "GET /api/risk-exposure",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "json.load",
+      "count": 1,
+      "endpoint": "GET /api/risk/correlation",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "open",
+      "count": 1,
+      "endpoint": "GET /api/risk/correlation",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "positions_file.exists",
+      "count": 1,
+      "endpoint": "GET /api/risk/correlation",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "tolist",
+      "count": 1,
+      "endpoint": "GET /api/risk/correlation",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 1,
+      "endpoint": "GET /api/sankey/flow",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 1,
+      "endpoint": "GET /api/scan",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "t.start",
+      "count": 1,
+      "endpoint": "GET /api/scan",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_get_orchestrator",
+      "count": 1,
+      "endpoint": "GET /api/score/{code}",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "orchestrator.get_stock_score",
+      "count": 1,
+      "endpoint": "GET /api/score/{code}",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_load_cache",
+      "count": 1,
+      "endpoint": "GET /api/sector-flow",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "iterrows",
+      "count": 1,
+      "endpoint": "GET /api/sector-flow",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "sectors_data.head",
+      "count": 1,
+      "endpoint": "GET /api/sector-flow",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 1,
+      "endpoint": "GET /api/sector-heatmap",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_set",
+      "count": 1,
+      "endpoint": "GET /api/sector-heatmap",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "compute_sector_scores",
+      "count": 1,
+      "endpoint": "GET /api/sector-heatmap",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "SETTINGS_FILE.exists",
+      "count": 1,
+      "endpoint": "GET /api/settings",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "SETTINGS_FILE.read_text",
+      "count": 1,
+      "endpoint": "GET /api/settings",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "SETTINGS_FILE.parent.mkdir",
+      "count": 1,
+      "endpoint": "POST /api/settings",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "SETTINGS_FILE.write_text",
+      "count": 1,
+      "endpoint": "POST /api/settings",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 1,
+      "endpoint": "GET /api/signals",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_set",
+      "count": 1,
+      "endpoint": "GET /api/signals",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "tracker.evaluate_signals",
+      "count": 1,
+      "endpoint": "GET /api/signals",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "tracker.get_recent_signals",
+      "count": 1,
+      "endpoint": "GET /api/signals",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "tracker.update_actual_returns",
+      "count": 1,
+      "endpoint": "GET /api/signals",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "tracker.evaluate_signals",
+      "count": 1,
+      "endpoint": "GET /api/signals/accuracy-trend",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_get_orchestrator",
+      "count": 1,
+      "endpoint": "GET /api/stock/{code}",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "calc_composite_verdict",
+      "count": 1,
+      "endpoint": "GET /api/stock/{code}",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "compute_all_signals",
+      "count": 1,
+      "endpoint": "GET /api/stock/{code}",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "orchestrator.get_stock_hist",
+      "count": 1,
+      "endpoint": "GET /api/stock/{code}",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "f.stat",
+      "count": 1,
+      "endpoint": "GET /api/strategy/history",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "history_dir.glob",
+      "count": 1,
+      "endpoint": "GET /api/strategy/history",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "history_dir.mkdir",
+      "count": 1,
+      "endpoint": "GET /api/strategy/history",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "json.load",
+      "count": 1,
+      "endpoint": "GET /api/strategy/history",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "open",
+      "count": 1,
+      "endpoint": "GET /api/strategy/history",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "strategy_ranker.get_ranking",
+      "count": 1,
+      "endpoint": "GET /api/strategy/ranking",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "optimizer.evaluate_weights",
+      "count": 1,
+      "endpoint": "GET /api/strategy/recommend",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "history_dir.mkdir",
+      "count": 1,
+      "endpoint": "POST /api/strategy/save",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "json.dump",
+      "count": 1,
+      "endpoint": "POST /api/strategy/save",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "open",
+      "count": 1,
+      "endpoint": "POST /api/strategy/save",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "snapshot_manager.save",
+      "count": 1,
+      "endpoint": "POST /api/strategy/snapshot",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "snapshot_manager.restore",
+      "count": 1,
+      "endpoint": "POST /api/strategy/snapshot/{snapshot_id}/apply",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "snapshot_manager.list",
+      "count": 1,
+      "endpoint": "GET /api/strategy/snapshots",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "tl.get_recent_trades",
+      "count": 1,
+      "endpoint": "GET /api/trade-history",
+      "group": "compute_pending",
+      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 1,
+      "endpoint": "GET /api/treemap/sectors",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    }
+  ],
+  "schema_version": 1,
+  "source": "blocking-io-baseline.json",
+  "tier_a_candidates": [
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "tl.get_recent_trades"
+      ],
+      "endpoint": "GET /api/attribution",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "get_scan_history"
+      ],
+      "endpoint": "GET /api/audit",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "get_scan_detail"
+      ],
+      "endpoint": "GET /api/audit/{scan_id}",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 4,
+      "callees": [
+        "_get_orchestrator",
+        "evaluate_macro_gate",
+        "mean",
+        "orchestrator.get_market_sentiment"
+      ],
+      "endpoint": "GET /api/dashboard",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 5,
+      "callees": [
+        "get_config",
+        "to_dict"
+      ],
+      "endpoint": "GET /api/export/config",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "tl.get_recent_trades"
+      ],
+      "endpoint": "GET /api/export/trades",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "tl.get_recent_trades"
+      ],
+      "endpoint": "GET /api/export/trades/excel",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 2,
+      "callees": [
+        "_get_orchestrator",
+        "orchestrator.get_stock_score"
+      ],
+      "endpoint": "GET /api/exposures",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 5,
+      "callees": [
+        "arr.mean",
+        "arr.sum",
+        "mean",
+        "tracker.get_recent_signals",
+        "tracker.update_actual_returns"
+      ],
+      "endpoint": "GET /api/factor-contribution",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 12,
+      "callees": [
+        "_get_orchestrator",
+        "compute_all_signals",
+        "corr.columns.tolist",
+        "factor_df.apply",
+        "factor_df.corr",
+        "orchestrator.get_realtime_quotes",
+        "orchestrator.get_stock_hist_multi_source",
+        "quotes.head",
+        "quotes.nlargest",
+        "synth.compute_ic",
+        "top.iterrows"
+      ],
+      "endpoint": "GET /api/factor-eval",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "tracker.evaluate_signals"
+      ],
+      "endpoint": "GET /api/factor-ic-history",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 7,
+      "callees": [
+        "_get_orchestrator",
+        "compute_all_signals",
+        "get_stock_hist",
+        "orchestrator.get_realtime_quotes",
+        "quotes.head",
+        "quotes.nlargest",
+        "top.iterrows"
+      ],
+      "endpoint": "GET /api/factor-scatter",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "get_config"
+      ],
+      "endpoint": "GET /api/factor-weights",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 5,
+      "callees": [
+        "compute_atr",
+        "df.iterrows",
+        "get_stock_hist",
+        "rolling"
+      ],
+      "endpoint": "GET /api/kline/{code}",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 5,
+      "callees": [
+        "_get_orchestrator",
+        "calc_market_exposure",
+        "evaluate_macro_gate",
+        "orchestrator.get_market_sentiment",
+        "risk_mgr.get_risk_budget"
+      ],
+      "endpoint": "GET /api/market",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "notification_logger.get_notifications"
+      ],
+      "endpoint": "GET /api/notifications",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "notification_logger.get_notifications"
+      ],
+      "endpoint": "GET /api/notifications/stats",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "get_stock_blocks"
+      ],
+      "endpoint": "GET /api/position-distribution",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 2,
+      "callees": [
+        "_get_orchestrator",
+        "orchestrator.get_realtime_quotes"
+      ],
+      "endpoint": "GET /api/position/{code}",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 5,
+      "callees": [
+        "_get_orchestrator",
+        "orchestrator.get_realtime_quotes",
+        "pm.check_stop_loss",
+        "pm.get_portfolio_summary",
+        "quotes.iterrows"
+      ],
+      "endpoint": "GET /api/positions",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 2,
+      "callees": [
+        "detect_market_regime",
+        "get_index_hist"
+      ],
+      "endpoint": "GET /api/regime-history",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 8,
+      "callees": [
+        "_batch_get_stock_hist",
+        "_get_orchestrator",
+        "evaluate_macro_gate",
+        "orchestrator.get_market_sentiment",
+        "pm.get_portfolio_summary",
+        "risk_mgr.full_risk_assessment",
+        "risk_mgr.get_risk_budget"
+      ],
+      "endpoint": "GET /api/risk",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 4,
+      "callees": [
+        "_batch_get_stock_hist",
+        "_get_orchestrator",
+        "risk_mgr.compute_correlation_matrix",
+        "risk_mgr.compute_var_cvar"
+      ],
+      "endpoint": "GET /api/risk-exposure",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "tolist"
+      ],
+      "endpoint": "GET /api/risk/correlation",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 2,
+      "callees": [
+        "_get_orchestrator",
+        "orchestrator.get_stock_score"
+      ],
+      "endpoint": "GET /api/score/{code}",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 2,
+      "callees": [
+        "iterrows",
+        "sectors_data.head"
+      ],
+      "endpoint": "GET /api/sector-flow",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "compute_sector_scores"
+      ],
+      "endpoint": "GET /api/sector-heatmap",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 3,
+      "callees": [
+        "tracker.evaluate_signals",
+        "tracker.get_recent_signals",
+        "tracker.update_actual_returns"
+      ],
+      "endpoint": "GET /api/signals",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "tracker.evaluate_signals"
+      ],
+      "endpoint": "GET /api/signals/accuracy-trend",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 4,
+      "callees": [
+        "_get_orchestrator",
+        "calc_composite_verdict",
+        "compute_all_signals",
+        "orchestrator.get_stock_hist"
+      ],
+      "endpoint": "GET /api/stock/{code}",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "strategy_ranker.get_ranking"
+      ],
+      "endpoint": "GET /api/strategy/ranking",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "optimizer.evaluate_weights"
+      ],
+      "endpoint": "GET /api/strategy/recommend",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "tl.get_recent_trades"
+      ],
+      "endpoint": "GET /api/trade-history",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "ab_tester.run_test"
+      ],
+      "endpoint": "POST /api/ab-test/run",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 1,
+      "callees": [
+        "pdf_generator.generate"
+      ],
+      "endpoint": "POST /api/export/pdf",
+      "status": "not_offloaded"
+    }
+  ]
+}

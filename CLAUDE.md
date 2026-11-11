@@ -1,6 +1,6 @@
 # CLAUDE.md — Stock Scanner (个人量化选股系统)
 
-> 最后更新：2026-11-11 | 本次更新：RF-01 Phase 6 第 2 批 —— `FEATURE_ASYNC_OFFLOAD`（默认 off）+ `lib/infra/async_offload.py` 唯一入口、3 个 Tier A 端点 offload、共享状态收口加锁、L9 对拍；Phase 6 未收官
+> 最后更新：2026-11-11 | 本次更新：RF-01 Phase 6 第 3 批 —— 缓存范围裁剪（ADR-0008）、L10 并发压测、Tier B 201 条留痕、收官前核验；**Phase 6 仍未收官：35 个 Tier A 候选端点待切换**（ADR-0009）
 
 ## 工作流
 
@@ -284,7 +284,8 @@ Tushare (主) → AkShare → WeStock → 通达信 → Baostock → 东方财�
 | 服务 | `uvicorn api:app --reload` | API 手工验证 |
 | **L8（新增）** | `python scripts/blocking_io_check.py --check` | 阻塞 IO 基线：blocking 只准降 / other 冻结 |
 | **L8 自证** | `python scripts/blocking_io_check.py --selftest` | 证明门禁会因回归判红 |
-| **L9（新增）** | `python scripts/offload_switch_diff.py --check` | 迁移 AST 等价 + off/on 响应 diff + 线程池自证 |
+| **L9** | `python scripts/offload_switch_diff.py --check` | 迁移 AST 等价 + off/on 响应 diff + 线程池自证 |
+| **L10（新增）** | `python scripts/concurrency_probe.py --check` | 20 并发 P95 + 36 条前端路径冻结；`--tier-b` 清单由 L8 `--check` 自动校验 |
 
 ## 强制触发规则
 
@@ -397,6 +398,10 @@ curl http://localhost:8000/api/scan
 | `docs/refactor/contracts/blocking-io-recapture-evidence.json` | L8 基线历次重建的 G4 字段级取证（历史数组，不覆盖） |
 | `docs/adr/0007-*.md` | 第 2 批决策：灰度入口 / Tier A 切换 / 共享状态加锁 / 分层重建基线 |
 | `tests/features/test_async_offload.py` / `tests/test_shared_state_locks.py` / `tests/test_phase6_batch2.py` | 19 + 5 + 5 例：开关两条路径、并发状态流转、收口 AST 守卫与取证一致性 |
+| `scripts/concurrency_probe.py` | **L10**：20 并发 × 3 轮 P95（批次发起计时，坑表 P-70）+ 36 条前端路径契约冻结 |
+| `docs/refactor/contracts/blocking-io-tier-b.json` | Tier B 201 条逐条理由 + **35 个 Tier A 候选端点**显式遗留（收官判据依据） |
+| `docs/adr/0008-*.md` / `docs/adr/0009-*.md` | 缓存范围裁剪；压测口径修订与收官前核验结论 |
+| `tests/test_phase6_batch3.py` | 7 例：既有缓存证据、禁止偷偷加缓存开关、压测口径、Tier B 机械分类与遗留不可隐藏 |
 
 ---
 

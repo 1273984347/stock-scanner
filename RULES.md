@@ -6,7 +6,7 @@
 > - `RULES.md` 说**什么不许做 / 必须怎么做**（硬约束）
 > - `docs/refactor/pitfalls.md` 说**为什么**（每条规矩背后的真实坑）
 >
-> 最后更新：2026-11-11（RF-01 Phase 6 第 2 批：offload 入口 / Tier A 切换 / 共享状态加锁 / L9）
+> 最后更新：2026-11-11（RF-01 Phase 6 第 3 批：缓存范围裁剪 / L10 并发压测 / Tier B 留痕 / 收官前核验）
 
 ---
 
@@ -135,8 +135,11 @@ infra  ←  data  ←  scoring  ←  strategy
 > **第 2 批 ✅**（`FEATURE_ASYNC_OFFLOAD` 默认 off + `lib/infra/async_offload.py` 唯一入口、
 > 3 个 Tier A 回测端点 offload、共享状态收口加锁、L9 对拍，ADR-0007）。
 > 实测：blocking **242 → 228**，offloaded **1 → 4**；两次基线重建均按 G4 字段级取证并留历史。
-> **Phase 6 未收官**：TTL 缓存 / 20 并发 P95 压测 / Tier B 逐条留痕 / 收官验收表留第 3 批。
-> 改 `routers/` 后必须同时跑 L7、L8、L9。
+> **第 3 批 ✅**（TTL 缓存按 ADR-0008 裁剪、L10 并发压测、Tier B 201 条逐条留痕、
+> 收官前核验表）；**Phase 6 仍未收官** —— Tier B 登记实测出
+> **35 个 Tier A 候选端点尚未 offload**，按 ADR-0006 D2 不能宣布收官（ADR-0009 D5）。
+> 完整遗留清单见 `docs/refactor/contracts/blocking-io-tier-b.json`。
+> 改 `routers/` 后必须同时跑 L7、L8、L9、L10。
 
 ---
 
@@ -193,7 +196,7 @@ infra  ←  data  ←  scoring  ←  strategy
 # L0 语法
 python -m compileall -q lib scripts tests reporter backtest
 
-# L1 全量测试（当前基线：1305 passed / 12 skipped，约 76s；2026-11-11 Phase 6 第 2 批复跑）
+# L1 全量测试（当前基线：1312 passed / 12 skipped，约 62s；2026-11-11 Phase 6 第 3 批复跑）
 python -m pytest tests/ -q --tb=line -p no:warnings -o log_cli=false
 
 # L2 契约快照（API 对外契约漂移门禁）
@@ -220,6 +223,10 @@ python scripts/blocking_io_check.py --selftest
 
 # L9 offload 开关对拍（Phase 6 第 2 批起；迁移 AST 等价 + off/on 响应 + 线程池自证）
 python scripts/offload_switch_diff.py --check
+
+# L10 并发压测 + Tier B 留痕（Phase 6 第 3 批起）
+python scripts/concurrency_probe.py --check
+# Tier B 清单由 `python scripts/blocking_io_check.py --tier-b` 生成，--check 内自动校验
 ```
 
 | 判据 | 通过标准 |
@@ -233,6 +240,7 @@ python scripts/offload_switch_diff.py --check
 | L7 | `[PASS] route ownership: 68 endpoints / 17 routers / 36 frontend paths`；鉴权依赖数不得减少、契约 diff = 0 |
 | L8 | `[PASS] blocking-io: 68 endpoints / N blocking calls`；`--selftest` 全绿（4 类回归各自命中指定门禁 + 合法修复全绿）；blocking 只准降、offloaded 只准升、`other` 逐字段不变、端点集合与 L7 一致、async 全 true |
 | L9 | `[PASS] offload switch: 3 endpoints`；固定 commit `523b353` 源码 AST 逐语句等价；off/on 整份响应字段顺序一致；线程池 off=0 / on=1 且工作线程与主线程不同；消费者登记与实际调用点双向对齐 |
+| L10 | `[PASS] concurrency: 3 endpoints x 20 concurrent x 3 rounds`；P95 按**批次发起**计时、`on <= off × 1.10`（不得放宽阈值）、3/3 改善；36 条前端路径成员+数量双校验且 off/on OpenAPI 一致；Tier B 登记 0 未分类、新增阻塞符号未登记即判红 |
 
 ### 4.2 覆盖率门禁
 
