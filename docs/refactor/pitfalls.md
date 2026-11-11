@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**67 条**（P-01～P-67），分八类。
+> **规模**：**69 条**（P-01～P-69），分八类。
 > **姊妹文档**：执行过程与逐批验收见 `docs/plans/2026-11-07-refactor-plan.md` 第七节；
 > 基线读数见 `docs/refactor/baseline.md`；尺子口径见 `docs/refactor/README.md`。
 
@@ -1174,6 +1174,60 @@ Windows 上多进程同时 `open()` 同一 `.lock` 文件会间歇抢不到（�
 
 ---
 
+### P-68 · 把 `lineno` 写进基线，「其余链路逐字节一致」会退化成不可执行
+
+**现象**：Phase 6 第 2 批把 `routers/common.py::_flush_metrics()` 的函数体收口成薄壳，
+文件少了约 14 行。随后按 G4 重建 L8 基线时，
+`--recapture --mode refactor --allow-endpoints "GET /api/scan,GET /api/scan/status"`
+报 **16 个「UNEXPECTED drift in untouched endpoint」**，但这 16 个端点一行代码都没改：
+`alerts` 系列、`/api/dashboard`、`/api/market`、`/api/risk`、`/api/score/{code}` …
+而同一时刻 `--check` 只报了 2 个端点漂移。
+
+**根因**：`calls` 记录里带 `lineno`，而 helper 展开是按**源码行号**记录调用位置。
+`common.py` 里删掉一段代码，其下方所有 helper 的行号集体前移，
+于是所有经 helper 展开的端点记录都「变了」。但 `--check` 只按 callee 计数比较
+`other` 字典，不含行号 ⇒ 两个口径给出不同结论。
+**行号是实现细节，不是行为契约**（P-05 dtype 同构）：把它纳入逐字节比较，
+等于要求任何无关编辑都必须重建全部端点基线，
+进而诱使执行者把这 16 个端点加进白名单 —— 那才是真正的补丁加补丁。
+
+**修复**：`blocking_io_check.py` 新增 `_normalize_endpoint()`，机器比较时去掉 `lineno`
+再逐字段比；`lineno` 仍保留在基线里供人排查「这个调用在哪」。
+`recapture` 的 evidence 增加 `comparison` 字段写明口径。
+结果：16 个未改动端点恢复为「逐字段一致」，只有真正改动的 2 个端点被允许变化。
+
+**推广**：**设计基线字段时先问「这个字段会不会被无关编辑改变」**。
+会变的字段（行号、时间戳、绝对路径、随机盐、dtype）只能进「人读」部分，
+不能进「机器比较」部分；否则门禁越严越不可用，最后一定被绕过。
+判据要能区分「记录变了」和「行为变了」。
+
+---
+
+### P-69 · 取证脚本导入业务模块时，模块级后台预取线程会污染 off/on 对照
+
+**现象**：`scripts/offload_switch_diff.py` 首次实跑，stdout 里出现两次
+`后台预获取沪深300数据... 沪深300数据缓存成功`，每次约 4.4 秒。
+同一次 `--check` 里 off 与 on 两侧先后执行，后台线程可能在两次采集之间写入
+`hs300_cache.parquet` / `_cache_set("hs300", ...)` ⇒ 两侧读到的缓存不一致，
+「响应 diff = 0」即使通过也不能证明 offload 没改行为。
+
+**根因**：`routers/common.py` 模块级有
+`if not SKIP_HS300_PREFETCH: threading.Thread(target=_prefetch_hs300).start()`。
+`from routers import backtest` 会连带导入 common ⇒ 触发网络预取。
+`contract_snapshot.py::collect()` 早就在导入前设了 `SKIP_HS300_PREFETCH=1`，
+新脚本没有沿用这个既有口径（P-17 / P-33 的同构复发）。
+
+**修复**：在脚本模块顶部、任何 `routers` 导入之前强制
+`os.environ["SKIP_HS300_PREFETCH"] = "1"`，与其他门禁脚本同一处理口径；
+并用 `unittest.mock.patch` 注入确定性回测结果，整条取证链路零触网。
+
+**推广**：**凡「同一进程内做 A/B 对照」的工具，第一件事是清点模块导入期副作用**
+（预取线程、定时器、单例初始化、缓存预热）。默认禁网 fixture 只能挡 socket，
+挡不住「导入时起的后台线程」；这类线程必须在导入前用环境变量关掉，
+而不是事后 mock 它的结果。
+
+---
+
 ## 附 · 一句话索引（按症状查）
 
 | 症状 | 去查 |
@@ -1201,6 +1255,9 @@ Windows 上多进程同时 `open()` 同一 `.lock` 文件会间歇抢不到（�
 | 「扫描函数体」显示干净，实际还在阻塞事件循环 | P-67 |
 | 计划里的绝对阈值（≤N）根本达不到 | P-67 / ADR-0006 |
 | 门禁红了但说不清是哪条判据红的 | P-10 / P-54 / P-67 |
+| 没改的端点被判「基线漂移」，一查只是行号变了 | P-68 |
+| A/B 对拍里冒出后台预取 / 缓存预热日志 | P-69 / P-33 |
+| 只给调用处补锁，下次又从别处漏进来 | P-68 推广 / ADR-0007 D4 |
 | Actions 额度消耗太快 | P-40 |
 | commit 失败却把旧代码推上去了 | P-43 |
 | CI 红了但看不出是哪道门禁 | P-42 |
@@ -1237,7 +1294,8 @@ Windows 上多进程同时 `open()` 同一 `.lock` 文件会间歇抢不到（�
 
 **文档状态**：2026-11-07 首版（Phase 0 → Phase 3，51 条）；2026-11-10 追加 P-52 / P-53（Phase 4 前置批次）
 与 P-54 / P-55（阶段 A）+ P-56～P-60（阶段 B）+ P-61 / P-62～P-65（Phase 5 拆 api.py 单体）+ P-66（portalocker 打开争用重试）；
-2026-11-11 追加 P-67（Phase 6 第 1 批：阻塞 IO 扫描是空判据 + 绝对阈值被实测推翻），共 **67 条**。
+2026-11-11 追加 P-67（Phase 6 第 1 批：阻塞 IO 扫描是空判据 + 绝对阈值被实测推翻），
+P-68（lineno 进基线使逐字节比较不可执行）与 P-69（导入期 HS300 预取污染 A/B 取证），共 **69 条**。
 **核对基线**：本地全量 pytest 1162 passed / 12 skipped（13.02s）；CI run `42319502027` 3 job 全绿。
 2026-11-10 阶段 A 收官：**1221 passed / 12 skipped**，L0–L5 全 PASS。
 2026-11-10 阶段 B 首批：**1235 passed / 12 skipped**。
@@ -1256,8 +1314,16 @@ P-66 修复 portalocker「打开 .lock 文件」瞬时 PermissionError 逃出重
 实测 68 端点 / 1052 调用 / **242 阻塞调用** / 63 端点含阻塞点 / 1 已 offload；
 helper 展开额外捕获 95 次调用（19 端点）。计划「≤1」判据按第 6 次修正改为单调下降 + 分层，
 决策见 `docs/adr/0006-phase6-blocking-io-criteria.md`；新增 P-67。
-本批全量复跑 **L0–L8 全 PASS**：**1275 passed / 12 skipped / 0 failed（54.95s）**；
+第 1 批验收：**L0–L8 全 PASS，1275 passed / 12 skipped / 0 failed（54.95s）**；
 L2 72 routes / L3 3 链路 / L4 全链路 / L5 9 入口 285 样本 / L6 3 分支 9 响应 0 差异 /
 L7 68 端点 17 router 36 前端路径 / L8 242 blocking + selftest 5 场景全绿。
+2026-11-11 **Phase 6 第 2 批**：`FEATURE_ASYNC_OFFLOAD`（默认 off）+ `lib/infra/async_offload.py`
+唯一入口；3 个 Tier A 回测端点 offload（固定 commit `523b353` AST 逐语句等价）；
+`_scan_tasks` / `_perf_metrics` 收口到带锁 API（AST 守卫防回退）；新增第 9 把尺子 L9；
+L8 基线两次按 G4 重建并留历史证据（blocking 242→228、offloaded 1→4）。
+新增 P-68 / P-69；决策见 `docs/adr/0007-phase6-offload-and-locks.md`。
+第 2 批验收：**L0–L9 全 PASS，1305 passed / 12 skipped / 0 failed（76.23s）**；
+L2–L7 读数同上不变 / L8 228 blocking、4 offloaded + selftest 全绿 /
+L9 3 端点迁移 AST 等价 + off/on 整份响应 0 差异 + 线程池 off=0 on=1（工作线程与主线程不同）。
 后续每批收官时**追加**新条目并在本行更新版本，不要重写已有条目 ——
 **踩坑记录的价值在于保留了当时的错误判据与被推翻的结论**。

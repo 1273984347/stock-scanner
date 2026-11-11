@@ -125,41 +125,32 @@ _start_time = time.time()
 from lib.infra.scan_task_registry import ALLOWED_PRESETS
 
 
-from lib.infra.perf_metrics import _perf_metrics
+from lib.infra.perf_metrics import (
+    _perf_metrics,
+    record_metric as _record_metric_impl,
+    flush_metrics as _flush_metrics_impl,
+)
 
 
 _perf_file = PROJECT_ROOT / "cache" / "perf_baseline.json"
 
 
 def _record_metric(path: str, duration: float, status: int):
-    """记录性能指标（内存中，定期写入）"""
-    _perf_metrics.append({
+    """记录性能指标 —— Phase 6：收口到 lib.infra.perf_metrics 的带锁实现。
+
+    薄壳，字段名 / 数值 / 触发阈值与改造前完全一致（api.py 中间件仍调本函数）。
+    """
+    _record_metric_impl({
         "path": path,
         "duration_ms": round(duration * 1000, 1),
         "status": status,
         "timestamp": datetime.now().isoformat(),
-    })
-    if len(_perf_metrics) >= 50:
-        _flush_metrics()
+    }, flush_path=_perf_file)
 
 
 def _flush_metrics():
-    """将指标写入文件"""
-    if not _perf_metrics:
-        return
-    try:
-        existing = []
-        if _perf_file.exists():
-            existing = json.loads(_perf_file.read_text(encoding="utf-8"))
-        all_metrics = existing + _perf_metrics
-        all_metrics = all_metrics[-1000:]
-        _perf_file.parent.mkdir(parents=True, exist_ok=True)
-        _perf_file.write_text(
-            json.dumps(all_metrics, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        _perf_metrics.clear()
-    except Exception as e:
-        logger.debug(f"性能指标写入失败: {e}")
+    """将指标写入文件 —— 薄壳转发，真正的锁与原子性在 lib.infra 里。"""
+    _flush_metrics_impl(_perf_file)
 
 
 from lib.data.cache import CircuitBreaker
@@ -248,13 +239,19 @@ def _get_orchestrator(preset: str = "balanced") -> ScanOrchestrator:
 import threading
 
 
-from lib.infra.scan_task_registry import _scan_tasks
+from lib.infra.scan_task_registry import (
+    _scan_tasks,  # 兼容旧引用；新代码禁止直接读写，一律走下列带锁 API
+    start_task,
+    finish_task,
+    fail_task,
+    get_task,
+)
 
 
 def _run_scan_background(preset: str):
     """后台线程执行扫描"""
     cache_key = f"scan_{preset}"
-    _scan_tasks[preset] = {"status": "running", "started_at": time.time(), "error": None}
+    start_task(preset)
     try:
         from lib.data.data_layer import get_realtime_quotes
         get_realtime_quotes()
@@ -283,11 +280,10 @@ def _run_scan_background(preset: str):
             "index_signal": scan_result.get("index_signal", {}),
         }
         _cache_set(cache_key, data)
-        _scan_tasks[preset]["status"] = "done"
+        finish_task(preset)
         logger.info(f"[Scan] {preset} 完成: {data['total']} 只候选股")
     except Exception as e:
-        _scan_tasks[preset]["status"] = "error"
-        _scan_tasks[preset]["error"] = str(e)
+        fail_task(preset, str(e))
         logger.error(f"[Scan] {preset} 失败: {e}")
 
 

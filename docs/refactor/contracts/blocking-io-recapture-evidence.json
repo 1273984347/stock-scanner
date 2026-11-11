@@ -1,0 +1,110 @@
+[
+  {
+    "allowed_endpoints": [
+      "POST /api/backtest",
+      "POST /api/backtest/compare",
+      "POST /api/walkforward"
+    ],
+    "per_endpoint": [
+      {
+        "blocking_after": 0,
+        "blocking_before": 3,
+        "endpoint": "POST /api/backtest",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 2,
+        "other_before": 28
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 2,
+        "endpoint": "POST /api/backtest/compare",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 2,
+        "other_before": 24
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 9,
+        "endpoint": "POST /api/walkforward",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 2,
+        "other_before": 29
+      }
+    ],
+    "reason": "RF-01 Phase 6 batch 2: Tier A backtest endpoints offloaded",
+    "schema_version": 1,
+    "totals_after": {
+      "blocking_calls": 228,
+      "blocking_endpoints": 60,
+      "endpoints": 68,
+      "offloaded_calls": 4,
+      "offloaded_endpoints": 4,
+      "other_calls": 734,
+      "total_calls": 966
+    },
+    "totals_before": {
+      "blocking_calls": 242,
+      "blocking_endpoints": 63,
+      "endpoints": 68,
+      "offloaded_calls": 1,
+      "offloaded_endpoints": 1,
+      "other_calls": 809,
+      "total_calls": 1052
+    },
+    "untouched_endpoints": 65,
+    "untouched_identical": true
+  },
+  {
+    "allowed_endpoints": [
+      "GET /api/scan",
+      "GET /api/scan/status"
+    ],
+    "comparison": "endpoint records compared field-by-field; lineno excluded (implementation detail, see _normalize_endpoint)",
+    "mode": "refactor",
+    "per_endpoint": [
+      {
+        "blocking_after": 2,
+        "blocking_before": 2,
+        "endpoint": "GET /api/scan",
+        "offloaded_after": 0,
+        "offloaded_before": 0,
+        "other_after": 5,
+        "other_before": 5
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 0,
+        "endpoint": "GET /api/scan/status",
+        "offloaded_after": 0,
+        "offloaded_before": 0,
+        "other_after": 4,
+        "other_before": 4
+      }
+    ],
+    "reason": "RF-01 Phase 6 batch 2: shared state access collapsed into locked APIs",
+    "schema_version": 1,
+    "totals_after": {
+      "blocking_calls": 228,
+      "blocking_endpoints": 60,
+      "endpoints": 68,
+      "offloaded_calls": 4,
+      "offloaded_endpoints": 4,
+      "other_calls": 734,
+      "total_calls": 966
+    },
+    "totals_before": {
+      "blocking_calls": 228,
+      "blocking_endpoints": 60,
+      "endpoints": 68,
+      "offloaded_calls": 4,
+      "offloaded_endpoints": 4,
+      "other_calls": 734,
+      "total_calls": 966
+    },
+    "untouched_endpoints": 66,
+    "untouched_identical": true
+  }
+]

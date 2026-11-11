@@ -17,7 +17,7 @@ async def scan(preset: str = "balanced", _=Security(verify_api_key)):
         return cached
 
     # 无缓存：检查是否有扫描在运行
-    task = _scan_tasks.get(preset)
+    task = get_task(preset)
     if task and task["status"] == "running":
         elapsed = int(time.time() - task["started_at"])
         return {"preset": preset, "results": {}, "total": 0, "scanning": True, "elapsed_sec": elapsed}
@@ -31,7 +31,7 @@ async def scan(preset: str = "balanced", _=Security(verify_api_key)):
 @router.get("/api/scan/status")
 async def scan_status(preset: str = "balanced"):
     """扫描状态查询"""
-    task = _scan_tasks.get(preset)
+    task = get_task(preset)
     if not task:
         return {"preset": preset, "status": "idle"}
     elapsed = int(time.time() - task["started_at"])

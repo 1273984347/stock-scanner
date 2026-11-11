@@ -1,6 +1,6 @@
 # CLAUDE.md — Stock Scanner (个人量化选股系统)
 
-> 最后更新：2026-11-11 | 本次更新：RF-01 Phase 6 第 1 批 —— 第 8 把尺子（L8 阻塞 IO 门禁）、基线固化、ADR-0006 判据修正；Phase 5 已收官（`api.py` → `routers/` 17 域）
+> 最后更新：2026-11-11 | 本次更新：RF-01 Phase 6 第 2 批 —— `FEATURE_ASYNC_OFFLOAD`（默认 off）+ `lib/infra/async_offload.py` 唯一入口、3 个 Tier A 端点 offload、共享状态收口加锁、L9 对拍；Phase 6 未收官
 
 ## 工作流
 
@@ -284,6 +284,7 @@ Tushare (主) → AkShare → WeStock → 通达信 → Baostock → 东方财�
 | 服务 | `uvicorn api:app --reload` | API 手工验证 |
 | **L8（新增）** | `python scripts/blocking_io_check.py --check` | 阻塞 IO 基线：blocking 只准降 / other 冻结 |
 | **L8 自证** | `python scripts/blocking_io_check.py --selftest` | 证明门禁会因回归判红 |
+| **L9（新增）** | `python scripts/offload_switch_diff.py --check` | 迁移 AST 等价 + off/on 响应 diff + 线程池自证 |
 
 ## 强制触发规则
 
@@ -391,6 +392,11 @@ curl http://localhost:8000/api/scan
 | `docs/refactor/contracts/blocking-io-baseline.json` | Phase 6 起点读数：68 端点 / 1052 调用 / 242 阻塞调用 / 63 端点含阻塞点；含 `plan_stated_target` 对照 |
 | `docs/adr/0006-*.md` | 第 6 次判据修正：绝对阈值「≤1」→ 单调下降 + Tier A/B 分层退出判据 |
 | `tests/test_blocking_io_check.py` | L8 的 11 例机器判据（含 helper 展开、表外符号判红、尺子自证） |
+| `lib/infra/async_offload.py` | **Phase 6 唯一 offload 入口**：`run_blocking(consumer, fn, ...)`，off 同步直调 / on 走线程池；`OFFLOAD_CONSUMERS` 显式登记 |
+| `scripts/offload_switch_diff.py` | **L9 门禁**：固定 commit `523b353` 源码 AST 逐语句等价 + off/on 整份响应 + 线程池调用自证 + 消费者登记双向对齐 |
+| `docs/refactor/contracts/blocking-io-recapture-evidence.json` | L8 基线历次重建的 G4 字段级取证（历史数组，不覆盖） |
+| `docs/adr/0007-*.md` | 第 2 批决策：灰度入口 / Tier A 切换 / 共享状态加锁 / 分层重建基线 |
+| `tests/features/test_async_offload.py` / `tests/test_shared_state_locks.py` / `tests/test_phase6_batch2.py` | 19 + 5 + 5 例：开关两条路径、并发状态流转、收口 AST 守卫与取证一致性 |
 
 ---
 

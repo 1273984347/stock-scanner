@@ -6,16 +6,38 @@
     "other_frozen": true,
     "plan_stated_counting_unit": "calls (plan section 3 Phase 6)",
     "plan_stated_target": "blocking call count <= 1",
+    "recapture_history": [
+      {
+        "allowed_endpoints": [
+          "POST /api/backtest",
+          "POST /api/backtest/compare",
+          "POST /api/walkforward"
+        ],
+        "blocking_after": 228,
+        "blocking_before": 242,
+        "reason": "RF-01 Phase 6 batch 2: Tier A backtest endpoints offloaded"
+      },
+      {
+        "allowed_endpoints": [
+          "GET /api/scan",
+          "GET /api/scan/status"
+        ],
+        "blocking_after": 228,
+        "blocking_before": 228,
+        "mode": "refactor",
+        "reason": "RF-01 Phase 6 batch 2: shared state access collapsed into locked APIs"
+      }
+    ],
     "source": "AST over api.py + routers/*.py, endpoint set cross-checked against runtime route-ownership.json"
   },
   "counts": {
-    "blocking_calls": 242,
-    "blocking_endpoints": 63,
+    "blocking_calls": 228,
+    "blocking_endpoints": 60,
     "endpoints": 68,
-    "offloaded_calls": 1,
-    "offloaded_endpoints": 1,
-    "other_calls": 809,
-    "total_calls": 1052
+    "offloaded_calls": 4,
+    "offloaded_endpoints": 4,
+    "other_calls": 734,
+    "total_calls": 966
   },
   "endpoints": [
     {
@@ -193,7 +215,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 491,
+          "lineno": 487,
           "tail": "exists"
         },
         {
@@ -201,7 +223,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 493,
+          "lineno": 489,
           "tail": "open"
         },
         {
@@ -209,7 +231,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 494,
+          "lineno": 490,
           "tail": "load"
         }
       ],
@@ -247,7 +269,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 491,
+          "lineno": 487,
           "tail": "exists"
         },
         {
@@ -255,7 +277,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 493,
+          "lineno": 489,
           "tail": "open"
         },
         {
@@ -263,7 +285,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 494,
+          "lineno": 490,
           "tail": "load"
         }
       ],
@@ -395,7 +417,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 491,
+          "lineno": 487,
           "tail": "exists"
         },
         {
@@ -403,7 +425,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 493,
+          "lineno": 489,
           "tail": "open"
         },
         {
@@ -411,7 +433,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 494,
+          "lineno": 490,
           "tail": "load"
         },
         {
@@ -419,7 +441,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 502,
+          "lineno": 498,
           "tail": "open"
         },
         {
@@ -427,7 +449,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 503,
+          "lineno": 499,
           "tail": "dump"
         }
       ],
@@ -498,7 +520,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 491,
+          "lineno": 487,
           "tail": "exists"
         },
         {
@@ -506,7 +528,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 493,
+          "lineno": 489,
           "tail": "open"
         },
         {
@@ -514,7 +536,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 494,
+          "lineno": 490,
           "tail": "load"
         },
         {
@@ -522,7 +544,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 502,
+          "lineno": 498,
           "tail": "open"
         },
         {
@@ -530,7 +552,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 503,
+          "lineno": 499,
           "tail": "dump"
         }
       ],
@@ -617,7 +639,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 491,
+          "lineno": 487,
           "tail": "exists"
         },
         {
@@ -625,7 +647,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 493,
+          "lineno": 489,
           "tail": "open"
         },
         {
@@ -633,7 +655,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 494,
+          "lineno": 490,
           "tail": "load"
         },
         {
@@ -641,7 +663,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 502,
+          "lineno": 498,
           "tail": "open"
         },
         {
@@ -649,7 +671,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/alerts.py",
-          "lineno": 503,
+          "lineno": 499,
           "tail": "dump"
         }
       ],
@@ -888,146 +910,22 @@
       "path": "/api/audit/{scan_id}"
     },
     {
-      "blocking": {
-        "BacktestRunner": 1,
-        "perf_df.iterrows": 1,
-        "unified.to_dict": 1
-      },
+      "blocking": {},
       "calls": [
         {
-          "callee": "_validate_stock_code",
-          "category": "other",
+          "callee": "run_blocking",
+          "category": "offloaded",
           "depth": 0,
           "file": "routers/backtest.py",
-          "lineno": 24,
-          "tail": "_validate_stock_code"
-        },
-        {
-          "callee": "s.strip",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 24,
-          "tail": "strip"
-        },
-        {
-          "callee": "s.strip",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 24,
-          "tail": "strip"
-        },
-        {
-          "callee": "symbols.split",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 24,
-          "tail": "split"
-        },
-        {
-          "callee": "len",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 25,
-          "tail": "len"
-        },
-        {
-          "callee": "HTTPException",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 26,
-          "tail": "HTTPException"
-        },
-        {
-          "callee": "BacktestRunner",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 28,
-          "tail": "BacktestRunner"
-        },
-        {
-          "callee": "run",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 28,
-          "tail": "run"
-        },
-        {
-          "callee": "unified.to_dict",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 42,
-          "tail": "to_dict"
-        },
-        {
-          "callee": "_extract_equity_curve",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 43,
-          "tail": "_extract_equity_curve"
-        },
-        {
-          "callee": "result.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 46,
-          "tail": "get"
-        },
-        {
-          "callee": "result.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 47,
-          "tail": "get"
-        },
-        {
-          "callee": "result.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 48,
-          "tail": "get"
-        },
-        {
-          "callee": "result.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 49,
-          "tail": "get"
-        },
-        {
-          "callee": "result.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 50,
-          "tail": "get"
-        },
-        {
-          "callee": "result.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 52,
-          "tail": "get"
+          "lineno": 176,
+          "tail": "run_blocking"
         },
         {
           "callee": "logger.error",
           "category": "other",
           "depth": 0,
           "file": "routers/backtest.py",
-          "lineno": 55,
+          "lineno": 182,
           "tail": "error"
         },
         {
@@ -1035,242 +933,41 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backtest.py",
-          "lineno": 56,
+          "lineno": 183,
           "tail": "HTTPException"
-        },
-        {
-          "callee": "result.get",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 297,
-          "tail": "get"
-        },
-        {
-          "callee": "hasattr",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 299,
-          "tail": "hasattr"
-        },
-        {
-          "callee": "astype",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 301,
-          "tail": "astype"
-        },
-        {
-          "callee": "len",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 305,
-          "tail": "len"
-        },
-        {
-          "callee": "pd.Series",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 305,
-          "tail": "Series"
-        },
-        {
-          "callee": "enumerate",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 307,
-          "tail": "enumerate"
-        },
-        {
-          "callee": "perf_df.iterrows",
-          "category": "blocking",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 307,
-          "tail": "iterrows"
-        },
-        {
-          "callee": "equity_curve.append",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 308,
-          "tail": "append"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 309,
-          "tail": "get"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 309,
-          "tail": "get"
-        },
-        {
-          "callee": "str",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 309,
-          "tail": "str"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 310,
-          "tail": "float"
-        },
-        {
-          "callee": "round",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 310,
-          "tail": "round"
         }
       ],
       "file": "routers/backtest.py",
       "handler": "run_backtest",
       "key": "POST /api/backtest",
-      "lineno": 9,
+      "lineno": 162,
       "method": "POST",
-      "offloaded": {},
+      "offloaded": {
+        "run_blocking": 1
+      },
       "other": {
-        "HTTPException": 2,
-        "_extract_equity_curve": 1,
-        "_validate_stock_code": 1,
-        "astype": 1,
-        "enumerate": 1,
-        "equity_curve.append": 1,
-        "float": 1,
-        "hasattr": 1,
-        "len": 2,
-        "logger.error": 1,
-        "pd.Series": 1,
-        "result.get": 7,
-        "round": 1,
-        "row.get": 2,
-        "run": 1,
-        "s.strip": 2,
-        "str": 1,
-        "symbols.split": 1
+        "HTTPException": 1,
+        "logger.error": 1
       },
       "path": "/api/backtest"
     },
     {
-      "blocking": {
-        "perf_df.iterrows": 1,
-        "run_factor_backtest": 1
-      },
+      "blocking": {},
       "calls": [
         {
-          "callee": "_validate_stock_code",
-          "category": "other",
+          "callee": "run_blocking",
+          "category": "offloaded",
           "depth": 0,
           "file": "routers/backtest.py",
-          "lineno": 69,
-          "tail": "_validate_stock_code"
-        },
-        {
-          "callee": "s.strip",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 69,
-          "tail": "strip"
-        },
-        {
-          "callee": "s.strip",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 69,
-          "tail": "strip"
-        },
-        {
-          "callee": "symbols.split",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 69,
-          "tail": "split"
-        },
-        {
-          "callee": "len",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 70,
-          "tail": "len"
-        },
-        {
-          "callee": "HTTPException",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 71,
-          "tail": "HTTPException"
-        },
-        {
-          "callee": "run_factor_backtest",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 77,
-          "tail": "run_factor_backtest"
-        },
-        {
-          "callee": "result.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 80,
-          "tail": "get"
-        },
-        {
-          "callee": "_extract_equity_curve",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 81,
-          "tail": "_extract_equity_curve"
-        },
-        {
-          "callee": "result.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 82,
-          "tail": "get"
-        },
-        {
-          "callee": "logger.warning",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 85,
-          "tail": "warning"
+          "lineno": 195,
+          "tail": "run_blocking"
         },
         {
           "callee": "logger.error",
           "category": "other",
           "depth": 0,
           "file": "routers/backtest.py",
-          "lineno": 89,
+          "lineno": 197,
           "tail": "error"
         },
         {
@@ -1278,139 +975,21 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backtest.py",
-          "lineno": 90,
+          "lineno": 198,
           "tail": "HTTPException"
-        },
-        {
-          "callee": "result.get",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 297,
-          "tail": "get"
-        },
-        {
-          "callee": "hasattr",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 299,
-          "tail": "hasattr"
-        },
-        {
-          "callee": "astype",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 301,
-          "tail": "astype"
-        },
-        {
-          "callee": "len",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 305,
-          "tail": "len"
-        },
-        {
-          "callee": "pd.Series",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 305,
-          "tail": "Series"
-        },
-        {
-          "callee": "enumerate",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 307,
-          "tail": "enumerate"
-        },
-        {
-          "callee": "perf_df.iterrows",
-          "category": "blocking",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 307,
-          "tail": "iterrows"
-        },
-        {
-          "callee": "equity_curve.append",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 308,
-          "tail": "append"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 309,
-          "tail": "get"
-        },
-        {
-          "callee": "row.get",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 309,
-          "tail": "get"
-        },
-        {
-          "callee": "str",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 309,
-          "tail": "str"
-        },
-        {
-          "callee": "float",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 310,
-          "tail": "float"
-        },
-        {
-          "callee": "round",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 310,
-          "tail": "round"
         }
       ],
       "file": "routers/backtest.py",
       "handler": "compare_strategies",
       "key": "POST /api/backtest/compare",
-      "lineno": 60,
+      "lineno": 187,
       "method": "POST",
-      "offloaded": {},
+      "offloaded": {
+        "run_blocking": 1
+      },
       "other": {
-        "HTTPException": 2,
-        "_extract_equity_curve": 1,
-        "_validate_stock_code": 1,
-        "astype": 1,
-        "enumerate": 1,
-        "equity_curve.append": 1,
-        "float": 1,
-        "hasattr": 1,
-        "len": 2,
-        "logger.error": 1,
-        "logger.warning": 1,
-        "pd.Series": 1,
-        "result.get": 3,
-        "round": 1,
-        "row.get": 2,
-        "s.strip": 2,
-        "str": 1,
-        "symbols.split": 1
+        "HTTPException": 1,
+        "logger.error": 1
       },
       "path": "/api/backtest/compare"
     },
@@ -2326,7 +1905,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 241,
+          "lineno": 232,
           "tail": "get"
         },
         {
@@ -2334,7 +1913,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 243,
+          "lineno": 234,
           "tail": "ScanOrchestrator"
         },
         {
@@ -2342,7 +1921,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 244,
+          "lineno": 235,
           "tail": "set"
         }
       ],
@@ -3996,7 +3575,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/risk.py",
-          "lineno": 241,
+          "lineno": 232,
           "tail": "get"
         },
         {
@@ -4004,7 +3583,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/risk.py",
-          "lineno": 243,
+          "lineno": 234,
           "tail": "ScanOrchestrator"
         },
         {
@@ -4012,7 +3591,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/risk.py",
-          "lineno": 244,
+          "lineno": 235,
           "tail": "set"
         }
       ],
@@ -4681,7 +4260,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/factor.py",
-          "lineno": 241,
+          "lineno": 232,
           "tail": "get"
         },
         {
@@ -4689,7 +4268,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/factor.py",
-          "lineno": 243,
+          "lineno": 234,
           "tail": "ScanOrchestrator"
         },
         {
@@ -4697,7 +4276,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/factor.py",
-          "lineno": 244,
+          "lineno": 235,
           "tail": "set"
         }
       ],
@@ -5039,7 +4618,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/factor.py",
-          "lineno": 241,
+          "lineno": 232,
           "tail": "get"
         },
         {
@@ -5047,7 +4626,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/factor.py",
-          "lineno": 243,
+          "lineno": 234,
           "tail": "ScanOrchestrator"
         },
         {
@@ -5055,7 +4634,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/factor.py",
-          "lineno": 244,
+          "lineno": 235,
           "tail": "set"
         }
       ],
@@ -5972,7 +5551,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/market.py",
-          "lineno": 241,
+          "lineno": 232,
           "tail": "get"
         },
         {
@@ -5980,7 +5559,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/market.py",
-          "lineno": 243,
+          "lineno": 234,
           "tail": "ScanOrchestrator"
         },
         {
@@ -5988,7 +5567,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/market.py",
-          "lineno": 244,
+          "lineno": 235,
           "tail": "set"
         }
       ],
@@ -6472,7 +6051,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/portfolio.py",
-          "lineno": 241,
+          "lineno": 232,
           "tail": "get"
         },
         {
@@ -6480,7 +6059,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/portfolio.py",
-          "lineno": 243,
+          "lineno": 234,
           "tail": "ScanOrchestrator"
         },
         {
@@ -6488,7 +6067,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/portfolio.py",
-          "lineno": 244,
+          "lineno": 235,
           "tail": "set"
         }
       ],
@@ -6611,7 +6190,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/portfolio.py",
-          "lineno": 241,
+          "lineno": 232,
           "tail": "get"
         },
         {
@@ -6619,7 +6198,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/portfolio.py",
-          "lineno": 243,
+          "lineno": 234,
           "tail": "ScanOrchestrator"
         },
         {
@@ -6627,7 +6206,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/portfolio.py",
-          "lineno": 244,
+          "lineno": 235,
           "tail": "set"
         }
       ],
@@ -7210,7 +6789,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/risk.py",
-          "lineno": 223,
+          "lineno": 214,
           "tail": "ThreadPoolExecutor"
         },
         {
@@ -7218,7 +6797,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/risk.py",
-          "lineno": 225,
+          "lineno": 216,
           "tail": "_get_orchestrator"
         },
         {
@@ -7226,7 +6805,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/risk.py",
-          "lineno": 225,
+          "lineno": 216,
           "tail": "submit"
         },
         {
@@ -7234,7 +6813,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/risk.py",
-          "lineno": 231,
+          "lineno": 222,
           "tail": "result"
         },
         {
@@ -7242,7 +6821,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/risk.py",
-          "lineno": 241,
+          "lineno": 232,
           "tail": "get"
         },
         {
@@ -7250,7 +6829,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/risk.py",
-          "lineno": 243,
+          "lineno": 234,
           "tail": "ScanOrchestrator"
         },
         {
@@ -7258,7 +6837,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/risk.py",
-          "lineno": 244,
+          "lineno": 235,
           "tail": "set"
         }
       ],
@@ -7539,7 +7118,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/risk.py",
-          "lineno": 223,
+          "lineno": 214,
           "tail": "ThreadPoolExecutor"
         },
         {
@@ -7547,7 +7126,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/risk.py",
-          "lineno": 225,
+          "lineno": 216,
           "tail": "_get_orchestrator"
         },
         {
@@ -7555,7 +7134,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/risk.py",
-          "lineno": 225,
+          "lineno": 216,
           "tail": "submit"
         },
         {
@@ -7563,7 +7142,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/risk.py",
-          "lineno": 231,
+          "lineno": 222,
           "tail": "result"
         },
         {
@@ -7571,7 +7150,7 @@
           "category": "other",
           "depth": 2,
           "file": "routers/risk.py",
-          "lineno": 241,
+          "lineno": 232,
           "tail": "get"
         },
         {
@@ -7579,7 +7158,7 @@
           "category": "other",
           "depth": 2,
           "file": "routers/risk.py",
-          "lineno": 243,
+          "lineno": 234,
           "tail": "ScanOrchestrator"
         },
         {
@@ -7587,7 +7166,7 @@
           "category": "other",
           "depth": 2,
           "file": "routers/risk.py",
-          "lineno": 244,
+          "lineno": 235,
           "tail": "set"
         }
       ],
@@ -7948,12 +7527,12 @@
           "tail": "_cache_get"
         },
         {
-          "callee": "_scan_tasks.get",
+          "callee": "get_task",
           "category": "other",
           "depth": 0,
           "file": "routers/scan.py",
           "lineno": 20,
-          "tail": "get"
+          "tail": "get_task"
         },
         {
           "callee": "int",
@@ -7996,7 +7575,7 @@
       "offloaded": {},
       "other": {
         "HTTPException": 1,
-        "_scan_tasks.get": 1,
+        "get_task": 1,
         "int": 1,
         "threading.Thread": 1,
         "time.time": 1
@@ -8007,12 +7586,12 @@
       "blocking": {},
       "calls": [
         {
-          "callee": "_scan_tasks.get",
+          "callee": "get_task",
           "category": "other",
           "depth": 0,
           "file": "routers/scan.py",
           "lineno": 34,
-          "tail": "get"
+          "tail": "get_task"
         },
         {
           "callee": "int",
@@ -8046,7 +7625,7 @@
       "method": "GET",
       "offloaded": {},
       "other": {
-        "_scan_tasks.get": 1,
+        "get_task": 1,
         "int": 1,
         "task.get": 1,
         "time.time": 1
@@ -8112,7 +7691,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/scoring.py",
-          "lineno": 241,
+          "lineno": 232,
           "tail": "get"
         },
         {
@@ -8120,7 +7699,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/scoring.py",
-          "lineno": 243,
+          "lineno": 234,
           "tail": "ScanOrchestrator"
         },
         {
@@ -8128,7 +7707,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/scoring.py",
-          "lineno": 244,
+          "lineno": 235,
           "tail": "set"
         }
       ],
@@ -8973,7 +8552,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/stock.py",
-          "lineno": 241,
+          "lineno": 232,
           "tail": "get"
         },
         {
@@ -8981,7 +8560,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/stock.py",
-          "lineno": 243,
+          "lineno": 234,
           "tail": "ScanOrchestrator"
         },
         {
@@ -8989,7 +8568,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/stock.py",
-          "lineno": 244,
+          "lineno": 235,
           "tail": "set"
         }
       ],
@@ -9878,255 +9457,22 @@
       "path": "/api/treemap/sectors"
     },
     {
-      "blocking": {
-        "WalkForwardBacktest": 1,
-        "_batch_get_stock_hist": 1,
-        "_get_orchestrator": 2,
-        "hist.index.tolist": 1,
-        "run_factor_backtest": 1,
-        "summarize_rounds": 1,
-        "tolist": 1,
-        "wf.run": 1
-      },
+      "blocking": {},
       "calls": [
         {
-          "callee": "_get_orchestrator",
-          "category": "blocking",
+          "callee": "run_blocking",
+          "category": "offloaded",
           "depth": 0,
           "file": "routers/backtest.py",
-          "lineno": 107,
-          "tail": "_get_orchestrator"
-        },
-        {
-          "callee": "_validate_stock_code",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 108,
-          "tail": "_validate_stock_code"
-        },
-        {
-          "callee": "s.strip",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 108,
-          "tail": "strip"
-        },
-        {
-          "callee": "s.strip",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 108,
-          "tail": "strip"
-        },
-        {
-          "callee": "symbols.split",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 108,
-          "tail": "split"
-        },
-        {
-          "callee": "_batch_get_stock_hist",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 111,
-          "tail": "_batch_get_stock_hist"
-        },
-        {
-          "callee": "set",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 112,
-          "tail": "set"
-        },
-        {
-          "callee": "market_data.values",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 113,
-          "tail": "values"
-        },
-        {
-          "callee": "all_dates.update",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 115,
-          "tail": "update"
-        },
-        {
-          "callee": "tolist",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 115,
-          "tail": "tolist"
-        },
-        {
-          "callee": "all_dates.update",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 117,
-          "tail": "update"
-        },
-        {
-          "callee": "hist.index.tolist",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 117,
-          "tail": "tolist"
-        },
-        {
-          "callee": "sorted",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 122,
-          "tail": "sorted"
-        },
-        {
-          "callee": "list",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 127,
-          "tail": "list"
-        },
-        {
-          "callee": "market_data.keys",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 127,
-          "tail": "keys"
-        },
-        {
-          "callee": "run_factor_backtest",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 128,
-          "tail": "run_factor_backtest"
-        },
-        {
-          "callee": "min",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 130,
-          "tail": "min"
-        },
-        {
-          "callee": "result.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 135,
-          "tail": "get"
-        },
-        {
-          "callee": "metrics.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 138,
-          "tail": "get"
-        },
-        {
-          "callee": "metrics.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 139,
-          "tail": "get"
-        },
-        {
-          "callee": "metrics.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 140,
-          "tail": "get"
-        },
-        {
-          "callee": "metrics.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 141,
-          "tail": "get"
-        },
-        {
-          "callee": "WalkForwardConfig",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 147,
-          "tail": "WalkForwardConfig"
-        },
-        {
-          "callee": "WalkForwardBacktest",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 152,
-          "tail": "WalkForwardBacktest"
-        },
-        {
-          "callee": "wf.run",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 153,
-          "tail": "run"
-        },
-        {
-          "callee": "summarize_rounds",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 161,
-          "tail": "summarize_rounds"
-        },
-        {
-          "callee": "rounds_data.append",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 166,
-          "tail": "append"
-        },
-        {
-          "callee": "hasattr",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 169,
-          "tail": "hasattr"
-        },
-        {
-          "callee": "str",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backtest.py",
-          "lineno": 169,
-          "tail": "str"
+          "lineno": 212,
+          "tail": "run_blocking"
         },
         {
           "callee": "logger.error",
           "category": "other",
           "depth": 0,
           "file": "routers/backtest.py",
-          "lineno": 185,
+          "lineno": 217,
           "tail": "error"
         },
         {
@@ -10134,97 +9480,21 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backtest.py",
-          "lineno": 186,
+          "lineno": 218,
           "tail": "HTTPException"
-        },
-        {
-          "callee": "ThreadPoolExecutor",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 223,
-          "tail": "ThreadPoolExecutor"
-        },
-        {
-          "callee": "_get_orchestrator",
-          "category": "blocking",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 225,
-          "tail": "_get_orchestrator"
-        },
-        {
-          "callee": "executor.submit",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 225,
-          "tail": "submit"
-        },
-        {
-          "callee": "future.result",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 231,
-          "tail": "result"
-        },
-        {
-          "callee": "_orchestrator_cache.get",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 241,
-          "tail": "get"
-        },
-        {
-          "callee": "ScanOrchestrator",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 243,
-          "tail": "ScanOrchestrator"
-        },
-        {
-          "callee": "_orchestrator_cache.set",
-          "category": "other",
-          "depth": 1,
-          "file": "routers/backtest.py",
-          "lineno": 244,
-          "tail": "set"
         }
       ],
       "file": "routers/backtest.py",
       "handler": "run_walkforward",
       "key": "POST /api/walkforward",
-      "lineno": 94,
+      "lineno": 202,
       "method": "POST",
-      "offloaded": {},
+      "offloaded": {
+        "run_blocking": 1
+      },
       "other": {
         "HTTPException": 1,
-        "ScanOrchestrator": 1,
-        "ThreadPoolExecutor": 1,
-        "WalkForwardConfig": 1,
-        "_orchestrator_cache.get": 1,
-        "_orchestrator_cache.set": 1,
-        "_validate_stock_code": 1,
-        "all_dates.update": 2,
-        "executor.submit": 1,
-        "future.result": 1,
-        "hasattr": 1,
-        "list": 1,
-        "logger.error": 1,
-        "market_data.keys": 1,
-        "market_data.values": 1,
-        "metrics.get": 4,
-        "min": 1,
-        "result.get": 1,
-        "rounds_data.append": 1,
-        "s.strip": 2,
-        "set": 1,
-        "sorted": 1,
-        "str": 1,
-        "symbols.split": 1
+        "logger.error": 1
       },
       "path": "/api/walkforward"
     }

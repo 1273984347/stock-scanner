@@ -6,7 +6,7 @@
 > - `RULES.md` 说**什么不许做 / 必须怎么做**（硬约束）
 > - `docs/refactor/pitfalls.md` 说**为什么**（每条规矩背后的真实坑）
 >
-> 最后更新：2026-11-11（RF-01 Phase 6 第 1 批：第 8 把尺子 + 阻塞 IO 判据修正）
+> 最后更新：2026-11-11（RF-01 Phase 6 第 2 批：offload 入口 / Tier A 切换 / 共享状态加锁 / L9）
 
 ---
 
@@ -129,11 +129,14 @@ infra  ←  data  ←  scoring  ←  strategy
 | T3 | **保持 `async def` 签名**，禁止把端点改成 `def` 来「顺手」走线程池 | 会静默改变 FastAPI 调度语义与并发上限；契约快照冻结 async/sync，L2 会判红 |
 | T4 | 每切一个消费者必须跑 off/on 逐字段对拍，**并自证 on 侧真走了线程池**（off=0 / on>0） | 两侧都没切时 diff 也恒 0 = 空判据（坑表 P-56） |
 | T5 | 阻塞判据以 `scripts/blocking_io_check.py` 的 **L8** 为准：**blocking 只准降 / offloaded 只准升 / other 逐字段冻结**；新符号必须显式归类后才能推进 | 计划的绝对阈值「≤1」被实测 242 推翻（ADR-0006 D1）；表外符号由 `other` 冻结兜住，不假设阻塞表完整 |
+| T6 | **`_scan_tasks` / `_perf_metrics` 只允许经 `lib/infra/` 的带锁 API 读写**；`routers/` 中禁止直接下标或 `.get/.append/.clear/.update` | 散落读写会造成半更新状态与指标丢失；AST 守卫见 `tests/test_phase6_batch2.py`（ADR-0007 D4） |
 
-> **阶段边界**：**Phase 6 第 1 批已完成**（第 8 把尺子 + 基线，零业务代码改动，决策见 ADR-0006）。
-> 实测：68 端点 / 1052 调用 / **242 阻塞调用** / 63 个端点含阻塞点 / 1 个已 offload。
-> **Phase 6 未收官**：Tier A 重计算端点仍待逐批 offload，Tier B 轻量文件 IO 待逐条登记理由。
-> 改 `routers/` 后必须同时跑 L7 与 L8。
+> **阶段边界**：**Phase 6 第 1 批 ✅**（第 8 把尺子 + 基线，零业务代码改动，ADR-0006）；
+> **第 2 批 ✅**（`FEATURE_ASYNC_OFFLOAD` 默认 off + `lib/infra/async_offload.py` 唯一入口、
+> 3 个 Tier A 回测端点 offload、共享状态收口加锁、L9 对拍，ADR-0007）。
+> 实测：blocking **242 → 228**，offloaded **1 → 4**；两次基线重建均按 G4 字段级取证并留历史。
+> **Phase 6 未收官**：TTL 缓存 / 20 并发 P95 压测 / Tier B 逐条留痕 / 收官验收表留第 3 批。
+> 改 `routers/` 后必须同时跑 L7、L8、L9。
 
 ---
 
@@ -190,7 +193,7 @@ infra  ←  data  ←  scoring  ←  strategy
 # L0 语法
 python -m compileall -q lib scripts tests reporter backtest
 
-# L1 全量测试（当前基线：1275 passed / 12 skipped，约 55s；2026-11-11 Phase 6 第 1 批复跑）
+# L1 全量测试（当前基线：1305 passed / 12 skipped，约 76s；2026-11-11 Phase 6 第 2 批复跑）
 python -m pytest tests/ -q --tb=line -p no:warnings -o log_cli=false
 
 # L2 契约快照（API 对外契约漂移门禁）
@@ -214,6 +217,9 @@ python scripts/route_ownership_check.py --check
 # L8 阻塞 IO 基线（Phase 6 起；blocking 只准降 / other 冻结 / 尺子自证判红）
 python scripts/blocking_io_check.py --check
 python scripts/blocking_io_check.py --selftest
+
+# L9 offload 开关对拍（Phase 6 第 2 批起；迁移 AST 等价 + off/on 响应 + 线程池自证）
+python scripts/offload_switch_diff.py --check
 ```
 
 | 判据 | 通过标准 |
@@ -226,6 +232,7 @@ python scripts/blocking_io_check.py --selftest
 | L6 | `[PASS] switch diff: 3 branch(es), 9 responses, 0 field(s) differ`；三条分支各自 `kernel calls off=0 on>0`，且 `[PASS] consumers: 3/3` |
 | L7 | `[PASS] route ownership: 68 endpoints / 17 routers / 36 frontend paths`；鉴权依赖数不得减少、契约 diff = 0 |
 | L8 | `[PASS] blocking-io: 68 endpoints / N blocking calls`；`--selftest` 全绿（4 类回归各自命中指定门禁 + 合法修复全绿）；blocking 只准降、offloaded 只准升、`other` 逐字段不变、端点集合与 L7 一致、async 全 true |
+| L9 | `[PASS] offload switch: 3 endpoints`；固定 commit `523b353` 源码 AST 逐语句等价；off/on 整份响应字段顺序一致；线程池 off=0 / on=1 且工作线程与主线程不同；消费者登记与实际调用点双向对齐 |
 
 ### 4.2 覆盖率门禁
 

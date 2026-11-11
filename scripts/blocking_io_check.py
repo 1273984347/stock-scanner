@@ -55,6 +55,7 @@ if str(ROOT) not in sys.path:
 
 CONTRACTS = ROOT / "docs" / "refactor" / "contracts"
 BASELINE_FILE = CONTRACTS / "blocking-io-baseline.json"
+EVIDENCE_FILE = CONTRACTS / "blocking-io-recapture-evidence.json"
 OWNERSHIP_FILE = CONTRACTS / "route-ownership.json"
 SCHEMA_VERSION = 1
 ROUTE_METHODS = ("get", "post", "put", "delete", "patch", "api_route")
@@ -303,6 +304,114 @@ def _recount(data: dict) -> None:
     }
 
 
+def _normalize_endpoint(record: dict) -> dict:
+    """机器比较口径：去掉 `lineno` 后再逐字段比。
+
+    `lineno` 是实现细节（P-05「dtype 是实现细节不是行为契约」同构）：
+    在 common.py 里删掉一个函数体，其下方所有 helper 的行号都会前移，
+    于是十几个**完全没被改动的端点**的 calls 记录集体「变化」。
+    把它纳入比较会让 G4「其余链路逐字节一致」退化为无法执行的判据，
+    进而诱使执行者把无关端点加进白名单 —— 那才是真正的补丁加补丁。
+    `lineno` 仍保留在基线里供人排查，只是不参与机器比较。
+    """
+    out = copy.deepcopy(record)
+    for call in out.get("calls", []):
+        call.pop("lineno", None)
+    return out
+
+
+def recapture(allowed: set[tuple[str, str]], mode: str = "offload") -> tuple[list[str], dict, dict]:
+    """Rebuild the baseline after a legitimate offload fix (RULES §4.5 G4).
+
+    A recapture is NOT a free pass. It must prove, field by field, that:
+      * only the explicitly allowed endpoints changed;
+      * every OTHER endpoint record is byte-identical to the old baseline;
+      * allowed endpoints actually improved (blocking down, offloaded up,
+        and no per-callee blocking increase);
+      * the rule table did not shrink.
+    A machine-readable evidence file is written next to the baseline.
+    """
+    if not allowed:
+        return ["--recapture requires --allow-endpoints (unbounded rebuild refused)"], {}, {}
+    if mode not in ("offload", "refactor"):
+        return [f"unknown recapture mode: {mode!r}"], {}, {}
+    if not BASELINE_FILE.exists():
+        return ["baseline missing; run --capture first"], {}, {}
+    old = json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
+    new = capture()
+    failures: list[str] = []
+
+    old_eps = {(e["method"], e["path"]): e for e in old["endpoints"]}
+    new_eps = {(e["method"], e["path"]): e for e in new["endpoints"]}
+    if set(old_eps) != set(new_eps):
+        failures.append(f"endpoint set changed: missing={sorted(set(old_eps) - set(new_eps))} "
+                        f"added={sorted(set(new_eps) - set(old_eps))}")
+
+    for field in ("blocking_tails", "blocking_fulls", "offloaded_tails", "offloaded_fulls"):
+        if not set(old["rules"][field]) <= set(new["rules"][field]):
+            failures.append(f"rules.{field} shrank")
+
+    evidence_rows = []
+    for key in sorted(old_eps.keys() | new_eps.keys()):
+        b, n = old_eps.get(key), new_eps.get(key)
+        if b is None or n is None:
+            continue
+        b_block = sum(b["blocking"].values())
+        n_block = sum(n["blocking"].values())
+        b_off = sum(b["offloaded"].values())
+        n_off = sum(n["offloaded"].values())
+        if key not in allowed:
+            if _normalize_endpoint(b) != _normalize_endpoint(n):
+                failures.append(f"UNEXPECTED drift in untouched endpoint {key}")
+            continue
+        # allowed endpoint: prove it is an actual fix, not a reshuffle
+        for callee, count in n["blocking"].items():
+            if count > b["blocking"].get(callee, 0):
+                failures.append(f"blocking INCREASED in {key}: {callee}")
+        # mode 按变更语义分层，不是放宽门禁：
+        #   offload  = 阻塞段进线程池，必须看到 blocking 降 / offloaded 升；
+        #   refactor = 状态/调用收口，阻塞数不变属正常，但仍禁止 blocking 增加，
+        #             且非 allowed 端点必须逐字段一致。
+        if mode == "offload":
+            if n_block >= b_block:
+                failures.append(f"{key}: blocking did not decrease ({b_block} -> {n_block})")
+            if n_off <= b_off:
+                failures.append(f"{key}: offloaded did not increase ({b_off} -> {n_off})")
+        evidence_rows.append({
+            "endpoint": f"{key[0]} {key[1]}",
+            "blocking_before": b_block, "blocking_after": n_block,
+            "offloaded_before": b_off, "offloaded_after": n_off,
+            "other_before": sum(b["other"].values()),
+            "other_after": sum(n["other"].values()),
+        })
+
+    evidence = {
+        "schema_version": SCHEMA_VERSION,
+        "mode": mode,
+        "reason": ("RF-01 Phase 6 batch 2: Tier A backtest endpoints offloaded"
+                   if mode == "offload"
+                   else "RF-01 Phase 6 batch 2: shared state access collapsed into locked APIs"),
+        "allowed_endpoints": [f"{m} {p}" for m, p in sorted(allowed)],
+        "comparison": "endpoint records compared field-by-field; lineno excluded "
+                      "(implementation detail, see _normalize_endpoint)",
+        "untouched_endpoints": len(old_eps) - len(allowed),
+        "untouched_identical": not any("UNEXPECTED drift" in f for f in failures),
+        "totals_before": old["counts"],
+        "totals_after": new["counts"],
+        "per_endpoint": evidence_rows,
+    }
+
+    new["constraints"]["recapture_history"] = list(
+        old["constraints"].get("recapture_history", [])) + [{
+            "mode": mode,
+            "reason": evidence["reason"],
+            "allowed_endpoints": evidence["allowed_endpoints"],
+            "blocking_before": old["counts"]["blocking_calls"],
+            "blocking_after": new["counts"]["blocking_calls"],
+        }]
+    return failures, new, evidence
+
+
 def check(live: dict | None = None, baseline: dict | None = None) -> list[str]:
     live = live if live is not None else capture()
     base = baseline if baseline is not None else json.loads(
@@ -438,7 +547,54 @@ def main() -> int:
     g.add_argument("--check", action="store_true")
     g.add_argument("--summary", action="store_true")
     g.add_argument("--selftest", action="store_true")
+    g.add_argument("--recapture", action="store_true")
+    ap.add_argument("--allow-endpoints", default="",
+                    help="comma-separated 'METHOD /path' keys allowed to change on --recapture")
+    ap.add_argument("--mode", choices=("offload", "refactor"), default="offload",
+                    help="offload requires blocking down + offloaded up; "
+                         "refactor allows unchanged blocking but still forbids increases")
     args = ap.parse_args()
+
+    if args.recapture:
+        allowed = set()
+        for item in args.allow_endpoints.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            if " " not in item:
+                print(f"[FAIL] invalid endpoint key: {item!r} (expected 'METHOD /path')")
+                return 1
+            method, path = item.split(" ", 1)
+            allowed.add((method.upper(), path))
+        failures, new, evidence = recapture(allowed, args.mode)
+        if failures:
+            print(f"[FAIL] recapture refused: {len(failures)} problem(s)")
+            for f in failures[:30]:
+                print("      " + f)
+            return 1
+        CONTRACTS.mkdir(parents=True, exist_ok=True)
+        BASELINE_FILE.write_text(
+            json.dumps(new, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8")
+        # 历次重建都要留痕：审计轨迹不能只保留最后一次，否则无法回答
+        # 「这个基线是被哪一批、以什么理由改动的」（G4 字段级取证的延伸）。
+        history = []
+        if EVIDENCE_FILE.exists():
+            prev = json.loads(EVIDENCE_FILE.read_text(encoding="utf-8"))
+            history = prev if isinstance(prev, list) else [prev]
+        history.append(evidence)
+        EVIDENCE_FILE.write_text(
+            json.dumps(history, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8")
+        print(f"[OK] recapture evidence written: {EVIDENCE_FILE.name} "
+              f"(record {len(history)}: {len(evidence['per_endpoint'])} changed, "
+              f"{evidence['untouched_endpoints']} untouched identical)")
+        print(f"[OK] baseline rebuilt: blocking "
+              f"{evidence['totals_before']['blocking_calls']} -> "
+              f"{evidence['totals_after']['blocking_calls']}, offloaded "
+              f"{evidence['totals_before']['offloaded_calls']} -> "
+              f"{evidence['totals_after']['offloaded_calls']}")
+        return 0
 
     if args.capture:
         data = capture()

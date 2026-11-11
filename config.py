@@ -50,6 +50,28 @@ def unified_scoring_enabled(consumer: str = "default") -> bool:
     return consumer in {part.strip() for part in raw.split(",") if part.strip()}
 
 
+# ---- RF-01 Phase 6：异步 offload 开关（默认 off，可按消费者灰度）----------
+# 取值与 FEATURE_UNIFIED_SCORING 同构：
+#   0/off/false/no/""      -> 全部同步直调（默认，逐字节等价于改造前）
+#   1/on/true/yes/all      -> 全部已接入消费者走线程池
+#   "backtest,walkforward" -> 仅列出的消费者走线程池
+# 回滚：环境变量改回 0 或删除即可，无需回滚部署。
+# 判定只允许在 lib/infra/async_offload.py::run_blocking（RULES §1.7 T2）。
+FEATURE_ASYNC_OFFLOAD_DEFAULT = "0"
+
+
+def async_offload_enabled(consumer: str = "default") -> bool:
+    """动态读环境变量，便于秒级切换；不依赖模块导入时的快照。"""
+    raw = os.environ.get(
+        "FEATURE_ASYNC_OFFLOAD", FEATURE_ASYNC_OFFLOAD_DEFAULT
+    ).strip().lower()
+    if raw in ("1", "true", "yes", "on", "all", "*"):
+        return True
+    if raw in ("", "0", "false", "no", "off", "none"):
+        return False
+    return consumer in {part.strip() for part in raw.split(",") if part.strip()}
+
+
 @dataclass
 class FactorConfig:
     """因子配置 —— 定义使用的因子及权重"""
