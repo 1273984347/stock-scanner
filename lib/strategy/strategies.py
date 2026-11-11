@@ -230,8 +230,8 @@ def _compute_base_scores(row: pd.Series, code: str, tech_return_short: float,
         return_10d=tech_return_short,
         return_20d=tech_return_long,
     )
-    # 阶段 B 首个灰度消费者："strategies"。off 时网关直调旧实现，行为不变。
-    return score_4d("strategies", fund, cap, news, tech)
+    # Phase 4 阶段 B 首个消费者；P7-3 收口后网关唯一路径 = ScoringKernel。
+    return score_4d(fund, cap, news, tech)
 
 
 def quick_score(row: pd.Series,

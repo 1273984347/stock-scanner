@@ -220,19 +220,10 @@ def pinned_scoring_environment():
     # 机会分权重状态：清掉任何历史 set() 覆盖，保证从 config 读默认值
     sw = importlib.import_module("lib.scoring.scoring_weights")
     sw.reset_opp_score_weights()
-    # 环境变量也是外部输入（P-52 的推广）：阶段 B 起 flag 会改变 strategies 的
-    # 评分路径。基线必须固定为 off，否则「今天谁开了灰度」会影响读数。
-    # ⚠️ 只在本脚本 pin：dual_run_diff.pinned_environment() 被
-    #    scripts/scoring_switch_diff.py 复用来切换 on/off，那里固定 flag 会让取证失效。
-    old_flag = os.environ.get("FEATURE_UNIFIED_SCORING")
-    os.environ["FEATURE_UNIFIED_SCORING"] = "off"
+    # P7-3 收口后 flag 已删除，评分路径唯一（ScoringKernel），无需再 pin 环境变量。
     try:
         yield
     finally:
-        if old_flag is None:
-            os.environ.pop("FEATURE_UNIFIED_SCORING", None)
-        else:
-            os.environ["FEATURE_UNIFIED_SCORING"] = old_flag
         for mod, name, orig in reversed(targets):
             if orig is not None:
                 setattr(mod, name, orig)

@@ -101,11 +101,11 @@ infra  ←  data  ←  scoring  ←  strategy
 | S5 | 权重定义只允许在 `lib/scoring/scoring_weights.py`；外部配置源必须在 `list_weight_sources()` 登记 | 消除「权重散落」的根因，而非只搬两个常量 |
 | S6 | `FEATURE_UNIFIED_SCORING` **默认 off**；每切一个消费者前必须跑 `python scripts/scoring_baseline.py --check` | 开关是唯一回滚手段；阶段 B 逐消费者灰度 |
 | S7 | 评分数值变化 > 1e-9 一律走 ADR + 迁移指南 | §2.3 B1 在评分域的具体化 |
-| S8 | **灰度判定只允许在 `lib/scoring/scoring_gateway.py`**；消费者不得自己读 `FEATURE_UNIFIED_SCORING` / 调 `unified_scoring_enabled()`，必须显式传 `consumer` 调网关函数 | 判定散落 N 份就无法回答「哪几个消费者切了」；`tests/features/test_scoring_switch.py` 用 AST 守卫 |
+| S8 | **评分路径判定只允许在 `lib/scoring/scoring_gateway.py`**；消费者不得读评分开关环境变量 / 调网关内部函数（P7-3 收口后 flag 已删，出现即回退），统一调 `score_4d(...)` | 判定散落 N 份就无法回答「哪几个消费者切了」；`tests/features/test_scoring_switch.py` 用 AST 守卫 |
 | S9 | 每切一个消费者，必须跑 `python scripts/scoring_switch_diff.py --check`，且**自证 on 侧真的经过了内核**（内核调用数 off=0 / on>0） | 两侧都走旧实现时 diff 也恒为 0 ⇒ 空判据（坑表 P-56） |
 | S10 | 切「自行算维度分的消费者」时，把维度提取**原样抽成纯函数**，消费者只调网关；**禁止把策略层函数注册成评分适配器** | 保持「适配器 = 评分实现」边界与 9 入口不变；抽取期间任何「顺手优化」都会改口径（ADR-0003 D5） |
-| S11 | **纯透传消费者不加灰度分支**：自身无评分调用点的端点登记进 `PASSTHROUGH_CONSUMERS`，改为纳入 L6 取证 + 契约冻结验证；禁止为清单打勾硬塞 `if` | `/api/score/{code}` 是三层纯透传，下游已接入 ⇒ 加分支零收益且破坏 S8（坑表 P-58） |
-| S12 | 端点按**四类互斥**登记：`GRAY` / `PASSTHROUGH` / `INDIRECT` / `OUT_OF_SCOPE`。域外端点与缓存聚合端点**不做** off/on 端点实跑取证（diff 恒 0 = 空判据），改为 AST 边界守卫 + L2 契约快照 | 坑表 P-59 / ADR-0003 D7；判据必须能区分「真的没变」和「压根没跑到」 |
+| S11 | **纯透传消费者不加评分分支**：自身无评分调用点的端点登记进 `PASSTHROUGH_CONSUMERS`，改为纳入契约冻结验证（P7-3 收口后 L6 已退役）；禁止为清单打勾硬塞 `if` | `/api/score/{code}` 是三层纯透传，下游已接入 ⇒ 加分支零收益且破坏 S8（坑表 P-58） |
+| S12 | 端点分类登记：`GRAY`（P7-3 收口后已全部走内核，类目保留于迁移指南）/ `PASSTHROUGH` / `INDIRECT` / `OUT_OF_SCOPE`（后三类互斥守卫仍在）。域外端点与缓存聚合端点**不做**端点实跑取证（缓存命中让 diff 恒 0 = 空判据），改为 AST 边界守卫 + L2 契约快照 | 坑表 P-59 / ADR-0003 D7 / ADR-0014；判据必须能区分「真的没变」和「压根没跑到」 |
 
 > **阶段边界**：**Phase 4 阶段 B 已收官**（逐条核验见 `docs/plans/2026-11-07-refactor-plan.md` §七 收官验收）。
 > 3 个灰度消费者 + 1 个透传 + 1 个间接 + 1 个域外端点全部登记并取证；
@@ -225,8 +225,8 @@ python scripts/backtest_baseline.py --check --out docs/refactor/backtest-baselin
 # L5 评分对拍基线（9 个评分入口 × 285 样本，旧实现 vs 统一内核）
 python scripts/scoring_baseline.py --check --out docs/refactor/scoring-baseline.json
 
-# L6 开关前后响应样例 diff（阶段 B 起；off vs on，整份 get_stock_score 响应逐字段）
-python scripts/scoring_switch_diff.py --check
+# L6 评分开关对拍 —— P7-3（ADR-0014）已退役：flag 删除后 off/on 恒等 = P-54 空判据；
+# 评分数值口径由 L5 继续锁定，历史取证见 docs/refactor/scoring-baseline.json 与 ADR-0014
 
 # L7 端点归属表 + 契约基线（Phase 5 起；拆分前后必跑）
 python scripts/route_ownership_check.py --check

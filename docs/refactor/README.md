@@ -74,7 +74,7 @@
 | `MIGRATION-GUIDE.md` | **迁移指南**：RF-01 全部破坏点（BC-01～BC-07）before/after + 迁移步骤 + 回滚方式 + Phase 7 清理路线图 + 残留扫描证据 | 人工维护（每批更新） |
 | `backtest-baseline.json` | **回测口径基线**：5 条链路的输出指纹（3 份 `check_entry` 判定序列 + 3 个回测引擎指标 + **统一入口 6 个 mode**） | `python scripts/backtest_baseline.py --capture --out docs/refactor/backtest-baseline.json` |
 | `scoring-baseline.json` | **评分对拍基线**（第 5 把尺子）：9 个评分入口 × 285 样本，「直接调旧实现」vs「经 ScoringKernel 调适配器」逐字段指纹 | `python scripts/scoring_baseline.py --capture --out docs/refactor/scoring-baseline.json` / `--check` |
-| `scripts/scoring_switch_diff.py` | **第 6 把尺子**：`realtime` / `no_realtime` / `endpoint` 三条分支 × `FEATURE_UNIFIED_SCORING` off/on，整份响应逐字段 diff；按分支计数证明 on 侧真走了内核，并逐个校验 `GRAY_CONSUMERS` | `python scripts/scoring_switch_diff.py --check` |
+| ~~`scripts/scoring_switch_diff.py`~~ | **第 6 把尺子（P7-3 退役）**：原为评分灰度 off/on 对拍；flag 删除后 off/on 恒等 = P-54 空判据。评分数值口径由 L5 继续锁定，历史取证见 ADR-0014 | — |
 | `contracts/route-ownership.json` | **第 7 把尺子**：17 域 × 68 端点归属表（含每端点鉴权依赖数 / async） | `python scripts/route_ownership_check.py --capture` |
 | `contracts/frontend-api-paths.json` | 前端 `static/**` 实测 36 条 API 路径（原始字面量 + 规范化模板 + 来源文件） | 同上（同次 capture 一并产出） |
 | `scripts/route_ownership_check.py` | L7 五重校验：成员+数量 / 归属完整性 / 鉴权+async 不得减少 / 基线 diff / 契约 diff | `python scripts/route_ownership_check.py --check` |

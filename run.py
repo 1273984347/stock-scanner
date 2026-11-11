@@ -284,7 +284,7 @@ def run_score_mode(code, data_source="akshare"):
     news_score = 5.0
 
     # 综合评分
-    final = score_4d("cli", fund_score, cap_score, news_score, tech_score)
+    final = score_4d(fund_score, cap_score, news_score, tech_score)
 
     # 偏移值检查
     board_type = "main"

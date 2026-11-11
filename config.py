@@ -54,29 +54,13 @@ def stock_font_path_override() -> str:
     return os.environ.get("STOCK_FONT_PATH", "").strip()
 
 
-# ---- RF-01 Phase 4：统一评分内核开关（默认 off，可按消费者灰度）----------
-# 取值：
-#   0/off/false/no/""      -> 全部走旧路径（默认）
-#   1/on/true/yes/all      -> 全部消费者走统一内核
-#   "pipeline,api_score"   -> 仅列出的消费者走统一内核（按消费者粒度灰度）
-# 回滚：把环境变量改回 0 或删除即可，无需回滚部署。
-FEATURE_UNIFIED_SCORING_DEFAULT = "0"
-
-
-def unified_scoring_enabled(consumer: str = "default") -> bool:
-    """动态读环境变量（便于秒级切换，不依赖模块导入时的快照）。"""
-    raw = os.environ.get(
-        "FEATURE_UNIFIED_SCORING", FEATURE_UNIFIED_SCORING_DEFAULT
-    ).strip().lower()
-    if raw in ("1", "true", "yes", "on", "all", "*"):
-        return True
-    if raw in ("", "0", "false", "no", "off", "none"):
-        return False
-    return consumer in {part.strip() for part in raw.split(",") if part.strip()}
-
+# ---- RF-01 Phase 4：统一评分内核开关 ----------------------------------------
+# P7-3（2026-11-12，ADR-0014）：灰度已收口，ScoringKernel 是唯一评分路径，
+# FEATURE_UNIFIED_SCORING / unified_scoring_enabled 已删除；
+# 数值口径由 L5 评分基线（9 入口 × 285 样本，容差 1e-9）继续锁定。
 
 # ---- RF-01 Phase 6：异步 offload 开关（默认 off，可按消费者灰度）----------
-# 取值与 FEATURE_UNIFIED_SCORING 同构：
+# 取值（与已收口的评分灰度同构）：
 #   0/off/false/no/""      -> 全部同步直调（默认，逐字节等价于改造前）
 #   1/on/true/yes/all      -> 全部已接入消费者走线程池
 #   "backtest,walkforward" -> 仅列出的消费者走线程池

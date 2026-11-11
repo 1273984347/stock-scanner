@@ -167,25 +167,7 @@ def test_all_weight_sources_are_registered():
     assert "judge_panel.groups" in src
 
 
-# ---------------------------------------------------------------- 开关
-
-def test_feature_flag_default_off(monkeypatch):
-    from config import unified_scoring_enabled
-    monkeypatch.delenv("FEATURE_UNIFIED_SCORING", raising=False)
-    assert unified_scoring_enabled("pipeline") is False
-    assert unified_scoring_enabled("api_score") is False
-
-
-@pytest.mark.parametrize("raw,consumer,expected", [
-    ("1", "pipeline", True), ("all", "anything", True),
-    ("0", "pipeline", False), ("off", "pipeline", False),
-    ("pipeline,api_score", "pipeline", True),
-    ("pipeline,api_score", "dashboard", False),
-])
-def test_feature_flag_granular(monkeypatch, raw, consumer, expected):
-    from config import unified_scoring_enabled
-    monkeypatch.setenv("FEATURE_UNIFIED_SCORING", raw)
-    assert unified_scoring_enabled(consumer) is expected
+# ---------------------------------------------------------------- 开关（P7-3 已收口，flag 删除；历史见 ADR-0014）
 
 
 # ---------------------------------------------------------------- 适配器纯转发（AST 硬守卫）

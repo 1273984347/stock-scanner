@@ -1,9 +1,10 @@
-"""RF-01 Phase 4 阶段 B 特征测试 —— 灰度开关与消费者接入的硬守卫。
+"""RF-01 评分域特征测试 —— 网关唯一路径与消费者接入的硬守卫。
 
-三条机器判据（防止「以为切了其实没切」这类空判据，坑表 P-54）：
-  ① flag off 时**绝不**构造内核；flag on 时**必须**经过内核；
-  ② 消费者文件里不许直接读环境变量 / 判定开关（判定只许在网关里）；
-  ③ `_compute_base_scores` 必须经 `score_4d("strategies", ...)`，不许退回直调旧实现。
+Phase 7 P7-3（2026-11-12，ADR-0014）灰度收口后，判据从「off/on 两条路径都要对」
+改为「唯一路径正确 + 边界不回退」：
+  ① 网关必须经 ScoringKernel（source/inputs 契约固定），数值与旧实现逐字段相等；
+  ② 消费者文件里不许读环境变量 / 判定开关（flag 已删，出现即回退）；
+  ③ 三个消费者必须经 `score_4d(...)`，不许退回直调旧实现。
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from unittest.mock import Mock
 import pytest
 
 from lib.scoring.scorer import comprehensive_score
-from lib.scoring.scoring_gateway import GRAY_CONSUMERS, score_4d
+from lib.scoring.scoring_gateway import score_4d
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 
@@ -28,31 +29,16 @@ def _node(tree: ast.Module, name: str):
     raise AssertionError(f"function {name} not found")
 
 
-# ---------------------------------------------------------------- 两条路径
+# ---------------------------------------------------------------- 唯一路径
 
-def test_off_never_builds_kernel(monkeypatch):
-    import lib.scoring.scoring_adapters as adapters
-
-    def poison():
-        raise AssertionError("off-side must not build a kernel")
-
-    monkeypatch.delenv("FEATURE_UNIFIED_SCORING", raising=False)
-    monkeypatch.setattr(adapters, "build_kernel", poison)
-    assert score_4d("strategies", 7.3, 4.1, 6.2, 8.4) == comprehensive_score(
-        7.3, 4.1, 6.2, 8.4
-    )
-
-
-@pytest.mark.parametrize("flag", ["strategies", "all", "*", "1"])
-def test_on_goes_through_kernel(monkeypatch, flag):
+def test_gateway_goes_through_kernel(monkeypatch):
     import lib.scoring.scoring_adapters as adapters
 
     stub = Mock()
     stub.score.return_value = types.SimpleNamespace(raw={"sentinel": True})
-    monkeypatch.setenv("FEATURE_UNIFIED_SCORING", flag)
     monkeypatch.setattr(adapters, "build_kernel", lambda: stub)
 
-    assert score_4d("strategies", 1, 2, 3, 4) == {"sentinel": True}
+    assert score_4d(1, 2, 3, 4) == {"sentinel": True}
     assert stub.score.call_count == 1
     source, inputs = stub.score.call_args[0]
     assert source == "scorer_4d"
@@ -63,26 +49,14 @@ def test_on_goes_through_kernel(monkeypatch, flag):
     (0, 0, 0, 0), (10, 10, 10, 10), (7.3, 4.1, 6.2, 8.4),
     (2.5, 8.8, 1.2, 9.9),
 ])
-def test_off_on_results_identical(monkeypatch, values):
-    monkeypatch.delenv("FEATURE_UNIFIED_SCORING", raising=False)
-    off = score_4d("strategies", *values)
-    monkeypatch.setenv("FEATURE_UNIFIED_SCORING", "strategies")
-    on = score_4d("strategies", *values)
-    monkeypatch.setenv("FEATURE_UNIFIED_SCORING", "all")
-    on_all = score_4d("strategies", *values)
-    assert off == comprehensive_score(*values) == on == on_all
-
-
-def test_gray_consumers_declared():
-    assert "strategies" in GRAY_CONSUMERS
-    assert "pipeline" in GRAY_CONSUMERS
-    assert "cli" in GRAY_CONSUMERS
+def test_results_match_legacy(values):
+    """收口不换算法：网关输出必须与旧实现逐字段相等（L5 基线之外的快速哨兵）。"""
+    assert score_4d(*values) == comprehensive_score(*values)
 
 
 def test_passthrough_consumers_declared():
     from lib.scoring.scoring_gateway import PASSTHROUGH_CONSUMERS
     assert "api_score" in PASSTHROUGH_CONSUMERS
-    assert not (set(PASSTHROUGH_CONSUMERS) & set(GRAY_CONSUMERS))
 
 
 # ---------------------------------------------------------------- 消费者接入（AST 守卫）
@@ -98,9 +72,6 @@ def test_strategies_routes_through_gateway():
     }
     assert "score_4d" in names, "consumer must call the gateway"
     assert "comprehensive_score" not in names, "consumer must not call legacy scorer directly"
-    gateway_calls = [n for n in calls
-                     if isinstance(n.func, ast.Name) and n.func.id == "score_4d"]
-    assert gateway_calls[0].args[0].value == "strategies"
 
 
 @pytest.mark.parametrize("rel", [
@@ -110,7 +81,10 @@ def test_strategies_routes_through_gateway():
     "api.py",
 ])
 def test_consumer_does_not_read_flag_itself(rel):
-    """灰度判定只能存在于网关；消费者里出现环境变量读取 = 判定散落。"""
+    """判定只能存在于网关；消费者里出现环境变量读取 = 判定散落。
+
+    P7-3 收口后 flag 已删除——消费者里再出现这些名字只可能是「把灰度带回来」。
+    """
     tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
     src = ast.unparse(tree)
     assert "FEATURE_UNIFIED_SCORING" not in src
@@ -149,10 +123,6 @@ def test_pipeline_consumer_uses_gateway():
     assert "score_4d" in names, "pipeline consumer must use the gateway"
     assert "comprehensive_score" not in names, "must not call legacy scorer directly"
     assert "compute_4d_dimensions" in names, "dimension extraction must be a separate pure function"
-    gateway = [n for n in ast.walk(fn)
-               if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-               and n.func.id == "score_4d"]
-    assert gateway[0].args[0].value == "pipeline"
 
 
 def test_dimension_extraction_is_pure():
@@ -202,6 +172,7 @@ def test_extraction_preserves_legacy_formula(monkeypatch, pinned_fund_flow, code
 
     另有一次 `git show HEAD:lib/strategy/steps.py` 动态加载旧函数的实跑对拍，
     覆盖 None / dict / pd.Series 三种 fin_data，结果见计划 §七 第 3 批。
+    （P7-3 收口后不再需要 pin flag——评分路径唯一，等价式直接成立。）
     """
     from lib.strategy.steps import compute_4d_dimensions, score_without_realtime
 
@@ -211,22 +182,14 @@ def test_extraction_preserves_legacy_formula(monkeypatch, pinned_fund_flow, code
     legacy = comprehensive_score(
         dims["fundamental"], dims["capital_flow"], dims["news"], dims["technical"]
     )
-
-    monkeypatch.delenv("FEATURE_UNIFIED_SCORING", raising=False)
-    off = score_without_realtime(code, factors, fin_data)
-    monkeypatch.setenv("FEATURE_UNIFIED_SCORING", "pipeline")
-    on = score_without_realtime(code, factors, fin_data)
-    monkeypatch.setenv("FEATURE_UNIFIED_SCORING", "all")
-    on_all = score_without_realtime(code, factors, fin_data)
-    assert off == on == on_all == legacy
+    assert score_without_realtime(code, factors, fin_data) == legacy
 
 
 def test_dimension_extraction_is_deterministic(pinned_fund_flow):
     from lib.strategy.steps import compute_4d_dimensions
     for code, factors, fin in CASES:
         fin_data = _fin(fin)
-        assert compute_4d_dimensions(code, factors, fin_data) == \
-               compute_4d_dimensions(code, factors, fin_data)
+        assert compute_4d_dimensions(code, factors, fin_data) ==                compute_4d_dimensions(code, factors, fin_data)
 
 
 # ---------------------------------------------------------------- 第 3 个消费者：CLI / 端点透传
@@ -245,7 +208,6 @@ def test_cli_consumer_uses_gateway():
     names = _call_names(fn)
     assert "score_4d" in names, "CLI --score must use the gateway"
     assert "comprehensive_score" not in names, "must not call legacy scorer directly"
-    assert _gateway_call(fn).args[0].value == "cli"
 
 
 def test_endpoint_is_pure_passthrough():
@@ -269,28 +231,10 @@ def test_endpoint_is_pure_passthrough():
         assert forbidden not in compute_names
 
 
-def test_cli_off_on_identical(monkeypatch):
+def test_cli_matches_legacy():
+    """CLI 经网关的输出必须与旧实现逐字段相等（收口不换算法）。"""
     values = (7.3, 4.1, 6.2, 8.4)
-    monkeypatch.delenv("FEATURE_UNIFIED_SCORING", raising=False)
-    off = score_4d("cli", *values)
-    monkeypatch.setenv("FEATURE_UNIFIED_SCORING", "cli")
-    on = score_4d("cli", *values)
-    monkeypatch.setenv("FEATURE_UNIFIED_SCORING", "all")
-    on_all = score_4d("cli", *values)
-    assert off == on == on_all == comprehensive_score(*values)
-
-
-def test_endpoint_branch_is_registered_in_switch_diff():
-    """L6 必须真的覆盖端点，否则新增的透传消费者不会被跑到（P-57）。
-
-    Phase 5 后端点迁至 routers/scoring.py，故断言检查规范引用而非 `api.stock_score`。
-    """
-    tree = ast.parse((ROOT / "scripts/scoring_switch_diff.py").read_text(encoding="utf-8"))
-    src = ast.unparse(tree)
-    assert ("'endpoint'" in src or '"endpoint"' in src)
-    assert "_call_score_endpoint" in src
-    assert "routers.scoring" in src
-    assert "stock_score" in src
+    assert score_4d(*values) == comprehensive_score(*values)
 
 
 # ---------------------------------------------------------------- 端点分类（阶段 B 收官）
@@ -303,10 +247,9 @@ SCORING_SYMBOLS = (
 
 def test_endpoint_classification_is_disjoint_and_complete():
     from lib.scoring.scoring_gateway import (
-        GRAY_CONSUMERS, PASSTHROUGH_CONSUMERS, INDIRECT_CONSUMERS,
-        OUT_OF_SCOPE_ENDPOINTS,
+        PASSTHROUGH_CONSUMERS, INDIRECT_CONSUMERS, OUT_OF_SCOPE_ENDPOINTS,
     )
-    groups = [set(GRAY_CONSUMERS), set(PASSTHROUGH_CONSUMERS),
+    groups = [set(PASSTHROUGH_CONSUMERS),
               set(INDIRECT_CONSUMERS), set(OUT_OF_SCOPE_ENDPOINTS)]
     assert sum(len(g) for g in groups) == len(set().union(*groups)), "classes must be disjoint"
     all_endpoints = set().union(*groups)
@@ -343,11 +286,3 @@ def test_recommend_is_out_of_scoring_domain():
     for symbol in SCORING_SYMBOLS:
         assert symbol not in endpoint_names, f"recommend unexpectedly calls {symbol}"
         assert symbol not in compute_names, f"recommend unexpectedly calls {symbol}"
-
-
-def test_no_l6_branch_for_out_of_scope_endpoint():
-    """给域外端点做 off/on diff = 恒 0 的空判据（P-54），不应进 L6。"""
-    tree = ast.parse((ROOT / "scripts/scoring_switch_diff.py").read_text(encoding="utf-8"))
-    src = ast.unparse(tree)
-    assert "api_strategy_recommend" not in src
-    assert "OUT_OF_SCOPE_ENDPOINTS" in src

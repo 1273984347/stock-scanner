@@ -15,7 +15,7 @@
 硬约束（由 `tests/features/test_scoring_contract.py` 用 AST 自动守卫）：
 - `raw` 必须是旧实现返回值的**同一对象引用**（类比 `backtest/unified.py` 的 B4）。
 - 适配器函数体不得出现算术运算（`BinOp`）—— 权重计算只能发生在旧实现里。
-- 消费者是否切到内核由 `config.unified_scoring_enabled(consumer)` 决定，默认 off。
+- 消费者路径由 `scoring_gateway.score_4d` 唯一收口（P7-3，ADR-0014：flag 已删，kernel 是唯一路径）。
 """
 
 from __future__ import annotations
@@ -98,9 +98,8 @@ class AdapterSpec:
 class ScoringKernel:
     """唯一分发点：按 source 找到适配器，调用一次，包装成统一结果。
 
-    内核不缓存、不改输入、不重算。`score()` 始终可用（供对拍与特征测试），
-    但**生产消费者是否启用**由 `config.unified_scoring_enabled(consumer)` 控制，
-    默认全关 ⇒ 阶段 A 引入内核不会改变任何端点响应。
+    内核不缓存、不改输入、不重算。`score()` 始终可用（供对拍与特征测试）。
+    P7-3（ADR-0014）收口后 kernel 是**唯一生产路径**（灰度已删）。
     """
 
     def __init__(self) -> None:
@@ -153,7 +152,4 @@ class ScoringKernel:
         )
 
 
-def unified_scoring_enabled(consumer: str = "default") -> bool:
-    """按消费者粒度判定开关（默认 off）。转调 config，避免在此复制判定逻辑。"""
-    from config import unified_scoring_enabled as _enabled
-    return _enabled(consumer)
+# P7-3（2026-11-12）：灰度已收口，本模块不再持有开关判定；历史见 ADR-0014。

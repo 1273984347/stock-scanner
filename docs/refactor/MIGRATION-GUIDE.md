@@ -142,7 +142,21 @@
 - **生效版本**：待 RF-02。
 - **回滚方式**：不适用。
 
-### BC-08 · `notifier.py` 下线 → `reporter/scan_notify.py`（Phase 7 P7-2）
+### BC-08 · 评分灰度收口（Phase 7 P7-3，ADR-0014）
+
+- **变更点**：`FEATURE_UNIFIED_SCORING` 环境变量与 `config.unified_scoring_enabled()`
+  删除；`scoring_gateway.score_4d(fundamental, capital_flow, news, technical)` 去掉
+  `consumer` 参数，恒经 `ScoringKernel`；`GRAY_CONSUMERS` / `score_4d_result` 删除；
+  L6 对拍脚本退役。
+- **影响面**：消费者可见返回值**零变化**（两分支本就返回旧实现原对象 `.raw`）；
+  仓内 3 个调用方（strategies / steps / run.py）已同批更新；无外部消费方。
+- **Before**：`score_4d("cli", f, c, n, t)`；`FEATURE_UNIFIED_SCORING=all` 切内核路径。
+- **After**：`score_4d(f, c, n, t)`（唯一路径 = kernel）；无数值切换手段。
+- **迁移步骤**：改 import 调用签名即可；数值口径由 L5 基线锁定（285 样本容差 1e-9）。
+- **生效版本**：Phase 7 P7-3（2026-11-12）。
+- **回滚方式**：`git revert` P7-3 提交（flag 机制整体恢复）。
+
+### BC-08b · `notifier.py` 下线 → `reporter/scan_notify.py`（Phase 7 P7-2）
 
 - **变更点**：根目录弃用壳 `notifier.py`（自 2026-05-31 起 emit DeprecationWarning）
   删除；4 个活函数（`get_tenant_token` / `format_stock_table` /
@@ -188,7 +202,7 @@
 | **P7-1** | MIGRATION-GUIDE 定稿（本文件）；删除 `factors.detect_market_regime` + `MarketRegime`（全仓 0 引用）；`api.py` 不可达死代码；`pipeline.py` 未用 import（`comprehensive_score`） | ✅ 2026-11-12 |
 | **P7-2** | `notifier.py` 弃用壳下线（活函数逐字迁 `reporter/scan_notify.py`，2 个调用方改 import，payload 对拍逐字节一致）；`judge_panel.py` 6 个 `_evaluate_*` 死方法 + `_fund_data_missing` 删除（679→224 行，L5 基线不变）；`backtest/core.py` 误导性 deprecation 标注改正（import 警告 1→0；`run_factor_backtest` 是活实现）。**收敛评估结论**：`backtest/full.py` / `rebalance.py` wrapper 是包公共面（`__init__` 再导出 + 测试 patch 目标）且警告属实，**保留**，引用收敛推迟到有真实收益时 | ✅ 2026-11-12 |
 | **P7-2b** | judge_panel 清理时发现 `config/judges.json` 的 6 组权重非零但对应投票路径已死（`evaluate_all` 不再产生规则票）——**配置与实现漂移**，随 RF-02 一并处置（删 JSON 条目或复活规则组，须 walk-forward 验证） | 待推（登记） |
-| **P7-3** | scoring 灰度收口（`FEATURE_UNIFIED_SCORING` 删 flag 或翻默认 → 单独 ADR；L6 同步退役/改判——收口后 off/on 恒等属 P-54 空判据） | 待推（**flag 处置待用户拍板**） |
+| **P7-3** | scoring 灰度收口（**用户拍板：删 flag**）：`score_4d` 去 consumer 参/去分支（两侧本就返回旧实现原对象 `.raw`，收口对消费者不可见）；`GRAY_CONSUMERS` / `score_4d_result`（零调用死 API）/ `scoring_contract.unified_scoring_enabled` / `config.unified_scoring_enabled` 删除；L6 脚本退役（P-54 空判据），L5 继续锁数值口径；3 个消费者调用点同批更新 | ✅ 2026-11-12 |
 | **P7-4** | 配置集中化收尾：env 读取去重（TDX 系 8 处 / FALLBACK_DIR / TDX_REF_PATH 归 config；API_SECRET_KEY / TUSHARE_TOKEN / STOCK_FONT_PATH 改 config accessor 调用时读取保 monkeypatch 语义）+ `TRADING_DAYS_PER_YEAR` 单一化（4 处重复定义删除 + 3 处裸 252 年化换常量）。**判据修正**：计划原口径「31 处硬编码周期常量并入 config.py」实测正则已漂移到 160 处，其中绝大多数为函数签名默认值 / 算法局部窗口 / 评分启发式，**不属于配置**——只收敛真正跨模块同义的年化常数，其余保留原地并留痕 | ✅ 2026-11-12 |
 | **P7-5** | 文档收口（CLAUDE.md / docs/architecture.md / TODO 关闭 P1/P8 已完成项 + 台账漂移项）；破坏点 ADR 编号连续性核查；推送触发 CI 三平台绿灯（破坏性删除的前置条件 ③） | 待推 |
 
@@ -233,6 +247,12 @@ P7-2 残留扫描证据（2026-11-12）：
 - payload 对拍：旧 notifier（`git show HEAD:notifier.py`）vs `reporter.scan_notify`
   的 `build_message_content`，固定输入逐字节一致（`get_market_sentiment` 与
   `datetime.now` 双侧同 mock）。
+
+P7-3 残留扫描证据（2026-11-12）：
+- 全仓 `FEATURE_UNIFIED_SCORING | unified_scoring_enabled`：lib/scripts/config/run.py 命中
+  = **0**（仅注释性历史说明与测试禁止名单 `SCORING_SYMBOLS`——后者的作用是守卫回退）。
+- L5 评分基线 285 样本逐字段不变；L1 基线 1293 passed / 12 skipped
+  （-14 逐条可解释：switch 净 -7 + contract -7）。
 
 P7-4 残留扫描证据（2026-11-12）：
 - lib/ 内 `os.getenv | os.environ.get` 从 15 处收敛到 **2 处受控调用时重读**

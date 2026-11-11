@@ -1,6 +1,6 @@
 # CLAUDE.md — Stock Scanner (个人量化选股系统)
 
-> 最后更新：2026-11-12 | 本次更新：RF-01 Phase 7 P7-4 —— 配置集中化收尾：env 读取去重（15→2 受控）、TRADING_DAYS_PER_YEAR 单一化（4 定义+3 裸 252）、API_SECRET_KEY 等改 config accessor 调用时读取（保 monkeypatch）；判据修正：31 处周期常量口径实测 160 处且多为 API 默认值/算法参数，只收敛真配置；L0–L10 全 PASS（1307 passed）
+> 最后更新：2026-11-12 | 本次更新：RF-01 Phase 7 P7-3 —— 评分灰度收口（ADR-0014，用户拍板删 flag）：score_4d 唯一路径 = ScoringKernel（返回值恒等，L5 285 样本锁定）、L6 对拍退役、GRAY_CONSUMERS/死 API 删除、L1 基线 1293 passed；评分域过渡层清零
 
 ## 工作流
 

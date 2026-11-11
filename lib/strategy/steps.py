@@ -237,15 +237,14 @@ def compute_4d_dimensions(code: str, factors: Dict,
 
 def score_without_realtime(code: str, factors: Dict,
                            fin_data: Optional[pd.Series] = None) -> Dict[str, Any]:
-    """无实时行情的四维评分路径 —— 阶段 B 第二个灰度消费者 `pipeline`。
+    """无实时行情的四维评分路径 —— `pipeline` 消费者。
 
     维度计算在 `compute_4d_dimensions`（原逻辑原样搬出），评分决策统一经
-    `scoring_gateway.score_4d("pipeline", ...)`；flag off 时网关直调旧实现，
-    数值与抽出前完全一致。
+    `scoring_gateway.score_4d(...)`（P7-3 收口后唯一路径 = ScoringKernel，
+    数值由 L5 基线锁定与抽出前完全一致）。
     """
     dims = compute_4d_dimensions(code, factors, fin_data)
     return score_4d(
-        "pipeline",
         dims["fundamental"], dims["capital_flow"],
         dims["news"], dims["technical"],
     )
