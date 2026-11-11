@@ -15,7 +15,7 @@ from lib.data.data_layer import (get_stock_hist_multi_source, get_realtime_quote
                              clean_cache, get_news_signals, _safe_float,
                              get_macro_hist_local, get_index_hist)
 from lib.scoring.scorer import (score_fundamental, score_capital_flow,
-                         score_news, score_technical, comprehensive_score)
+                         score_news, score_technical)
 from lib.risk.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
 from lib.scoring.evaluator import build_forward_returns
 from lib.strategy.strategies import (get_zt_candidates, get_volume_breakout_candidates,

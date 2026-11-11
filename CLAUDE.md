@@ -1,6 +1,6 @@
 # CLAUDE.md — Stock Scanner (个人量化选股系统)
 
-> 最后更新：2026-11-12 | 本次更新：RF-01 Phase 6 ✅ 收官（ADR-0013）—— 第 7 批 18 端点 offload、L9 37 迁移、L10 37 端点 37/37 改善、blocking 242→107（-56%）、offloaded 38 端点、候选仅剩 dashboard（转 RF-02）；发现 3 个坏端点（notifications ×2 / strategy-recommend，运行时必走空兜底，RF-02 修复）；**Phase 7 待用户确认后进入（不可逆）**
+> 最后更新：2026-11-12 | 本次更新：RF-01 Phase 7 P7-1 —— MIGRATION-GUIDE.md 定稿（BC-01～07 破坏点表）+ 死代码清理（factors.detect_market_regime/MarketRegime 0 引用删除、api.py 不可达段、pipeline 未用 import），L0–L10 全 PASS 行为零变更；Phase 6 已收官（ADR-0013）；P7-2～P7-5 路线图见 MIGRATION-GUIDE §三
 
 ## 工作流
 

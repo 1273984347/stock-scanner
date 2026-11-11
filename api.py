@@ -30,16 +30,6 @@ app = FastAPI(title="A股量化交易系统", version="3.0.0")
 @app.exception_handler(HTTPException)
 async def _http_exception_handler(request: Request, exc: HTTPException):
     return await _http_exception_handler_impl(request, exc)
-    if exc.status_code >= 500:
-        logger.error(
-            f"API 5xx: {request.method} {request.url.path} -> {exc.detail}",
-            exc_info=True,
-        )
-    # 保持原有 FastAPI 响应格式（detail 字段）
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail},
-    )
 
 
 @app.exception_handler(Exception)
@@ -85,15 +75,6 @@ def _flush_perf_on_shutdown():
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     return await _add_security_headers(request, call_next)
-    """添加安全响应头"""
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    # X-XSS-Protection 显式设为 "0" 禁用旧过滤器（避免引入漏洞），保留头以兼容老扫描器
-    response.headers["X-XSS-Protection"] = "0"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    response.headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
-    return response
 
 
 @app.get("/")

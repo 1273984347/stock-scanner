@@ -254,16 +254,7 @@ def calc_market_exposure(close: pd.Series, volume: pd.Series = None,
     return {"state": state, "exposure": round(exposure, 2)}
 
 
-# ========== 市场体制检测（来自 cryptoquant-ai，A股适用版） ==========
-
-@dataclass
-class MarketRegime:
-    """市场体制"""
-    regime: str  # TREND_UP / TREND_DOWN / RANGE / RISK_OFF
-    score: float  # -1 到 1
-    confidence: float
-    reasoning: str
-
+# ========== 宏观风险门控（A股适用版） ==========
 
 @dataclass
 class MacroGate:
@@ -274,36 +265,6 @@ class MacroGate:
     position_multiplier: float  # 仓位乘数
     confidence_penalty: float  # 置信度惩罚
     reasoning: str
-
-
-def detect_market_regime(prices: pd.Series, volume: pd.Series = None,
-                         market_sentiment: float = 0) -> MarketRegime:
-    """检测市场体制（已废弃，请使用 lib/market_regime.detect_market_regime）
-
-    .. deprecated::
-        此函数已废弃，请使用 ``lib.monitoring.market_regime.detect_market_regime`` 作为统一来源。
-    """
-    import warnings
-    warnings.warn(
-        "factors.detect_market_regime 已废弃，请使用 lib.monitoring.market_regime.detect_market_regime",
-        DeprecationWarning, stacklevel=2
-    )
-    from lib.monitoring.market_regime import detect_market_regime as _detect
-    index_df = pd.DataFrame({"close": prices, "high": prices, "low": prices})
-    result = _detect(index_df)
-    regime_map = {
-        "TREND_UP": "TREND_UP",
-        "TREND_DOWN": "TREND_DOWN",
-        "MEAN_REVERSION": "RANGE",
-        "COMPRESSION": "RANGE",
-        "RISK_OFF": "RISK_OFF",
-    }
-    return MarketRegime(
-        regime=regime_map.get(result["regime"], "UNKNOWN"),
-        score=result["indicators"].get("trend_score", 0),
-        confidence=result["confidence"],
-        reasoning=f"统一到 market_regime.py: {result['regime']}"
-    )
 
 
 def evaluate_macro_gate(macro_score: float = 0) -> MacroGate:

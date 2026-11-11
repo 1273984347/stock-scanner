@@ -71,6 +71,7 @@
 | `test-duration-baseline.md` | **本地 pytest 耗时排序 + 稳定性基线**（慢用例定位与根因分析） | 人工维护 + 工具产出数据 |
 | `test-duration-baseline.json` | 上述基线的机器可读版（耗时排序 / 稳定性 min·median·max·CV） | `scripts/pytest_duration_baseline.py` |
 | `pitfalls.md` | **踩坑集**：RF-01 执行期真实踩过的 71 个坑（现象 → 根因 → 修复 → 推广），按度量/跨平台/测试/搬迁/数据/CI/工具链分七类 | 人工维护（每批收官追加） |
+| `MIGRATION-GUIDE.md` | **迁移指南**：RF-01 全部破坏点（BC-01～BC-07）before/after + 迁移步骤 + 回滚方式 + Phase 7 清理路线图 + 残留扫描证据 | 人工维护（每批更新） |
 | `backtest-baseline.json` | **回测口径基线**：5 条链路的输出指纹（3 份 `check_entry` 判定序列 + 3 个回测引擎指标 + **统一入口 6 个 mode**） | `python scripts/backtest_baseline.py --capture --out docs/refactor/backtest-baseline.json` |
 | `scoring-baseline.json` | **评分对拍基线**（第 5 把尺子）：9 个评分入口 × 285 样本，「直接调旧实现」vs「经 ScoringKernel 调适配器」逐字段指纹 | `python scripts/scoring_baseline.py --capture --out docs/refactor/scoring-baseline.json` / `--check` |
 | `scripts/scoring_switch_diff.py` | **第 6 把尺子**：`realtime` / `no_realtime` / `endpoint` 三条分支 × `FEATURE_UNIFIED_SCORING` off/on，整份响应逐字段 diff；按分支计数证明 on 侧真走了内核，并逐个校验 `GRAY_CONSUMERS` | `python scripts/scoring_switch_diff.py --check` |
