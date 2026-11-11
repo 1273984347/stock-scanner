@@ -229,31 +229,36 @@ async def factor_exposures(preset: str = Query("balanced", description="策略�
         return {"exposures": {}, "positions": [], "error": "因子暴露计算失败"}
 
 
+def _compute_risk_correlation():
+    """原 `GET /api/risk/correlation` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.risk.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
+    mgr = VolCorrRiskManager(VolCorrRiskConfig())
+    # 获取当前持仓
+    positions_file = Path("cache/paper_positions.json")
+    if not positions_file.exists():
+        return {"codes": [], "matrix": []}
+    with open(positions_file) as f:
+        positions = json.load(f)
+    codes = list(positions.keys())[:20]  # 最多 20 只
+    if len(codes) < 2:
+        return {"codes": codes, "matrix": [[1.0]]}
+    # 生成相关性矩阵（基于历史数据）
+    import numpy as np
+    n = len(codes)
+    matrix = np.eye(n).tolist()
+    for i in range(n):
+        for j in range(i + 1, n):
+            corr = round(np.random.uniform(-0.3, 0.8), 3)
+            matrix[i][j] = corr
+            matrix[j][i] = corr
+    return {"codes": codes, "matrix": matrix}
+
+
 @router.get("/api/risk/correlation", dependencies=[Security(verify_api_key)])
 async def risk_correlation():
     """持仓相关性矩阵 — 风险热力图数据"""
     try:
-        from lib.risk.risk_manager import VolCorrRiskManager, VolCorrRiskConfig
-        mgr = VolCorrRiskManager(VolCorrRiskConfig())
-        # 获取当前持仓
-        positions_file = Path("cache/paper_positions.json")
-        if not positions_file.exists():
-            return {"codes": [], "matrix": []}
-        with open(positions_file) as f:
-            positions = json.load(f)
-        codes = list(positions.keys())[:20]  # 最多 20 只
-        if len(codes) < 2:
-            return {"codes": codes, "matrix": [[1.0]]}
-        # 生成相关性矩阵（基于历史数据）
-        import numpy as np
-        n = len(codes)
-        matrix = np.eye(n).tolist()
-        for i in range(n):
-            for j in range(i + 1, n):
-                corr = round(np.random.uniform(-0.3, 0.8), 3)
-                matrix[i][j] = corr
-                matrix[j][i] = corr
-        return {"codes": codes, "matrix": matrix}
+        return await run_blocking("risk_correlation", _compute_risk_correlation)
     except Exception as e:
         logger.error(f"Correlation error: {e}")
         return {"codes": [], "matrix": []}

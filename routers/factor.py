@@ -186,20 +186,25 @@ async def factor_scatter(
         return {"points": [], "x_factor": x_factor, "y_factor": y_factor}
 
 
+def _compute_factor_weights(preset):
+    """原 `GET /api/factor-weights` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from config import get_config
+    from factors import IC_FACTOR_WEIGHTS, STRATEGY_WEIGHTS
+
+    cfg = get_config(preset)
+
+    return {
+        "ic_weights": dict(IC_FACTOR_WEIGHTS),
+        "strategy_weights": dict(STRATEGY_WEIGHTS),
+        "preset": preset,
+    }
+
+
 @router.get("/api/factor-weights", dependencies=[Security(verify_api_key)])
 async def factor_weights(preset: str = Query("balanced")):
     """因子权重分布"""
     try:
-        from config import get_config
-        from factors import IC_FACTOR_WEIGHTS, STRATEGY_WEIGHTS
-
-        cfg = get_config(preset)
-
-        return {
-            "ic_weights": dict(IC_FACTOR_WEIGHTS),
-            "strategy_weights": dict(STRATEGY_WEIGHTS),
-            "preset": preset,
-        }
+        return await run_blocking("factor_weights", _compute_factor_weights, preset)
     except Exception as e:
         logger.error(f"因子权重查询失败: {e}")
         return {"ic_weights": {}, "strategy_weights": {}}
@@ -261,23 +266,28 @@ async def factor_contribution(days: int = Query(default=30, ge=1, le=365)):
         return {"contributions": {}}
 
 
+def _compute_factor_ic_history(days):
+    """原 `GET /api/factor-ic-history` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.scoring.signal_tracker import SignalTracker
+    tracker = SignalTracker()
+    report = tracker.evaluate_signals(days=days)
+    # 生成模拟 IC 时间序列（基于信号数据）
+    import numpy as np
+    from datetime import timedelta
+    dates = [(datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days, 0, -1)]
+    factors = ["volume_ratio", "adx", "williams_r", "rsi", "macd", "momentum_20"]
+    ic_history = {}
+    for f in factors:
+        base_ic = {"volume_ratio": 0.15, "adx": 0.08, "williams_r": 0.07, "rsi": 0.06, "macd": 0.05, "momentum_20": 0.09}.get(f, 0.05)
+        ic_history[f] = [round(base_ic + np.random.normal(0, 0.03), 4) for _ in dates]
+    return {"dates": dates, "factors": ic_history}
+
+
 @router.get("/api/factor-ic-history", dependencies=[Security(verify_api_key)])
 async def factor_ic_history(days: int = Query(60, ge=10, le=365)):
     """因子 IC 时间序列 — 每个因子的 IC 值随时间变化"""
     try:
-        from lib.scoring.signal_tracker import SignalTracker
-        tracker = SignalTracker()
-        report = tracker.evaluate_signals(days=days)
-        # 生成模拟 IC 时间序列（基于信号数据）
-        import numpy as np
-        from datetime import timedelta
-        dates = [(datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days, 0, -1)]
-        factors = ["volume_ratio", "adx", "williams_r", "rsi", "macd", "momentum_20"]
-        ic_history = {}
-        for f in factors:
-            base_ic = {"volume_ratio": 0.15, "adx": 0.08, "williams_r": 0.07, "rsi": 0.06, "macd": 0.05, "momentum_20": 0.09}.get(f, 0.05)
-            ic_history[f] = [round(base_ic + np.random.normal(0, 0.03), 4) for _ in dates]
-        return {"dates": dates, "factors": ic_history}
+        return await run_blocking("factor_ic_history", _compute_factor_ic_history, days)
     except Exception as e:
         logger.error(f"IC history error: {e}")
         return {"dates": [], "factors": {}}

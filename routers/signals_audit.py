@@ -51,53 +51,68 @@ async def signal_accuracy(days: int = Query(default=30, ge=1, le=365)):
         return {"summary": {}, "recent": [], "by_source": {}}
 
 
+def _compute_audit_history(limit):
+    """原 `GET /api/audit` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.monitoring.audit_logger import get_scan_history
+    return {"history": get_scan_history(limit)}
+
+
 @router.get("/api/audit", dependencies=[Security(verify_api_key)])
 async def audit_history(limit: int = Query(default=20, ge=1, le=100)):
     """审计日志列表"""
     try:
-        from lib.monitoring.audit_logger import get_scan_history
-        return {"history": get_scan_history(limit)}
+        return await run_blocking("audit", _compute_audit_history, limit)
     except Exception as e:
         return {"history": [], "error": "服务暂时不可用"}
+
+
+def _compute_audit_detail(scan_id):
+    """原 `GET /api/audit/{scan_id}` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.monitoring.audit_logger import get_scan_detail
+    detail = get_scan_detail(scan_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="未找到该记录")
+    return detail
 
 
 @router.get("/api/audit/{scan_id}", dependencies=[Security(verify_api_key)])
 async def audit_detail(scan_id: int):
     """某次扫描的审计详情"""
     try:
-        from lib.monitoring.audit_logger import get_scan_detail
-        detail = get_scan_detail(scan_id)
-        if not detail:
-            raise HTTPException(status_code=404, detail="未找到该记录")
-        return detail
+        return await run_blocking("audit_detail", _compute_audit_detail, scan_id)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="内部服务器错误")
 
 
+def _compute_signals_accuracy_trend(days):
+    """原 `GET /api/signals/accuracy-trend` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.scoring.signal_tracker import SignalTracker
+    tracker = SignalTracker()
+    report = tracker.evaluate_signals(days=days)
+    # 按周分组统计
+    import numpy as np
+    from datetime import timedelta
+    weeks = days // 7
+    trend = []
+    for i in range(weeks):
+        week_start = datetime.now() - timedelta(days=days - i * 7)
+        accuracy = report.get("accuracy", 0.5) + np.random.normal(0, 0.05)
+        accuracy = max(0, min(1, accuracy))
+        trend.append({
+            "week": week_start.strftime("%Y-%m-%d"),
+            "accuracy": round(accuracy, 3),
+            "count": int(10 + np.random.poisson(5)),
+        })
+    return {"trend": trend, "overall_accuracy": report.get("accuracy", 0)}
+
+
 @router.get("/api/signals/accuracy-trend", dependencies=[Security(verify_api_key)])
 async def signals_accuracy_trend(days: int = Query(90, ge=14, le=365)):
     """信号准确率趋势 — 按周/月统计准确率变化"""
     try:
-        from lib.scoring.signal_tracker import SignalTracker
-        tracker = SignalTracker()
-        report = tracker.evaluate_signals(days=days)
-        # 按周分组统计
-        import numpy as np
-        from datetime import timedelta
-        weeks = days // 7
-        trend = []
-        for i in range(weeks):
-            week_start = datetime.now() - timedelta(days=days - i * 7)
-            accuracy = report.get("accuracy", 0.5) + np.random.normal(0, 0.05)
-            accuracy = max(0, min(1, accuracy))
-            trend.append({
-                "week": week_start.strftime("%Y-%m-%d"),
-                "accuracy": round(accuracy, 3),
-                "count": int(10 + np.random.poisson(5)),
-            })
-        return {"trend": trend, "overall_accuracy": report.get("accuracy", 0)}
+        return await run_blocking("signals_accuracy_trend", _compute_signals_accuracy_trend, days)
     except Exception as e:
         logger.error(f"Accuracy trend error: {e}")
         return {"trend": [], "overall_accuracy": 0}

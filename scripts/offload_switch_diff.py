@@ -6,9 +6,11 @@ Phase 6 承诺「只改调度方式，不改可观测结果」。本工具把这
   1. **迁移等价**：每条迁移记录改造前源码（固定 commit）中 `try:` 块语句序列，
      与现文件 `_compute_*` 同步函数体逐语句 `ast.dump` 对比。任何「顺手优化」都会
      立刻判红（ADR-0003 D5）。每条迁移自带 `source_rel` + `pre_commit`，
-     提交之后仍可复算（backtest 固定 523b353；第 4 批固定 77bc366；第 5 批固定 6d0e434）。
-     无 try 块的端点（如 /api/market、/api/stock/{code}）按 `no_try_guard` 剥掉
-     函数体前 N 条快守卫语句（缓存命中分支 / 参数校验）后对齐。
+     提交之后仍可复算（backtest 固定 523b353；第 4 批 77bc366；第 5 批 6d0e434；
+     第 6 批 497550f；第 7 批 c9b4d6f）。
+     搬迁锚点按形态分三类（lead_strip + body_mode）：默认 try 体；无 try 端点
+     （如 /api/market）剥函数体前 N 条快守卫；try 体含不可搬迁前导语句的端点
+     （如 ab-test 的 `await request.json()`）剥 try 体前 N 条。
   2. **off/on 等价**：同一进程、同一份确定性注入数据，分别以
      `FEATURE_ASYNC_OFFLOAD=0` 与 `=all` 调用端点函数，
      整份响应按字段顺序 JSON 序列化后逐字符比对（JSONResponse 取 `.body`）。
@@ -60,11 +62,15 @@ os.environ["SKIP_HS300_PREFETCH"] = "1"
 
 # 每条迁移：消费者名 / 端点 key / 改造前端点函数名 / 现同步计算函数名 /
 # 源码相对路径 / 改造前基线 commit（未 offload 状态）。
-# no_try_guard：端点无 try 块时，旧函数体剥掉 docstring 后再剥掉前 N 条
-# 快守卫语句（缓存命中分支 / `_validate_stock_code` 校验）即为搬迁体。
+# lead_strip + body_mode：搬迁锚点。
+#   body_mode="try"（默认）：旧端点最外层 try 块为搬迁体；lead_strip 再剥掉
+#     try 体前 N 条不可搬迁语句（如 ab_test 的 `body = await request.json()`，
+#     请求体解析必须留在事件循环侧，ADR-0012 D5 同源）。
+#   body_mode="full"：端点无 try 块，函数体剥 docstring 后再剥前 N 条快守卫
+#     （缓存命中分支 / `_validate_stock_code` 校验）即为搬迁体。
 Migration = namedtuple("Migration",
-                       "consumer key old_fn new_fn source_rel pre_commit no_try_guard",
-                       defaults=(0,))
+                       "consumer key old_fn new_fn source_rel pre_commit lead_strip body_mode",
+                       defaults=(0, "try"))
 
 MIGRATIONS = (
     Migration("backtest", "POST /api/backtest", "run_backtest", "_compute_factor_backtest",
@@ -89,13 +95,13 @@ MIGRATIONS = (
     Migration("factor_contribution", "GET /api/factor-contribution", "factor_contribution",
               "_compute_factor_contribution", "routers/factor.py", "6d0e434"),
     Migration("market", "GET /api/market", "market_overview", "_compute_market",
-              "routers/market.py", "6d0e434", 2),
+              "routers/market.py", "6d0e434", 2, "full"),
     Migration("positions", "GET /api/positions", "positions", "_compute_positions",
               "routers/portfolio.py", "6d0e434"),
     Migration("risk_exposure", "GET /api/risk-exposure", "risk_exposure", "_compute_risk_exposure",
               "routers/risk.py", "6d0e434"),
     Migration("stock", "GET /api/stock/{code}", "stock_detail", "_compute_stock_detail",
-              "routers/stock.py", "6d0e434", 1),
+              "routers/stock.py", "6d0e434", 1, "full"),
     # Phase 6 第 6 批 Tier A 候选（基线 commit 497550f = batch6 起点，均未 offload；
     # /api/dashboard try 体含 await，不在本批）
     Migration("signals", "GET /api/signals", "signal_accuracy", "_compute_signal_accuracy",
@@ -110,6 +116,44 @@ MIGRATIONS = (
               "routers/scoring.py", "497550f"),
     Migration("sector_flow", "GET /api/sector-flow", "sector_flow", "_compute_sector_flow",
               "routers/market.py", "497550f"),
+    # Phase 6 第 7 批 Tier A 候选 1 阻塞调用端点（基线 commit c9b4d6f = batch7 起点，
+    # 均未 offload）；/api/dashboard 转 RF-02（ADR-0013），不在本批
+    Migration("attribution", "GET /api/attribution", "return_attribution",
+              "_compute_return_attribution", "routers/analysis.py", "c9b4d6f"),
+    Migration("audit", "GET /api/audit", "audit_history",
+              "_compute_audit_history", "routers/signals_audit.py", "c9b4d6f"),
+    Migration("audit_detail", "GET /api/audit/{scan_id}", "audit_detail",
+              "_compute_audit_detail", "routers/signals_audit.py", "c9b4d6f"),
+    Migration("export_trades", "GET /api/export/trades", "export_trades",
+              "_compute_export_trades", "routers/export.py", "c9b4d6f"),
+    Migration("export_trades_excel", "GET /api/export/trades/excel", "export_trades_excel",
+              "_compute_export_trades_excel", "routers/export.py", "c9b4d6f"),
+    Migration("export_pdf", "POST /api/export/pdf", "export_pdf",
+              "_compute_export_pdf", "routers/export.py", "c9b4d6f"),
+    Migration("factor_ic_history", "GET /api/factor-ic-history", "factor_ic_history",
+              "_compute_factor_ic_history", "routers/factor.py", "c9b4d6f"),
+    Migration("factor_weights", "GET /api/factor-weights", "factor_weights",
+              "_compute_factor_weights", "routers/factor.py", "c9b4d6f"),
+    Migration("notifications", "GET /api/notifications", "get_notifications",
+              "_compute_notifications", "routers/notifications.py", "c9b4d6f"),
+    Migration("notification_stats", "GET /api/notifications/stats", "get_notification_stats",
+              "_compute_notification_stats", "routers/notifications.py", "c9b4d6f"),
+    Migration("position_distribution", "GET /api/position-distribution", "position_distribution",
+              "_compute_position_distribution", "routers/portfolio.py", "c9b4d6f"),
+    Migration("risk_correlation", "GET /api/risk/correlation", "risk_correlation",
+              "_compute_risk_correlation", "routers/risk.py", "c9b4d6f"),
+    Migration("sector_heatmap", "GET /api/sector-heatmap", "sector_heatmap",
+              "_compute_sector_heatmap", "routers/market.py", "c9b4d6f"),
+    Migration("signals_accuracy_trend", "GET /api/signals/accuracy-trend", "signals_accuracy_trend",
+              "_compute_signals_accuracy_trend", "routers/signals_audit.py", "c9b4d6f"),
+    Migration("strategy_ranking", "GET /api/strategy/ranking", "strategy_ranking",
+              "_compute_strategy_ranking", "routers/strategy.py", "c9b4d6f"),
+    Migration("strategy_recommend", "GET /api/strategy/recommend", "strategy_recommend",
+              "_compute_strategy_recommend", "routers/strategy.py", "c9b4d6f"),
+    Migration("trade_history", "GET /api/trade-history", "trade_history",
+              "_compute_trade_history", "routers/market.py", "c9b4d6f"),
+    Migration("ab_test", "POST /api/ab-test/run", "ab_test_run",
+              "_compute_ab_test_run", "routers/strategy.py", "c9b4d6f", 1),
 )
 
 # 冻结时间，消除 off/on 两侧 datetime.now() 时间戳差异（属测试伪影，非 offload 引入）
@@ -200,9 +244,12 @@ def _body_after_guard(fn: ast.AST, guard_stmts: int) -> list[ast.stmt]:
 
 
 def _old_body(m: Migration, fn: ast.AST) -> list[ast.stmt]:
-    if m.no_try_guard:
-        return _strip_leading_imports(_body_after_guard(fn, m.no_try_guard))
-    return _strip_leading_imports(_old_try_body(fn))
+    if m.body_mode == "full":
+        return _strip_leading_imports(_body_after_guard(fn, m.lead_strip))
+    body = _old_try_body(fn)
+    if m.lead_strip:
+        body = list(body)[m.lead_strip:]
+    return _strip_leading_imports(body)
 
 
 def check_migration() -> list[str]:
@@ -369,6 +416,56 @@ class _FakeOrchStock:
         return _fake_get_stock_hist(code, days=days)
 
 
+class _FakeTradeLogger:
+    def get_recent_trades(self, days=30):
+        return [
+            {"timestamp": "2026-01-01 10:00:00", "code": "000001", "action": "BUY",
+             "price": 10.0, "shares": 100, "pnl_pct": 0.0, "hold_days": 0,
+             "exit_reason": "", "signal_source": "momentum"},
+            {"timestamp": "2026-01-02 11:00:00", "code": "000001", "action": "SELL",
+             "price": 10.5, "shares": 100, "pnl_pct": 0.05, "hold_days": 1,
+             "exit_reason": "take_profit", "signal_source": "momentum"},
+            {"timestamp": "2026-01-03 12:00:00", "code": "600519", "action": "SELL",
+             "price": 1500.0, "shares": 10, "pnl_pct": -0.02, "hold_days": 2,
+             "exit_reason": "stop_loss", "source": "adx"},
+        ]
+
+
+class _FakeRanker:
+    def get_ranking(self):
+        return [{"name": "momentum", "score": 88}]
+
+
+class _FakeOptimizer:
+    def _default_weights(self):
+        return {"momentum": 0.4, "volume": 0.3, "volatility": 0.3}
+    def evaluate_weights(self, weights, symbols=None):
+        return {"sharpe": 1.1, "max_dd": -0.1, "win_rate": 0.55}
+
+
+class _FakeABTester:
+    def run_test(self, config):
+        return types.SimpleNamespace(
+            group_a_name="默认", group_b_name="优化",
+            a_sharpe=1.0, a_return=0.1, a_max_drawdown=-0.05, a_win_rate=0.5, a_trades=10,
+            b_sharpe=1.2, b_return=0.12, b_max_drawdown=-0.06, b_win_rate=0.55, b_trades=12,
+            sharpe_p_value=0.2, return_p_value=0.3, sharpe_diff=0.2, return_diff=0.02,
+            sharpe_ci_lower=0.1, sharpe_ci_upper=0.3,
+            return_ci_lower=0.01, return_ci_upper=0.03,
+            winner="B", confidence="low", recommendation="继续观察")
+
+
+class _FakePdfGenerator:
+    def generate(self, data):
+        return b"%PDF-1.4 fake-report"
+
+
+class _FakeABRequest:
+    """ab_test_run 端点的 request.json() 桩（await 留在事件循环侧）。"""
+    async def json(self):
+        return {"symbols": ["000001"], "days": 250, "num_runs": 2}
+
+
 def _install_mocks(stack: ExitStack):
     """确定性注入：不触网、不跑真回测/真风控、不写缓存。"""
     thread_id_box: list[int] = []
@@ -473,18 +570,111 @@ def _install_mocks(stack: ExitStack):
         ])
     stack.enter_context(patch("lib.data.data_layer._load_cache", fake_load_cache))
 
+    # ---- Phase 6 第 7 批（18 个 1 调用端点）----
+    stack.enter_context(patch("routers.analysis._cache_get", lambda *a, **k: None))
+    stack.enter_context(patch("routers.analysis._cache_set", lambda *a, **k: None))
+    stack.enter_context(patch("lib.monitoring.trade_logger.TradeLogger", _FakeTradeLogger))
+    def fake_get_scan_history(limit=20):
+        return [{"scan_id": 1, "ts": "2026-01-01"}, {"scan_id": 2, "ts": "2026-01-02"}][:limit]
+    stack.enter_context(patch("lib.monitoring.audit_logger.get_scan_history",
+                              fake_get_scan_history))
+    def fake_get_scan_detail(scan_id):
+        return {"scan_id": scan_id, "status": "done"} if scan_id == 1 else {}
+    stack.enter_context(patch("lib.monitoring.audit_logger.get_scan_detail",
+                              fake_get_scan_detail))
+    def fake_get_notifications(limit=1000):
+        return [
+            {"type": "signal", "timestamp": "2026-01-01T10:00:00",
+             "message": "买入 000001", "details": "x"},
+            {"type": "risk", "timestamp": "2026-01-02T11:00:00",
+             "message": "止损触发", "details": "y"},
+        ]
+    # create=True：模块实际没有模块级 get_notifications（端点在真实运行时
+    # AttributeError → 空兜底，属预先存在的潜在 bug，本批逐字搬迁不改行为、
+    # 单独登记 TODO；mock 注入让搬迁体的真实筛选/分页逻辑可被取证）
+    stack.enter_context(patch("lib.monitoring.notification_logger.get_notifications",
+                              fake_get_notifications, create=True))
+    stack.enter_context(patch("lib.data.data_layer.get_stock_blocks",
+                              lambda code: ["电子"]))
+    def fake_compute_sector_scores(top_n=50):
+        return [types.SimpleNamespace(
+            block="电子", total_score=72.5, avg_return_5d=1.2, volume_ratio=1.1,
+            limit_up_count=3, leader_return=5.0, leader_code="000001",
+            stock_count=20, score_return=0.8, score_volume=0.9, score_limit_up=0.7,
+            score_leader=0.6)]
+    stack.enter_context(patch("lib.strategy.sector_score.compute_sector_scores",
+                              fake_compute_sector_scores))
+    stack.enter_context(patch("lib.strategy.strategy_ranking.strategy_ranker", _FakeRanker()))
+    # create=True：factor_optimizer 实际没有 FactorOptimizer 类（GeneticOptimizer /
+    # run_optimization）—— /api/strategy/recommend 真实运行时 ImportError → 空兜底，
+    # 与 notifications 同款预先存在的潜在 bug（本批逐字搬迁不改行为，单独登记 TODO）
+    stack.enter_context(patch("lib.scoring.factor_optimizer.FactorOptimizer",
+                              _FakeOptimizer, create=True))
+    stack.enter_context(patch("lib.strategy.ab_testing.ab_tester", _FakeABTester()))
+    stack.enter_context(patch("lib.infra.pdf_report.pdf_generator", _FakePdfGenerator()))
+
+    # np.random 钉死：accuracy-trend / ic-history / risk-correlation 的随机源
+    # （off/on 两侧各自消耗随机数序列，不钉死则响应必然分叉）
+    stack.enter_context(patch("numpy.random.normal", lambda *a, **k: 0.01))
+    stack.enter_context(patch("numpy.random.poisson", lambda *a, **k: 5))
+    stack.enter_context(patch("numpy.random.uniform", lambda *a, **k: 0.25))
+
+    # risk_correlation 的持仓文件：临时确定性 JSON（Path 在 routers.risk 命名空间）
+    import tempfile as _tempfile
+    _tf = _tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
+    json.dump({"000001": {"shares": 100}, "600519": {"shares": 10}}, _tf)
+    _tf.close()
+    stack.enter_context(patch("routers.risk.Path", lambda p: pathlib.Path(_tf.name)))
+
+    # xlsx 字节级确定性：zip 条目时间戳（time.localtime）+ openpyxl save 强制写的
+    # docProps modified（openpyxl.writer.excel.datetime）+ DocumentProperties 默认值
+    import openpyxl as _openpyxl
+    _real_workbook = _openpyxl.Workbook
+    def _fixed_workbook(*a, **k):
+        wb = _real_workbook(*a, **k)
+        wb.properties.created = FIXED_DT
+        wb.properties.modified = FIXED_DT
+        return wb
+    stack.enter_context(patch("time.localtime",
+                              lambda *a: (2026, 1, 1, 0, 0, 0, 0, 1, 0)))
+    stack.enter_context(patch("openpyxl.Workbook", _fixed_workbook))
+    _excel_dt = Mock(wraps=_dt)  # excel 模块持有的是 datetime 模块（datetime.datetime.now(...)）
+    _excel_dt.datetime.now.return_value = FIXED_DT
+    stack.enter_context(patch("openpyxl.writer.excel.datetime", _excel_dt))
+
+    # StreamingResponse 默认把同步迭代器包成 anyio 线程池异步迭代（starlette ≥0.15），
+    # 消费 body 会污染 off 侧 pool_calls 自证（off 必须 ==0）——取证语境下保持同步迭代
+    stack.enter_context(patch("starlette.responses.iterate_in_threadpool",
+                              lambda it: it))
+
     return thread_id_box
 
 
 def _normalize_response(obj) -> str:
-    """JSONResponse 取 `.body` 字节；普通 dict/list 直接序列化。off/on 一致比对用。"""
+    """JSONResponse 取 `.body` 字节；StreamingResponse 消费 body_iterator 并连同
+    media_type / status / headers 一起比对（body 本身已在 mock 下确定性，
+    xlsx 的时间戳由 time.localtime + openpyxl.writer.excel.datetime 冻结）；
+    普通 dict/list 直接序列化。off/on 一致比对用。"""
+    if hasattr(obj, "body_iterator"):
+        chunks = []
+        it = obj.body_iterator
+        while True:
+            try:
+                chunks.append(next(it))
+            except StopIteration:
+                break
+        body = b"".join(c if isinstance(c, bytes) else str(c).encode("utf-8")
+                        for c in chunks)
+        return (f"{obj.media_type}|{obj.status_code}|{sorted(obj.raw_headers)}|"
+                + body.decode("utf-8", errors="replace"))
     if hasattr(obj, "body"):
         return obj.body.decode("utf-8")
     return json.dumps(obj, ensure_ascii=False, sort_keys=False, default=str)
 
 
 async def _call_endpoint(consumer, bt_bt, bt_factor, bt_market, bt_risk, bt_export,
-                         bt_portfolio, bt_stock, bt_signals, bt_scoring):
+                         bt_portfolio, bt_stock, bt_signals, bt_scoring,
+                         bt_analysis, bt_notif, bt_strategy):
     if consumer == "backtest":
         return await bt_bt.run_backtest(
             symbols="000001,600519,000858", days=250,
@@ -529,6 +719,42 @@ async def _call_endpoint(consumer, bt_bt, bt_factor, bt_market, bt_risk, bt_expo
         return await bt_scoring.stock_score(code="000001", _=None)
     if consumer == "sector_flow":
         return await bt_market.sector_flow(top_n=20)
+    if consumer == "attribution":
+        return await bt_analysis.return_attribution(days=30)
+    if consumer == "audit":
+        return await bt_signals.audit_history(limit=20)
+    if consumer == "audit_detail":
+        return await bt_signals.audit_detail(scan_id=1)
+    if consumer == "export_trades":
+        return await bt_export.export_trades(days=30)
+    if consumer == "export_trades_excel":
+        return await bt_export.export_trades_excel(days=30)
+    if consumer == "export_pdf":
+        return await bt_export.export_pdf()
+    if consumer == "factor_ic_history":
+        return await bt_factor.factor_ic_history(days=60)
+    if consumer == "factor_weights":
+        return await bt_factor.factor_weights(preset="balanced")
+    if consumer == "notifications":
+        return await bt_notif.get_notifications()
+    if consumer == "notification_stats":
+        return await bt_notif.get_notification_stats()
+    if consumer == "position_distribution":
+        return await bt_portfolio.position_distribution()
+    if consumer == "risk_correlation":
+        return await bt_risk.risk_correlation()
+    if consumer == "sector_heatmap":
+        return await bt_market.sector_heatmap(top_n=50)
+    if consumer == "signals_accuracy_trend":
+        return await bt_signals.signals_accuracy_trend(days=90)
+    if consumer == "strategy_ranking":
+        return await bt_strategy.strategy_ranking()
+    if consumer == "strategy_recommend":
+        return await bt_strategy.strategy_recommend(symbols="000001")
+    if consumer == "trade_history":
+        return await bt_market.trade_history(days=30, code="", sort_by="date", limit=50)
+    if consumer == "ab_test":
+        return await bt_strategy.ab_test_run(request=_FakeABRequest())
     raise ValueError(f"unknown consumer {consumer}")
 
 
@@ -543,6 +769,9 @@ async def _collect_all() -> dict:
     from routers import stock as bt_stock
     from routers import signals_audit as bt_signals
     from routers import scoring as bt_scoring
+    from routers import analysis as bt_analysis
+    from routers import notifications as bt_notif
+    from routers import strategy as bt_strategy
     import lib.infra.async_offload as offload
 
     results = {}
@@ -572,7 +801,7 @@ async def _collect_all() -> dict:
         frozen_dt.now.return_value = FIXED_DT
         frozen_dt.utcnow.return_value = FIXED_DT
         for _ns in ("routers.factor", "routers.risk", "routers.export",
-                    "routers.signals_audit", "routers.common"):
+                    "routers.signals_audit", "routers.market", "routers.common"):
             try:
                 stack.enter_context(patch(_ns + ".datetime", frozen_dt))
             except AttributeError:
@@ -586,7 +815,8 @@ async def _collect_all() -> dict:
                 pool_counter["n"] = 0
                 response = await _call_endpoint(
                     m.consumer, bt_bt, bt_factor, bt_market, bt_risk, bt_export,
-                    bt_portfolio, bt_stock, bt_signals, bt_scoring)
+                    bt_portfolio, bt_stock, bt_signals, bt_scoring,
+                    bt_analysis, bt_notif, bt_strategy)
                 results[(m.consumer, flag)] = {
                     "response": _normalize_response(response),
                     "pool_calls": pool_counter["n"],

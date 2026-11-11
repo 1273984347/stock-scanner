@@ -58,6 +58,12 @@ CONTRACTS = ROOT / "docs" / "refactor" / "contracts"
 FRONTEND_FILE = CONTRACTS / "frontend-api-paths.json"
 CONTRACT_FILE = CONTRACTS / "route-contract-baseline.json"
 
+
+class _FakeABRequest:
+    """ab_test_run 端点的 request.json() 桩（await 留在事件循环侧，模块级供 _call 使用）。"""
+    async def json(self):
+        return {"symbols": ["000001"], "days": 250, "num_runs": 2}
+
 CONCURRENCY = 20
 ROUNDS = 3
 BLOCK_SECONDS = 0.02
@@ -89,6 +95,25 @@ ENDPOINTS = (
     ("regime_history", "GET /api/regime-history"),
     ("score", "GET /api/score/{code}"),
     ("sector_flow", "GET /api/sector-flow"),
+    # Phase 6 第 7 批 Tier A 候选 1 阻塞调用端点（dashboard 除外 —— ADR-0013 转 RF-02）
+    ("attribution", "GET /api/attribution"),
+    ("audit", "GET /api/audit"),
+    ("audit_detail", "GET /api/audit/{scan_id}"),
+    ("export_trades", "GET /api/export/trades"),
+    ("export_trades_excel", "GET /api/export/trades/excel"),
+    ("export_pdf", "POST /api/export/pdf"),
+    ("factor_ic_history", "GET /api/factor-ic-history"),
+    ("factor_weights", "GET /api/factor-weights"),
+    ("notifications", "GET /api/notifications"),
+    ("notification_stats", "GET /api/notifications/stats"),
+    ("position_distribution", "GET /api/position-distribution"),
+    ("risk_correlation", "GET /api/risk/correlation"),
+    ("sector_heatmap", "GET /api/sector-heatmap"),
+    ("signals_accuracy_trend", "GET /api/signals/accuracy-trend"),
+    ("strategy_ranking", "GET /api/strategy/ranking"),
+    ("strategy_recommend", "GET /api/strategy/recommend"),
+    ("trade_history", "GET /api/trade-history"),
+    ("ab_test", "POST /api/ab-test/run"),
 )
 
 FIXED_RAW = {
@@ -305,6 +330,101 @@ def _install_mocks(stack: ExitStack) -> list[int]:
             time.sleep(BLOCK_SECONDS)
             return {"score": 88, "factors": {"momentum": 1.2}}
 
+    class _FakeTradeLogger:
+        def get_recent_trades(self, days=30):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return [
+                {"timestamp": "2026-01-01 10:00:00", "code": "000001", "action": "BUY",
+                 "price": 10.0, "shares": 100, "pnl_pct": 0.0, "hold_days": 0,
+                 "exit_reason": "", "signal_source": "momentum"},
+                {"timestamp": "2026-01-02 11:00:00", "code": "000001", "action": "SELL",
+                 "price": 10.5, "shares": 100, "pnl_pct": 0.05, "hold_days": 1,
+                 "exit_reason": "take_profit", "signal_source": "momentum"},
+                {"timestamp": "2026-01-03 12:00:00", "code": "600519", "action": "SELL",
+                 "price": 1500.0, "shares": 10, "pnl_pct": -0.02, "hold_days": 2,
+                 "exit_reason": "stop_loss", "source": "adx"},
+            ]
+
+    def fake_get_scan_history(limit=20):
+        worker_idents.append(threading.get_ident())
+        time.sleep(BLOCK_SECONDS)
+        return [{"scan_id": 1, "ts": "2026-01-01"}, {"scan_id": 2, "ts": "2026-01-02"}][:limit]
+
+    def fake_get_scan_detail(scan_id):
+        worker_idents.append(threading.get_ident())
+        time.sleep(BLOCK_SECONDS)
+        return {"scan_id": scan_id, "status": "done"} if scan_id == 1 else {}
+
+    def fake_get_notifications(limit=1000):
+        worker_idents.append(threading.get_ident())
+        time.sleep(BLOCK_SECONDS)
+        return [
+            {"type": "signal", "timestamp": "2026-01-01T10:00:00",
+             "message": "买入 000001", "details": "x"},
+            {"type": "risk", "timestamp": "2026-01-02T11:00:00",
+             "message": "止损触发", "details": "y"},
+        ]
+
+    def fake_get_stock_blocks(code):
+        worker_idents.append(threading.get_ident())
+        time.sleep(BLOCK_SECONDS)
+        return ["电子"]
+
+    def fake_compute_sector_scores(top_n=50):
+        worker_idents.append(threading.get_ident())
+        time.sleep(BLOCK_SECONDS)
+        return [types.SimpleNamespace(
+            block="电子", total_score=72.5, avg_return_5d=1.2, volume_ratio=1.1,
+            limit_up_count=3, leader_return=5.0, leader_code="000001",
+            stock_count=20, score_return=0.8, score_volume=0.9, score_limit_up=0.7,
+            score_leader=0.6)]
+
+    class _FakeRanker:
+        def get_ranking(self):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return [{"name": "momentum", "score": 88}]
+
+    class _FakeOptimizer:
+        def _default_weights(self):
+            return {"momentum": 0.4, "volume": 0.3, "volatility": 0.3}
+        def evaluate_weights(self, weights, symbols=None):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return {"sharpe": 1.1, "max_dd": -0.1, "win_rate": 0.55}
+
+    class _FakeABTester:
+        def run_test(self, config):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return types.SimpleNamespace(
+                group_a_name="默认", group_b_name="优化",
+                a_sharpe=1.0, a_return=0.1, a_max_drawdown=-0.05, a_win_rate=0.5, a_trades=10,
+                b_sharpe=1.2, b_return=0.12, b_max_drawdown=-0.06, b_win_rate=0.55, b_trades=12,
+                sharpe_p_value=0.2, return_p_value=0.3, sharpe_diff=0.2, return_diff=0.02,
+                sharpe_ci_lower=0.1, sharpe_ci_upper=0.3,
+                return_ci_lower=0.01, return_ci_upper=0.03,
+                winner="B", confidence="low", recommendation="继续观察")
+
+    class _FakePdfGenerator:
+        def generate(self, data):
+            worker_idents.append(threading.get_ident())
+            time.sleep(BLOCK_SECONDS)
+            return b"%PDF-1.4 fake-report"
+
+    def fake_np_normal(*a, **k):
+        return 0.01  # accuracy-trend / ic-history 的随机源（worker 自证靠 evaluate_signals）
+
+    def fake_np_poisson(*a, **k):
+        return 5
+
+    def fake_np_uniform(*a, **k):
+        # risk_correlation 的 worker 自证点（tolist 真跑、文件读极快）
+        worker_idents.append(threading.get_ident())
+        time.sleep(BLOCK_SECONDS)
+        return 0.25
+
     def fake_index_hist(code, days=60):
         worker_idents.append(threading.get_ident())
         time.sleep(BLOCK_SECONDS)
@@ -376,6 +496,53 @@ def _install_mocks(stack: ExitStack) -> list[int]:
                               lambda window: {"regime": "bull"}))
     stack.enter_context(patch("lib.data.data_layer._load_cache", fake_load_cache))
 
+    # ---- Phase 6 第 7 批端点 mock（18 个 1 调用端点；与 offload_switch_diff 同构）----
+    stack.enter_context(patch("routers.analysis._cache_get", noop_cache))
+    stack.enter_context(patch("routers.analysis._cache_set", noop_cache))
+    stack.enter_context(patch("lib.monitoring.trade_logger.TradeLogger", _FakeTradeLogger))
+    stack.enter_context(patch("lib.monitoring.audit_logger.get_scan_history",
+                              fake_get_scan_history))
+    stack.enter_context(patch("lib.monitoring.audit_logger.get_scan_detail",
+                              fake_get_scan_detail))
+    # create=True：模块实际没有模块级 get_notifications（预先存在的潜在 bug，
+    # 端点真实运行时 AttributeError → 空兜底；见 TODO / ADR-0013）
+    stack.enter_context(patch("lib.monitoring.notification_logger.get_notifications",
+                              fake_get_notifications, create=True))
+    stack.enter_context(patch("lib.data.data_layer.get_stock_blocks", fake_get_stock_blocks))
+    stack.enter_context(patch("lib.strategy.sector_score.compute_sector_scores",
+                              fake_compute_sector_scores))
+    stack.enter_context(patch("lib.strategy.strategy_ranking.strategy_ranker", _FakeRanker()))
+    # create=True：factor_optimizer 实际没有 FactorOptimizer 类（同上，预先存在 bug）
+    stack.enter_context(patch("lib.scoring.factor_optimizer.FactorOptimizer",
+                              _FakeOptimizer, create=True))
+    stack.enter_context(patch("lib.strategy.ab_testing.ab_tester", _FakeABTester()))
+    stack.enter_context(patch("lib.infra.pdf_report.pdf_generator", _FakePdfGenerator()))
+    stack.enter_context(patch("numpy.random.normal", fake_np_normal))
+    stack.enter_context(patch("numpy.random.poisson", fake_np_poisson))
+    stack.enter_context(patch("numpy.random.uniform", fake_np_uniform))
+    import tempfile as _tempfile
+    _tf = _tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
+    json.dump({"000001": {"shares": 100}, "600519": {"shares": 10}}, _tf)
+    _tf.close()
+    stack.enter_context(patch("routers.risk.Path", lambda p: pathlib.Path(_tf.name)))
+    # xlsx 字节级确定性（同 offload_switch_diff：zip 条目时间 + docProps modified）
+    import openpyxl as _openpyxl
+    _real_workbook = _openpyxl.Workbook
+    def _fixed_workbook(*a, **k):
+        wb = _real_workbook(*a, **k)
+        wb.properties.created = FIXED_DT
+        wb.properties.modified = FIXED_DT
+        return wb
+    stack.enter_context(patch("time.localtime",
+                              lambda *a: (2026, 1, 1, 0, 0, 0, 0, 1, 0)))
+    stack.enter_context(patch("openpyxl.Workbook", _fixed_workbook))
+    _excel_dt = Mock(wraps=_dt)
+    _excel_dt.datetime.now.return_value = FIXED_DT
+    stack.enter_context(patch("openpyxl.writer.excel.datetime", _excel_dt))
+    # 保持同步迭代（否则消费 body 会经 anyio 线程池，污染 off 侧 main-thread 自证）
+    stack.enter_context(patch("starlette.responses.iterate_in_threadpool",
+                              lambda it: it))
+
     # 冻结 datetime.now，消除带时间戳端点的逐请求 shape 差异（测试伪影）。
     # datetime 是 C 扩展不可变类型，无法 patch 其 .now 属性；改用 Mock(wraps=...)
     # 钉住 .now，并 patch 各 router 命名空间自己的 datetime 名字（经 common import *）。
@@ -383,7 +550,7 @@ def _install_mocks(stack: ExitStack) -> list[int]:
     frozen_dt.now.return_value = FIXED_DT
     frozen_dt.utcnow.return_value = FIXED_DT
     for _ns in ("routers.factor", "routers.risk", "routers.export",
-                "routers.signals_audit", "routers.common"):
+                "routers.signals_audit", "routers.market", "routers.common"):
         try:
             stack.enter_context(patch(_ns + ".datetime", frozen_dt))
         except AttributeError:
@@ -452,6 +619,60 @@ async def _call(consumer: str, bt):
     if consumer == "sector_flow":
         from routers import market as rm
         return await rm.sector_flow(top_n=20)
+    if consumer == "attribution":
+        from routers import analysis as ra
+        return await ra.return_attribution(days=30)
+    if consumer == "audit":
+        from routers import signals_audit as rsa
+        return await rsa.audit_history(limit=20)
+    if consumer == "audit_detail":
+        from routers import signals_audit as rsa
+        return await rsa.audit_detail(scan_id=1)
+    if consumer == "export_trades":
+        from routers import export as re_
+        return await re_.export_trades(days=30)
+    if consumer == "export_trades_excel":
+        from routers import export as re_
+        return await re_.export_trades_excel(days=30)
+    if consumer == "export_pdf":
+        from routers import export as re_
+        return await re_.export_pdf()
+    if consumer == "factor_ic_history":
+        from routers import factor as rf
+        return await rf.factor_ic_history(days=60)
+    if consumer == "factor_weights":
+        from routers import factor as rf
+        return await rf.factor_weights(preset="balanced")
+    if consumer == "notifications":
+        from routers import notifications as rn
+        return await rn.get_notifications()
+    if consumer == "notification_stats":
+        from routers import notifications as rn
+        return await rn.get_notification_stats()
+    if consumer == "position_distribution":
+        from routers import portfolio as rp
+        return await rp.position_distribution()
+    if consumer == "risk_correlation":
+        from routers import risk as rr
+        return await rr.risk_correlation()
+    if consumer == "sector_heatmap":
+        from routers import market as rm
+        return await rm.sector_heatmap(top_n=50)
+    if consumer == "signals_accuracy_trend":
+        from routers import signals_audit as rsa
+        return await rsa.signals_accuracy_trend(days=90)
+    if consumer == "strategy_ranking":
+        from routers import strategy as rst
+        return await rst.strategy_ranking()
+    if consumer == "strategy_recommend":
+        from routers import strategy as rst
+        return await rst.strategy_recommend(symbols="000001")
+    if consumer == "trade_history":
+        from routers import market as rm
+        return await rm.trade_history(days=30, code="", sort_by="date", limit=50)
+    if consumer == "ab_test":
+        from routers import strategy as rst
+        return await rst.ab_test_run(request=_FakeABRequest())
     raise ValueError(f"unknown consumer {consumer}")
 
 
@@ -473,14 +694,26 @@ async def _one_round(consumer: str, bt, flag: str, worker_idents: list[int]):
     async def one():
         resp = await _call(consumer, bt)
         elapsed = (time.perf_counter() - batch_start) * 1000.0
-        # export_config 返回 JSONResponse（非 dict）；统一剥成可比对 payload
+        # export_config 返回 JSONResponse；export_trades/excel/pdf 返回 StreamingResponse
+        # （iterate_in_threadpool 已 patch 成恒等，body_iterator 是同步迭代器）；
+        # 统一剥成可比对 payload
         if isinstance(resp, JSONResponse):
             payload = json.loads(resp.body.decode())
-            assert payload, "empty/corrupt response"
-            shapes.add(json.dumps(payload, sort_keys=True, default=str))
+        elif hasattr(resp, "body_iterator"):
+            chunks = []
+            it = resp.body_iterator
+            while True:
+                try:
+                    chunks.append(next(it))
+                except StopIteration:
+                    break
+            body = b"".join(c if isinstance(c, bytes) else str(c).encode("utf-8")
+                            for c in chunks)
+            payload = body.decode("utf-8", errors="replace")
         else:
-            assert isinstance(resp, dict) and resp, "empty/corrupt response"
-            shapes.add(json.dumps(resp, sort_keys=True, default=str))
+            payload = resp
+        assert payload, "empty/corrupt response"
+        shapes.add(json.dumps(payload, sort_keys=True, default=str))
         return elapsed
 
     durations = await asyncio.gather(*[one() for _ in range(CONCURRENCY)])

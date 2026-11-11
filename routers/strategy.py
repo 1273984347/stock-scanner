@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 from .common import *  # noqa: F401,F403
+from lib.infra.async_offload import run_blocking
 
 router = APIRouter()
 
@@ -43,28 +44,86 @@ async def strategy_save(request: Request):
         raise HTTPException(500, str(e))
 
 
+def _compute_strategy_recommend(symbols):
+    """原 `GET /api/strategy/recommend` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.scoring.factor_optimizer import FactorOptimizer
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()] if symbols else ["600519", "000858"]
+    optimizer = FactorOptimizer()
+    # 快速评估当前权重
+    result = optimizer.evaluate_weights(optimizer._default_weights(), symbols=symbol_list[:5])
+    return {
+        "recommended": {
+            "weights": optimizer._default_weights(),
+            "sharpe": result.get("sharpe", 0),
+            "max_dd": result.get("max_dd", 0),
+            "win_rate": result.get("win_rate", 0),
+        },
+        "symbols": symbol_list[:5],
+        "note": "基于当前因子权重的快速评估。完整优化请运行 factor_optimizer.py",
+    }
+
+
 @router.get("/api/strategy/recommend", dependencies=[Security(verify_api_key)])
 async def strategy_recommend(symbols: str = Query("", description="股票代码，逗号分隔")):
     """最优参数推荐 — 基于 GA 优化推荐参数组合"""
     try:
-        from lib.scoring.factor_optimizer import FactorOptimizer
-        symbol_list = [s.strip() for s in symbols.split(",") if s.strip()] if symbols else ["600519", "000858"]
-        optimizer = FactorOptimizer()
-        # 快速评估当前权重
-        result = optimizer.evaluate_weights(optimizer._default_weights(), symbols=symbol_list[:5])
-        return {
-            "recommended": {
-                "weights": optimizer._default_weights(),
-                "sharpe": result.get("sharpe", 0),
-                "max_dd": result.get("max_dd", 0),
-                "win_rate": result.get("win_rate", 0),
-            },
-            "symbols": symbol_list[:5],
-            "note": "基于当前因子权重的快速评估。完整优化请运行 factor_optimizer.py",
-        }
+        return await run_blocking("strategy_recommend", _compute_strategy_recommend, symbols)
     except Exception as e:
         logger.error(f"Strategy recommend error: {e}")
         return {"recommended": None, "error": str(e)}
+
+
+def _compute_ab_test_run(body):
+    """原 `POST /api/ab-test/run` try 块内容（剥掉前导 `await request.json()`，ADR-0012 D5 同源），
+    逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    symbols = body.get("symbols", ["000001", "600519"])
+    days = body.get("days", 250)
+    group_a = body.get("group_a", {"name": "默认", "stop_loss": 2.0})
+    group_b = body.get("group_b", {"name": "优化", "stop_loss": 3.0})
+    num_runs = body.get("num_runs", 10)
+
+    from lib.strategy.ab_testing import ab_tester, ABTestConfig
+    config = ABTestConfig(
+        symbols=symbols,
+        days=days,
+        group_a=group_a,
+        group_b=group_b,
+        num_runs=min(num_runs, 20)  # 限制最大次数
+    )
+
+    result = ab_tester.run_test(config)
+
+    return {
+        "group_a": {
+            "name": result.group_a_name,
+            "sharpe": result.a_sharpe,
+            "return": result.a_return,
+            "max_drawdown": result.a_max_drawdown,
+            "win_rate": result.a_win_rate,
+            "trades": result.a_trades
+        },
+        "group_b": {
+            "name": result.group_b_name,
+            "sharpe": result.b_sharpe,
+            "return": result.b_return,
+            "max_drawdown": result.b_max_drawdown,
+            "win_rate": result.b_win_rate,
+            "trades": result.b_trades
+        },
+        "statistics": {
+            "sharpe_p_value": result.sharpe_p_value,
+            "return_p_value": result.return_p_value,
+            "sharpe_diff": result.sharpe_diff,
+            "return_diff": result.return_diff,
+            "sharpe_ci": [result.sharpe_ci_lower, result.sharpe_ci_upper],
+            "return_ci": [result.return_ci_lower, result.return_ci_upper]
+        },
+        "conclusion": {
+            "winner": result.winner,
+            "confidence": result.confidence,
+            "recommendation": result.recommendation
+        }
+    }
 
 
 @router.post("/api/ab-test/run", dependencies=[Security(verify_api_key)])
@@ -72,54 +131,7 @@ async def ab_test_run(request: Request):
     """运行 A/B 测试"""
     try:
         body = await request.json()
-        symbols = body.get("symbols", ["000001", "600519"])
-        days = body.get("days", 250)
-        group_a = body.get("group_a", {"name": "默认", "stop_loss": 2.0})
-        group_b = body.get("group_b", {"name": "优化", "stop_loss": 3.0})
-        num_runs = body.get("num_runs", 10)
-
-        from lib.strategy.ab_testing import ab_tester, ABTestConfig
-        config = ABTestConfig(
-            symbols=symbols,
-            days=days,
-            group_a=group_a,
-            group_b=group_b,
-            num_runs=min(num_runs, 20)  # 限制最大次数
-        )
-
-        result = ab_tester.run_test(config)
-
-        return {
-            "group_a": {
-                "name": result.group_a_name,
-                "sharpe": result.a_sharpe,
-                "return": result.a_return,
-                "max_drawdown": result.a_max_drawdown,
-                "win_rate": result.a_win_rate,
-                "trades": result.a_trades
-            },
-            "group_b": {
-                "name": result.group_b_name,
-                "sharpe": result.b_sharpe,
-                "return": result.b_return,
-                "max_drawdown": result.b_max_drawdown,
-                "win_rate": result.b_win_rate,
-                "trades": result.b_trades
-            },
-            "statistics": {
-                "sharpe_p_value": result.sharpe_p_value,
-                "return_p_value": result.return_p_value,
-                "sharpe_diff": result.sharpe_diff,
-                "return_diff": result.return_diff,
-                "sharpe_ci": [result.sharpe_ci_lower, result.sharpe_ci_upper],
-                "return_ci": [result.return_ci_lower, result.return_ci_upper]
-            },
-            "conclusion": {
-                "winner": result.winner,
-                "confidence": result.confidence,
-                "recommendation": result.recommendation
-            }
-        }
+        return await run_blocking("ab_test", _compute_ab_test_run, body)
     except Exception as e:
         logger.error(f"A/B test error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -225,13 +237,18 @@ async def strategy_snapshot_delete(snapshot_id: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+def _compute_strategy_ranking():
+    """原 `GET /api/strategy/ranking` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.strategy.strategy_ranking import strategy_ranker
+    ranking = strategy_ranker.get_ranking()
+    return {"ranking": ranking}
+
+
 @router.get("/api/strategy/ranking", dependencies=[Security(verify_api_key)])
 async def strategy_ranking():
     """策略性能排行"""
     try:
-        from lib.strategy.strategy_ranking import strategy_ranker
-        ranking = strategy_ranker.get_ranking()
-        return {"ranking": ranking}
+        return await run_blocking("strategy_ranking", _compute_strategy_ranking)
     except Exception as e:
         logger.error(f"Strategy ranking error: {e}")
         return {"ranking": []}

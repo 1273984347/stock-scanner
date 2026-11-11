@@ -101,8 +101,8 @@ def test_tier_a_candidates_are_listed_not_hidden():
     assert all(c["status"] == "not_offloaded" for c in cands)
     assert all(c["callees"] and c["blocking_calls"] > 0 for c in cands)
     keys = {c["endpoint"] for c in cands}
-    assert "GET /api/dashboard" in keys  # 第 6 批后仍为最大遗留端点（try 体含 await，单独处理）
-    # Phase 6 不能宣称收官：19 个候选端点还没有 offload 取证
+    assert "GET /api/dashboard" in keys  # 唯一遗留端点（try 体含 await，ADR-0013 转 RF-02）
+    # Phase 6 收官判据按 ADR-0013 修正：候选 = dashboard 1 个显式遗留（转 RF-02）
     offloaded = {
         "POST /api/backtest", "POST /api/backtest/compare", "POST /api/walkforward",
         "GET /api/factor-eval", "GET /api/factor-scatter", "GET /api/kline/{code}",
@@ -111,5 +111,12 @@ def test_tier_a_candidates_are_listed_not_hidden():
         "GET /api/risk-exposure", "GET /api/stock/{code}",
         "GET /api/signals", "GET /api/exposures", "GET /api/position/{code}",
         "GET /api/regime-history", "GET /api/score/{code}", "GET /api/sector-flow",
+        "GET /api/attribution", "GET /api/audit", "GET /api/audit/{scan_id}",
+        "GET /api/export/trades", "GET /api/export/trades/excel", "POST /api/export/pdf",
+        "GET /api/factor-ic-history", "GET /api/factor-weights", "GET /api/notifications",
+        "GET /api/notifications/stats", "GET /api/position-distribution",
+        "GET /api/risk/correlation", "GET /api/sector-heatmap",
+        "GET /api/signals/accuracy-trend", "GET /api/strategy/ranking",
+        "GET /api/strategy/recommend", "GET /api/trade-history", "POST /api/ab-test/run",
     }
     assert keys.isdisjoint(offloaded)

@@ -55,6 +55,25 @@ OFFLOAD_CONSUMERS: tuple[str, ...] = (
     "regime_history",
     "score",
     "sector_flow",
+    # Phase 6 第 7 批（Tier A 候选 1 阻塞调用，最后一批；dashboard 除外 —— ADR-0013 转 RF-02）
+    "attribution",
+    "audit",
+    "audit_detail",
+    "export_trades",
+    "export_trades_excel",
+    "export_pdf",
+    "factor_ic_history",
+    "factor_weights",
+    "notifications",
+    "notification_stats",
+    "position_distribution",
+    "risk_correlation",
+    "sector_heatmap",
+    "signals_accuracy_trend",
+    "strategy_ranking",
+    "strategy_recommend",
+    "trade_history",
+    "ab_test",
 )
 
 

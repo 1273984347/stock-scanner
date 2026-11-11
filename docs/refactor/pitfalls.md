@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**74 条**（P-01～P-74），分八类。
+> **规模**：**75 条**（P-01～P-75），分八类。
 > **姊妹文档**：执行过程与逐批验收见 `docs/plans/2026-11-07-refactor-plan.md` 第七节；
 > 基线读数见 `docs/refactor/baseline.md`；尺子口径见 `docs/refactor/README.md`。
 
@@ -1378,6 +1378,32 @@ off/on 响应当然恒等（都是同一个 `{}`），对拍成了空判据—�
 三元组**，同文件新增 key 不继承上次的修正；mock 旁要留注释写明哪些 key 判
 `is not None`、哪些判 `or {}`。
 
+### P-75 · 结构守卫钉「名字出现」，坏 import 的名字也算数——坏端点长期全绿
+
+**现象**：Phase 6 第 7 批迁移前排查 mock 目标时发现 3 个端点**真实运行时必然失败**：
+`/api/notifications`、`/api/notifications/stats` 调用
+`notification_logger.get_notifications(...)`，但该模块只有 `NotificationLogger.get_recent`、
+没有模块级 `get_notifications` → AttributeError；`/api/strategy/recommend`
+`from lib.scoring.factor_optimizer import FactorOptimizer`，但该模块只有
+`GeneticOptimizer` / `run_optimization` → ImportError。三个端点全走 `except` 空兜底，
+而相关守卫测试（如 `test_recommend_is_out_of_scoring_domain`）**长期全绿**。
+
+**根因**：守卫用 AST 钉「端点体内出现 `FactorOptimizer` 名字」——名字出现在
+坏 import 语句里也算数。**名字存在 ≠ 符号可解析**；AST 静态检查不执行 import，
+解析失败只在运行时暴露，而失败被端点自己的 `except Exception` 空兜底吞掉，
+响应「看起来正常」（空结构），没有任何红灯。
+
+**修复**：Phase 6 不改行为（逐字搬迁原样保留 bug，mock `create=True` 注入符号
+取证搬迁体逻辑）；bug 修复单独立项（TODO 登记，修复会改变响应内容，须走独立
+fix 批次 + 契约快照对照）。守卫本身在第 7 批已随 offload 边界改写为双函数断言
+（ADR-0012 D2 / ADR-0013 D4）。
+
+**推广**：**AST 钉名字的结构守卫只能证明「写了这个名字」，证明不了「这个名字
+可解析/可调用」**。给 import 的符号加守卫时，至少补一条 importable 冒烟断言
+（`importlib.import_module` + `getattr`）；端点有自己的 `except Exception` 空兜底时，
+「响应正常」对坏路径完全不敏感——这正是 P-54「对拍全绿但没锁住任何东西」的
+静态版本。
+
 ---
 
 ## 附 · 一句话索引（按症状查）
@@ -1414,6 +1440,7 @@ off/on 响应当然恒等（都是同一个 `{}`），对拍成了空判据—�
 | 「逐条留痕」表里遗留被改名成已完成 | P-71 |
 | L9 对拍因 `datetime` 不可变类型 `patch` 崩 / 旧新语句数不对称假红 | P-73 |
 | 对拍全绿但被测路径根本没执行（mock 空值撞上 `is not None`） | P-56 / P-74 |
+| 守卫全绿但端点真实运行时 ImportError / AttributeError（名字存在 ≠ 符号可解析） | P-75 |
 | A/B 对照里 OpenAPI / schema 比较恒等 | P-54 / ADR-0009 D3 |
 | Actions 额度消耗太快 | P-40 |
 | commit 失败却把旧代码推上去了 | P-43 |
@@ -1459,6 +1486,8 @@ P-68（lineno 进基线使逐字节比较不可执行）与 P-69（导入期 HS3
 共 **73 条**。
 2026-11-11 **Phase 6 第 5 批**：追加 P-74（对拍 mock 返回 falsy `{}` 撞上端点 `is not None` 缓存判断，
 on 侧根本没进 `run_blocking`——响应 diff 恒 0 的「假通过」，靠线程池自证兜住），共 **74 条**。
+2026-11-12 **Phase 6 第 7 批**：追加 P-75（结构守卫钉「名字出现在函数体」，坏 import 的名字
+也算数——3 个端点真实运行时 ImportError/AttributeError 却长期全绿），共 **75 条**。
 **核对基线**：本地全量 pytest 1162 passed / 12 skipped（13.02s）；CI run `42319502027` 3 job 全绿。
 2026-11-10 阶段 A 收官：**1221 passed / 12 skipped**，L0–L5 全 PASS。
 2026-11-10 阶段 B 首批：**1235 passed / 12 skipped**。

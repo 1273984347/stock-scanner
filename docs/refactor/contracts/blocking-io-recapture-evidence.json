@@ -356,5 +356,215 @@
     },
     "untouched_endpoints": 62,
     "untouched_identical": true
+  },
+  {
+    "allowed_endpoints": [
+      "GET /api/attribution",
+      "GET /api/audit",
+      "GET /api/audit/{scan_id}",
+      "GET /api/export/trades",
+      "GET /api/export/trades/excel",
+      "GET /api/factor-ic-history",
+      "GET /api/factor-weights",
+      "GET /api/notifications",
+      "GET /api/notifications/stats",
+      "GET /api/position-distribution",
+      "GET /api/risk/correlation",
+      "GET /api/sector-heatmap",
+      "GET /api/signals/accuracy-trend",
+      "GET /api/strategy/ranking",
+      "GET /api/strategy/recommend",
+      "GET /api/trade-history",
+      "POST /api/ab-test/run",
+      "POST /api/export/pdf"
+    ],
+    "comparison": "endpoint records compared field-by-field; lineno excluded (implementation detail, see _normalize_endpoint)",
+    "mode": "offload",
+    "per_endpoint": [
+      {
+        "blocking_after": 1,
+        "blocking_before": 3,
+        "endpoint": "GET /api/attribution",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 13
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 1,
+        "endpoint": "GET /api/audit",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 0,
+        "other_before": 0
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 1,
+        "endpoint": "GET /api/audit/{scan_id}",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 2
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 5,
+        "endpoint": "GET /api/export/trades",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 2,
+        "other_before": 16
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 3,
+        "endpoint": "GET /api/export/trades/excel",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 3,
+        "other_before": 38
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 1,
+        "endpoint": "GET /api/factor-ic-history",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 9
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 1,
+        "endpoint": "GET /api/factor-weights",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 3
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 1,
+        "endpoint": "GET /api/notifications",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 15
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 1,
+        "endpoint": "GET /api/notifications/stats",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 6
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 1,
+        "endpoint": "GET /api/position-distribution",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 6
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 4,
+        "endpoint": "GET /api/risk/correlation",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 13
+      },
+      {
+        "blocking_after": 1,
+        "blocking_before": 3,
+        "endpoint": "GET /api/sector-heatmap",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 5
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 1,
+        "endpoint": "GET /api/signals/accuracy-trend",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 15
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 1,
+        "endpoint": "GET /api/strategy/ranking",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 1
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 1,
+        "endpoint": "GET /api/strategy/recommend",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 2,
+        "other_before": 11
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 1,
+        "endpoint": "GET /api/trade-history",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 1,
+        "other_before": 10
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 1,
+        "endpoint": "POST /api/ab-test/run",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 3,
+        "other_before": 10
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 6,
+        "endpoint": "POST /api/export/pdf",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 4,
+        "other_before": 14
+      }
+    ],
+    "reason": "RF-01 Phase 6: Tier A 端点阻塞调用 offload 进线程池",
+    "schema_version": 1,
+    "totals_after": {
+      "blocking_calls": 107,
+      "blocking_endpoints": 36,
+      "endpoints": 68,
+      "offloaded_calls": 38,
+      "offloaded_endpoints": 38,
+      "other_calls": 306,
+      "total_calls": 451
+    },
+    "totals_before": {
+      "blocking_calls": 141,
+      "blocking_endpoints": 52,
+      "endpoints": 68,
+      "offloaded_calls": 20,
+      "offloaded_endpoints": 20,
+      "other_calls": 467,
+      "total_calls": 628
+    },
+    "untouched_endpoints": 50,
+    "untouched_identical": true
   }
 ]

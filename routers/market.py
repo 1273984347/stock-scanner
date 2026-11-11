@@ -109,6 +109,38 @@ async def regime_history(days: int = Query(default=60, ge=10, le=365)):
         return {"regimes": []}
 
 
+def _compute_sector_heatmap(top_n):
+    """原 `GET /api/sector-heatmap` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.strategy.sector_score import compute_sector_scores
+
+    scores = compute_sector_scores(top_n=top_n)
+
+    sectors = []
+    for s in scores:
+        sectors.append({
+            "name": s.block,
+            "score": s.total_score,
+            "return_pct": s.avg_return_5d,
+            "volume_ratio": s.volume_ratio,
+            "limit_up_count": s.limit_up_count,
+            "leader_return": s.leader_return,
+            "leader_code": s.leader_code,
+            "stock_count": s.stock_count,
+            "score_return": s.score_return,
+            "score_volume": s.score_volume,
+            "score_limit_up": s.score_limit_up,
+            "score_leader": s.score_leader,
+        })
+
+    result = {
+        "sectors": sectors,
+        "total": len(sectors),
+        "timestamp": datetime.now().isoformat(),
+    }
+    _cache_set("sector_heatmap", result)
+    return result
+
+
 @router.get("/api/sector-heatmap", dependencies=[Security(verify_api_key)])
 async def sector_heatmap(top_n: int = Query(default=50, ge=10, le=200)):
     """板块热力图数据"""
@@ -117,34 +149,7 @@ async def sector_heatmap(top_n: int = Query(default=50, ge=10, le=200)):
         return cached
 
     try:
-        from lib.strategy.sector_score import compute_sector_scores
-
-        scores = compute_sector_scores(top_n=top_n)
-
-        sectors = []
-        for s in scores:
-            sectors.append({
-                "name": s.block,
-                "score": s.total_score,
-                "return_pct": s.avg_return_5d,
-                "volume_ratio": s.volume_ratio,
-                "limit_up_count": s.limit_up_count,
-                "leader_return": s.leader_return,
-                "leader_code": s.leader_code,
-                "stock_count": s.stock_count,
-                "score_return": s.score_return,
-                "score_volume": s.score_volume,
-                "score_limit_up": s.score_limit_up,
-                "score_leader": s.score_leader,
-            })
-
-        result = {
-            "sectors": sectors,
-            "total": len(sectors),
-            "timestamp": datetime.now().isoformat(),
-        }
-        _cache_set("sector_heatmap", result)
-        return result
+        return await run_blocking("sector_heatmap", _compute_sector_heatmap, top_n)
     except Exception as e:
         logger.error(f"板块热力图数据失败: {e}")
         return {"sectors": []}
@@ -208,6 +213,30 @@ async def kline_data(code: str, days: int = Query(default=120, ge=30, le=500)):
         return {"data": [], "code": code}
 
 
+def _compute_trade_history(days, code, sort_by, limit):
+    """原 `GET /api/trade-history` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.monitoring.trade_logger import TradeLogger
+    tl = TradeLogger()
+    trades = tl.get_recent_trades(days=days)
+
+    # 按股票代码筛选
+    if code:
+        trades = [t for t in trades if t.get("code") == code]
+
+    # 排序
+    if sort_by == "pnl":
+        trades.sort(key=lambda t: t.get("pnl_pct", 0), reverse=True)
+    elif sort_by == "pnl_asc":
+        trades.sort(key=lambda t: t.get("pnl_pct", 0))
+    else:
+        trades.sort(key=lambda t: t.get("timestamp", ""), reverse=True)
+
+    return {
+        "trades": trades[:limit],
+        "total": len(trades),
+    }
+
+
 @router.get("/api/trade-history", dependencies=[Security(verify_api_key)])
 async def trade_history(
     days: int = Query(default=30, ge=1, le=365),
@@ -217,26 +246,8 @@ async def trade_history(
 ):
     """交易历史"""
     try:
-        from lib.monitoring.trade_logger import TradeLogger
-        tl = TradeLogger()
-        trades = tl.get_recent_trades(days=days)
-
-        # 按股票代码筛选
-        if code:
-            trades = [t for t in trades if t.get("code") == code]
-
-        # 排序
-        if sort_by == "pnl":
-            trades.sort(key=lambda t: t.get("pnl_pct", 0), reverse=True)
-        elif sort_by == "pnl_asc":
-            trades.sort(key=lambda t: t.get("pnl_pct", 0))
-        else:
-            trades.sort(key=lambda t: t.get("timestamp", ""), reverse=True)
-
-        return {
-            "trades": trades[:limit],
-            "total": len(trades),
-        }
+        return await run_blocking("trade_history", _compute_trade_history,
+                                  days, code, sort_by, limit)
     except Exception as e:
         logger.error(f"交易历史查询失败: {e}")
         return {"trades": [], "total": 0}

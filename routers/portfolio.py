@@ -110,44 +110,49 @@ async def positions(_=Security(verify_api_key)):
         return {"summary": {"total_positions": 0}, "alerts": [], "error": "服务暂时不可用"}
 
 
+def _compute_position_distribution():
+    """原 `GET /api/position-distribution` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
+    from lib.risk.position_manager import PositionManager
+    from lib.data.data_layer import get_stock_blocks
+
+    pm = PositionManager()
+    positions = pm.positions
+
+    if not positions:
+        return {"by_sector": {}, "total_positions": 0}
+
+    # 按行业分组
+    sector_weights = {}
+    total_value = 0
+
+    for code, pos in positions.items():
+        weight = pos.shares * pos.buy_price
+        # 获取行业
+        try:
+            blocks = get_stock_blocks(code)
+            sector = blocks[0] if blocks else "其他"
+        except Exception:
+            sector = "其他"
+
+        sector_weights[sector] = sector_weights.get(sector, 0) + weight
+        total_value += weight
+
+    # 归一化
+    if total_value > 0:
+        for s in sector_weights:
+            sector_weights[s] = round(sector_weights[s] / total_value, 4)
+
+    return {
+        "by_sector": sector_weights,
+        "total_positions": len(positions),
+    }
+
+
 @router.get("/api/position-distribution", dependencies=[Security(verify_api_key)])
 async def position_distribution():
     """持仓分布（按行业分组）"""
     try:
-        from lib.risk.position_manager import PositionManager
-        from lib.data.data_layer import get_stock_blocks
-
-        pm = PositionManager()
-        positions = pm.positions
-
-        if not positions:
-            return {"by_sector": {}, "total_positions": 0}
-
-        # 按行业分组
-        sector_weights = {}
-        total_value = 0
-
-        for code, pos in positions.items():
-            weight = pos.shares * pos.buy_price
-            # 获取行业
-            try:
-                blocks = get_stock_blocks(code)
-                sector = blocks[0] if blocks else "其他"
-            except Exception:
-                sector = "其他"
-
-            sector_weights[sector] = sector_weights.get(sector, 0) + weight
-            total_value += weight
-
-        # 归一化
-        if total_value > 0:
-            for s in sector_weights:
-                sector_weights[s] = round(sector_weights[s] / total_value, 4)
-
-        return {
-            "by_sector": sector_weights,
-            "total_positions": len(positions),
-        }
+        return await run_blocking("position_distribution", _compute_position_distribution)
     except Exception as e:
         logger.error(f"持仓分布查询失败: {e}")
         return {"by_sector": {}, "total_positions": 0}

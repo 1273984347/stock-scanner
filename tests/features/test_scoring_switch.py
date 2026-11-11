@@ -326,13 +326,23 @@ def test_dashboard_is_aggregator_not_scorer():
 
 
 def test_recommend_is_out_of_scoring_domain():
-    """`/api/strategy/recommend` 属因子权重优化域，根本不消费评分结果。"""
+    """`/api/strategy/recommend` 属因子权重优化域，根本不消费评分结果。
+
+    Phase 6 第 7 批起端点把调用搬进 `_compute_strategy_recommend`（run_blocking 边界，
+    同 scoring 透传守卫的边界跟随法，ADR-0012 D2）：端点只准 run_blocking，
+    优化器调用只准在搬迁体；评分符号禁止名单同时覆盖两处。
+    """
     tree = ast.parse((ROOT / "routers/strategy.py").read_text(encoding="utf-8"))
-    fn = _node(tree, "strategy_recommend")
-    names = _call_names(fn)
-    assert "FactorOptimizer" in names and "evaluate_weights" in names
+    endpoint = _node(tree, "strategy_recommend")
+    compute = _node(tree, "_compute_strategy_recommend")
+    endpoint_names = _call_names(endpoint)
+    compute_names = _call_names(compute)
+    assert "run_blocking" in endpoint_names, "endpoint must go through the offload entry"
+    assert "FactorOptimizer" not in endpoint_names, "optimizer call moved out of the endpoint"
+    assert "FactorOptimizer" in compute_names and "evaluate_weights" in compute_names
     for symbol in SCORING_SYMBOLS:
-        assert symbol not in names, f"recommend unexpectedly calls {symbol}"
+        assert symbol not in endpoint_names, f"recommend unexpectedly calls {symbol}"
+        assert symbol not in compute_names, f"recommend unexpectedly calls {symbol}"
 
 
 def test_no_l6_branch_for_out_of_scope_endpoint():

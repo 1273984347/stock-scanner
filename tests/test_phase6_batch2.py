@@ -70,8 +70,8 @@ def test_baseline_constraints_keep_the_rejected_plan_target():
 def test_pre_migration_commit_is_pinned_and_readable():
     mod = _load_script("_offload_switch", ROOT / "scripts" / "offload_switch_diff.py")
     # L9 已泛化为多迁移：每个迁移自带 pinned pre_commit
-    # （backtest 系 523b353，第 4 批 77bc366，第 5 批 6d0e434，第 6 批 497550f）
-    assert len(mod.MIGRATIONS) >= 19
+    # （backtest 系 523b353，第 4 批 77bc366，第 5 批 6d0e434，第 6 批 497550f，第 7 批 c9b4d6f）
+    assert len(mod.MIGRATIONS) >= 37
     for m in mod.MIGRATIONS:
         out = subprocess.run(
             ["git", "cat-file", "-e", f"{m.pre_commit}:{m.source_rel}"],

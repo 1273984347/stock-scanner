@@ -130,6 +130,12 @@ def test_consumer_registry_is_explicit_and_unique():
         "factor_contribution", "market", "positions", "risk_exposure", "stock",
         # Phase 6 第 6 批（Tier A 候选，blocking ≥2 且不含 await）
         "signals", "exposures", "position", "regime_history", "score", "sector_flow",
+        # Phase 6 第 7 批（Tier A 候选 1 阻塞调用，最后一批）
+        "attribution", "audit", "audit_detail", "export_trades", "export_trades_excel",
+        "export_pdf", "factor_ic_history", "factor_weights", "notifications",
+        "notification_stats", "position_distribution", "risk_correlation",
+        "sector_heatmap", "signals_accuracy_trend", "strategy_ranking",
+        "strategy_recommend", "trade_history", "ab_test",
     )
     assert len(set(OFFLOAD_CONSUMERS)) == len(OFFLOAD_CONSUMERS)
 
