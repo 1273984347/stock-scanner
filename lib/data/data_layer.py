@@ -14,7 +14,8 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from config import get_config
+from config import (get_config, TDX_DATA_PATH as _CFG_TDX_DATA_PATH,
+                    TDX_REF_PATH as _CFG_TDX_REF_PATH)
 from lib.data.cache import CircuitBreaker, CircuitOpenError
 from lib.data.broker import LRUCache
 from lib.infra.utils import _safe_float
@@ -34,8 +35,8 @@ CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
 
 # ========== 路径配置 ==========
-# P2-config-migration-deferred
-TDX_REF_PATH = Path(os.environ.get("TDX_REF_PATH", "D:/TDX/vipdoc/ref"))
+# P7-4：单一真相源归 config.py（默认值在此，env 覆盖在 import 时生效）
+TDX_REF_PATH = Path(_CFG_TDX_REF_PATH)
 
 # ========== 实时行情配置 ==========
 # P2-config-migration-deferred
@@ -386,7 +387,8 @@ def _fetch_from_tdx_local(code: str, days: int) -> pd.DataFrame:
     if market_str == "unknown":
         return pd.DataFrame()
 
-    tdx_path = os.environ.get("TDX_DATA_PATH", "D:/TDX/vipdoc")
+    # 调用时重读 env（market_utils 同款约定，保测试 monkeypatch 语义）
+    tdx_path = os.environ.get("TDX_DATA_PATH", _CFG_TDX_DATA_PATH)
     reader = TdxDailyBarReader()
 
     def _read_tdx_file(file_path: str) -> pd.DataFrame:

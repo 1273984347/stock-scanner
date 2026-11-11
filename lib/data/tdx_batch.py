@@ -12,8 +12,8 @@
 import struct
 import mmap
 import logging
-import os
-from pathlib import Path
+
+from pathlib import Path  # 类型注解使用（fpath: Path）
 from typing import Dict, List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
@@ -23,9 +23,6 @@ import threading
 from lib.data.market_utils import get_tdx_path
 
 logger = logging.getLogger(__name__)
-
-# 统一从 config 读取（单一真相源），不再硬编码
-TDX_DATA_PATH = Path(os.environ.get("TDX_DATA_PATH", "D:/TDX/vipdoc"))
 
 # 全局缓存
 _closes_cache: Dict[str, np.ndarray] = {}

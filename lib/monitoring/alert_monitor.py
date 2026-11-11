@@ -17,7 +17,7 @@ from datetime import datetime, time
 
 import numpy as np  # P2 #6: 顶层 import 符合 PEP 8
 
-from config import MonitorConfig
+from config import MonitorConfig, ALERT_FALLBACK_DIR as _CFG_ALERT_FALLBACK_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +34,8 @@ DEFAULT_NB_ZSCORE = 2.0
 # §4.2 A3 迁移 (2026-06-08): 原模块级常量 → config.MonitorConfig.min_nb_samples
 MIN_NB_SAMPLES = MonitorConfig().min_nb_samples
 
-# 推送失败时降级目录（环境变量可覆盖，便于测试/部署）
-FALLBACK_DIR = Path(os.environ.get(
-    "ALERT_FALLBACK_DIR",
-    str(Path(__file__).parent.parent.parent / "logs" / "alert_fallback"),
-))
+# P7-4：降级目录单一真相源归 config.py（env 覆盖在 import 时生效）
+FALLBACK_DIR = Path(_CFG_ALERT_FALLBACK_DIR)
 
 
 class AlertMonitor:

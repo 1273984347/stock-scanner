@@ -188,8 +188,8 @@
 | **P7-1** | MIGRATION-GUIDE 定稿（本文件）；删除 `factors.detect_market_regime` + `MarketRegime`（全仓 0 引用）；`api.py` 不可达死代码；`pipeline.py` 未用 import（`comprehensive_score`） | ✅ 2026-11-12 |
 | **P7-2** | `notifier.py` 弃用壳下线（活函数逐字迁 `reporter/scan_notify.py`，2 个调用方改 import，payload 对拍逐字节一致）；`judge_panel.py` 6 个 `_evaluate_*` 死方法 + `_fund_data_missing` 删除（679→224 行，L5 基线不变）；`backtest/core.py` 误导性 deprecation 标注改正（import 警告 1→0；`run_factor_backtest` 是活实现）。**收敛评估结论**：`backtest/full.py` / `rebalance.py` wrapper 是包公共面（`__init__` 再导出 + 测试 patch 目标）且警告属实，**保留**，引用收敛推迟到有真实收益时 | ✅ 2026-11-12 |
 | **P7-2b** | judge_panel 清理时发现 `config/judges.json` 的 6 组权重非零但对应投票路径已死（`evaluate_all` 不再产生规则票）——**配置与实现漂移**，随 RF-02 一并处置（删 JSON 条目或复活规则组，须 walk-forward 验证） | 待推（登记） |
-| **P7-3** | scoring 灰度收口（`FEATURE_UNIFIED_SCORING` 删 flag 或翻默认 → 单独 ADR；L6 同步退役/改判——收口后 off/on 恒等属 P-54 空判据） | 待推 |
-| **P7-4** | 配置集中化收尾（TODO P8 增量）：`lib/` 内 6 处 `os.getenv` + 31 处硬编码周期常量并入 `config.py` | 待推 |
+| **P7-3** | scoring 灰度收口（`FEATURE_UNIFIED_SCORING` 删 flag 或翻默认 → 单独 ADR；L6 同步退役/改判——收口后 off/on 恒等属 P-54 空判据） | 待推（**flag 处置待用户拍板**） |
+| **P7-4** | 配置集中化收尾：env 读取去重（TDX 系 8 处 / FALLBACK_DIR / TDX_REF_PATH 归 config；API_SECRET_KEY / TUSHARE_TOKEN / STOCK_FONT_PATH 改 config accessor 调用时读取保 monkeypatch 语义）+ `TRADING_DAYS_PER_YEAR` 单一化（4 处重复定义删除 + 3 处裸 252 年化换常量）。**判据修正**：计划原口径「31 处硬编码周期常量并入 config.py」实测正则已漂移到 160 处，其中绝大多数为函数签名默认值 / 算法局部窗口 / 评分启发式，**不属于配置**——只收敛真正跨模块同义的年化常数，其余保留原地并留痕 | ✅ 2026-11-12 |
 | **P7-5** | 文档收口（CLAUDE.md / docs/architecture.md / TODO 关闭 P1/P8 已完成项 + 台账漂移项）；破坏点 ADR 编号连续性核查；推送触发 CI 三平台绿灯（破坏性删除的前置条件 ③） | 待推 |
 
 **范围（不做）**（计划 §三 Phase 7）：不删除任何被引用的旧符号——`scoring_adapters.py`
@@ -233,6 +233,17 @@ P7-2 残留扫描证据（2026-11-12）：
 - payload 对拍：旧 notifier（`git show HEAD:notifier.py`）vs `reporter.scan_notify`
   的 `build_message_content`，固定输入逐字节一致（`get_market_sentiment` 与
   `datetime.now` 双侧同 mock）。
+
+P7-4 残留扫描证据（2026-11-12）：
+- lib/ 内 `os.getenv | os.environ.get` 从 15 处收敛到 **2 处受控调用时重读**
+  （`market_utils._tdx_root()`、`data_layer` 内 `tdx_path` 读取——均为保测试
+  monkeypatch 语义的既定约定，默认值取自 config）；其余全部归 config.py 所有。
+- `TRADING_DAYS_PER_YEAR = 252` 定义从 4 处收敛到 config.py 1 处；
+  裸 `252` 年化字面量清理 4 处（analyzer 1 + portfolio_optimizer 3）。
+- 读取时机语义保持：模块级读取（TDX 系）仍为 import 时；调用时读取
+  （API_SECRET_KEY / TUSHARE_TOKEN / STOCK_FONT_PATH）经 config accessor 仍在调用时
+  执行——`test_api.py`（monkeypatch.setenv API_SECRET_KEY）、`test_pdf_font.py`、
+  `test_market_utils.py`（37 例 monkeypatch TDX_DATA_PATH）全部原样通过。
 
 ---
 

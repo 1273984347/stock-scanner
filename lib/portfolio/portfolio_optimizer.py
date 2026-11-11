@@ -15,6 +15,8 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 import logging
 
+from config import TRADING_DAYS_PER_YEAR
+
 logger = logging.getLogger(__name__)
 
 
@@ -119,7 +121,7 @@ class PortfolioOptimizer:
             for c in valid:
                 vol = c.get("volatility", cfg.target_vol)
                 vols.append(vol)
-            cov = np.diag(np.array(vols) ** 2) * 252
+            cov = np.diag(np.array(vols) ** 2) * TRADING_DAYS_PER_YEAR
 
         # 5. 均值方差优化
         weights = self._mean_variance_optimize(
@@ -674,11 +676,11 @@ class StrategyAllocator:
 
         # Step 2: RiskBudgetController — 风控调整
         expected_returns = np.array([
-            c.get("score", 0) * cfg.score_to_return * 252
+            c.get("score", 0) * cfg.score_to_return * TRADING_DAYS_PER_YEAR
             for c in candidates
         ])
         vols = np.array([c.get("volatility", cfg.volatility_target) for c in candidates])
-        cov_matrix = np.diag(vols ** 2) * 252
+        cov_matrix = np.diag(vols ** 2) * TRADING_DAYS_PER_YEAR
 
         adjusted_weights = self.risk_controller.apply_risk_controls(
             raw_weights, expected_returns, cov_matrix

@@ -23,10 +23,35 @@ FEISHU_APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "")
 FEISHU_RECEIVE_ID = os.environ.get("FEISHU_RECEIVE_ID", "")
 FEISHU_RECEIVE_ID_TYPE = os.environ.get("FEISHU_RECEIVE_ID_TYPE", "open_id")
 
-# TDX（通达信）数据源配置
+# TDX（通达信）数据源配置 —— lib/ 内一律从本模块取值，禁止绕过重复 os.environ.get
 TDX_DATA_PATH = os.environ.get("TDX_DATA_PATH", "D:/TDX/vipdoc")
 TDX_HOST = os.environ.get("TDX_HOST", "180.153.39.210")
 TDX_PORT = int(os.environ.get("TDX_PORT", "7709"))
+TDX_REF_PATH = os.environ.get("TDX_REF_PATH", "D:/TDX/vipdoc/ref")
+
+# 告警推送失败降级目录（环境变量可覆盖，便于测试/部署）
+ALERT_FALLBACK_DIR = os.environ.get(
+    "ALERT_FALLBACK_DIR",
+    str(Path(__file__).parent / "logs" / "alert_fallback"),
+)
+
+# A 股年化交易天数（原 lib/ 内 4 处重复定义 + 3 处裸 252 年化字面量的单一真相源）
+TRADING_DAYS_PER_YEAR = 252
+
+
+def api_secret_key() -> str:
+    """调用时读取（保持 monkeypatch.setenv 语义），env 名归 config 所有。"""
+    return os.getenv("API_SECRET_KEY", "")
+
+
+def tushare_token() -> str:
+    """调用时读取（tushare pro api 懒初始化时取 token）。"""
+    return os.environ.get("TUSHARE_TOKEN", "")
+
+
+def stock_font_path_override() -> str:
+    """调用时读取；返回字体覆盖路径（空串 = 无覆盖）。"""
+    return os.environ.get("STOCK_FONT_PATH", "").strip()
 
 
 # ---- RF-01 Phase 4：统一评分内核开关（默认 off，可按消费者灰度）----------

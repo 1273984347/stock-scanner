@@ -3,7 +3,7 @@
 来源：cn-finance-data skill（220+ 中国金融数据 API）
 需要：pip install tushare，设置 TUSHARE_TOKEN 环境变量
 """
-import os
+from config import tushare_token
 import pandas as pd
 import logging
 from typing import Optional, Dict
@@ -19,7 +19,7 @@ def _get_pro():
     if _pro is None:
         try:
             import tushare as ts
-            token = os.environ.get("TUSHARE_TOKEN", "")
+            token = tushare_token()  # P7-4：env 名归 config，调用时读取
             if not token:
                 logger.error("TUSHARE_TOKEN 环境变量未设置")
                 return None

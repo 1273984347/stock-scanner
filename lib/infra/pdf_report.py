@@ -11,6 +11,8 @@
 
 import io
 import os
+
+from config import stock_font_path_override
 import platform
 import sys
 from datetime import datetime
@@ -69,7 +71,7 @@ def get_chinese_font_candidates() -> List[str]:
         ]
 
     # 允许环境变量覆盖（单个绝对路径）
-    override = os.environ.get("STOCK_FONT_PATH", "").strip()
+    override = stock_font_path_override()  # P7-4：env 名归 config，调用时读取
     if override:
         candidates = [override] + candidates
 

@@ -10,7 +10,6 @@
   1. 网络直连：通过 pytdx hq API 获取（优先）
   2. 本地文件：读取 TDX binary .day 文件（兜底）
 """
-import os
 import struct
 import logging
 from datetime import datetime, timedelta
@@ -24,9 +23,8 @@ from lib.data.data_protocol import truncate_to_date
 logger = logging.getLogger(__name__)
 
 # ========== 配置 ==========
-TDX_DATA_PATH = os.environ.get("TDX_DATA_PATH", "D:/TDX/vipdoc")
-TDX_HOST = os.environ.get("TDX_HOST", "180.153.39.210")
-TDX_PORT = int(os.environ.get("TDX_PORT", "7709"))
+# 单一真相源：TDX 配置归 config.py 所有（P7-4），禁止绕过重复读 env
+from config import TDX_DATA_PATH, TDX_HOST, TDX_PORT
 
 # ========== 代码转换 ==========
 

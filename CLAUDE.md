@@ -1,6 +1,6 @@
 # CLAUDE.md — Stock Scanner (个人量化选股系统)
 
-> 最后更新：2026-11-12 | 本次更新：RF-01 Phase 7 P7-2 —— notifier.py 下线（活函数迁 reporter/scan_notify.py，payload 对拍一致）、judge_panel 6 死方法删除（679→224 行，L5 不变）、backtest/core.py 误导性标注改正；新发现 config/judges.json 配置与实现漂移（P7-2b 随 RF-02）；L0–L10 全 PASS（1307 passed）
+> 最后更新：2026-11-12 | 本次更新：RF-01 Phase 7 P7-4 —— 配置集中化收尾：env 读取去重（15→2 受控）、TRADING_DAYS_PER_YEAR 单一化（4 定义+3 裸 252）、API_SECRET_KEY 等改 config accessor 调用时读取（保 monkeypatch）；判据修正：31 处周期常量口径实测 160 处且多为 API 默认值/算法参数，只收敛真配置；L0–L10 全 PASS（1307 passed）
 
 ## 工作流
 

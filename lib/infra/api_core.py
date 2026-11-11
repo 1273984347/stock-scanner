@@ -18,6 +18,8 @@
 import json
 import logging
 import os
+
+from config import api_secret_key
 import re
 import secrets
 import threading
@@ -39,7 +41,7 @@ API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 def _get_api_key() -> str:
     """获取 API 密钥，密钥不存在则拒绝启动"""
-    key = os.getenv("API_SECRET_KEY", "")
+    key = api_secret_key()  # P7-4：env 名归 config，调用时读取保 monkeypatch 语义
     if not key:
         raise RuntimeError(
             "API_SECRET_KEY must be set in production. "

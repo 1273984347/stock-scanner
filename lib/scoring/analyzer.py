@@ -7,6 +7,8 @@ from typing import Dict, Optional
 from dataclasses import dataclass
 import logging
 
+from config import TRADING_DAYS_PER_YEAR
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,7 +41,7 @@ class PerformanceAnalyzer:
         self.perf_df = perf_df.copy()
         self.benchmark_df = benchmark_df.copy() if benchmark_df is not None else pd.DataFrame()
         self.rf = risk_free_rate
-        self.trading_days = 252
+        self.trading_days = TRADING_DAYS_PER_YEAR
 
     def analyze(self) -> PerformanceMetrics:
         """全面绩效分析"""

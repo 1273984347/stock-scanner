@@ -24,8 +24,10 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# 统一从 env 读取（之前硬编码，跨平台不可移植）
-TDX_DATA_PATH = Path(os.environ.get("TDX_DATA_PATH", "D:/TDX/vipdoc"))
+# 单一真相源：TDX 配置归 config.py 所有（P7-4）
+from config import TDX_DATA_PATH as _CFG_TDX_DATA_PATH
+
+TDX_DATA_PATH = Path(_CFG_TDX_DATA_PATH)
 
 
 @dataclass

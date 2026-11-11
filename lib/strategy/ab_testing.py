@@ -10,7 +10,7 @@
 import numpy as np
 
 # §4.2 P1 修复 (2026-06-08): TRADING_DAYS_PER_YEAR 常量
-TRADING_DAYS_PER_YEAR = 252  # A 股年化交易天数 (硬编码, 简化)
+from config import TRADING_DAYS_PER_YEAR  # A 股年化交易天数（P7-4 单一真相源）
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
