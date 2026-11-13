@@ -4,6 +4,7 @@ import { ChartPanel } from '../components/ChartPanel.js';
 import { getThemeColor } from '../theme.js';
 import { LazyChart } from '../utils/lazyChart.js';
 import { animateNumber, animateStagger, getAnimationDuration } from '../utils/animation.js';
+import { VirtualTable } from '../utils/virtualTable.js';
 
 /**
  * ScannerRenderer — 选股结果面板渲染器
@@ -21,6 +22,9 @@ class ScannerRenderer {
     this._currentKlineCode = '';
     this._unsubscribers = [];
     this._lazy = new LazyChart('panel-scanner');
+    this._vt = null;        // VirtualTable 实例（选股结果表窗口化）
+    this._data = [];        // 当前策略的全部候选股
+    this._cols = [];        // 当前策略的数据列
   }
 
   mount() {
@@ -210,53 +214,74 @@ class ScannerRenderer {
       head.innerHTML = '';
       body.innerHTML = '';
       if (!Array.isArray(data) || !data.length) {
-        body.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text-dim)">无候选股</td></tr>';
+        this._data = [];
+        this._cols = [];
+        this._ensureVt();
+        this._vt.setData([]);
         return;
       }
       if (!data[0]) return;
-      const cols = Object.keys(data[0]);
+      this._cols = Object.keys(data[0]);
+      this._data = data;
       const headRow = document.createElement('tr');
-      cols.forEach(c => {
+      this._cols.forEach(c => {
         const th = document.createElement('th');
         th.textContent = c;
-        th.addEventListener('click', () => this._sortTable(c, data, strategyName));
+        th.addEventListener('click', () => this._sortTable(c));
         headRow.appendChild(th);
       });
       head.appendChild(headRow);
-      data.forEach(row => {
-        const tr = document.createElement('tr');
-        tr.style.cursor = 'pointer';
-        cols.forEach(c => {
-          const td = document.createElement('td');
-          const val = row[c];
-          td.textContent = val == null ? '--' : typeof val === 'number' ? (Number.isInteger(val) ? String(val) : val.toFixed(2)) : String(val);
-          tr.appendChild(td);
-        });
-        // Click row to load K-line chart
-        tr.addEventListener('click', () => {
-          const code = row['代码'] || row['code'] || '';
-          if (code) {
-            this._currentKlineCode = String(code);
-            const title = document.getElementById('klineTitle');
-            const name = row['名称'] || row['name'] || '';
-            if (title) title.textContent = name ? `${name} (${code})` : code;
-            const section = document.getElementById('klineSection');
-            if (section) section.style.display = '';
-            const days = parseInt(document.getElementById('klineDays')?.value || '120', 10);
-            this._loadKline(this._currentKlineCode, days);
-          }
-        });
-        body.appendChild(tr);
-      });
+      this._ensureVt();
+      this._vt.setData(this._data);
     } catch (e) {
       console.error('[Scanner] 渲染表格失败:', e);
       body.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--down)">渲染失败</td></tr>';
     }
   }
 
-  _sortTable(col, data, strategyName) {
+  _ensureVt() {
+    if (this._vt) return;
+    const body = document.getElementById('resultBody');
+    if (!body) return;
+    this._vt = new VirtualTable(body, {
+      rowHeight: 34,
+      maxHeight: '56vh',
+      emptyText: '无候选股',
+      getColCount: () => this._cols.length || 10,
+      renderRow: (i, item) => this._renderResultRow(i, item),
+    });
+  }
+
+  _renderResultRow(index, row) {
+    const tr = document.createElement('tr');
+    tr.style.cursor = 'pointer';
+    this._cols.forEach(c => {
+      const td = document.createElement('td');
+      const val = row[c];
+      td.textContent = val == null ? '--' : typeof val === 'number' ? (Number.isInteger(val) ? String(val) : val.toFixed(2)) : String(val);
+      tr.appendChild(td);
+    });
+    // Click row to load K-line chart
+    tr.addEventListener('click', () => {
+      const code = row['代码'] || row['code'] || '';
+      if (code) {
+        this._currentKlineCode = String(code);
+        const title = document.getElementById('klineTitle');
+        const name = row['名称'] || row['name'] || '';
+        if (title) title.textContent = name ? `${name} (${code})` : code;
+        const section = document.getElementById('klineSection');
+        if (section) section.style.display = '';
+        const days = parseInt(document.getElementById('klineDays')?.value || '120', 10);
+        this._loadKline(this._currentKlineCode, days);
+      }
+    });
+    return tr;
+  }
+
+  _sortTable(col) {
     if (this._sortCol === col) this._sortDir *= -1;
     else { this._sortCol = col; this._sortDir = 1; }
+    const data = this._data;
     const sorted = [...data].sort((a, b) => {
       const va = a[col], vb = b[col];
       if (va == null) return 1;
@@ -264,7 +289,8 @@ class ScannerRenderer {
       if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * this._sortDir;
       return String(va).localeCompare(String(vb), 'zh') * this._sortDir;
     });
-    this._renderTable(sorted, strategyName);
+    this._data = sorted;
+    if (this._vt) this._vt.setData(this._data);
   }
 
   _renderCharts(data, name) {
@@ -324,6 +350,8 @@ class ScannerRenderer {
 
   unmount() {
     this._unsubscribers.forEach(unsub => unsub());
+    this._vt?.destroy();
+    this._vt = null;
     this._signalChart?.destroy();
     this._factorChart?.destroy();
     this._heatmapChart?.destroy();

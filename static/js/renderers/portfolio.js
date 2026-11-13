@@ -2,6 +2,7 @@ import { stateManager } from '../state.js';
 import { apiClient } from '../api.js';
 import { getThemeColor } from '../theme.js';
 import { LazyChart } from '../utils/lazyChart.js';
+import { VirtualTable } from '../utils/virtualTable.js';
 import { exportChartJs, addExportButton, generateFilename } from '../utils/chartExport.js';
 
 /**
@@ -14,6 +15,8 @@ class PortfolioRenderer {
     this._unsubscribers = [];
     this._regimeLoaded = false;
     this._lazy = new LazyChart('panel-portfolio');
+    this._vt = null;          // VirtualTable 实例（组合表窗口化）
+    this._details = [];
   }
 
   mount() {
@@ -38,12 +41,9 @@ class PortfolioRenderer {
   }
 
   render(p) {
-    if (!p || !p.details || !p.details.length) {
-      const body = document.getElementById('portfolioBody');
-      if (body) body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:20px">暂无组合数据，点击"刷新数据"开始扫描</td></tr>';
-      return;
-    }
-    this._renderTable(p.details || []);
+    const details = (p && p.details) ? p.details : [];
+    this._renderTable(details);
+    if (!details.length) return;
     this._renderStats(p);
     // 图表懒加载：只在面板可见时渲染
     this._lazy.whenVisible(
@@ -60,38 +60,54 @@ class PortfolioRenderer {
 
   _renderTable(details) {
     const body = document.getElementById('portfolioBody');
-    body.innerHTML = '';
-    details.forEach(d => {
-      const tr = document.createElement('tr');
-      tr.dataset.code = d.code || '';
-      tr.dataset.name = d.name || '';
-      // 安全插入：使用 textContent 避免 XSS
-      const codeTd = document.createElement('td');
-      const codeLink = document.createElement('a');
-      codeLink.style.cssText = 'color:var(--accent);cursor:pointer';
-      codeLink.textContent = d.code || '--';
-      codeTd.appendChild(codeLink);
+    if (!body) return;
+    this._details = details;
+    this._ensureVt();
+    this._vt.setData(details);
+  }
 
-      const nameTd = document.createElement('td');
-      nameTd.textContent = d.name || '--';
-
-      const sectorTd = document.createElement('td');
-      sectorTd.textContent = d.sector || '--';
-
-      const weightTd = document.createElement('td');
-      weightTd.className = 'text-accent';
-      weightTd.textContent = ((d.weight || 0) * 100).toFixed(1) + '%';
-
-      const scoreTd = document.createElement('td');
-      scoreTd.textContent = (d.score || 0).toFixed(1);
-
-      tr.appendChild(codeTd);
-      tr.appendChild(nameTd);
-      tr.appendChild(sectorTd);
-      tr.appendChild(weightTd);
-      tr.appendChild(scoreTd);
-      body.appendChild(tr);
+  _ensureVt() {
+    if (this._vt) return;
+    const body = document.getElementById('portfolioBody');
+    if (!body) return;
+    this._vt = new VirtualTable(body, {
+      rowHeight: 34,
+      maxHeight: '50vh',
+      emptyText: '暂无组合数据，点击"刷新数据"开始扫描',
+      renderRow: (i, d) => this._renderPortfolioRow(i, d),
     });
+  }
+
+  _renderPortfolioRow(index, d) {
+    const tr = document.createElement('tr');
+    tr.dataset.code = d.code || '';
+    tr.dataset.name = d.name || '';
+    // 安全插入：使用 textContent 避免 XSS
+    const codeTd = document.createElement('td');
+    const codeLink = document.createElement('a');
+    codeLink.style.cssText = 'color:var(--accent);cursor:pointer';
+    codeLink.textContent = d.code || '--';
+    codeTd.appendChild(codeLink);
+
+    const nameTd = document.createElement('td');
+    nameTd.textContent = d.name || '--';
+
+    const sectorTd = document.createElement('td');
+    sectorTd.textContent = d.sector || '--';
+
+    const weightTd = document.createElement('td');
+    weightTd.className = 'text-accent';
+    weightTd.textContent = ((d.weight || 0) * 100).toFixed(1) + '%';
+
+    const scoreTd = document.createElement('td');
+    scoreTd.textContent = (d.score || 0).toFixed(1);
+
+    tr.appendChild(codeTd);
+    tr.appendChild(nameTd);
+    tr.appendChild(sectorTd);
+    tr.appendChild(weightTd);
+    tr.appendChild(scoreTd);
+    return tr;
   }
 
   _renderSectorChart(sectors) {
@@ -290,6 +306,8 @@ class PortfolioRenderer {
 
   unmount() {
     this._unsubscribers.forEach(unsub => unsub());
+    this._vt?.destroy();
+    this._vt = null;
     this._lazy.destroy();
     Object.values(this._charts).forEach(c => c?.destroy());
   }

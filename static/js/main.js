@@ -27,6 +27,7 @@ import { StatusBar } from '/js/components/StatusBar.js';
 import { SearchBar } from '/js/components/SearchBar.js';
 import { multiWindowManager } from '/js/components/MultiWindow.js';
 import { helpCenter } from '/js/components/HelpCenter.js';
+import { VirtualTable } from '/js/utils/virtualTable.js';
 
 const renderers = {};
 
@@ -360,6 +361,8 @@ function setupTabSwitching() {
 }
 
 let _reportsLoaded = false;
+let _reportsVt = null;
+let _pushLogVt = null;
 async function loadReportsTab() {
   if (_reportsLoaded) return;
   _reportsLoaded = true;
@@ -368,77 +371,71 @@ async function loadReportsTab() {
   const logBody = document.getElementById('pushLogBody');
   try {
     const data = await apiClient.get('/api/reports');
-    loading.style.display = 'none';
+    if (loading) loading.style.display = 'none';
 
-    // 策略报告
-    if (data.reports && data.reports.length > 0) {
-      tbody.innerHTML = '';
-      data.reports.forEach(r => {
-        const totalSignals = Object.values(r.signals || {}).reduce((a, b) => a + b, 0);
-        const signalsStr = Object.entries(r.signals || {})
-          .map(([k, v]) => `${k}: ${v}`)
-          .join(', ');
-        const tr = document.createElement('tr');
-        [
-          r.date || '--',
-          r.sentiment != null ? r.sentiment.toFixed(2) : '--',
-          String(totalSignals),
-          signalsStr || '--',
-        ].forEach((txt, i) => {
-          const td = document.createElement('td');
-          td.textContent = txt;
-          if (i === 3) td.style.cssText = 'font-size:12px;color:var(--text-dim);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-          else if (i > 0) td.style.cssText = 'text-align:center';
-          tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
+    // 策略报告（虚拟滚动）
+    if (!_reportsVt && tbody) {
+      _reportsVt = new VirtualTable(tbody, {
+        rowHeight: 34,
+        maxHeight: '46vh',
+        emptyText: '暂无历史报告',
+        renderRow: (i, r) => {
+          const totalSignals = Object.values(r.signals || {}).reduce((a, b) => a + b, 0);
+          const signalsStr = Object.entries(r.signals || {})
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(', ');
+          const tr = document.createElement('tr');
+          [
+            r.date || '--',
+            r.sentiment != null ? r.sentiment.toFixed(2) : '--',
+            String(totalSignals),
+            signalsStr || '--',
+          ].forEach((txt, i2) => {
+            const td = document.createElement('td');
+            td.textContent = txt;
+            if (i2 === 3) td.style.cssText = 'font-size:12px;color:var(--text-dim);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+            else if (i2 > 0) td.style.cssText = 'text-align:center';
+            tr.appendChild(td);
+          });
+          return tr;
+        },
       });
-    } else {
-      const tr = document.createElement('tr');
-      const td = document.createElement('td');
-      td.colSpan = 4;
-      td.textContent = '暂无历史报告';
-      td.style.cssText = 'color:var(--text-dim);padding:16px';
-      tr.appendChild(td);
-      tbody.appendChild(tr);
     }
+    if (_reportsVt) _reportsVt.setData(data.reports && data.reports.length ? data.reports : []);
 
-    // 推送日志
-    if (data.push_logs && data.push_logs.length > 0) {
-      logBody.innerHTML = '';
-      data.push_logs.forEach(log => {
-        const d = new Date(log.timestamp);
-        const timeStr = d.toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'});
-        const statusSpan = document.createElement('span');
-        statusSpan.textContent = log.success ? '成功' : '失败';
-        statusSpan.style.cssText = log.success ? 'color:#4ecdc4' : 'color:#ff6b6b';
-        const typeSpan = document.createElement('span');
-        typeSpan.textContent = log.type === 'morning_report' ? '晨间报告' : '策略报告';
-        const tr = document.createElement('tr');
-        [
-          timeStr,
-          typeSpan,
-          statusSpan,
-          log.detail || '--',
-        ].forEach((el, i) => {
-          const td = document.createElement('td');
-          if (typeof el === 'string') td.textContent = el;
-          else td.appendChild(el);
-          if (i === 0) td.style.cssText = 'font-size:12px';
-          else if (i === 3) td.style.cssText = 'font-size:12px;color:var(--text-dim)';
-          tr.appendChild(td);
-        });
-        logBody.appendChild(tr);
+    // 推送日志（虚拟滚动）
+    if (!_pushLogVt && logBody) {
+      _pushLogVt = new VirtualTable(logBody, {
+        rowHeight: 34,
+        maxHeight: '46vh',
+        emptyText: '暂无推送记录',
+        renderRow: (i, log) => {
+          const d = new Date(log.timestamp);
+          const timeStr = d.toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'});
+          const statusSpan = document.createElement('span');
+          statusSpan.textContent = log.success ? '成功' : '失败';
+          statusSpan.style.cssText = log.success ? 'color:#4ecdc4' : 'color:#ff6b6b';
+          const typeSpan = document.createElement('span');
+          typeSpan.textContent = log.type === 'morning_report' ? '晨间报告' : '策略报告';
+          const tr = document.createElement('tr');
+          [
+            timeStr,
+            typeSpan,
+            statusSpan,
+            log.detail || '--',
+          ].forEach((el, i2) => {
+            const td = document.createElement('td');
+            if (typeof el === 'string') td.textContent = el;
+            else td.appendChild(el);
+            if (i2 === 0) td.style.cssText = 'font-size:12px';
+            else if (i2 === 3) td.style.cssText = 'font-size:12px;color:var(--text-dim)';
+            tr.appendChild(td);
+          });
+          return tr;
+        },
       });
-    } else {
-      const tr = document.createElement('tr');
-      const td = document.createElement('td');
-      td.colSpan = 4;
-      td.textContent = '暂无推送记录';
-      td.style.cssText = 'color:var(--text-dim);padding:16px';
-      tr.appendChild(td);
-      logBody.appendChild(tr);
     }
+    if (_pushLogVt) _pushLogVt.setData(data.push_logs && data.push_logs.length ? data.push_logs : []);
   } catch (e) {
     console.error('[Reports] 加载失败:', e);
     if (loading) loading.textContent = '加载失败';
