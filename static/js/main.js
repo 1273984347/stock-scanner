@@ -18,6 +18,7 @@ import { BacktestRenderer } from '/js/renderers/backtest.js';
 import { EvalRenderer } from '/js/renderers/eval.js';
 import { SignalsRenderer } from '/js/renderers/signals.js';
 import { TradesRenderer } from '/js/renderers/trades.js';
+import { NotificationsRenderer } from '/js/renderers/notifications.js';
 import { SettingsRenderer } from '/js/renderers/settings.js';
 import { StrategyCompareRenderer } from '/js/renderers/strategy-compare.js';
 import { AppLayout } from '/js/layouts/AppLayout.js';
@@ -174,6 +175,7 @@ async function init() {
     if (panelId === 'reports') loadReportsTab();
     if (panelId === 'trades') renderers.trades?.fetch();
     if (panelId === 'signals') renderers.signals?.fetch();
+    if (panelId === 'notifications') renderers.notifications?.mount();
     // 触发面板可见性变化（用于图表懒加载）
     document.dispatchEvent(new CustomEvent('panelchange', { detail: { panelId } }));
   }
@@ -238,6 +240,7 @@ async function init() {
   renderers.eval = new EvalRenderer();
   renderers.signals = new SignalsRenderer();
   renderers.trades = new TradesRenderer();
+  renderers.notifications = new NotificationsRenderer();
   renderers.settings = new SettingsRenderer();
   renderers.strategy = new StrategyCompareRenderer();
 

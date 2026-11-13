@@ -246,6 +246,34 @@ export class AppLayout {
     </div>
   </div>
 
+  <!-- 通知中心面板（P26：信号/交易/异常通知的历史记录；消费 /api/notifications + /api/notifications/stats） -->
+  <div class="panel" id="panel-notifications">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+      <div class="metric-label" style="margin:0">通知统计</div>
+      <span style="font-size:13px">总计 <b id="notifStatTotal">--</b></span>
+      <span id="notifStatByType" style="font-size:12px;color:var(--text-dim)"></span>
+      <span style="flex:1"></span>
+      <select id="notifTypeSelect" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px">
+        <option value="">全部类型</option>
+        <option value="signal">信号</option>
+        <option value="trade">交易</option>
+        <option value="alert">警报</option>
+        <option value="system">系统</option>
+      </select>
+      <input id="notifStartDate" type="date" title="开始日期" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px">
+      <input id="notifEndDate" type="date" title="结束日期" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px">
+      <input id="notifKeyword" type="search" placeholder="关键词搜索" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;min-width:140px">
+      <button id="notifRefreshBtn" class="secondary" style="font-size:12px;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer">刷新</button>
+    </div>
+    <div class="table-wrap">
+      <table id="notificationsTable">
+        <thead><tr><th>时间</th><th>类型</th><th>级别</th><th>标题</th><th>内容</th></tr></thead>
+        <tbody id="notificationsBody"></tbody>
+      </table>
+    </div>
+    <div class="loading" id="notificationsLoading"><span class="spinner"></span>加载中...</div>
+  </div>
+
   <!-- 信号追踪面板 -->
   <div class="panel" id="panel-signals">
     <div class="portfolio-grid">

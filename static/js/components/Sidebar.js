@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { id: 'strategy', icon: '⚔️', labelKey: 'nav.strategy' },
   { id: 'audit', icon: '📋', labelKey: 'nav.audit' },
   { id: 'reports', icon: '📜', labelKey: 'nav.reports' },
+  { id: 'notifications', icon: '🔔', labelKey: 'nav.notifications' },
   { id: 'settings', icon: '⚙️', labelKey: 'nav.settings' },
 ];
 

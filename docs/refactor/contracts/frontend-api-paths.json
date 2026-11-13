@@ -5,8 +5,8 @@
     "source": "static/**/*.js|html|json literal /api/ strings"
   },
   "counts": {
-    "normalized_paths": 36,
-    "raw_strings": 36,
+    "normalized_paths": 38,
+    "raw_strings": 38,
     "unmapped": 0
   },
   "normalized_paths": [
@@ -27,6 +27,8 @@
     "/api/factor-weights",
     "/api/import/config",
     "/api/kline/{code}",
+    "/api/notifications",
+    "/api/notifications/stats",
     "/api/position-distribution",
     "/api/position/{code}",
     "/api/regime-history",
@@ -168,6 +170,20 @@
       "sources": [
         "static\\js\\renderers\\kline.js",
         "static\\js\\renderers\\scanner.js"
+      ]
+    },
+    {
+      "normalized": "/api/notifications",
+      "raw": "/api/notifications",
+      "sources": [
+        "static\\js\\renderers\\notifications.js"
+      ]
+    },
+    {
+      "normalized": "/api/notifications/stats",
+      "raw": "/api/notifications/stats",
+      "sources": [
+        "static\\js\\renderers\\notifications.js"
       ]
     },
     {
