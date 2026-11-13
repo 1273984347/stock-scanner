@@ -55,7 +55,12 @@ def pytest_configure(config):
 
 
 def _mock_akshare_stock_zh_a_spot():
-    """ak.stock_zh_a_spot() → 模拟全市场股票列表（60+ 页 → 单页 100 只）"""
+    """ak.stock_zh_a_spot() → 模拟全市场股票列表（60+ 页 → 单页 100 只）
+
+    P-80 契约对齐（2026-11-14）：get_realtime_quotes 的 docstring 承诺返回列含
+    「成交量」（真实 ak.stock_zh_a_spot 也确有该列，14 列）。此 mock 此前缺该列，
+    而量价突破/多因子选股策略按契约消费 df["成交量"] —— mock 缺列 = 隐性违约。
+    """
     return pd.DataFrame({
         "代码": [f"{i:06d}" for i in range(1, 101)],
         "名称": [f"股票{i}" for i in range(1, 101)],
@@ -65,6 +70,7 @@ def _mock_akshare_stock_zh_a_spot():
         "市净率": np.random.uniform(0.5, 10, 100),
         "量比": np.random.uniform(0.5, 5, 100),
         "换手率": np.random.uniform(0.1, 10, 100),
+        "成交量": np.random.uniform(1e4, 1e8, 100),
         "成交额": np.random.uniform(1e6, 1e10, 100),
     })
 
@@ -157,6 +163,52 @@ def _mock_akshare_by_default(request, monkeypatch):
     except ImportError:
         pass  # akshare 未装，不 mock
 
+    yield
+
+
+# ============================================================================
+# 缓存目录隔离（P-80，2026-11-14）
+#
+# 事故：2026-11-13 23:50 全量跑测试套件时，某个测试经真实 get_realtime_quotes
+#       走到 akshare mock → _save_cache 把 mock 行情落盘到**生产** cache/
+#       （cache/realtime_realtime.parquet，内容是「股票1」+ 随机价格）。
+#       40 分钟后的真实扫描在盘后 30min TTL 内加载毒缓存 ⇒
+#       量价突破/多因子选股 KeyError '成交量'（mock 缺列）+ ML/评分吃假价格。
+#
+# 根因：data_layer.CACHE_DIR 等缓存根是模块级仓库相对路径，autouse mock 让
+#       「测试内真实数据函数」返回假数据后照常落盘 —— L1 全绿 ≠ 运行时数据无害。
+#
+# 修法：autouse 把各缓存模块的根目录重定向到 pytest tmp，测试永不写生产缓存。
+#       （真实 ak.stock_zh_a_spot 14 列含 成交量，pytdx 路径 col_map 也含
+#        成交量 —— mock 缺列的契约违约在 _mock_akshare_stock_zh_a_spot 修。）
+# ============================================================================
+@pytest.fixture(autouse=True)
+def _isolate_repo_cache_dirs(tmp_path, monkeypatch):
+    cache_root = tmp_path / "cache"
+    (cache_root / "fin").mkdir(parents=True, exist_ok=True)
+
+    def _redirect(module, attr, raising=True):
+        monkeypatch.setattr(module, attr, cache_root, raising=raising)
+
+    import lib.data.data_layer as _data_layer
+    _redirect(_data_layer, "CACHE_DIR")
+    # FIN_CACHE_DIR 是 import 时从 CACHE_DIR 派生的模块级常量，需一并重定向
+    _redirect(_data_layer, "FIN_CACHE_DIR")
+    try:
+        import lib.data.cache as _cache_mod
+        _redirect(_cache_mod, "CACHE_DIR", raising=False)
+    except ImportError:
+        pass
+    try:
+        import lib.data.data_cache as _data_cache
+        _redirect(_data_cache, "_CACHE_DIR", raising=False)
+    except ImportError:
+        pass
+    try:
+        import lib.infra.api_core as _api_core
+        _redirect(_api_core, "CACHE_DIR", raising=False)
+    except ImportError:
+        pass
     yield
 
 

@@ -162,6 +162,27 @@ def send_feishu_message(results: dict, preset: str = "balanced") -> bool:
         return False
 
 
+def unwrap_scan_results(scan_result):
+    """P-79（2026-11-14）：把 `pipeline.run_all_strategies` 的返回值规整为裸 {策略名: DataFrame}。
+
+    pipeline 返回的是复合 scan_result（results/risk_check/portfolio/ml_ranking/...），
+    本模块的 print_results / send_feishu_message 只消费其中的 "results" 键
+    （与 routers/common.py 对 Web 路径的解包一致）。2026-05-30 起 run.py 把复合
+    dict 直接传进来，有候选股即崩（'dict' object has no attribute 'drop'），
+    控制台展示与飞书推送断流 6 个月（push_log.json 末条 2026-05-30 佐证）。
+
+    兼容三种输入：
+    - 复合 scan_result（含 "results" dict 键）→ 取 "results"
+    - 裸映射（历史调用方直接传 {策略: DataFrame}）→ 原样返回
+    - 非 dict（None 等）→ 空映射
+    """
+    if isinstance(scan_result, dict) and isinstance(scan_result.get("results"), dict):
+        return scan_result["results"]
+    if isinstance(scan_result, dict):
+        return scan_result
+    return {}
+
+
 def print_results(results: dict, preset: str = "balanced"):
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     config = get_config(preset)

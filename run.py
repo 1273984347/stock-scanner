@@ -7,7 +7,7 @@ from typing import Dict
 from pathlib import Path
 import pandas as pd
 from scanner import run_all_strategies
-from reporter.scan_notify import send_feishu_message, print_results
+from reporter.scan_notify import send_feishu_message, print_results, unwrap_scan_results
 from config import FEISHU_RECEIVE_ID
 import logging
 
@@ -112,7 +112,9 @@ def main():
         return
 
     # 运行策略
-    results = run_all_strategies(args.preset)
+    # P-79：pipeline.run_all_strategies 返回复合 scan_result，print_results/推送
+    # 只消费裸 {策略名: DataFrame} 映射（2026-05-30 起直接传复合 dict，有候选即崩）。
+    results = unwrap_scan_results(run_all_strategies(args.preset))
 
     if not results:
         logger.info("所有策略均无候选股")
@@ -919,9 +921,9 @@ def run_rebalance_mode(preset: str, no_push: bool):
         logger.warning("请手动评估后决定是否重启（scheduler.reset()）")
         return
 
-    # 执行调仓扫描
+    # 执行调仓扫描（P-79：同主扫描流程，复合 scan_result 需解包出裸 results 映射）
     logger.info(f"执行月频调仓扫描 - {today}")
-    results = run_all_strategies(preset)
+    results = unwrap_scan_results(run_all_strategies(preset))
 
     if not results:
         logger.info("调仓扫描: 无候选股")

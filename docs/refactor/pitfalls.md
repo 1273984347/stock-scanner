@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**78 条**（P-01～P-78），分八类。
+> **规模**：**80 条**（P-01～P-80），分八类。
 > **姊妹文档**：执行过程与逐批验收见 `docs/plans/2026-11-07-refactor-plan.md` 第七节；
 > 基线读数见 `docs/refactor/baseline.md`；尺子口径见 `docs/refactor/README.md`。
 
@@ -1531,6 +1531,81 @@ ADR-0015 F4 其实已预见「AI量化 反从 1.00 降到 0.20」，决策与防
 > 重建后 9/9 绿）。生产评分代码零改动。验收 **1312 passed / 12 skipped / 0 failed**，
 > L0–L5 / L7–L9 全 PASS。详见 `docs/audit/l5-scoring-baseline-drift-2026-11-13.md` §5。
 
+### P-79 · 复合返回值悄悄取代裸映射：CLI 展示/推送链断流 6 个月，L1 全绿毫不知情
+
+**现象**（2026-11-14 实盘扫描实测）：`python run.py --symbols ...` 扫描出 25 只候选股，
+控制台却在打印结果时崩 `AttributeError: 'dict' object has no attribute 'drop'`
+（`run.py:122 → reporter/scan_notify.py::print_results`）。回查
+`cache/reports/push_log.json`：末条推送 **2026-05-30 16:38 UTC**，之后 6 个月零推送——
+与引入该调用链的 commit `b6d63b2`（V6 自适应交易系统，2026-05-30）同日。
+
+**根因**：`pipeline.run_all_strategies` 返回**复合 scan_result**
+（`results/risk_check/portfolio/ml_ranking/...` 九键），而 CLI 侧 `print_results` /
+`send_feishu_message`（`build_message_content`）按**裸 `{策略名: DataFrame}` 映射**消费：
+复合 dict 一迭代，`portfolio` 键撞 `'dict' has no 'drop'`、`preset` 字符串撞 `'str' has no 'empty'`。
+Web 路径无恙——`routers/common.py:264` 一直正确解包 `scan_result.get("results", {})`，
+两个消费入口两种形状全靠调用方自觉，没有机器判据钉住。崩点还在 `if not results` 之后：
+复合 dict 永远真值 ⇒ 空扫描日也不再走「无候选股」分支；崩掉的是 CLI 主流程其后所有步骤
+（推送、IC 面板、组合优化）。IC/组合优化块里已有 `hasattr(df, "empty")` 防御——
+说明有人嗅到过形状问题，但没修根因（`print_results` / 解包），防御只救了自己那一小块。
+`pipeline.py:426` 还第三种形状给 `send_feishu_message` 传警报 dict
+（`{"type": ..., "alerts": [...]}`）→ 同样不匹配，被 try/except 静默吞掉。
+
+**修复**：根因修在**边界解包**，不给消费层塞防御——`reporter/scan_notify.py` 新增
+`unwrap_scan_results()`（复合→取 `results`；裸映射→原样；非 dict→空映射），
+`run.py` 两处调用（主扫描 `:115` / 调仓 `:928`）改经它解包，与 Web 路径解包语义一致。
+**7 例机器判据**（`tests/test_scan_display_contract.py`）：解包三种形状 + 解包后
+`print_results` / `build_message_content` 端到端输出（逐策略只数、汇总数、空策略不计入）+
+裸映射回归钉。警报 dict 的**内容层**适配（现在静默失败）登记为独立 TODO，不与本批混做。
+
+**推广**：**同一函数被两个入口消费、两个入口拿到的形状不一样时，必须有一把尺子钉住
+「每个入口该传什么形状」**——契约靠调用方自觉维持，漂移只是时间问题。
+尤其危险的是「返回值升级」（裸映射→复合 dict）：旧的直接消费方不会编译报错，
+只会在**运行到那行时**炸，而炸点（打印/推送）往往不在测试覆盖内。
+证据链技巧：**输出产物的时间戳就是断流的时刻**（push_log 末条 vs 引入 commit 同日），
+比读代码猜"什么时候坏的"可靠得多。
+
+**落地（2026-11-14）**：L1 全量 **1321 passed / 12 skipped / 0 failed**（基线 1312 + 本批 9 例）。
+
+### P-80 · 测试套件把 mock 行情写进生产缓存：L1 全绿 ≠ 运行时数据无害
+
+**现象**（2026-11-14 实盘扫描实测）：23:50 跑全量测试套件（P-78 收尾批次）；
+00:08 真实扫描（12 只 HS300 蓝筹）出现三个症状——量价突破/多因子选股
+`KeyError: '成交量'`（两个策略零候选）、`cache/realtime_realtime.parquet`
+内容是 **「股票1」+ 随机价格（000001 @ 81.77）**、fundflow 磁盘缓存 0 条。
+
+**根因**：三层叠加的污染链——
+① `tests/conftest.py` autouse fixture 把 `ak.stock_zh_a_spot` mock 成 100 行
+「股票N」假行情（禁网治理 P-21 时代的产物）；② 某测试经**真实**
+`data_layer.get_realtime_quotes` 走到 pytdx 失败（禁网 socket 阻断）→ akshare 兜底
+→ 拿到 mock → `_save_cache("realtime/realtime", df)` 落盘，而 `CACHE_DIR` 是
+**模块级仓库相对路径**（生产与测试共用）；③ 盘后缓存 TTL 30 分钟，
+40 分钟后的真实扫描正中弹着时间窗。后果：mock 缺 `成交量` 列 ⇒ 契约消费方
+（`strategies.py:362/645/758`）KeyError；假价格流入 ML/评分（该次扫描作废）。
+L1 全绿是因为毒缓存**写入**不是任何测试的断言对象——缺陷潜伏在断言的盲区。
+
+**修复**：① conftest 新增 autouse `_isolate_repo_cache_dirs`：把
+`data_layer.CACHE_DIR / FIN_CACHE_DIR`、`lib.data.cache.CACHE_DIR`、
+`data_cache._CACHE_DIR`、`api_core.CACHE_DIR` 全部重定向到 pytest tmp——
+**测试永不写生产缓存**成为默认机制而非逐个测试的自觉（P-23 教训：同一类遗漏
+要改默认机制，不是逐个补）；② `_mock_akshare_stock_zh_a_spot` 补 `成交量` 列，
+对齐 `get_realtime_quotes` docstring 契约与真实 akshare 14 列 schema；
+③ 删除毒缓存 `cache/realtime_realtime.parquet`。
+**2 例机器判据**（`tests/test_conftest_cache_isolation.py`）：fixture 重定向生效 +
+端到端复现链回归钉（pytdx import 失败 → akshare mock → 落盘进 tmp、仓库 cache/ 零写入、
+mock 契约列齐全）。
+
+**推广**：**mock 掉「数据来源」不等于隔离了「数据去向」**——凡是被 mock 的取数函数
+若仍会执行真实的**写路径**（缓存落盘、文件追加、DB insert），假数据就会流进生产存储。
+判据有三：① 测试基础设施的重定向要做成 autouse **默认机制**，覆盖面 = 所有缓存/持久化
+根路径模块属性；② mock 数据必须满足**被测函数 docstring 承诺的返回契约**（缺列 =
+把 schema 漂移伪装成测试环境常态，真实上游漂移时反而无感）；③ 「L1 全绿」只是
+断言盲区内的绿——对「测试会写哪些路径」要单独审计一遍（`_save_cache` /
+`NOTIFICATION_DIR` / push_log 一类的写入口点名排查）。
+
+**落地（2026-11-14）**：同上批 L1 **1321 passed / 12 skipped / 0 failed**；
+套件跑完后生产 `cache/` 实测零新增文件。
+
 ## 附 · 一句话索引（按症状查）
 
 | 症状 | 去查 |
@@ -1571,6 +1646,8 @@ ADR-0015 F4 其实已预见「AI量化 反从 1.00 降到 0.20」，决策与防
 | 测试全绿但「台账说没做完」的功能其实早修了，真缺陷藏在没被测的副作用里 | P-77 |
 | 删了配置文件后对拍基线长期判红，stash 对照却证明「不是当前改动」 | P-78 |
 | `--check` 输出的 diff 条数比实际少（脚本 `[:30]` 截断） | P-78 |
+| CLI/推送链运行时崩 `'dict' has no 'drop'`，测试却全绿（返回值形状漂移） | P-79 |
+| 测试套件把 mock 假数据写进生产缓存，真实运行吃到假价格 | P-80 |
 | A/B 对照里 OpenAPI / schema 比较恒等 | P-54 / ADR-0009 D3 |
 | Actions 额度消耗太快 | P-40 |
 | commit 失败却把旧代码推上去了 | P-43 |
