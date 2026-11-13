@@ -265,6 +265,10 @@ def get_circuit_breaker_status() -> Dict[str, dict]:
 
 
 def reset_circuit_breakers():
-    """重置所有熔断器（用于测试）"""
+    """重置所有熔断器（用于测试）
+
+    2026-11-14 修复：此前调用不存在的 `cb._reset()`（一调即 AttributeError 的死代码），
+    改为 CircuitBreaker.reset() 公共方法。
+    """
     for cb in _CIRCUIT_BREAKERS.values():
-        cb._reset()
+        cb.reset()

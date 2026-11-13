@@ -254,6 +254,24 @@ _financial_cache = get_financial_cache()  # 统一缓存实例
 _fundflow_cache: Dict[str, dict] = {}
 _fundflow_cache_lock = threading.Lock()
 
+# ADR-0016（2026-11-14）：资金流上游全局熔断器。
+# 上游（东方财富/腾讯估算/akshare 兜底）全源失败连续达阈值后，短 TTL 内直接返回
+# 零默认值，不再逐股烧重试退避——源拒连时单次未缓存调用实测 ~13.2s（重试
+# 2s/4s backoff × 连接尝试），300 股批量场景按股票数放大即复现「5+ 分钟」级瓶颈。
+# 语义边界：
+# - 返回值形状与降级语义不变：熔断期间返回的零默认值与既有「所有源失败」路径一致，
+#   不新增任何「假数据」；熔断只裁剪重复的失败尝试（成本），不改成功路径。
+# - 失败信号 = _fetch_fund_flow 显式抛 FundFlowUnavailableError（全源异常）；
+#   真实取到的零值（停牌/零流）正常返回、不计失败、不触发熔断。
+# - 不写任何缓存（进程内/磁盘均不落「熔断标记」），避免把「上游不可达」持久化
+#   成缓存内容（P-80 教训：测试基础设施都不该写生产缓存）。
+# - 到期后半开：recovery_timeout 后下一次调用真实探测，成功即闭合、失败重开。
+_FUND_FLOW_BREAKER = CircuitBreaker(failure_threshold=3, recovery_timeout=300)
+
+
+class FundFlowUnavailableError(Exception):
+    """资金流全部数据源获取失败（东财/腾讯估算 + akshare 兜底均异常）。"""
+
 
 def _to_float(v) -> Optional[float]:
     """将任意值转为 float，自动剥离千分位逗号和中文字符（亿/万）。
@@ -733,10 +751,18 @@ def get_stock_fund_flow(code: str) -> dict:
 
     Returns:
         dict with keys: main_net_ratio, net_inflow_5d
+        全源失败 / 熔断开启时返回全零默认值（降级语义与「所有源失败」一致），
+        本函数不向上抛异常。
 
     性能说明：扫描时 5 个策略 + ML 富集循环会对同一只股票重复调用本函数，
     而原函数无任何缓存，导致被全局 3/sec 限流放大成 5+ 分钟瓶颈。
     这里加进程内字典缓存（单次扫描内去重）+ 磁盘缓存（跨扫描复用）。
+
+    熔断说明（ADR-0016，2026-11-14）：上游连续 3 次全源失败后熔断 300s，
+    期间直接返回零默认值——源拒连时单次未缓存调用实测 ~13.2s（重试 backoff），
+    300 股批量场景按股票数放大即复现「5+ 分钟」级瓶颈，熔断把它压到约
+    3 次尝试的成本。真实零值（停牌/零流）与全源失败由异常路径区分，
+    前者不计失败、不触发熔断。
     """
     # 1) 进程内缓存（同进程内重复调用直接命中，O(1)）
     with _fundflow_cache_lock:
@@ -757,7 +783,17 @@ def get_stock_fund_flow(code: str) -> dict:
     except Exception:
         pass
 
-    result = _fetch_fund_flow(code)
+    result = None
+    # 3) 全局熔断（ADR-0016）：开启期间直接走零默认值（与「所有源失败」降级一致），
+    #    不再逐股重试；到期后半开探测一次，成功闭合、失败重开。
+    try:
+        result = _FUND_FLOW_BREAKER.call(_fetch_fund_flow, code)
+    except CircuitOpenError:
+        logger.debug("[data_layer] 资金流熔断中，返回零默认值（不写缓存）")
+        return {"main_net_ratio": 0, "net_inflow_5d": 0}
+    except FundFlowUnavailableError as e:
+        logger.debug(f"[data_layer] 资金流全源失败 {code}: {e}")
+        return {"main_net_ratio": 0, "net_inflow_5d": 0}
 
     # 仅缓存成功取数（含 legitimately 为零的股票），不缓存「全部源失败」的默认值，
     # 以免掩盖瞬时故障、阻断后续重试。
@@ -804,7 +840,11 @@ def _fetch_fund_flow(code: str) -> dict:
     except Exception as e:
         logger.debug(f"[data_layer] akshare 资金流向失败 {code}: {e}")
 
-    return {"main_net_ratio": 0, "net_inflow_5d": 0}
+    # ADR-0016：全源失败显式抛错（供熔断器计数），不再静默返回全零——
+    # 真实取到的零值（停牌/零流）在上方正常返回，两者由此区分。
+    raise FundFlowUnavailableError(
+        f"fund_flow all sources failed for {code} (eastmoney/tencent + akshare)"
+    )
 
 
 def _batch_fund_flow(codes: list) -> dict:

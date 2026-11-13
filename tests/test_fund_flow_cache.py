@@ -1,17 +1,21 @@
-"""get_stock_fund_flow 缓存去重行为（H1 门禁）
+"""get_stock_fund_flow 缓存去重 + 熔断行为（H1 门禁 + ADR-0016）
 
 背景：扫描时 5 个策略 + ML 富集循环会对同一只股票重复调用
 get_stock_fund_flow，而原函数无任何缓存，被全局 3/sec 限流放大成 5+ 分钟瓶颈。
 
-本测试把「缓存命中 / 去重」逻辑变成机器判据（与 RF-01 基线 pin 机制同构）：
+本测试把「缓存命中 / 去重 / 熔断」逻辑变成机器判据（与 RF-01 基线 pin 机制同构）：
 - 进程内字典缓存：同 code 重复调用只触发 1 次底层 fetch（去重，解除瓶颈）
 - 磁盘缓存：底层 fetch 失败/被替换时，从磁盘缓存复用（跨扫描复用）
 - 仅缓存成功取数（非全零），不缓存「所有源失败」的默认值，避免掩盖瞬时故障
+- 全局熔断（ADR-0016）：全源失败连续 3 次 → 熔断 300s 直接返回零默认值，
+  源拒连时单次未缓存调用实测 ~13.2s，300 股批量场景按股票数放大复现瓶颈，
+  熔断把它压到约 3 次尝试的成本；真实零值（停牌/零流）不计失败。
 
 全程使用 hermetic fake，不触网、不落真盘。
 """
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -19,14 +23,17 @@ import pandas as pd
 import pytest
 
 import lib.data.data_layer as data_layer
+from lib.data.data_layer import FundFlowUnavailableError
 
 
 @pytest.fixture(autouse=True)
 def _reset_fundflow_cache():
-    """每个用例前后清空进程内缓存，避免跨用例污染。"""
+    """每个用例前后清空进程内缓存与熔断器状态，避免跨用例污染。"""
     data_layer._fundflow_cache.clear()
+    data_layer._FUND_FLOW_BREAKER.reset()
     yield
     data_layer._fundflow_cache.clear()
+    data_layer._FUND_FLOW_BREAKER.reset()
 
 
 def _install_fakes(monkeypatch, disk_store, value_fn=None):
@@ -129,6 +136,149 @@ def test_only_nonzero_results_cached(monkeypatch):
     assert "fundflow/600000" not in disk_store
     # 进程内也不应缓存（下次再试仍会 fetch）
     assert data_layer._fundflow_cache.get("600000") is None
+
+
+# ===========================================================================
+# ADR-0016：全局熔断器（全源失败连续 3 次 → 熔断 300s → 零默认值 fail-fast）
+# ===========================================================================
+
+def _install_source_down_fakes(monkeypatch, codes_seen=None):
+    """安装「上游全挂」fakes：_fetch_fund_flow 抛 FundFlowUnavailableError 并计数。"""
+    calls = {"n": 0}
+
+    def failing_fetch(code):
+        calls["n"] += 1
+        if codes_seen is not None:
+            codes_seen.append(code)
+        raise FundFlowUnavailableError(f"all sources down for {code}")
+
+    monkeypatch.setattr(data_layer, "_fetch_fund_flow", failing_fetch)
+    monkeypatch.setattr(data_layer, "_load_cache", lambda key, max_age_hours=2: pd.DataFrame())
+    monkeypatch.setattr(data_layer, "_save_cache", lambda key, df: None)
+    return calls
+
+
+def test_breaker_trips_then_fail_fast(monkeypatch):
+    """连续 3 次全源失败 → 熔断开启；之后的调用直接返回零默认值，不再进 fetch。
+
+    成本核算（ADR-0016 依据）：源拒连时单次 fetch ~13.2s（重试 backoff），
+    无熔断 = 300 股 × 13.2s ≈ 66 分钟；有熔断 = 3 × 13.2s ≈ 40s 后 fail-fast。
+    """
+    calls = _install_source_down_fakes(monkeypatch)
+
+    results = [data_layer.get_stock_fund_flow(f"60000{i}") for i in range(6)]
+
+    # 返回值形状与降级语义不变：全零默认值
+    assert all(r == {"main_net_ratio": 0, "net_inflow_5d": 0} for r in results)
+    # fetch 恰好 3 次（阈值），第 4-6 次由熔断 fail-fast 兜底
+    assert calls["n"] == 3, f"熔断后应停止 fetch，实际 fetch {calls['n']} 次"
+    assert data_layer._FUND_FLOW_BREAKER.state == "open"
+
+
+def test_breaker_success_resets_failure_count(monkeypatch):
+    """两次失败后一次成功 → 计数归零；重新数满阈值才再次熔断。"""
+    calls = {"n": 0}
+
+    def flaky_fetch(code):
+        calls["n"] += 1
+        # 第 1、2 次失败，第 3 次成功（归零），第 4-6 次再连续失败
+        if calls["n"] <= 2 or calls["n"] >= 4:
+            raise FundFlowUnavailableError("down")
+        return {"main_net_ratio": 0.05, "net_inflow_5d": 2.0e7}
+
+    monkeypatch.setattr(data_layer, "_fetch_fund_flow", flaky_fetch)
+    monkeypatch.setattr(data_layer, "_load_cache", lambda key, max_age_hours=2: pd.DataFrame())
+    monkeypatch.setattr(data_layer, "_save_cache", lambda key, df: None)
+
+    # 2 次失败（零默认值）+ 1 次成功
+    r1 = data_layer.get_stock_fund_flow("600001")
+    r2 = data_layer.get_stock_fund_flow("600002")
+    r3 = data_layer.get_stock_fund_flow("600003")
+    assert r1 == {"main_net_ratio": 0, "net_inflow_5d": 0}
+    assert r3 == {"main_net_ratio": 0.05, "net_inflow_5d": 2.0e7}
+    assert data_layer._FUND_FLOW_BREAKER.state == "closed"
+
+    # 计数已归零：再失败 2 次不应熔断，第 3 次才开
+    data_layer.get_stock_fund_flow("600004")
+    data_layer.get_stock_fund_flow("600005")
+    assert data_layer._FUND_FLOW_BREAKER.state == "closed"
+    data_layer.get_stock_fund_flow("600006")
+    assert data_layer._FUND_FLOW_BREAKER.state == "open"
+    assert calls["n"] == 6  # 2 + 1 + 3，熔断后无再 fetch
+
+
+def test_breaker_half_open_probes_after_recovery(monkeypatch):
+    """recovery_timeout 过期后半开：下一次调用真实探测；继续失败则重开。"""
+    calls = _install_source_down_fakes(monkeypatch)
+
+    for _ in range(3):
+        data_layer.get_stock_fund_flow("600007")
+    assert data_layer._FUND_FLOW_BREAKER.state == "open"
+
+    # 模拟 recovery_timeout（300s）过期
+    breaker = data_layer._FUND_FLOW_BREAKER
+    breaker._last_failure_time = time.time() - (breaker.recovery_timeout + 1)
+
+    data_layer.get_stock_fund_flow("600008")
+    assert calls["n"] == 4, "半开期应放行一次真实探测"
+    # 探测仍失败 → 重开
+    assert data_layer._FUND_FLOW_BREAKER.state == "open"
+    # 后续继续 fail-fast
+    data_layer.get_stock_fund_flow("600009")
+    assert calls["n"] == 4
+
+
+def test_genuine_zero_flow_never_trips_breaker(monkeypatch):
+    """真实取到的零值（停牌/零流）不计失败：反复调用不熔断、每次都真实 fetch。"""
+    calls = {"n": 0}
+
+    def genuine_zero(code):
+        calls["n"] += 1
+        return {"main_net_ratio": 0, "net_inflow_5d": 0}
+
+    monkeypatch.setattr(data_layer, "_fetch_fund_flow", genuine_zero)
+    monkeypatch.setattr(data_layer, "_load_cache", lambda key, max_age_hours=2: pd.DataFrame())
+    monkeypatch.setattr(data_layer, "_save_cache", lambda key, df: None)
+
+    for _ in range(5):
+        res = data_layer.get_stock_fund_flow("000003")
+        assert res == {"main_net_ratio": 0, "net_inflow_5d": 0}
+
+    assert calls["n"] == 5, "真实零值不得计入失败（全源失败才触发熔断）"
+    assert data_layer._FUND_FLOW_BREAKER.state == "closed"
+
+
+def test_circuit_breaker_reset_clears_named_and_default_state():
+    """CircuitBreaker.reset() 存在且清空默认 + 命名状态。
+
+    背景：data_source_registry.reset_circuit_breakers 此前调用不存在的
+    `_reset()`（死代码，一调即 AttributeError），2026-11-14 修复为 reset()。
+    """
+    from lib.data.cache import CircuitBreaker
+
+    def _boom():
+        raise RuntimeError("x")
+
+    cb = CircuitBreaker(failure_threshold=1, recovery_timeout=60)
+    # 默认断路器：threshold=1，一次失败即开
+    with pytest.raises(RuntimeError):
+        cb.call(_boom)
+    assert cb.state == "open"
+    cb.reset()
+    assert cb.state == "closed"
+    assert cb.call(lambda: "ok") == "ok"
+
+    # 命名断路器：reset 同样清空命名状态（svc_a 重新放行）
+    with pytest.raises(RuntimeError):
+        cb.call("svc_a", _boom)
+    with pytest.raises(Exception):
+        cb.call("svc_a", _boom)  # 已 open，直接 CircuitOpenError（不再执行函数）
+    cb.reset()
+    assert cb.call("svc_a", lambda: "ok") == "ok"
+
+    # 死代码修复判据：reset_circuit_breakers 不再 AttributeError
+    from lib.data.data_source_registry import reset_circuit_breakers
+    reset_circuit_breakers()
 
 
 if __name__ == "__main__":

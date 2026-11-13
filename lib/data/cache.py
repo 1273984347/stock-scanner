@@ -249,6 +249,19 @@ class CircuitBreaker:
     def state(self) -> str:
         return self._state
 
+    def reset(self) -> None:
+        """重置为关闭状态（清空默认 + 全部命名断路器状态；用于测试/运维）。
+
+        2026-11-14 修复：data_source_registry.reset_circuit_breakers 此前调用
+        不存在的 `_reset()`——该方法从未存在，reset 是一调即 AttributeError 的
+        死代码（无调用方，潜伏至本批才被发现）。
+        """
+        with self._lock:
+            self._failures = 0
+            self._last_failure_time = 0
+            self._state = "closed"
+            self._named_states.clear()
+
 
 # ========== 缓存清理 ==========
 
