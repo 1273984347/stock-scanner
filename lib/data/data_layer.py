@@ -475,8 +475,10 @@ def _fetch_from_tdx_local(code: str, days: int) -> pd.DataFrame:
 def get_stock_hist(code: str, days: int = 180) -> pd.DataFrame:
     """获取个股日线（多源自动切换，带缓存）
 
-    委托 data_source_registry.get_stock_hist_multi_source() 实现多源切换：
-    tdx_local_qfq → baostock → akshare → tdx_local → tdx → adata → westock → tushare
+    委托 data_source_registry.get_stock_hist_multi_source() 实现多源切换（ADR-0017，
+    2026-11-14 本地 TDX 文件源摘到尾部）：
+    baostock → tdx(公共服务器) → adata → westock → tushare → akshare
+    → tdx_local_qfq → tdx_local
     每个数据源有独立熔断器，失败自动切换下一个。
     """
     cache_key = f"hist/{code}/{days}"
