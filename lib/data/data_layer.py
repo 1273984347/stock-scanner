@@ -63,6 +63,7 @@ CACHE_TTL = {
     "clean_age_hours": 24,      # clean_cache 默认最大保留时间
     "clean_max_total_mb": 500,  # clean_cache 默认总大小上限
     "financial_default": 168,   # get_stock_financial 默认缓存（7天）
+    "fund_flow": 1,             # get_stock_fund_flow 磁盘缓存（1小时）
 }
 
 # ========== 网络/数据窗口配置 ==========
@@ -246,6 +247,12 @@ def clean_cache(max_age_hours: int = CACHE_TTL["clean_age_hours"], max_total_mb:
 # ========== 基本面数据获取 ==========
 
 _financial_cache = get_financial_cache()  # 统一缓存实例
+
+# 资金流向进程内缓存：扫描时 5 个策略 + ML 富集循环会对同一只股票重复调用
+# get_stock_fund_flow，原函数无任何缓存，被全局 3/sec 限流放大成 5+ 分钟瓶颈。
+# 这里做进程内字典缓存（单次扫描内去重）+ 磁盘缓存（跨扫描复用）。
+_fundflow_cache: Dict[str, dict] = {}
+_fundflow_cache_lock = threading.Lock()
 
 
 def _to_float(v) -> Optional[float]:
@@ -717,7 +724,7 @@ def get_market_sentiment() -> Optional[float]:
 # ========== 资金流向 ==========
 
 def get_stock_fund_flow(code: str) -> dict:
-    """获取资金流向数据
+    """获取资金流向数据（带进程内 + 磁盘缓存，跨策略去重）
 
     数据源优先级：
     1. 东方财富（优先）
@@ -726,7 +733,46 @@ def get_stock_fund_flow(code: str) -> dict:
 
     Returns:
         dict with keys: main_net_ratio, net_inflow_5d
+
+    性能说明：扫描时 5 个策略 + ML 富集循环会对同一只股票重复调用本函数，
+    而原函数无任何缓存，导致被全局 3/sec 限流放大成 5+ 分钟瓶颈。
+    这里加进程内字典缓存（单次扫描内去重）+ 磁盘缓存（跨扫描复用）。
     """
+    # 1) 进程内缓存（同进程内重复调用直接命中，O(1)）
+    with _fundflow_cache_lock:
+        cached = _fundflow_cache.get(code)
+    if cached is not None:
+        return cached
+    # 2) 磁盘缓存（跨进程/跨扫描复用，限流更友好）
+    try:
+        disk = _load_cache(f"fundflow/{code}", max_age_hours=CACHE_TTL.get("fund_flow", 1))
+        if not disk.empty:
+            res = {
+                "main_net_ratio": float(disk.iloc[0].get("main_net_ratio", 0) or 0),
+                "net_inflow_5d": float(disk.iloc[0].get("net_inflow_5d", 0) or 0),
+            }
+            with _fundflow_cache_lock:
+                _fundflow_cache[code] = res
+            return res
+    except Exception:
+        pass
+
+    result = _fetch_fund_flow(code)
+
+    # 仅缓存成功取数（含 legitimately 为零的股票），不缓存「全部源失败」的默认值，
+    # 以免掩盖瞬时故障、阻断后续重试。
+    if result.get("main_net_ratio", 0) != 0 or result.get("net_inflow_5d", 0) != 0:
+        with _fundflow_cache_lock:
+            _fundflow_cache[code] = result
+        try:
+            _save_cache(f"fundflow/{code}", pd.DataFrame([result]))
+        except Exception:
+            pass
+    return result
+
+
+def _fetch_fund_flow(code: str) -> dict:
+    """实际拉取资金流向（不含缓存），见 get_stock_fund_flow。"""
     # 1. 东方财富 + 腾讯估算（统一入口）
     try:
         from lib.data.data_fund_flow import get_fund_flow_simple

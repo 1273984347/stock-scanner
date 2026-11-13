@@ -291,7 +291,7 @@ class MonitorConfig:
 @dataclass
 class CacheConfig:
     """缓存 TTL 配置"""
-    hist_max_age_hours: float = 4.0
+    hist_max_age_hours: float = 24.0  # 原 4.0：日线数据按日更新，4h TTL 导致每日首次扫描冷重拉，放大 5+ 分钟瓶颈；提至 24h
     # 注：原 index_max_age_hours/realtime_max_age_minutes 已删除（未被读取）
     macro_max_age_hours: float = 24.0
 
