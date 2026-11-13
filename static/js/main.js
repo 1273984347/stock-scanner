@@ -615,6 +615,11 @@ function initExportButtons() {
     downloadCsv('/api/export/trades/excel', 'trades.xlsx');
   });
 
+  // 交易面板排序选择器（TradesRenderer.mount 从未被调用，监听在此补绑——2026-11-14 修复死监听）
+  document.getElementById('tradeSortSelect')?.addEventListener('change', () => {
+    renderers.trades?.fetch();
+  });
+
   // Config JSON export/import
   document.getElementById('exportConfigBtn')?.addEventListener('click', async () => {
     const preset = document.getElementById('presetSelect')?.value || 'balanced';

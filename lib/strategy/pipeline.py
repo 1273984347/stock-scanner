@@ -420,15 +420,13 @@ def _check_monitor_alerts(ml_ranking: dict = None):
                 if decay_alerts:
                     for alert in decay_alerts:
                         logger.warning(f"IC衰减告警 [{alert['severity']}]: {alert['message']}")
-                        # 尝试推送飞书通知
-                        try:
-                            from reporter.scan_notify import send_feishu_message
-                            send_feishu_message(
-                                {"type": "ic_decay_alert", "alerts": decay_alerts},
-                                preset="alert"
-                            )
-                        except Exception as e:
-                            logger.debug(f"[pipeline] 飞书通知发送失败: {e}")
+                    # 尝试推送飞书告警（P-79 遗留项修复：此前把 alert dict 直接传
+                    # 旧策略统计入口，形状不匹配 AttributeError 被吞，从未真正推送）
+                    try:
+                        from reporter.scan_notify import send_alert_message
+                        send_alert_message("ic_decay_alert", decay_alerts)
+                    except Exception as e:
+                        logger.debug(f"[pipeline] 飞书告警发送失败: {e}")
                 else:
                     logger.info("因子监控: 全部因子 IC 正常")
         except Exception as e:

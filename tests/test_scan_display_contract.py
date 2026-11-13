@@ -11,10 +11,16 @@ print_results / send_feishu_message —— 有候选股即崩：
 Web 路径解包一致）。本文件把「解包 + 裸映射消费」钉成机器判据。
 """
 
+import json
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
-from reporter.scan_notify import build_message_content, print_results, unwrap_scan_results
+import reporter.scan_notify as scan_notify
+from reporter.scan_notify import (build_alert_content, build_message_content,
+                                  print_results, send_alert_message,
+                                  unwrap_scan_results)
 
 
 def _two_candidate_df():
@@ -96,3 +102,75 @@ def test_print_results_bare_mapping_regression(capsys):
     print_results({"热门板块": _two_candidate_df()}, "balanced")
     out = capsys.readouterr().out
     assert "【热门板块】2 只" in out and "共 2 只候选股" in out
+
+
+# ---------------------------------------------------------------------------
+# P-79 遗留项（2026-11-14）：告警类消息的独立构造/推送路径
+# pipeline._check_monitor_alerts 此前把 alert dict 传 send_feishu_message，
+# 形状不匹配 AttributeError 被 try/except 吞掉——告警从未真正推送。
+# ---------------------------------------------------------------------------
+
+def _decay_alerts():
+    return [
+        {"factor": "volume_ratio", "negative_days": 7, "severity": "HIGH",
+         "mean_ic": -0.031, "message": "因子 volume_ratio IC 持续为负 7 天（阈值 5），均值 -0.0310"},
+        {"factor": "adx", "negative_days": 5, "severity": "MEDIUM",
+         "mean_ic": -0.012, "message": "因子 adx IC 持续为负 5 天（阈值 5），均值 -0.0120"},
+    ]
+
+
+def test_build_alert_content_formats_severity_and_message():
+    text = build_alert_content("ic_decay_alert", _decay_alerts())
+    assert "【IC 衰减告警】" in text
+    assert "[HIGH] 因子 volume_ratio" in text
+    assert "[MEDIUM] 因子 adx" in text
+    assert "共 2 条告警" in text
+
+
+def test_build_alert_content_empty_and_unknown_type():
+    text = build_alert_content("ic_decay_alert", [])
+    assert "（无告警明细）" in text and "共 0 条告警" in text
+    text2 = build_alert_content("custom_alert", [{"message": "x"}])
+    assert "【custom_alert】" in text2 and "- x" in text2
+
+
+def test_send_alert_message_without_receive_id_returns_false(monkeypatch):
+    monkeypatch.setattr(scan_notify, "FEISHU_RECEIVE_ID", "")
+    assert send_alert_message("ic_decay_alert", _decay_alerts()) is False
+
+
+def test_send_alert_message_posts_alert_body(monkeypatch):
+    """发送路径钉：body 是告警文本（非策略统计形状），且不再走 send_feishu_message 的
+    build_message_content（此前 alert dict 在那里静默崩掉）。"""
+    monkeypatch.setattr(scan_notify, "FEISHU_RECEIVE_ID", "ou_test")
+    monkeypatch.setattr(scan_notify, "get_tenant_token", lambda: "tok")
+    posted = {}
+
+    class _FakeResp:
+        def json(self):
+            posted["data"] = True
+            return {"code": 0}
+
+    def _fake_post(url, headers=None, params=None, json=None, timeout=None):
+        posted["url"] = url
+        posted["body"] = json
+        return _FakeResp()
+
+    monkeypatch.setattr(scan_notify.requests, "post", _fake_post)
+    assert send_alert_message("ic_decay_alert", _decay_alerts()) is True
+    assert posted["url"] == scan_notify.MESSAGE_URL
+    text = json.loads(posted["body"]["content"])["text"]
+    assert "【IC 衰减告警】" in text and "[HIGH] 因子 volume_ratio" in text
+    # 告警形状不得混入策略统计语义
+    assert "候选股统计" not in text and "止损" not in text
+
+
+def test_pipeline_monitor_alerts_wired_to_alert_path():
+    """接线守卫：pipeline._check_monitor_alerts 必须走 send_alert_message，
+    不得再把 alert dict 传 send_feishu_message（P-79 静默断流的回归钉）。"""
+    src = Path("lib/strategy/pipeline.py").read_text(encoding="utf-8")
+    start = src.index("def _check_monitor_alerts")
+    end = src.index("\ndef ", start + 1)
+    body = src[start:end]
+    assert "send_alert_message" in body
+    assert "send_feishu_message" not in body

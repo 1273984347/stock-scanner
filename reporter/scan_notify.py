@@ -162,6 +162,76 @@ def send_feishu_message(results: dict, preset: str = "balanced") -> bool:
         return False
 
 
+def build_alert_content(alert_type: str, alerts: list) -> str:
+    """P-79 遗留项（2026-11-14）：告警类消息的文本构造。
+
+    pipeline 的因子监控告警此前把 alert dict（{"type", "alerts"}）直接传
+    send_feishu_message，build_message_content 按裸策略映射消费非 DataFrame 值
+    → AttributeError 被 try/except 静默吞掉，告警从未真正推送。
+    告警不走「策略名: N 只」统计形状，独立构造。
+    """
+    type_labels = {
+        "ic_decay_alert": "IC 衰减告警",
+        "ic_decay": "IC 衰减告警",
+    }
+    label = type_labels.get(alert_type, alert_type)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    lines = [
+        f"【{label}】({now})",
+        "=" * 30,
+    ]
+    if not alerts:
+        lines.append("（无告警明细）")
+    for a in alerts or []:
+        if not isinstance(a, dict):
+            lines.append(f"- {a}")
+            continue
+        severity = a.get("severity", "")
+        message = a.get("message", "")
+        prefix = f"[{severity}] " if severity else ""
+        lines.append(f"- {prefix}{message}")
+    lines.append("=" * 30)
+    lines.append(f"共 {len(alerts or [])} 条告警")
+    return "\n".join(lines)
+
+
+def send_alert_message(alert_type: str, alerts: list) -> bool:
+    """告警类消息的飞书推送（与 send_feishu_message 并列的独立入口）。
+
+    发送管线与 send_feishu_message 相同（token + POST），有意不复用/不抽取——
+    后者函数体无测试覆盖（HTTP 路径），保持零改动降低回归面；两处文本构造
+    形状不同（策略统计 vs 告警明细），不满足合并条件。
+    """
+    if not FEISHU_RECEIVE_ID:
+        logger.error("FEISHU_RECEIVE_ID 未配置")
+        return False
+    token = get_tenant_token()
+    if not token:
+        return False
+    content = build_alert_content(alert_type, alerts)
+    body = {
+        "receive_id": FEISHU_RECEIVE_ID,
+        "msg_type": "text",
+        "content": json.dumps({"text": content}, ensure_ascii=False)
+    }
+    try:
+        resp = requests.post(MESSAGE_URL, headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8"
+        }, params={"receive_id_type": FEISHU_RECEIVE_ID_TYPE},
+            json=body, timeout=10)
+        data = resp.json()
+        if data.get("code") == 0:
+            logger.info("飞书告警推送成功: %s", alert_type)
+            return True
+        logger.error(f"飞书告警返回错误: {data}")
+        return False
+    except Exception as e:
+        logger.error(f"飞书告警推送异常: {e}")
+        return False
+
+
 def unwrap_scan_results(scan_result):
     """P-79（2026-11-14）：把 `pipeline.run_all_strategies` 的返回值规整为裸 {策略名: DataFrame}。
 
