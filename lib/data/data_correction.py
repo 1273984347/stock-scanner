@@ -116,8 +116,13 @@ class DataCorrection:
         return anomalies
 
     def correct_data(self, data: List[Dict], anomalies: List[Dict]) -> List[Dict]:
-        """修正数据"""
-        corrected = data.copy()
+        """修正数据，返回与入参完全独立的修正副本（不修改 data）。
+
+        根因（P1-10 收尾）：`data.copy()` 是 list 浅拷贝，元素是同一批 dict，
+        写回 `corrected[idx]["close"]` 会就地篡改调用方传入的原始历史数据。
+        修正缓存场景下原始值必须保留（用于审计与重复修正），故逐元素拷贝。
+        """
+        corrected = [row.copy() for row in data]
         corrections = []
 
         for anomaly in anomalies:
@@ -128,6 +133,13 @@ class DataCorrection:
                 #   1) 变化率在 A 股涨跌停阈值附近 → 真实涨跌停，跳过
                 #   2) 下一日收盘确认新价位（next ≈ curr）→ 真实延续，跳过
                 #   3) 否则才是数据错误，只修正 close（保留 OHLC — 高/低/开可能是真信号）
+                #
+                # 【稳定契约 · P1-10 收尾】next_close 在此只用于「是否跳过修正」的判定，
+                # 绝不参与修正值计算（修正值见下方前 N 日均值）。本模块是「事后回溯修正缓存」，
+                # 拿后一天真实收盘确认跳变真伪是必要信息，不构成回测信号的前视偏差。
+                # 删除 confirms 会退回 P0-2「抹平真实涨停/复牌」缺陷；如未来需严格的
+                # as-of 流式修正，应另开接口并注入 as_of_date，而不是在此删掉未来数据读取。
+                # 机器判据：tests/test_data_correction.py::test_confirms_real_continuation_skips_correction
                 idx = anomaly["index"]
                 if idx > 0 and idx < len(corrected) - 1:
                     prev_close = corrected[idx-1].get("close", 0)
