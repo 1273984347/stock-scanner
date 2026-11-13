@@ -16,9 +16,12 @@ logger = logging.getLogger(__name__)
 
 # ========== 数据源配置 ==========
 
-DATA_SOURCE_PRIORITY = ["tdx_local_qfq", "tdx_local", "baostock", "tdx", "adata", "westock", "tushare", "akshare"]
-# 回测用：前复权数据源优先（tdx_local_qfq 是前复权本地文件，优先于 baostock 网络）
-DATA_SOURCE_PRIORITY_ADJUSTED = ["tdx_local_qfq", "baostock", "akshare", "tdx_local", "tdx", "adata", "westock", "tushare"]
+# ADR-0017（2026-11-14）：用户已删除本地 TDX 客户端与 vipdoc 目录（D:/TDX 不存在），
+# tdx_local_qfq / tdx_local 两个本地文件源从优先级头部摘到尾部——保留注册（有 TDX 的
+# 环境可用 env TDX_DATA_PATH 重定向恢复），但默认源栈不再每次加载都先撞两下死路径。
+DATA_SOURCE_PRIORITY = ["baostock", "tdx", "adata", "westock", "tushare", "akshare", "tdx_local_qfq", "tdx_local"]
+# 回测用：前复权数据源优先（baostock 网络前复权优先于 akshare；本地 TDX 文件源摘到尾部）
+DATA_SOURCE_PRIORITY_ADJUSTED = ["baostock", "akshare", "tdx", "adata", "westock", "tushare", "tdx_local_qfq", "tdx_local"]
 
 
 def _is_bj_stock(code: str) -> bool:

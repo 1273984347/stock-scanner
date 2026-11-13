@@ -643,7 +643,7 @@ def get_xsb_hist(code: str, days: int = 180) -> pd.DataFrame:
 def get_realtime_quotes(force: bool = False) -> pd.DataFrame:
     """获取实时行情（多源：pytdx 本地 → akshare 兜底）。
 
-    优先使用 pytdx 直连行情服务器，失败时回退到 akshare。
+    优先 akshare 全市场 spot（sina，一次调用 ~5.5k 行），失败回退 pytdx 公共行情服务器。
     盘中时段缓存 5 分钟，盘后缓存 30 分钟（force=True 跳过缓存）。
 
     Args:
@@ -652,6 +652,11 @@ def get_realtime_quotes(force: bool = False) -> pd.DataFrame:
     Returns:
         DataFrame，列名含 代码/名称/最新价/开盘价/最高价/最低价/成交量/成交额/涨跌幅。
         失败返回空 DataFrame。
+
+    源优先级说明（ADR-0017，2026-11-14）：akshare 升为主源——① 全市场一次拉齐
+    （pytdx 公共行情服务器只返回 ~28 只样本股，量价突破/多因子选股等市场级策略
+    覆盖面不足）；② 用户已删除本地 TDX 客户端与 vipdoc 目录，源栈去 TDX 化；
+    pytdx 走的是公共行情服务器（TDX_HQ_SERVERS），与本地客户端无关，保留为兜底。
     """
     # 扫描期间用缓存（避免每个策略函数重复获取阻塞 30s+）
     # P1-4 修复（2026-06-05）：盘中缩短缓存到 5 分钟，避免盘中价格过期
@@ -666,7 +671,18 @@ def get_realtime_quotes(force: bool = False) -> pd.DataFrame:
     if not cached.empty:
         return cached
 
-    # 1. 优先 pytdx 本地连接（无网络依赖）
+    # 1. akshare 全市场 spot（主源，ADR-0017：全市场覆盖 + 成交量列契约满足）
+    try:
+        df = _retry_api_call(ak.stock_zh_a_spot)
+        if not df.empty:
+            _save_cache("realtime/realtime", df)
+            return df
+        logger.warning("akshare 全市场行情返回空，回退 pytdx 公共行情服务器")
+    except Exception as e:
+        logger.warning(f"akshare 全市场行情获取失败，回退 pytdx 公共行情服务器: {e}")
+
+    # 2. 回退 pytdx 公共行情服务器（TDX_HQ_SERVERS，与本地通达信客户端无关；
+    #    仅返回 REALTIME_SAMPLE_CODES ~28 只样本股）
     try:
         from pytdx.hq import TdxHq_API
         api = TdxHq_API()
@@ -708,15 +724,8 @@ def get_realtime_quotes(force: bool = False) -> pd.DataFrame:
     except Exception as e:
         logger.debug(f"[TDX] 实时行情获取失败: {e}")
 
-    # 2. 回退 akshare（需要网络）
-    try:
-        df = _retry_api_call(ak.stock_zh_a_spot)
-        if not df.empty:
-            _save_cache("realtime/realtime", df)
-        return df
-    except Exception as e:
-        logger.error(f"获取实时行情失败: {e}")
-        return pd.DataFrame()
+    logger.error("实时行情全部源失败（akshare 全市场 + pytdx 公共服务器）")
+    return pd.DataFrame()
 
 
 def get_market_sentiment() -> Optional[float]:
