@@ -245,6 +245,15 @@ class CircuitBreaker:
             self._record_failure(name)
             raise
 
+    def record_failure(self, name: str | None = None) -> None:
+        """手动记一次失败（公开 API）。
+
+        ADR-0019（2026-11-14）：挂起类故障（不抛错、不返回）无法经 call() 的异常
+        路径计数——调用方在超时裁剪后用本方法把挂起计入熔断，使「慢挂起」与
+        「快失败」同权重地驱动熔断开启。
+        """
+        self._record_failure(name)
+
     @property
     def state(self) -> str:
         return self._state

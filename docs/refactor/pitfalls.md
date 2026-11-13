@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**80 条**（P-01～P-80），分八类。
+> **规模**：**81 条**（P-01～P-81），分八类。
 > **姊妹文档**：执行过程与逐批验收见 `docs/plans/2026-11-07-refactor-plan.md` 第七节；
 > 基线读数见 `docs/refactor/baseline.md`；尺子口径见 `docs/refactor/README.md`。
 
@@ -1606,6 +1606,31 @@ mock 契约列齐全）。
 **落地（2026-11-14）**：同上批 L1 **1321 passed / 12 skipped / 0 failed**；
 套件跑完后生产 `cache/` 实测零新增文件。
 
+
+### P-81 · `monkeypatch.setattr("模块A.time.sleep", ...)` 改的是全局 time 模块：sleep 型测试桩被静默拆掉
+
+**现象**（2026-11-14，ADR-0019 机器判据首版 3 例假失败）：为验证「数据源挂起 → 超时熔断」
+写了 sleep 型挂起桩（`time.sleep(5)` 后返回空帧），在 pytest 下瞬间返回——超时熔断逻辑
+被判「没生效」，但同样的桩在 pytest 外复现完全正常。conftest 第 293 行
+`monkeypatch.setattr("lib.data.data_layer.time.sleep", lambda *a, **k: None)` 是真凶。
+
+**根因**：`lib.data.data_layer.time` 不是独立模块——data_layer `import time` 后，
+该属性就是**全局 time 模块对象本身**。monkeypatch.setattr 解析目标是
+「`lib.data.data_layer.time` 模块的 `.sleep` 属性」⇒ 实际改写 `time.sleep` 全局属性，
+整个测试进程的所有代码（包括测试自己的桩、registry 的 worker 线程）都看到 no-op sleep。
+原意（压掉 data_layer 重试的 sleep 等待）与实际效果（全局拆 sleep）之间没有隔离层。
+
+**修复**：挂起桩改用 `threading.Event().wait(5)`（线程原语，不在 patch 面）；
+ADR-0019 的机器判据 4 例全绿。conftest 的 sleep patch 本身保留（压慢测试是它的职责），
+但从此知道它的真实作用域是全局。
+
+**推广**：**monkeypatch 模块属性前先问「这个属性是共享对象还是模块私有」**——
+`import time` 后的 `模块A.time` 是全局单例，`patch("A.time.sleep")` 等价于
+`patch("time.sleep")`，影响面 = 全进程。判据：给「阻塞性测试桩」选原语时避开
+已被 patch 的全局面（time.sleep / datetime.now / builtins.open 一类），优先用
+线程/事件原语（Event.wait、queue.get(timeout)）或把桩的阻塞点做成可注入参数。
+写「模拟挂起/慢响应」的测试前，先确认阻塞原语在测试环境里真的会阻塞。
+
 ## 附 · 一句话索引（按症状查）
 
 | 症状 | 去查 |
@@ -1648,6 +1673,7 @@ mock 契约列齐全）。
 | `--check` 输出的 diff 条数比实际少（脚本 `[:30]` 截断） | P-78 |
 | CLI/推送链运行时崩 `'dict' has no 'drop'`，测试却全绿（返回值形状漂移） | P-79 |
 | 测试套件把 mock 假数据写进生产缓存，真实运行吃到假价格 | P-80 |
+| sleep 型测试桩在 pytest 下瞬间返回假成功（conftest 全局 patch 了 time.sleep） | P-81 |
 | A/B 对照里 OpenAPI / schema 比较恒等 | P-54 / ADR-0009 D3 |
 | Actions 额度消耗太快 | P-40 |
 | commit 失败却把旧代码推上去了 | P-43 |

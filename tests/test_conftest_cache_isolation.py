@@ -33,7 +33,14 @@ def test_get_realtime_quotes_writes_tmp_not_repo(monkeypatch):
 
     复现链：pytdx import 失败（模拟无 TDX 环境）→ akshare 兜底
     （autouse mock 返回「股票N」假行情）→ _save_cache 落盘。
+
+    判据口径（2026-11-14 修正）：生产 cache/ 里该文件**合法存在**（真实扫描写入的
+    生产数据）——回归判据不是「文件不存在」，而是「测试运行前后该文件不变」
+    （mtime/存在性快照对照）。
     """
+    repo_file = _repo_cache_root() / "realtime_realtime.parquet"
+    before = repo_file.stat().st_mtime if repo_file.exists() else None
+
     # 强制 pytdx import 失败，走 akshare 兜底（与事故时环境一致）
     monkeypatch.setitem(sys.modules, "pytdx", None)
 
@@ -48,7 +55,8 @@ def test_get_realtime_quotes_writes_tmp_not_repo(monkeypatch):
     saved = data_layer.CACHE_DIR / "realtime_realtime.parquet"
     assert saved.exists(), "realtime 行情应落盘到被重定向的 tmp 缓存目录"
 
-    # 生产缓存零污染
-    assert not (_repo_cache_root() / "realtime_realtime.parquet").exists(), (
-        "测试运行不得向生产 cache/ 写入 realtime_realtime.parquet（P-80 毒缓存回归）"
+    # 生产缓存零污染：测试运行前后生产文件不变（存在性与 mtime 双对照）
+    after = repo_file.stat().st_mtime if repo_file.exists() else None
+    assert before == after, (
+        "测试运行不得写生产 cache/realtime_realtime.parquet（P-80 毒缓存回归）"
     )

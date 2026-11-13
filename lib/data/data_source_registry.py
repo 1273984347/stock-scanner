@@ -7,6 +7,7 @@
 """
 import pandas as pd
 import logging
+import threading
 from typing import Dict, Optional
 from datetime import datetime, timedelta
 
@@ -27,6 +28,44 @@ DATA_SOURCE_PRIORITY_ADJUSTED = ["baostock", "akshare", "tdx", "adata", "westock
 def _is_bj_stock(code: str) -> bool:
     """判断是否为北交所股票（4/8 开头：43/83/87/88/92）"""
     return code.startswith(("4", "8"))
+
+
+# ADR-0019（2026-11-14）：数据源调用超时——挂起（不抛错、不返回）计入熔断。
+# 2026-11-14 周六凌晨实测：BaoStock「网络接收错误」后 socket 无超时挂起，
+# 量价突破/多因子的逐股 hist 链路 10+ 分钟无新日志，扫描整体卡死被人工终止。
+# 熔断体系缺口：每源熔断只按「抛错次数」计数，挂起既不计失败也不切换——
+# 快失败挡得住，慢挂起挡不住。治理 = daemon 线程 + join(timeout)：超时后
+# breaker.record_failure() 计入失败（达到阈值即开启，后续调用直接跳过），
+# 并抛 SourceCallTimeoutError 让多源循环切下一个源。
+# 挂起线程为 daemon：不阻塞解释器退出，等 socket 自行死亡/进程结束回收。
+SOURCE_CALL_TIMEOUT_S = 30.0
+
+
+class SourceCallTimeoutError(Exception):
+    """数据源调用超时（挂起检测，ADR-0019）。"""
+
+
+def _call_source_with_timeout(breaker: CircuitBreaker, fn, *args, **kwargs) -> pd.DataFrame:
+    """带超时的数据源调用：超时计入熔断失败并抛 SourceCallTimeoutError。"""
+    result = {}
+
+    def _worker():
+        try:
+            result["df"] = breaker.call(fn, *args, **kwargs)
+        except BaseException as e:  # 含 CircuitOpenError / 数据源内部异常，原样回抛
+            result["err"] = e
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join(SOURCE_CALL_TIMEOUT_S)
+    if t.is_alive():
+        breaker.record_failure()
+        raise SourceCallTimeoutError(
+            f"{getattr(fn, '__name__', fn)} timed out after {SOURCE_CALL_TIMEOUT_S}s (hang)"
+        )
+    if "err" in result:
+        raise result["err"]
+    return result.get("df", pd.DataFrame())
 
 
 # 每个数据源独立的熔断器
@@ -77,17 +116,17 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
             return _fetch_from_local_file(code, days, "daily", as_of_date)
         if source == "baostock":
             from lib.data.data_baostock import get_kline as baostock_kline
-            return breaker.call(baostock_kline, code, days=days, as_of_date=as_of_date)
+            return _call_source_with_timeout(breaker, baostock_kline, code, days=days, as_of_date=as_of_date)
         if source == "tdx":
             from lib.data.data_tdx import get_kline as tdx_kline
-            return breaker.call(tdx_kline, code, days=days, as_of_date=as_of_date)
+            return _call_source_with_timeout(breaker, tdx_kline, code, days=days, as_of_date=as_of_date)
         if source == "adata":
             from lib.data.data_adata import get_kline as adata_kline
-            return breaker.call(adata_kline, code, days=days, as_of_date=as_of_date)
+            return _call_source_with_timeout(breaker, adata_kline, code, days=days, as_of_date=as_of_date)
         if source == "westock":
             from lib.data.data_westock import get_kline as westock_kline
-            df = breaker.call(westock_kline, code, period="day", limit=min(days, 2000),
-                             as_of_date=as_of_date)
+            df = _call_source_with_timeout(breaker, westock_kline, code, period="day", limit=min(days, 2000),
+                                       as_of_date=as_of_date)
             if df.empty:
                 return pd.DataFrame()
             col_map = {"日期": "date", "开盘": "open", "收盘": "close",
@@ -101,7 +140,7 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
             from lib.data.data_tushare import get_daily, _to_ts_code
             ts_code = _to_ts_code(code)
             # P0-10: 透传 as_of_date (旧用 datetime.now() 前视)
-            df = breaker.call(get_daily, ts_code, start_str, end_str)
+            df = _call_source_with_timeout(breaker, get_daily, ts_code, start_str, end_str)
             if df.empty:
                 return pd.DataFrame()
             df = df.rename(columns={
@@ -112,8 +151,8 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
         if source == "akshare":
             import akshare as ak
             # P0-10: 透传 as_of_date (旧用 datetime.now() 前视)
-            df = breaker.call(ak.stock_zh_a_hist, symbol=code, period="daily",
-                              start_date=start_str, end_date=end_str, adjust="qfq")
+            df = _call_source_with_timeout(breaker, ak.stock_zh_a_hist, symbol=code, period="daily",
+                                   start_date=start_str, end_date=end_str, adjust="qfq")
             if df.empty:
                 return pd.DataFrame()
             df = df.rename(columns={
