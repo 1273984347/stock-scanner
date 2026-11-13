@@ -273,6 +273,111 @@ class FundFlowUnavailableError(Exception):
     """资金流全部数据源获取失败（东财/腾讯估算 + akshare 兜底均异常）。"""
 
 
+# ADR-0018（2026-11-14）：资金流「市场批量」层——同花顺即时全市场（~5.2k 只，1 call ~12s）。
+# 全局 3/sec 限流器是当初 5+ 分钟瓶颈的放大器：双缓存治了「重复取数」，但 4d 评分路径
+# 的首次逐股取数仍要 300 股 × 3/sec 排队（≥100s）。市场批量 1 call 覆盖全市场，
+# 把「逐股排队」变成「整场一次」。口径说明：batch 的 main_net_ratio = 净额/成交额
+# （同花顺即时口径），与逐股东财「主力净占比」口径有差异——优先级上精确值（逐股
+# 磁盘缓存）先于覆盖面（市场批量），即逐股东财值一旦有缓存就以它为准。
+# 失败语义：batch 拉取异常/空 → 静默降级到逐股路径（熔断计数照旧，ADR-0016 不变）；
+# batch 本身 1 call/hour，失败成本 ~12s，不设熔断。但需防「源挂时每股重拉」：
+# 失败后进程内记短暂不可用标记（300s，不落盘——运行时状态，非数据，P-80 同源纪律），
+# 期间直接跳过批量层走逐股路径。
+_FUND_FLOW_MARKET_UNAVAILABLE_S = 300.0
+_fundflow_market_unavailable_until = 0.0
+_fundflow_market_lock = threading.Lock()
+
+
+def _parse_market_fund_flow(df: pd.DataFrame) -> Dict[str, dict]:
+    """解析同花顺全市场资金流帧 → {code: {"main_net_ratio", "net_inflow_5d"}}。
+
+    与 _batch_fund_flow 的列兼容口径一致（「股票代码」/「净额」/「成交额」）；
+    空帧 / 缺关键列返回空 dict（调用方降级）。
+    """
+    if df is None or df.empty:
+        return {}
+    code_col = next((c for c in df.columns if "代码" in str(c)), None)
+    if code_col is None:
+        return {}
+    net_col = next((c for c in df.columns if "净额" in str(c)), None)
+    amount_col = next((c for c in df.columns if "成交额" in str(c)), None)
+    work = df[[code_col, net_col, amount_col]].copy() if (net_col and amount_col) else df[[code_col]].copy()
+    work[code_col] = work[code_col].astype(str)
+    if net_col and amount_col:
+        work[net_col] = pd.to_numeric(work[net_col], errors="coerce").fillna(0)
+        work[amount_col] = pd.to_numeric(work[amount_col], errors="coerce").fillna(0)
+        grouped = work.groupby(code_col, as_index=False).agg({net_col: "sum", amount_col: "sum"})
+        return {
+            str(c): {
+                "main_net_ratio": (n / a) if a and a > 0 else 0,
+                "net_inflow_5d": n,
+            }
+            for c, n, a in zip(grouped[code_col], grouped[net_col], grouped[amount_col])
+        }
+    # 只有净额列（无成交额）：ratio 记 0，净额仍有效
+    if net_col:
+        work[net_col] = pd.to_numeric(work[net_col], errors="coerce").fillna(0)
+        grouped = work.groupby(code_col, as_index=False).agg({net_col: "sum"})
+        return {
+            str(c): {"main_net_ratio": 0, "net_inflow_5d": n}
+            for c, n in zip(grouped[code_col], grouped[net_col])
+        }
+    return {}
+
+
+def _fetch_market_fund_flow() -> Dict[str, dict]:
+    """拉取同花顺全市场即时资金流（1 call ~12s），解析失败返回空 dict（调用方降级）。"""
+    try:
+        df = _retry_api_call(ak.stock_fund_flow_individual, symbol="即时")
+        return _parse_market_fund_flow(df)
+    except Exception as e:
+        logger.debug(f"[data_layer] 市场批量资金流拉取失败: {e}")
+        return {}
+
+
+def _get_market_fund_flow() -> Dict[str, dict]:
+    """市场批量资金流（磁盘缓存 fundflow/_market，TTL 随 CACHE_TTL["fund_flow"]=1h）。
+
+    进程内不单独缓存——调用方（get_stock_fund_flow / _batch_fund_flow）命中后各自
+    填 _fundflow_cache；磁盘 double-check + 锁保证并发扫描只拉 1 次。
+    拉取失败记进程内 300s 不可用标记（不落盘），期间直接返回空 dict 走逐股路径，
+    防止源挂时每股重拉 12s（与 ADR-0016 熔断同哲学）。
+    """
+    disk = _load_cache("fundflow/_market", max_age_hours=CACHE_TTL.get("fund_flow", 1))
+    if not disk.empty:
+        return _market_df_to_map(disk)
+    with _fundflow_market_lock:
+        global _fundflow_market_unavailable_until
+        if time.time() < _fundflow_market_unavailable_until:
+            return {}
+        # double-check：等锁期间另一线程可能已完成拉取并落盘
+        disk = _load_cache("fundflow/_market", max_age_hours=CACHE_TTL.get("fund_flow", 1))
+        if not disk.empty:
+            return _market_df_to_map(disk)
+        market = _fetch_market_fund_flow()
+        if market:
+            try:
+                _save_cache("fundflow/_market", pd.DataFrame(
+                    [{"code": c, **v} for c, v in market.items()]))
+            except Exception:
+                pass
+        else:
+            _fundflow_market_unavailable_until = time.time() + _FUND_FLOW_MARKET_UNAVAILABLE_S
+            logger.warning(
+                "[data_layer] 市场批量资金流拉取失败/为空，%.0f 秒内跳过批量层走逐股路径",
+                _FUND_FLOW_MARKET_UNAVAILABLE_S,
+            )
+        return market
+
+
+def _market_df_to_map(disk: pd.DataFrame) -> Dict[str, dict]:
+    return {
+        str(r["code"]): {"main_net_ratio": float(r["main_net_ratio"] or 0),
+                         "net_inflow_5d": float(r["net_inflow_5d"] or 0)}
+        for _, r in disk.iterrows()
+    }
+
+
 def _to_float(v) -> Optional[float]:
     """将任意值转为 float，自动剥离千分位逗号和中文字符（亿/万）。
 
@@ -794,6 +899,16 @@ def get_stock_fund_flow(code: str) -> dict:
     except Exception:
         pass
 
+    # 2.5) 市场批量层（ADR-0018）：同花顺全市场即时 1 call/小时。命中即返回并填进程
+    #      缓存；未命中（停牌/新股不在榜）或批量失败 → 继续逐股路径。覆盖面优先级
+    #      在逐股精确值（上一层磁盘缓存）之后。
+    market = _get_market_fund_flow()
+    if code in market:
+        res = market[code]
+        with _fundflow_cache_lock:
+            _fundflow_cache[code] = res
+        return res
+
     result = None
     # 3) 全局熔断（ADR-0016）：开启期间直接走零默认值（与「所有源失败」降级一致），
     #    不再逐股重试；到期后半开探测一次，成功闭合、失败重开。
@@ -859,7 +974,7 @@ def _fetch_fund_flow(code: str) -> dict:
 
 
 def _batch_fund_flow(codes: list) -> dict:
-    """批量获取资金流向（一次 API 调用，覆盖整个市场）。
+    """批量获取资金流向（ADR-0018：走市场批量缓存，与 get_stock_fund_flow 共享同一次拉取）。
 
     Args:
         codes: 股票代码列表（6 位字符串）。
@@ -869,50 +984,12 @@ def _batch_fund_flow(codes: list) -> dict:
         未命中的 code 保持默认值 {"main_net_ratio": 0, "net_inflow_5d": 0}。
     """
     result = {c: {"main_net_ratio": 0, "net_inflow_5d": 0} for c in codes}
-    try:
-        df = _retry_api_call(ak.stock_fund_flow_individual, symbol="即时")
-        if df.empty:
-            return result
-        code_col = None
-        for col in df.columns:
-            if "代码" in str(col):
-                code_col = col
-                break
-        if code_col is None:
-            return result
-        net_col = None
-        amount_col = None
-        for col in df.columns:
-            if "净额" in str(col):
-                net_col = col
-            if "成交额" in str(col):
-                amount_col = col
-        # 向量化处理，避免逐行iterrows
-        df[code_col] = df[code_col].astype(str)
-        if net_col and amount_col:
-            df[net_col] = pd.to_numeric(df[net_col], errors="coerce").fillna(0)
-            df[amount_col] = pd.to_numeric(df[amount_col], errors="coerce").fillna(1)
-            # 按股票代码分组求和净额
-            grouped = df.groupby(code_col, as_index=False).agg({
-                net_col: "sum",
-                amount_col: "sum"
-            })
-            # 向量化处理，避免 iterrows
-            flow_map = {}
-            if not grouped.empty and code_col in grouped.columns:
-                codes = grouped[code_col].astype(str).tolist()
-                net_vals = grouped[net_col].tolist()
-                amounts = grouped[amount_col].tolist()
-                for c, net_val, total_amount in zip(codes, net_vals, amounts):
-                    flow_map[c] = {
-                        "main_net_ratio": net_val / total_amount if total_amount > 0 else 0,
-                        "net_inflow_5d": net_val,
-                    }
-        for code in codes:
-            if code in flow_map:
-                result[code] = flow_map[code]
-    except Exception as e:
-        logger.debug(f"批量资金流向获取失败: {e}")
+    market = _get_market_fund_flow()
+    if not market:
+        return result
+    for code in codes:
+        if code in market:
+            result[code] = market[code]
     return result
 
 

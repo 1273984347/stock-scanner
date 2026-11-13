@@ -28,12 +28,14 @@ from lib.data.data_layer import FundFlowUnavailableError
 
 @pytest.fixture(autouse=True)
 def _reset_fundflow_cache():
-    """每个用例前后清空进程内缓存与熔断器状态，避免跨用例污染。"""
+    """每个用例前后清空进程内缓存、熔断器与市场批量失败标记，避免跨用例污染。"""
     data_layer._fundflow_cache.clear()
     data_layer._FUND_FLOW_BREAKER.reset()
+    data_layer._fundflow_market_unavailable_until = 0.0
     yield
     data_layer._fundflow_cache.clear()
     data_layer._FUND_FLOW_BREAKER.reset()
+    data_layer._fundflow_market_unavailable_until = 0.0
 
 
 def _install_fakes(monkeypatch, disk_store, value_fn=None):
@@ -279,6 +281,122 @@ def test_circuit_breaker_reset_clears_named_and_default_state():
     # 死代码修复判据：reset_circuit_breakers 不再 AttributeError
     from lib.data.data_source_registry import reset_circuit_breakers
     reset_circuit_breakers()
+
+
+# ===========================================================================
+# ADR-0018：市场批量层（同花顺全市场 1 call/小时，取代 4d 评分路径的逐股排队）
+# ===========================================================================
+
+def _install_market_fakes(monkeypatch, disk_store, market_map, market_calls=None):
+    """安装市场批量层 fakes：_fetch_market_fund_flow 返回 market_map 并计数。"""
+    if market_calls is None:
+        market_calls = {"n": 0}
+
+    def fake_fetch_market():
+        market_calls["n"] += 1
+        return dict(market_map)
+
+    monkeypatch.setattr(data_layer, "_fetch_market_fund_flow", fake_fetch_market)
+    monkeypatch.setattr(data_layer, "_load_cache",
+                        lambda key, max_age_hours=2: disk_store.get(key, pd.DataFrame()))
+    monkeypatch.setattr(data_layer, "_save_cache",
+                        lambda key, df: disk_store.__setitem__(key, df))
+    return market_calls
+
+
+def test_market_batch_serves_and_skips_per_stock_fetch(monkeypatch):
+    """市场批量命中：get_stock_fund_flow 直接返回批量值，不进逐股 fetch（限流排队消除）。"""
+    disk_store = {}
+    market_map = {"000001": {"main_net_ratio": 0.04, "net_inflow_5d": 3.0e7}}
+    market_calls = _install_market_fakes(monkeypatch, disk_store, market_map)
+
+    fetch_calls = {"n": 0}
+
+    def per_stock_fetch(code):
+        fetch_calls["n"] += 1
+        raise FundFlowUnavailableError("should not be called")
+
+    monkeypatch.setattr(data_layer, "_fetch_fund_flow", per_stock_fetch)
+
+    res = data_layer.get_stock_fund_flow("000001")
+    assert res == {"main_net_ratio": 0.04, "net_inflow_5d": 3.0e7}
+    assert fetch_calls["n"] == 0, "批量命中不得走逐股 fetch"
+    assert market_calls["n"] == 1
+    # 批量结果落盘（下一次扫描 1h TTL 内不再拉）
+    assert "fundflow/_market" in disk_store
+
+
+def test_market_batch_one_fetch_per_hour_across_codes(monkeypatch):
+    """多只股票共享一次批量拉取（1 call/小时），不再逐股排队。"""
+    disk_store = {}
+    market_map = {
+        "000001": {"main_net_ratio": 0.04, "net_inflow_5d": 3.0e7},
+        "600519": {"main_net_ratio": 0.02, "net_inflow_5d": 1.0e7},
+    }
+    market_calls = _install_market_fakes(monkeypatch, disk_store, market_map)
+    monkeypatch.setattr(data_layer, "_fetch_fund_flow",
+                        lambda code: (_ for _ in ()).throw(FundFlowUnavailableError(code)))
+
+    r1 = data_layer.get_stock_fund_flow("000001")
+    r2 = data_layer.get_stock_fund_flow("600519")
+
+    assert market_calls["n"] == 1, "两只股票应共享一次批量拉取"
+    assert r1["net_inflow_5d"] == 3.0e7 and r2["net_inflow_5d"] == 1.0e7
+
+
+def test_market_batch_failure_degrades_and_marks_unavailable(monkeypatch):
+    """批量失败 → 进程内 300s 不可用标记（不落盘）→ 直接走逐股路径；标记期间不再重拉。"""
+    disk_store = {}
+    market_calls = _install_market_fakes(monkeypatch, disk_store, {})  # 拉取返回空 = 失败
+
+    per_stock = {"000001": {"main_net_ratio": 0.06, "net_inflow_5d": 1.2e8}}
+    fetch_calls = {"n": 0}
+
+    def per_stock_fetch(code):
+        fetch_calls["n"] += 1
+        return per_stock[code]
+
+    monkeypatch.setattr(data_layer, "_fetch_fund_flow", per_stock_fetch)
+
+    r1 = data_layer.get_stock_fund_flow("000001")
+    assert r1 == per_stock["000001"], "批量失败应降级逐股路径"
+    assert market_calls["n"] == 1
+    assert data_layer._fundflow_market_unavailable_until > time.time(), "应记 300s 不可用标记"
+
+    # 标记期间：第二次调用不再触碰批量层（fetch_market 计数不变），逐股照常
+    r2 = data_layer.get_stock_fund_flow("000001")
+    assert market_calls["n"] == 1, "不可用标记期间不得重拉批量"
+    assert r2 == per_stock["000001"]
+
+
+def test_per_stock_disk_cache_takes_precedence_over_batch(monkeypatch):
+    """精确值优先：逐股东财磁盘缓存存在时，压过市场批量（口径差异，ADR-0018 D2）。"""
+    disk_store = {}
+    good = {"main_net_ratio": 0.03, "net_inflow_5d": 5.0e7}
+    disk_store["fundflow/000001"] = pd.DataFrame([good])
+    market_map = {"000001": {"main_net_ratio": 0.99, "net_inflow_5d": 9.9e9}}
+    _install_market_fakes(monkeypatch, disk_store, market_map)
+
+    res = data_layer.get_stock_fund_flow("000001")
+    assert res == good, "逐股磁盘缓存（东财精确口径）应优先于市场批量"
+
+
+def test_batch_fund_flow_shares_market_cache(monkeypatch):
+    """策略路径 _batch_fund_flow 与评分路径共享同一次市场拉取（整场 1 call）。"""
+    disk_store = {}
+    market_map = {
+        "000001": {"main_net_ratio": 0.04, "net_inflow_5d": 3.0e7},
+        "600519": {"main_net_ratio": 0.02, "net_inflow_5d": 1.0e7},
+    }
+    market_calls = _install_market_fakes(monkeypatch, disk_store, market_map)
+
+    r1 = data_layer._batch_fund_flow(["000001", "600519", "999999"])
+    r2 = data_layer.get_stock_fund_flow("600519")
+
+    assert market_calls["n"] == 1, "两条路径共享一次批量拉取"
+    assert r1["000001"]["net_inflow_5d"] == 3.0e7
+    assert r1["999999"] == {"main_net_ratio": 0, "net_inflow_5d": 0}, "不在榜股票保持零默认值"
+    assert r2["net_inflow_5d"] == 1.0e7
 
 
 if __name__ == "__main__":
