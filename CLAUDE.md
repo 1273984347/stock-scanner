@@ -383,8 +383,8 @@ curl http://localhost:8000/api/scan
 | `lib/scoring/scoring_adapters.py` | 7 模块 / 9 入口的纯转发适配器 + `build_kernel()` |
 | `lib/scoring/scoring_weights.py` | 评分权重唯一定义点 + 外部权重源登记 |
 | `lib/scoring/scoring_gateway.py` | **灰度判定唯一入口**：`score_4d(consumer, ...)`，off 直调旧实现 / on 经内核（阶段 B） |
-| `scripts/scoring_baseline.py` | 第 5 把尺子：评分对拍基线（9 入口 × 285 样本，`--capture` / `--check`）。**注意 `--check` 的 diff 只打印前 30 条**，排查须自行导出全量 |
-| `docs/audit/l5-scoring-baseline-drift-2026-11-13.md` | **L5 34-diff 定因报告**（2026-11-13）：根因 = `4b9c2d3` 删 `config/judges.json` 后 judge_panel 权重 0.20→1.00，仅展示字段 `group_scores` ×5、决策字段零变化；基线过期非代码回归。重建基线须按 G4 字段级取证 |
+| `scripts/scoring_baseline.py` | 第 5 把尺子：评分对拍基线（9 入口 × 285 样本，`--capture` / `--check`）。**注意 `--check` 的 diff 只打印前 30 条**，排查须自行导出全量。`constraints` 登记 `judge_groups_source` / `judge_groups_weights`（G5 机器判据，配置源一变即判红） |
+| `docs/audit/l5-scoring-baseline-drift-2026-11-13.md` | **L5 34-diff 定因 + 重建记录**：根因 = `4b9c2d3` 删 `config/judges.json` 后 judge_panel 权重 0.20→1.00，仅展示字段 `group_scores` ×5、决策字段零变化 ⇒ 基线过期非代码回归。2026-11-13 已按 G4 用 `--capture` 重建，L5 恢复 PASS；见坑表 P-78 |
 | `scripts/scoring_switch_diff.py` | 第 6 把尺子：三分支开关前后整份响应 diff + 自证内核被调用 + 逐个消费者自证（`--check` / `--branch endpoint`） |
 | `docs/refactor/scoring-baseline.json` | 评分对拍基线读数（改动评分前后必比对） |
 | `docs/adr/0003-*.md` | 基线 pin 修复 + Phase 4 归一范围 / 覆盖率判据修正 |

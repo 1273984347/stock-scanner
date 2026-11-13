@@ -140,5 +140,52 @@ def test_pinned_start_date_matches_baseline_fingerprint():
         assert bb.PIN_START_DATE == first, f"{chain}: pinned {bb.PIN_START_DATE} vs baseline {first}"
 
 
+# ---------------------------------------------------------------- L5 pin (P-78)
+
+def _sb_module():
+    return _load("_scoring_baseline_for_test", "scripts/scoring_baseline.py")
+
+
+def test_capture_expands_judge_groups_constraints():
+    """capture() 必须把评委组配置源展开进 constraints，不能只定义不用（P-78）。"""
+    tree = ast.parse((ROOT / "scripts/scoring_baseline.py").read_text(encoding="utf-8"))
+    fn = _func(tree, "capture")
+    calls = [n for n in ast.walk(fn)
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+             and n.func.id == "_judge_groups_constraints"]
+    assert calls, "capture() 必须调用 _judge_groups_constraints() 并展开进 constraints"
+
+
+def test_judge_groups_constraints_match_runtime():
+    """登记的权重必须与 judge_panel.JUDGE_GROUPS 运行时实际值一致。"""
+    import lib.scoring.judge_panel as jp
+    sb = _sb_module()
+    c = sb._judge_groups_constraints()
+    assert set(c) == {"judge_groups_source", "judge_groups_weights"}
+    assert c["judge_groups_source"] in ("config/judges.json", "builtin-default")
+    runtime = {str(k): float(cfg.get("weight", 0.0)) for k, cfg in jp.JUDGE_GROUPS.items()}
+    assert c["judge_groups_weights"] == runtime
+
+
+def test_baseline_file_matches_runtime_judge_groups():
+    """基线冻结的配置源/权重必须与运行时一致 —— 配置一变就判红并提示重建。
+
+    根因（P-78）：config/judges.json 被删后权重 0.20→1.00，L5 只报 34 行数值 diff，
+    长期被当作「既有漂移」豁免。此判据让配置源变化直接变成可读信号，
+    而不是等下一次全量对拍时才发现。
+    """
+    sb = _sb_module()
+    frozen = json.loads((ROOT / "docs/refactor/scoring-baseline.json").read_text(
+        encoding="utf-8"))["constraints"]
+    runtime = sb._judge_groups_constraints()
+    for key in ("judge_groups_source", "judge_groups_weights"):
+        assert key in frozen, f"基线 constraints 缺少 {key}，请用 --capture 重建"
+        assert frozen[key] == runtime[key], (
+            f"评委组配置源已变化：基线={frozen[key]!r} 运行时={runtime[key]!r}；"
+            "请按 G4 字段级取证后重新 --capture"
+            "（见 docs/audit/l5-scoring-baseline-drift-2026-11-13.md / 坑表 P-78）"
+        )
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

@@ -303,6 +303,21 @@ def _run_chain(source: str, kernel) -> dict:
     return out
 
 
+def _judge_groups_constraints() -> dict:
+    """登记评委组配置源与实际生效权重（G5 机器判据，P-78）。
+
+    背景：`judge_panel.JUDGE_GROUPS` 优先读 `config/judges.json`、缺失才回退代码默认表。
+    这是一个**隐含外部输入**：2026-11-13 RF-02 D3 删除该文件后，权重 0.20→1.00 让
+    `group_scores` ×5，L5 只报出 34 行数值 diff，排查成本极高且长期被当作「既有漂移」豁免。
+    把配置源与权重写进 constraints 后，配置一变 `--check` 会直接报
+    `constraints.judge_groups_source: ...` 这类可读信号，并强制显式重新 capture。
+    """
+    from lib.scoring import judge_panel as jp
+    source = "config/judges.json" if jp._JUDGES_CONFIG_PATH.exists() else "builtin-default"
+    weights = {str(k): float(cfg.get("weight", 0.0)) for k, cfg in jp.JUDGE_GROUPS.items()}
+    return {"judge_groups_source": source, "judge_groups_weights": weights}
+
+
 def capture() -> dict:
     from lib.scoring.scoring_adapters import build_kernel
     kernel = build_kernel()
@@ -327,6 +342,7 @@ def capture() -> dict:
             "sources": list(kernel.sources),
             "feature_unified_scoring": "off (pinned; env var is an external input)",
             "data_source": "synthetic (deterministic, zlib.crc32 seed) + pinned external inputs",
+            **_judge_groups_constraints(),
         },
         "chains": chains,
     }

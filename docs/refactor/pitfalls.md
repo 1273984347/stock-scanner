@@ -1517,6 +1517,19 @@ ADR-0015 F4 其实已预见「AI量化 反从 1.00 降到 0.20」，决策与防
 4. 判断影响面要**逐字段实测**，别凭推理：`group_scores` ×5 看似严重，但决策字段零变化、
    无下游消费方 ⇒ 实际风险低。同时也要注意：**低风险不等于可以不修**，
    长期判红会让门禁失去信息量。
+5. **修判据 ≠ 改数据迎合判据**。本例的正确收口是「把隐含外部输入（配置源）登记进
+   `constraints` + 加机器判据 + 用 `--capture` 重建快照」，而不是把权重改回去、
+   或把变化字段从指纹里删掉。判据要能报出**指向性信号**（`judge_groups_source changed`），
+   而不是让人面对 34 行数值 diff 猜原因。
+
+> **落地（2026-11-13，用户批准后执行）**：按 G4 用 `--capture` 重建
+> `docs/refactor/scoring-baseline.json`（两次独立 capture 整份逐字节一致，sha256
+> `a4a1b4ff7e078126e417cbed`；变化恰好 34 个 `group_scores` + 2 个新增 constraints 键，
+> 其余 8 链路逐字节一致），**L5 恢复 `[PASS] 9 sources match (285 samples)`**。
+> 机器判据落在 `scripts/scoring_baseline.py::_judge_groups_constraints()` +
+> `tests/test_baseline_pinning.py` 3 例（重建前第 3 例按预期判红并给出「请重建基线」提示，
+> 重建后 9/9 绿）。生产评分代码零改动。验收 **1312 passed / 12 skipped / 0 failed**，
+> L0–L5 / L7–L9 全 PASS。详见 `docs/audit/l5-scoring-baseline-drift-2026-11-13.md` §5。
 
 ## 附 · 一句话索引（按症状查）
 
