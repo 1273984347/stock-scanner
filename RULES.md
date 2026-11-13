@@ -237,6 +237,8 @@ python scripts/blocking_io_check.py --selftest
 
 # L9 offload 开关对拍（Phase 6 第 2 批起；迁移 AST 等价 + off/on 响应 + 线程池自证）
 # 覆盖 37 个迁移：3 回测（523b353）+ 第 4 批 5（77bc366）+ 第 5 批 5（6d0e434）+ 第 6 批 6（497550f）+ 第 7 批 18（c9b4d6f）
+# RF-02/ADR-0015 演化：37 中 35 严格冻结逐字等价 + 2 有意分歧（notifications / strategy_recommend，
+#   因 D1/D2 行为修复豁免逐字等价，仅校验接线完整性；行为正确性由 tests/features/test_rf02_bad_endpoints.py 覆盖）
 python scripts/offload_switch_diff.py --check
 
 # L10 并发压测 + Tier B 留痕（Phase 6 第 3 批起）

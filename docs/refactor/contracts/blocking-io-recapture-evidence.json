@@ -566,5 +566,45 @@
     },
     "untouched_endpoints": 50,
     "untouched_identical": true
+  },
+  {
+    "allowed_endpoints": [
+      "GET /api/strategy/recommend"
+    ],
+    "comparison": "endpoint records compared field-by-field; lineno excluded (implementation detail, see _normalize_endpoint)",
+    "mode": "refactor",
+    "per_endpoint": [
+      {
+        "blocking_after": 0,
+        "blocking_before": 0,
+        "endpoint": "GET /api/strategy/recommend",
+        "offloaded_after": 1,
+        "offloaded_before": 1,
+        "other_after": 2,
+        "other_before": 2
+      }
+    ],
+    "reason": "RF-01 Phase 6: 共享状态访问收口为加锁 API",
+    "schema_version": 1,
+    "totals_after": {
+      "blocking_calls": 107,
+      "blocking_endpoints": 36,
+      "endpoints": 68,
+      "offloaded_calls": 38,
+      "offloaded_endpoints": 38,
+      "other_calls": 306,
+      "total_calls": 451
+    },
+    "totals_before": {
+      "blocking_calls": 107,
+      "blocking_endpoints": 36,
+      "endpoints": 68,
+      "offloaded_calls": 38,
+      "offloaded_endpoints": 38,
+      "other_calls": 306,
+      "total_calls": 451
+    },
+    "untouched_endpoints": 67,
+    "untouched_identical": true
   }
 ]

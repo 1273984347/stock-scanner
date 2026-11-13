@@ -8,6 +8,10 @@ Phase 6 承诺「只改调度方式，不改可观测结果」。本工具把这
      立刻判红（ADR-0003 D5）。每条迁移自带 `source_rel` + `pre_commit`，
      提交之后仍可复算（backtest 固定 523b353；第 4 批 77bc366；第 5 批 6d0e434；
      第 6 批 497550f；第 7 批 c9b4d6f）。
+     **有意分歧豁免**：RF-02 D1/D2 对 `notifications` / `strategy_recommend` 两个迁移的
+     `_compute_*` 体做了**有意 bug 修复**（ADR-0015），已记入 `MIGRATION_DIVERGENCES`；
+     门禁对它们仅做「接线完整性」校验（`_compute_*` 函数存在），豁免逐字等价比对。
+     其余迁移仍严格冻结（任何未登记的体改动立刻判红）。
      搬迁锚点按形态分三类（lead_strip + body_mode）：默认 try 体；无 try 端点
      （如 /api/market）剥函数体前 N 条快守卫；try 体含不可搬迁前导语句的端点
      （如 ab-test 的 `await request.json()`）剥 try 体前 N 条。
@@ -156,6 +160,17 @@ MIGRATIONS = (
               "_compute_ab_test_run", "routers/strategy.py", "c9b4d6f", 1),
 )
 
+# RF-02 (ADR-0015 D1/D2) **有意分歧**：以下两个迁移的 `_compute_*` 体在 offload 之后被做了
+# bug 修复，不再与 offload 前的端点体逐字等价（这是修复本身，不是「顺手优化」）。
+# 门禁对它们降级为「接线完整性」校验（`_compute_*` 函数仍存在、offload 接线未断），
+# 严格的逐字等价比对被豁免；行为正确性由 tests/features/test_rf02_bad_endpoints.py 覆盖。
+# 其余迁移继续严格冻结（任何未在此清单中的体改动仍会立刻判红）。
+# 新增有意分歧必须同步更新本清单 + ADR-0015 + tests/features/test_rf02_bad_endpoints.py。
+MIGRATION_DIVERGENCES: dict[str, str] = {
+    "notifications": "RF-02 D1: 关键词检索 message/details → title/body（ADR-0015）",
+    "strategy_recommend": "RF-02 D2: FactorOptimizer 幻影类 → eval_current_weights（ADR-0015）",
+}
+
 # 冻结时间，消除 off/on 两侧 datetime.now() 时间戳差异（属测试伪影，非 offload 引入）
 FIXED_DT = _dt.datetime(2026, 1, 1, 0, 0, 0)
 
@@ -255,6 +270,16 @@ def _old_body(m: Migration, fn: ast.AST) -> list[ast.stmt]:
 def check_migration() -> list[str]:
     failures = []
     for m in MIGRATIONS:
+        if m.consumer in MIGRATION_DIVERGENCES:
+            # RF-02 (ADR-0015 D1/D2) 有意分歧：_compute_* 体已偏离 offload 前端点体
+            # （bug 修复），不再要求逐字等价。仅校验 _compute_* 函数仍存在（接线未断）；
+            # 行为正确性由 tests/features/test_rf02_bad_endpoints.py 覆盖。
+            try:
+                new_tree = ast.parse((ROOT / m.source_rel).read_text(encoding="utf-8"))
+                _find_fn(new_tree, m.new_fn)
+            except (OSError, LookupError) as e:
+                failures.append(f"migration {m.consumer}: diverged compute fn missing: {e}")
+            continue
         try:
             old_src = _old_source(m.source_rel, m.pre_commit)
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
@@ -888,10 +913,12 @@ def main() -> int:
     failures = migration + registry + switch_failures
 
     if args.summary:
-        print(f"[INFO] migrations: {len(MIGRATIONS)}")
+        print(f"[INFO] migrations: {len(MIGRATIONS)} "
+              f"({len(MIGRATION_DIVERGENCES)} intentionally diverged per RF-02/ADR-0015)")
         for m in MIGRATIONS:
+            mark = " [diverged]" if m.consumer in MIGRATION_DIVERGENCES else ""
             print(f"       {m.consumer:18s} {m.key:32s} {m.old_fn} -> {m.new_fn} "
-                  f"@ {m.pre_commit}:{m.source_rel}")
+                  f"@ {m.pre_commit}:{m.source_rel}{mark}")
         for (consumer, flag), rec in sorted(results.items()):
             print(f"       {consumer:18s} flag={flag:3s} pool_calls={rec['pool_calls']} "
                   f"response_bytes={len(rec['response'])}")
@@ -902,8 +929,11 @@ def main() -> int:
         for f in failures[:40]:
             print("      " + f)
         return 1
-    print(f"[PASS] offload switch: {len(MIGRATIONS)} endpoints, "
-          f"migration AST equivalent, off/on responses identical (field order kept), "
+    diverged = len(MIGRATION_DIVERGENCES)
+    strict = len(MIGRATIONS) - diverged
+    print(f"[PASS] offload switch: {strict} endpoints migration-AST-equivalent "
+          f"+ {diverged} intentionally diverged (RF-02/ADR-0015, wiring-only check); "
+          f"off/on responses identical (field order kept), "
           f"thread pool off=0 on=1 with different worker thread")
     return 0
 

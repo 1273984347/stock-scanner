@@ -27,9 +27,9 @@ def _compute_notifications(type, start_date, end_date, keyword, limit, offset):
         keyword_lower = keyword.lower()
         notifications = [
             n for n in notifications
-            if keyword_lower in str(n.get("message", "")).lower()
+            if keyword_lower in str(n.get("title", "")).lower()
             or keyword_lower in str(n.get("type", "")).lower()
-            or keyword_lower in str(n.get("details", "")).lower()
+            or keyword_lower in str(n.get("body", "")).lower()
         ]
 
     # 分页

@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**75 条**（P-01～P-75），分八类。
+> **规模**：**76 条**（P-01～P-76），分八类。
 > **姊妹文档**：执行过程与逐批验收见 `docs/plans/2026-11-07-refactor-plan.md` 第七节；
 > 基线读数见 `docs/refactor/baseline.md`；尺子口径见 `docs/refactor/README.md`。
 
@@ -1398,6 +1398,14 @@ off/on 响应当然恒等（都是同一个 `{}`），对拍成了空判据—�
 fix 批次 + 契约快照对照）。守卫本身在第 7 批已随 offload 边界改写为双函数断言
 （ADR-0012 D2 / ADR-0013 D4）。
 
+**落地（RF-02 / ADR-0015，2026-11-13）**：D1/D2 已修复——notifications 改用
+`notification_logger.get_notifications`（模块级新增）+ 检索 `title/body`；strategy/recommend
+改用真实 `eval_current_weights` 替换幻影 `FactorOptimizer`。修复恰好改动了 L9 `check_migration`
+冻结的 `_compute_*` 体 → 门禁判红；经用户确认**演化门禁（非削弱）**：新增 `MIGRATION_DIVERGENCES`
+清单，对这 2 个迁移豁免逐字等价、仅校验接线完整性，行为正确性改由
+`tests/features/test_rf02_bad_endpoints.py` 覆盖；原钉名字的守卫 `test_recommend_is_out_of_scoring_domain`
+也改为断言 `eval_current_weights` 在、`FactorOptimizer` 不在（见 P-76）。全量 1301 passed / 0 failed。
+
 **推广**：**AST 钉名字的结构守卫只能证明「写了这个名字」，证明不了「这个名字
 可解析/可调用」**。给 import 的符号加守卫时，至少补一条 importable 冒烟断言
 （`importlib.import_module` + `getattr`）；端点有自己的 `except Exception` 空兜底时，
@@ -1405,6 +1413,29 @@ fix 批次 + 契约快照对照）。守卫本身在第 7 批已随 offload 边�
 静态版本。
 
 ---
+
+### P-76 · 迁移冻结门禁 vs 有意行为修复：用「分歧清单」演化门禁，而非削弱
+
+**现象**：L9 `check_migration()` 把 offload 后的 `_compute_*` 体 AST 逐字冻结为「offload 前端点体」，
+作为迁移等价判据。RF-02 的 D1/D2 修复的恰好是这两个 `_compute_*` 体（notifications 检索
+`message/details`→`title/body`；strategy/recommend 幻影 `FactorOptimizer`→真实 `eval_current_weights`）——
+这必然改动冻结体，于是 `test_pre_migration_commit_is_pinned_and_readable` 判红：
+`notifications: statement #4 changed (If vs If)`、`strategy_recommend: statement count 4 -> 2`。
+
+**根因**：冻结体的设计意图是「阻止 offload 批次的逐字搬迁被偷偷改」，但它无法区分
+「offload 批次的悄悄改动」与「后续独立 fix 批次的合法行为修复」。D1/D2 是 P-75 已登记、用户确认的
+**有意分歧**（不是顺手优化），却被冻结门禁一视同仁判红。
+
+**修复**：经用户确认**演化门禁、不削弱**——在 `scripts/offload_switch_diff.py` 新增
+`MIGRATION_DIVERGENCES: dict[str, str]` 清单，登记这 2 个迁移及其成因；`check_migration()`
+对清单内迁移跳过逐字 AST 等价，仅保留「接线完整性」校验（compute 函数仍存在、消费者登记双向对齐）。
+门禁结论改为 `35 endpoints migration-AST-equivalent + 2 intentionally diverged`。行为正确性由
+`tests/features/test_rf02_bad_endpoints.py`（8 例）兜底，而非塞回冻结体。
+
+**推广**：**冻结门禁的判据要能区分「同一批次的悄悄改动」vs「后续批次的有意分歧」**。
+当修复不得不触碰被冻结的契约时，正确收口是「把合法分歧显式登记进门禁（白名单 + 成因注释 +
+替代校验）」，而不是 (a) 把修复退回去迎合冻结、(b) 整体放宽门禁、(c) 给门禁加特例分支绕过。
+分歧清单必须带「为什么分歧」与「由谁兜底」，否则等于削弱门禁、埋下无人复核的盲区。
 
 ## 附 · 一句话索引（按症状查）
 
@@ -1441,6 +1472,7 @@ fix 批次 + 契约快照对照）。守卫本身在第 7 批已随 offload 边�
 | L9 对拍因 `datetime` 不可变类型 `patch` 崩 / 旧新语句数不对称假红 | P-73 |
 | 对拍全绿但被测路径根本没执行（mock 空值撞上 `is not None`） | P-56 / P-74 |
 | 守卫全绿但端点真实运行时 ImportError / AttributeError（名字存在 ≠ 符号可解析） | P-75 |
+| 冻结门禁把「后续合法行为修复」一视同仁判红（无法区分悄悄改动 vs 有意分歧） | P-76 |
 | A/B 对照里 OpenAPI / schema 比较恒等 | P-54 / ADR-0009 D3 |
 | Actions 额度消耗太快 | P-40 |
 | commit 失败却把旧代码推上去了 | P-43 |
@@ -1488,6 +1520,10 @@ P-68（lineno 进基线使逐字节比较不可执行）与 P-69（导入期 HS3
 on 侧根本没进 `run_blocking`——响应 diff 恒 0 的「假通过」，靠线程池自证兜住），共 **74 条**。
 2026-11-12 **Phase 6 第 7 批**：追加 P-75（结构守卫钉「名字出现在函数体」，坏 import 的名字
 也算数——3 个端点真实运行时 ImportError/AttributeError 却长期全绿），共 **75 条**。
+2026-11-13 **RF-02 / ADR-0015**：追加 P-76（迁移冻结门禁 vs 有意行为修复——L9 `check_migration` 把
+offload 后 `_compute_*` 体逐字冻结为等价判据，RF-02 的 D1/D2 修复恰好改动这两个冻结体而判红；
+经用户确认**演化门禁、不削弱**：新增 `MIGRATION_DIVERGENCES` 清单对 2 个分歧迁移豁免逐字等价、
+仅校验接线完整性，行为正确性由 `tests/features/test_rf02_bad_endpoints.py` 兜底），共 **76 条**。
 **核对基线**：本地全量 pytest 1162 passed / 12 skipped（13.02s）；CI run `42319502027` 3 job 全绿。
 2026-11-10 阶段 A 收官：**1221 passed / 12 skipped**，L0–L5 全 PASS。
 2026-11-10 阶段 B 首批：**1235 passed / 12 skipped**。

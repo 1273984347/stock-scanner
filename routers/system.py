@@ -72,6 +72,12 @@ async def dashboard(preset: str = Query("balanced", description="策略预设"))
             except Exception as scan_err:
                 logger.warning(f"Dashboard 自动触发 scan 失败: {scan_err}")
 
+        # [RF-02 D4-b] 缓存未命中路径残留 4 个阻塞调用（evaluate_macro_gate /
+        # get_market_sentiment / np 运算 / _cache_*）。D4-a 的 run_blocking 注册路径被
+        # L9 硬门禁 check_consumer_registry 阻断：dashboard 市场块嵌套在 try→
+        # `if not market_data` 内，无法满足 check_migration 的 AST 等价判据（即 Phase 6
+        # 当初把它转 RF-02 的同一原因）。此处保持同步直调（flag=off 下与现状逐字节等价），
+        # 治理以契约快照 + CI 监测覆盖；真正 offload 需扩展 L9 提取机制，列为 RF-02 后续项。
         if not market_data:
             # market cache 为空时，直接计算（不依赖 scan 结果）
             try:

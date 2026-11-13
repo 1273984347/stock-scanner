@@ -282,7 +282,12 @@ def test_recommend_is_out_of_scoring_domain():
     compute_names = _call_names(compute)
     assert "run_blocking" in endpoint_names, "endpoint must go through the offload entry"
     assert "FactorOptimizer" not in endpoint_names, "optimizer call moved out of the endpoint"
-    assert "FactorOptimizer" in compute_names and "evaluate_weights" in compute_names
+    # RF-02 D2 (ADR-0015)：原端点引用不存在的 FactorOptimizer 类与 evaluate_weights 方法
+    # （幻影符号，运行时 ImportError）。修复后改用真实函数 eval_current_weights，
+    # 端点不再引用任何 scoring 符号、也不再引用幻影类。此处校验：优化器调用在
+    # _compute_*（不在端点），且引用的是真实函数而非幻影类。
+    assert "eval_current_weights" in compute_names, "optimizer eval call must live in _compute_*"
+    assert "FactorOptimizer" not in compute_names, "phantom FactorOptimizer class must be gone"
     for symbol in SCORING_SYMBOLS:
         assert symbol not in endpoint_names, f"recommend unexpectedly calls {symbol}"
         assert symbol not in compute_names, f"recommend unexpectedly calls {symbol}"

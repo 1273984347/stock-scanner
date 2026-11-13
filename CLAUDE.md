@@ -284,7 +284,7 @@ Tushare (主) → AkShare → WeStock → 通达信 → Baostock → 东方财�
 | 服务 | `uvicorn api:app --reload` | API 手工验证 |
 | **L8（新增）** | `python scripts/blocking_io_check.py --check` | 阻塞 IO 基线：blocking 只准降 / other 冻结 |
 | **L8 自证** | `python scripts/blocking_io_check.py --selftest` | 证明门禁会因回归判红 |
-| **L9** | `python scripts/offload_switch_diff.py --check` | 迁移 AST 等价 + off/on 响应 diff + 线程池自证 |
+| **L9** | `python scripts/offload_switch_diff.py --check` | 迁移 AST 等价 + off/on 响应 diff + 线程池自证；RF-02/ADR-0015 后：35 严格冻结 + 2 有意分歧（notifications/strategy_recommend 行为修复，参见 `MIGRATION_DIVERGENCES`） |
 | **L10（新增）** | `python scripts/concurrency_probe.py --check` | 20 并发 P95 + 36 条前端路径冻结；`--tier-b` 清单由 L8 `--check` 自动校验 |
 
 ## 强制触发规则
@@ -396,7 +396,7 @@ curl http://localhost:8000/api/scan
 | `docs/adr/0006-*.md` | 第 6 次判据修正：绝对阈值「≤1」→ 单调下降 + Tier A/B 分层退出判据 |
 | `tests/test_blocking_io_check.py` | L8 的 11 例机器判据（含 helper 展开、表外符号判红、尺子自证） |
 | `lib/infra/async_offload.py` | **Phase 6 唯一 offload 入口**：`run_blocking(consumer, fn, ...)`，off 同步直调 / on 走线程池；`OFFLOAD_CONSUMERS` 显式登记 |
-| `scripts/offload_switch_diff.py` | **L9 门禁**：固定 commit `523b353`（backtest 系）+ `77bc366`（第 4 批）源码 AST 逐语句等价 + off/on 整份响应 + 线程池调用自证 + 消费者登记双向对齐（8 迁移） |
+| `scripts/offload_switch_diff.py` | **L9 门禁**：固定 commit `523b353`（backtest 系）+ `77bc366`（第 4 批）源码 AST 逐语句等价 + off/on 整份响应 + 线程池调用自证 + 消费者登记双向对齐；RF-02/ADR-0015 演化：37 迁移中 35 严格冻结 + 2 有意分歧（`MIGRATION_DIVERGENCES` 清单——notifications/strategy_recommend 因 D1/D2 行为修复豁免逐字等价，仅校验接线完整性，行为正确性由 `tests/features/test_rf02_bad_endpoints.py` 覆盖） |
 | `docs/refactor/contracts/blocking-io-recapture-evidence.json` | L8 基线历次重建的 G4 字段级取证（历史数组，不覆盖） |
 | `docs/adr/0007-*.md` | 第 2 批决策：灰度入口 / Tier A 切换 / 共享状态加锁 / 分层重建基线 |
 | `tests/features/test_async_offload.py` / `tests/test_shared_state_locks.py` / `tests/test_phase6_batch2.py` | 19 + 5 + 5 例：开关两条路径、并发状态流转、收口 AST 守卫与取证一致性 |

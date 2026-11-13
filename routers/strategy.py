@@ -45,22 +45,32 @@ async def strategy_save(request: Request):
 
 
 def _compute_strategy_recommend(symbols):
-    """原 `GET /api/strategy/recommend` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
-    from lib.scoring.factor_optimizer import FactorOptimizer
+    """GET /api/strategy/recommend 计算体（逐字搬迁 + 复原，ADR-0015 D2）。
+
+    原实现 `from lib.scoring.factor_optimizer import FactorOptimizer` 并调用
+    `FactorOptimizer().evaluate_weights(...)` —— 但 factor_optimizer.py 无 FactorOptimizer
+    类、也无 evaluate_weights / _default_weights 方法（ADR-0015 F2），运行时必走
+    except 兜底返回 error。改为调用真实存在的 `eval_current_weights` 做当前权重快速评估。
+    响应形状保持 {recommended:{weights,sharpe,max_dd,win_rate}, symbols, note} 不变。
+    """
+    from lib.scoring.factor_optimizer import eval_current_weights
     symbol_list = [s.strip() for s in symbols.split(",") if s.strip()] if symbols else ["600519", "000858"]
-    optimizer = FactorOptimizer()
-    # 快速评估当前权重
-    result = optimizer.evaluate_weights(optimizer._default_weights(), symbols=symbol_list[:5])
-    return {
-        "recommended": {
-            "weights": optimizer._default_weights(),
-            "sharpe": result.get("sharpe", 0),
-            "max_dd": result.get("max_dd", 0),
-            "win_rate": result.get("win_rate", 0),
-        },
-        "symbols": symbol_list[:5],
-        "note": "基于当前因子权重的快速评估。完整优化请运行 factor_optimizer.py",
-    }
+    try:
+        result = eval_current_weights(symbol_list[:5])
+        metrics = result.get("metrics", {})
+        return {
+            "recommended": {
+                "weights": result.get("weights", {}),
+                "sharpe": metrics.get("sharpe", 0),
+                "max_dd": metrics.get("max_dd", 0),
+                "win_rate": metrics.get("win_rate", 0),
+            },
+            "symbols": symbol_list[:5],
+            "note": "基于当前因子权重的快速评估。完整优化请运行 factor_optimizer.py",
+        }
+    except Exception as rec_err:
+        logger.error(f"Strategy recommend eval error: {rec_err}")
+        return {"recommended": None, "error": str(rec_err)}
 
 
 @router.get("/api/strategy/recommend", dependencies=[Security(verify_api_key)])

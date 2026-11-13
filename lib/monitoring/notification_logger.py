@@ -100,3 +100,32 @@ class NotificationLogger:
                 continue
 
         return notifications[-100:]  # 最近 100 条
+
+
+def get_notifications(limit: int = 1000) -> List[Dict]:
+    """模块级：读取全部通知记录（无时间窗），按文件倒序返回，最多 limit 条。
+
+    ADR-0015 D1：原 `routers/notifications.py` 调用 `notification_logger.get_notifications`，
+    但本模块此前只有实例方法 `get_recent`（带 days 过滤），缺模块级同名函数 ——
+    端点 `except` 兜底永远返回空。此处补齐「全部」视图，对齐端点语义。
+    复用 `NOTIFICATION_DIR` 与同款逐行解析；返回 dict 列表（与 `get_recent` 同构）。
+    """
+    notifications: List[Dict] = []
+    for f in sorted(NOTIFICATION_DIR.glob("notifications_*.jsonl"), reverse=True):
+        try:
+            with open(f, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        notifications.append(json.loads(line))
+                    except Exception:
+                        continue
+        except Exception:
+            continue
+        if limit is not None and len(notifications) >= limit:
+            break
+    if limit is not None:
+        notifications = notifications[:limit]
+    return notifications

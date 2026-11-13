@@ -103,7 +103,7 @@ SIX_FACTOR_WEIGHTS: Dict[str, float] = {
 # 但必须在此登记，使「权重到底散落在哪」可被一个函数回答，而不是靠人记。
 EXTERNAL_WEIGHT_SOURCES = {
     "scorecard.layer_weights": "config.LAYER_WEIGHTS（四层打分卡 0/0.5/1 加权）",
-    "judge_panel.groups": "config/judges.json（51 评委分组权重；P0#13 起 6 组禁用）",
+    "judge_panel.groups": "lib/scoring/judge_panel.py::_DEFAULT_JUDGE_GROUPS（代码默认；config/judges.json 已于 RF-02 D3 删除，P0#13 起 6 组禁用、AI量化=1.00）",
     "opportunity_scorer": "config.FactorConfig.opp_score_weights（可由本模块 set/get/reset 覆盖）",
     "factor_weights": "config.FactorConfig.factor_weights（因子层，非评分层）",
 }
