@@ -21,6 +21,9 @@ logs/
 .claude/skills/*/iteration-*/
 .claude/skills/*/run_loop/
 
+# Agent 工作区（memory / 运行态，非项目源码）
+.workbuddy/
+
 # Data corrections (运行时人工修正日志, 不是源代码)
 data_corrections.json
 
