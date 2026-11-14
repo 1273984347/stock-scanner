@@ -59,7 +59,8 @@ EVIDENCE_FILE = CONTRACTS / "blocking-io-recapture-evidence.json"
 TIER_B_FILE = CONTRACTS / "blocking-io-tier-b.json"
 OWNERSHIP_FILE = CONTRACTS / "route-ownership.json"
 SCHEMA_VERSION = 1
-ROUTE_METHODS = ("get", "post", "put", "delete", "patch", "api_route")
+ROUTE_METHODS = ("get", "post", "put", "delete", "patch", "api_route", "websocket")
+MIDDLEWARE_DECORATOR = "middleware"
 HELPER_EXPANSION_DEPTH = 2
 
 # ---------------------------------------------------------------- rules
@@ -153,6 +154,11 @@ def _trees() -> dict[pathlib.Path, ast.Module]:
 
 
 def _endpoint_decorators(node: ast.AST) -> list[tuple[str, str]]:
+    """发现所有路由装饰器（批次 B1：不再过滤 /api/ 前缀，且纳入 websocket）。
+
+    返回 (path, method)。调用方按 path 是否以 /api/ 开头分流到 `endpoints`
+    （与 L7 对齐的原口径）或 `extended_endpoints`（本次新增的独立维度）。
+    """
     out = []
     for d in getattr(node, "decorator_list", []):
         call = d if isinstance(d, ast.Call) else None
@@ -162,23 +168,39 @@ def _endpoint_decorators(node: ast.AST) -> list[tuple[str, str]]:
         if call is None or not call.args or not isinstance(call.args[0], ast.Constant):
             continue
         path = str(call.args[0].value)
-        if not path.startswith("/api/"):
-            continue
-        out.append((path, func.attr.upper()))
+        method = "WEBSOCKET" if func.attr == "websocket" else func.attr.upper()
+        out.append((path, method))
     return out
 
 
-def _helper_index(trees: dict[pathlib.Path, ast.Module]) -> dict[str, ast.FunctionDef]:
-    """Top-level sync functions defined in api.py / routers/*.py.
+def _middleware_decorators(node: ast.AST) -> list[str]:
+    """`@app.middleware("http")` 装饰的 async 函数也是事件循环路径（上午报告 P2-5）。"""
+    out = []
+    for d in getattr(node, "decorator_list", []):
+        call = d if isinstance(d, ast.Call) else None
+        func = call.func if call is not None else d
+        if isinstance(func, ast.Attribute) and func.attr == MIDDLEWARE_DECORATOR:
+            out.append(getattr(node, "name", "<anonymous>"))
+    return out
 
-    Only these are expanded. Library code behind an offload boundary is
-    deliberately out of scope; expanding it would swallow the whole project.
+
+def _helper_index(trees: dict[pathlib.Path, ast.Module]) -> dict[str, ast.AST]:
+    """Top-level helpers defined in api.py / routers/*.py.
+
+    批次 B1：同时索引 **async** helper。/ws 调的 `_get_ws_data` 是 async def，
+    旧实现只收 ast.FunctionDef ⇒ 整条阻塞链（_cache_get / PositionManager /
+    get_realtime_quotes / iterrows）对门禁完全不可见。
+    带路由/中间件装饰器的函数是端点本身，不能当 helper，否则会互相串调用。
+    Library code behind an offload boundary remains out of scope on purpose.
     """
-    idx: dict[str, ast.FunctionDef] = {}
+    idx: dict[str, ast.AST] = {}
     for tree in trees.values():
         for node in tree.body:
-            if isinstance(node, ast.FunctionDef):
-                idx.setdefault(node.name, node)
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if _endpoint_decorators(node) or _middleware_decorators(node):
+                continue
+            idx.setdefault(node.name, node)
     return idx
 
 
@@ -214,49 +236,79 @@ def _scan_endpoint(node: ast.AsyncFunctionDef, rel_file: str,
     return calls
 
 
+def _make_record(node: ast.AST, rel_file: str, helpers: dict[str, ast.AST],
+                 key: str, route_path: str, method: str) -> dict:
+    calls = _scan_endpoint(node, rel_file, helpers)
+    return {
+        "key": key,
+        "path": route_path,
+        "method": method,
+        "handler": node.name,
+        "file": rel_file,
+        "lineno": node.lineno,
+        "calls": calls,
+        "blocking": {c["callee"]: sum(1 for x in calls
+                                     if x["category"] == "blocking"
+                                     and x["callee"] == c["callee"])
+                     for c in calls if c["category"] == "blocking"},
+        "other": {c["callee"]: sum(1 for x in calls
+                                  if x["category"] == "other"
+                                  and x["callee"] == c["callee"])
+                  for c in calls if c["category"] == "other"},
+        "offloaded": {c["callee"]: sum(1 for x in calls
+                                      if x["category"] == "offloaded"
+                                      and x["callee"] == c["callee"])
+                      for c in calls if c["category"] == "offloaded"},
+    }
+
+
+def _summarize(eps: list[dict]) -> dict:
+    """集合内部的计数口径（两个集合各算各的，不互相污染）。"""
+    return {
+        "endpoints": len(eps),
+        "total_calls": sum(len(e["calls"]) for e in eps),
+        "blocking_calls": sum(sum(e["blocking"].values()) for e in eps),
+        "blocking_endpoints": sum(1 for e in eps if e["blocking"]),
+        "offloaded_calls": sum(sum(e["offloaded"].values()) for e in eps),
+        "offloaded_endpoints": sum(1 for e in eps if e["offloaded"]),
+        "other_calls": sum(sum(e["other"].values()) for e in eps),
+    }
+
+
 def capture() -> dict:
+    """批次 B1：端点发现分成两个互不干扰的集合。
+
+    * `endpoints`：HTTP `/api/` 端点，成员+数量继续与 L7 对齐（68 个），
+      所有既有判据（L7/L9/L10、`other` 冻结、blocking 单调）口径不变；
+    * `extended_endpoints`：`/ws`、非 `/api/` 路由、`@app.middleware` 中间件。
+      这是上午报告 §5 指出的门禁盲区，独立冻结，不参与 L7 对比，
+      因此扩展视野**不会**改动另外三把尺子的端点集合。
+    """
     trees = _trees()
     helpers = _helper_index(trees)
-    endpoints = []
+    endpoints: list[dict] = []
+    extended: list[dict] = []
     for path, tree in trees.items():
         rel = str(path.relative_to(ROOT)).replace("\\", "/")
         for node in ast.walk(tree):
             if not isinstance(node, ast.AsyncFunctionDef):
                 continue
-            for route_path, method in _endpoint_decorators(node):
-                calls = _scan_endpoint(node, rel, helpers)
-                endpoints.append({
-                    "key": f"{method} {route_path}",
-                    "path": route_path,
-                    "method": method,
-                    "handler": node.name,
-                    "file": rel,
-                    "lineno": node.lineno,
-                    "calls": calls,
-                    "blocking": {c["callee"]: sum(1 for x in calls
-                                                 if x["category"] == "blocking"
-                                                 and x["callee"] == c["callee"])
-                                 for c in calls if c["category"] == "blocking"},
-                    "other": {c["callee"]: sum(1 for x in calls
-                                              if x["category"] == "other"
-                                              and x["callee"] == c["callee"])
-                              for c in calls if c["category"] == "other"},
-                    "offloaded": {c["callee"]: sum(1 for x in calls
-                                                  if x["category"] == "offloaded"
-                                                  and x["callee"] == c["callee"])
-                                  for c in calls if c["category"] == "offloaded"},
-                })
+            routes = _endpoint_decorators(node)
+            mids = _middleware_decorators(node)
+            if not routes and not mids:
+                continue
+            for route_path, method in routes:
+                key = f"{method} {route_path}"
+                rec = _make_record(node, rel, helpers, key, route_path, method)
+                (endpoints if route_path.startswith("/api/") else extended).append(rec)
+            for name in mids:
+                key = f"MIDDLEWARE {name}"
+                rec = _make_record(node, rel, helpers, key,
+                                   f"middleware:{name}", "MIDDLEWARE")
+                extended.append(rec)
     endpoints.sort(key=lambda e: (e["path"], e["method"]))
+    extended.sort(key=lambda e: (e["path"], e["method"]))
 
-    counts = {
-        "endpoints": len(endpoints),
-        "total_calls": sum(len(e["calls"]) for e in endpoints),
-        "blocking_calls": sum(sum(e["blocking"].values()) for e in endpoints),
-        "blocking_endpoints": sum(1 for e in endpoints if e["blocking"]),
-        "offloaded_calls": sum(sum(e["offloaded"].values()) for e in endpoints),
-        "offloaded_endpoints": sum(1 for e in endpoints if e["offloaded"]),
-        "other_calls": sum(sum(e["other"].values()) for e in endpoints),
-    }
     return {
         "schema_version": SCHEMA_VERSION,
         "constraints": {
@@ -268,6 +320,9 @@ def capture() -> dict:
             "other_frozen": True,
             "blocking_monotonic": "may only decrease",
             "offloaded_monotonic": "may only increase",
+            "scan_scope": "HTTP /api/ endpoints (L7-aligned) + non-API routes + "
+                          "websocket + http middlewares; sync AND async top-level "
+                          "helpers expanded (depth<=2)",
         },
         "rules": {
             "blocking_tails": sorted(BLOCKING_TAILS),
@@ -275,8 +330,10 @@ def capture() -> dict:
             "offloaded_tails": sorted(OFFLOADED_TAILS),
             "offloaded_fulls": sorted(OFFLOADED_FULLS),
         },
-        "counts": counts,
+        "counts": _summarize(endpoints),
         "endpoints": endpoints,
+        "extended_endpoints": extended,
+        "extended_counts": _summarize(extended),
     }
 
 
@@ -294,15 +351,9 @@ def _recount(data: dict) -> None:
     discriminating power / red for the wrong reason).
     """
     eps = data["endpoints"]
-    data["counts"] = {
-        "endpoints": len(eps),
-        "total_calls": sum(len(e["calls"]) for e in eps),
-        "blocking_calls": sum(sum(e["blocking"].values()) for e in eps),
-        "blocking_endpoints": sum(1 for e in eps if e["blocking"]),
-        "offloaded_calls": sum(sum(e["offloaded"].values()) for e in eps),
-        "offloaded_endpoints": sum(1 for e in eps if e["offloaded"]),
-        "other_calls": sum(sum(e["other"].values()) for e in eps),
-    }
+    data["counts"] = _summarize(eps)
+    if "extended_endpoints" in data:
+        data["extended_counts"] = _summarize(data["extended_endpoints"])
 
 
 def _normalize_endpoint(record: dict) -> dict:
@@ -343,7 +394,7 @@ def recapture(allowed: set[tuple[str, str]], mode: str = "offload") -> tuple[lis
     """
     if not allowed:
         return ["--recapture requires --allow-endpoints (unbounded rebuild refused)"], {}, {}
-    if mode not in ("offload", "refactor"):
+    if mode not in ("offload", "refactor", "scope"):
         return [f"unknown recapture mode: {mode!r}"], {}, {}
     if not BASELINE_FILE.exists():
         return ["baseline missing; run --capture first"], {}, {}
@@ -395,20 +446,47 @@ def recapture(allowed: set[tuple[str, str]], mode: str = "offload") -> tuple[lis
             "other_after": sum(n["other"].values()),
         })
 
+    # 批次 B1：判据范围扩展（scope）的额外取证。
+    # 既有 68 个 HTTP 端点的记录必须逐字段一致；新增的扩展端点必须全部
+    # 显式列在 --allow-endpoints 里，禁止「悄悄多扫进来几个」。
+    scope_added: list[dict] = []
+    if mode == "scope":
+        old_ext = {e["key"] for e in old.get("extended_endpoints", [])}
+        new_ext = {e["key"] for e in new.get("extended_endpoints", [])}
+        added = new_ext - old_ext
+        declared = {f"{m} {p}" for m, p in allowed}
+        if not added <= declared:
+            failures.append(f"scope: undeclared extended endpoints {sorted(added - declared)}")
+        if old_ext - new_ext:
+            failures.append(f"scope: extended endpoints removed {sorted(old_ext - new_ext)}")
+        scope_added = [
+            {"endpoint": e["key"],
+             "blocking": sum(e["blocking"].values()),
+             "other": sum(e["other"].values())}
+            for e in new.get("extended_endpoints", []) if e["key"] in added
+        ]
+        if not scope_added:
+            failures.append("scope: no extended endpoint added (nothing to expand)")
+
+    reasons = {
+        "offload": "RF-01 Phase 6: Tier A 端点阻塞调用 offload 进线程池",
+        "refactor": "RF-01 Phase 6: 共享状态访问收口为加锁 API",
+        "scope": "批次 B1: L8 端点发现扩展到 websocket / 非 /api/ 路由 / 中间件，"
+                 "HTTP 端点记录逐字段不变",
+    }
     evidence = {
         "schema_version": SCHEMA_VERSION,
         "mode": mode,
-        "reason": ("RF-01 Phase 6: Tier A 端点阻塞调用 offload 进线程池"
-                   if mode == "offload"
-                   else "RF-01 Phase 6: 共享状态访问收口为加锁 API"),
+        "reason": reasons[mode],
         "allowed_endpoints": [f"{m} {p}" for m, p in sorted(allowed)],
         "comparison": "endpoint records compared field-by-field; lineno excluded "
                       "(implementation detail, see _normalize_endpoint)",
-        "untouched_endpoints": len(old_eps) - len(allowed),
+        "untouched_endpoints": len(set(old_eps) - allowed),
         "untouched_identical": not any("UNEXPECTED drift" in f for f in failures),
         "totals_before": old["counts"],
         "totals_after": new["counts"],
         "per_endpoint": evidence_rows,
+        "scope_extended_added": scope_added,
     }
 
     new["constraints"]["recapture_history"] = list(
@@ -477,13 +555,27 @@ TIER_B_FULL_OVERRIDES = {
 REASON_BY_GROUP = {
     "light_io": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；"
                 "单次开销低于线程调度成本，登记保留且禁止新增",
-    "compute_pending": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，"
-                       "明确列为 Phase 6 遗留，不伪装成 Tier B",
+    "compute_pending": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、"
+                       "尚未 offload，明确列为遗留，不伪装成 Tier B",
     "unclassified": "未归类符号：必须先补分类规则并说明理由，否则不得推进",
 }
 
+# 批次 B1 语义分类：只看尾名会把「全目录遍历 + DEFLATE 压缩」判成轻量 IO
+# （backup_create 的 rglob / ZipFile / extractall 都在 LIGHT_IO_TAILS 里）。
+# 判据改看**同一个端点内符号的组合**，而不是单个名字。
+TRAVERSAL_TAILS = frozenset({"rglob", "glob"})
+ARCHIVE_TAILS = frozenset({"ZipFile", "extractall", "namelist", "write", "writerow"})
 
-def _tier_b_group(callee: str) -> str:
+
+def _tier_b_group(callee: str, peers: frozenset[str] = frozenset()) -> str:
+    """按语义分类；peers 是该端点全部阻塞符号（批次 B1）。
+
+    组合规则优先于单名 override：目录遍历与压缩同时出现 ⇒ 重 IO，
+    不允许被 `zf.write -> light_io` 这类单点 override 稀释掉。
+    """
+    tails = {c.rsplit(".", 1)[-1] for c in peers}
+    if tails & TRAVERSAL_TAILS and tails & ARCHIVE_TAILS:
+        return "compute_pending"
     if callee in TIER_B_FULL_OVERRIDES:
         return TIER_B_FULL_OVERRIDES[callee]
     tail = callee.rsplit(".", 1)[-1]
@@ -499,10 +591,12 @@ def capture_tier_b(base: dict | None = None) -> dict:
         BASELINE_FILE.read_text(encoding="utf-8"))
     rows: list[dict] = []
     candidates: dict[str, dict] = {}
-    for e in d["endpoints"]:
-        key = f"{e['method']} {e['path']}"
+    all_eps = list(d["endpoints"]) + list(d.get("extended_endpoints", []))
+    for e in all_eps:
+        key = e["key"]
+        peers = frozenset(e["blocking"])
         for callee, count in sorted(e["blocking"].items()):
-            group = _tier_b_group(callee)
+            group = _tier_b_group(callee, peers)
             rows.append({"endpoint": key, "callee": callee, "count": count,
                          "group": group, "reason": REASON_BY_GROUP[group]})
             if group == "compute_pending":
@@ -516,7 +610,8 @@ def capture_tier_b(base: dict | None = None) -> dict:
         "schema_version": SCHEMA_VERSION,
         "source": "blocking-io-baseline.json",
         "policy": {
-            "group_is_mechanical": True,
+            "group_is_semantic": True,
+            "archive_plus_traversal_is_compute_pending": True,
             "new_blocking_must_be_registered": True,
             "compute_endpoints_cannot_be_marked_light_io": True,
         },
@@ -535,20 +630,24 @@ def capture_tier_b(base: dict | None = None) -> dict:
     }
 
 
-def check_tier_b(live: dict) -> list[str]:
-    if not TIER_B_FILE.exists():
-        return ["tier-b register missing (run --tier-b first)"]
-    reg = json.loads(TIER_B_FILE.read_text(encoding="utf-8"))
+def check_tier_b(live: dict, reg: dict | None = None) -> list[str]:
+    """reg 可由调用方注入内存登记（selftest 用），默认读磁盘登记文件。"""
+    if reg is None:
+        if not TIER_B_FILE.exists():
+            return ["tier-b register missing (run --tier-b first)"]
+        reg = json.loads(TIER_B_FILE.read_text(encoding="utf-8"))
     failures: list[str] = []
     known = {(r["endpoint"], r["callee"]): r for r in reg["registered"]}
-    for e in live["endpoints"]:
-        key = f"{e['method']} {e['path']}"
+    all_eps = list(live["endpoints"]) + list(live.get("extended_endpoints", []))
+    for e in all_eps:
+        key = e["key"]
+        peers = frozenset(e["blocking"])
         for callee, count in e["blocking"].items():
             entry = known.get((key, callee))
             if entry is None:
                 failures.append(f"UNREGISTERED blocking symbol: {key} :: {callee}")
                 continue
-            expected_group = _tier_b_group(callee)
+            expected_group = _tier_b_group(callee, peers)
             if entry["group"] != expected_group:
                 failures.append(f"tier-b group tampered: {key} :: {callee} "
                                 f"{entry['group']} != {expected_group}")
@@ -561,7 +660,8 @@ def check_tier_b(live: dict) -> list[str]:
     return failures
 
 
-def check(live: dict | None = None, baseline: dict | None = None) -> list[str]:
+def check(live: dict | None = None, baseline: dict | None = None,
+          tier_b_reg: dict | None = None) -> list[str]:
     live = live if live is not None else capture()
     base = baseline if baseline is not None else json.loads(
         BASELINE_FILE.read_text(encoding="utf-8"))
@@ -579,6 +679,29 @@ def check(live: dict | None = None, baseline: dict | None = None) -> list[str]:
     non_async = [e["key"] for e in own["endpoints"] if not e["async"]]
     if non_async:
         failures.append(f"async/sync changed (endpoints must stay async): {non_async}")
+
+    # 1b. 批次 B1：扩展端点（websocket / 非 /api/ 路由 / 中间件）独立冻结。
+    #     成员+数量双校验 + blocking 只准降 + other 逐字段冻结，
+    #     与 HTTP 端点使用同一套判据强度，避免「扩了视野却没守住」。
+    base_ext = {e["key"]: e for e in base.get("extended_endpoints", [])}
+    live_ext = {e["key"]: e for e in live.get("extended_endpoints", [])}
+    if set(base_ext) != set(live_ext):
+        failures.append(
+            f"extended endpoint set: missing={sorted(set(base_ext) - set(live_ext))} "
+            f"added={sorted(set(live_ext) - set(base_ext))}")
+    for key in sorted(set(base_ext) & set(live_ext)):
+        b, n = base_ext[key], live_ext[key]
+        for callee, cnt in n["blocking"].items():
+            if cnt > b["blocking"].get(callee, 0):
+                failures.append(f"extended blocking INCREASED {key}: {callee} "
+                                f"{b['blocking'].get(callee, 0)} -> {cnt}")
+        if b["other"] != n["other"]:
+            diff = {k: (b["other"].get(k, 0), n["other"].get(k, 0))
+                    for k in set(b["other"]) | set(n["other"])
+                    if b["other"].get(k, 0) != n["other"].get(k, 0)}
+            failures.append(f"extended other drift {key}: {diff}")
+    if live.get("extended_counts") != _summarize(live.get("extended_endpoints", [])):
+        failures.append("extended_counts inconsistent (hand-edited summary?)")
 
     # 2. rules table may only grow, never shrink or be rewritten
     for field in ("blocking_tails", "blocking_fulls", "offloaded_tails", "offloaded_fulls"):
@@ -621,7 +744,7 @@ def check(live: dict | None = None, baseline: dict | None = None) -> list[str]:
 
     # 6. Tier B 逐条登记：新出现的阻塞符号必须先写明理由，且不许把重计算端点
     #    手工标成「轻量 IO」（ADR-0006 D2）
-    failures += check_tier_b(live)
+    failures += check_tier_b(live, tier_b_reg)
     return failures
 
 
@@ -634,10 +757,13 @@ def selftest() -> list[str]:
     """
     base = capture()
     problems: list[str] = []
+    # selftest 必须自洽：Tier B 登记由本轮 capture 在内存中生成，
+    # 不依赖磁盘登记文件是否已经 --tier-b 重生成（那是另一把尺子的职责）。
+    tier_reg = capture_tier_b(base)
 
     def expect_red(name: str, mutated: dict, fragment: str) -> None:
         _recount(mutated)
-        failures = check(mutated, base)
+        failures = check(mutated, base, tier_reg)
         if not failures:
             problems.append(f"{name}: gate stayed GREEN (no discriminating power)")
         elif not any(fragment in f for f in failures):
@@ -685,9 +811,36 @@ def selftest() -> list[str]:
             call["callee"] = "run_blocking"
             break
     _recount(e)
-    failures = check(e, base)
+    failures = check(e, base, tier_reg)
     if failures:
         problems.append(f"legitimate fix turned RED: {failures}")
+
+    # F: 批次 B1 —— /ws 里新增阻塞调用必须被扩展维度判红（原门禁完全看不见）
+    f_mut = copy.deepcopy(base)
+    ws = [x for x in f_mut["extended_endpoints"] if x["method"] == "WEBSOCKET"]
+    if not ws:
+        problems.append("scope: no WEBSOCKET endpoint captured (blind spot again)")
+    else:
+        target = ws[0]
+        target["calls"].append({"callee": "open", "tail": "open",
+                                "category": "blocking", "file": "<selftest>",
+                                "lineno": -1, "depth": 0})
+        target["blocking"]["open"] = target["blocking"].get("open", 0) + 1
+        expect_red("ws blocking call", f_mut, "extended blocking INCREASED")
+
+    # G: 扩展端点被删 -> 集合成员+数量判据
+    g_mut = copy.deepcopy(base)
+    g_mut["extended_endpoints"] = g_mut["extended_endpoints"][:-1]
+    expect_red("extended endpoint removed", g_mut, "extended endpoint set")
+
+    # H: 语义分类：全目录遍历 + 压缩不得再被判成轻量 IO（P1-6）
+    peers = frozenset({"cache.rglob", "zf.write", "zipfile.ZipFile"})
+    if _tier_b_group("cache.rglob", peers) != "compute_pending":
+        problems.append("tier-b semantic: rglob + ZipFile still classified light_io")
+    if _tier_b_group("zf.write", peers) != "compute_pending":
+        problems.append("tier-b semantic: single-name override diluted archive rule")
+    if _tier_b_group("cache.rglob") != "light_io":
+        problems.append("tier-b semantic: isolated rglob should stay light_io")
 
     return problems
 
@@ -703,9 +856,10 @@ def main() -> int:
     g.add_argument("--tier-b", action="store_true")
     ap.add_argument("--allow-endpoints", default="",
                     help="comma-separated 'METHOD /path' keys allowed to change on --recapture")
-    ap.add_argument("--mode", choices=("offload", "refactor"), default="offload",
+    ap.add_argument("--mode", choices=("offload", "refactor", "scope"), default="offload",
                     help="offload requires blocking down + offloaded up; "
-                         "refactor allows unchanged blocking but still forbids increases")
+                         "refactor allows unchanged blocking but still forbids increases; "
+                         "scope = gate scope expansion, HTTP endpoints must stay byte-identical")
     args = ap.parse_args()
 
     if args.tier_b:
@@ -804,8 +958,9 @@ def main() -> int:
             for p in problems:
                 print("      " + p)
             return 1
-        print("[PASS] selftest: gate turns red on 4 regressions, "
-              "stays green on a legitimate offload fix")
+        print("[PASS] selftest: gate turns red on 6 injected regressions "
+              "(incl. ws blocking / extended endpoint removed) + 3 tier-b "
+              "semantic assertions, stays green on a legitimate offload fix")
         return 0
 
     if not BASELINE_FILE.exists():
@@ -819,10 +974,14 @@ def main() -> int:
             print("      " + f)
         return 1
     c = live["counts"]
+    ext = live.get("extended_counts", {})
     print(f"[PASS] blocking-io: {c['endpoints']} endpoints / "
           f"{c['blocking_calls']} blocking calls (baseline "
           f"{json.loads(BASELINE_FILE.read_text(encoding='utf-8'))['counts']['blocking_calls']}) / "
-          f"{c['offloaded_calls']} offloaded; other frozen, async+ownership unchanged")
+          f"{c['offloaded_calls']} offloaded; "
+          f"extended {ext.get('endpoints', 0)} paths / "
+          f"{ext.get('blocking_calls', 0)} blocking frozen "
+          f"(ws + non-api routes + middlewares); other frozen, async+ownership unchanged")
     return 0
 
 

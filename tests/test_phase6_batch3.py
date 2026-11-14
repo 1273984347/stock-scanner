@@ -72,15 +72,29 @@ def test_concurrency_probe_uses_client_view_timing_and_low_load():
 
 # ---------------------------------------------------------------- 3c Tier B
 
-def test_tier_b_register_is_complete_and_mechanical():
+def test_tier_b_register_is_complete_and_consistent():
+    """登记 group 必须等于分类函数的输出（约束强度与旧版完全一致）。
+
+    批次 B1：分类从「按单名尾字机械判定」升级为「按同一端点的符号组合语义
+    判定」，`_tier_b_group` 因此多了必填的 peers 参数。这里改为从**真实基线**
+    取每个端点的 blocking 集合传入，而不是删掉断言或补占位数据 ——
+    「登记与分类函数一致」这条约束本身没有被放宽，反而能验证语义分类生效。
+    函数原名含 mechanical 已过时，仅改名（用例数不变）。
+    """
     mod = _load_script("_blocking_io_b3", ROOT / "scripts" / "blocking_io_check.py")
     reg = json.loads(REGISTER.read_text(encoding="utf-8"))
+    base = json.loads(BASELINE.read_text(encoding="utf-8"))
+    peers_by_ep = {
+        e["key"]: frozenset(e["blocking"])
+        for e in list(base["endpoints"]) + list(base.get("extended_endpoints", []))
+    }
     assert reg["counts"]["unclassified_entries"] == 0
     assert reg["counts"]["registered"] == len(reg["registered"])
     assert reg["counts"]["blocking_calls"] == sum(r["count"] for r in reg["registered"])
     for row in reg["registered"]:
         assert row["reason"], f"missing reason: {row}"
-        assert row["group"] == mod._tier_b_group(row["callee"]), (
+        assert row["group"] == mod._tier_b_group(
+            row["callee"], peers_by_ep[row["endpoint"]]), (
             f"group tampered: {row['endpoint']} :: {row['callee']}")
 
 

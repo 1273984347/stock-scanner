@@ -282,8 +282,9 @@ Tushare (主) → AkShare → WeStock → 通达信 → Baostock → 东方财�
 | 单测 | `pytest tests/ -v` | 单元测试 |
 | CLI | `python run.py --help` | 命令行入口验证 |
 | 服务 | `uvicorn api:app --reload` | API 手工验证 |
-| **L8（新增）** | `python scripts/blocking_io_check.py --check` | 阻塞 IO 基线：blocking 只准降 / other 冻结 |
-| **L8 自证** | `python scripts/blocking_io_check.py --selftest` | 证明门禁会因回归判红 |
+| **L8** | `python scripts/blocking_io_check.py --check` | 阻塞 IO 基线：blocking 只准降 / other 冻结；B1 起覆盖 `/ws`、非 `/api/` 路由、中间件与 async helper（独立 extended 集合） |
+| **L8 自证** | `python scripts/blocking_io_check.py --selftest` | 6 类注入回归 + 3 条 Tier B 语义断言，证明门禁会因回归判红 |
+| **L8 取证重建** | `python scripts/blocking_io_check.py --recapture --mode scope --allow-endpoints "..."` | 判据范围扩展专用模式：既有 HTTP 端点必须逐字段不变，新增扩展端点须显式列出；证据写 G4 历史 |
 | **L9** | `python scripts/offload_switch_diff.py --check` | 迁移 AST 等价 + off/on 响应 diff + 线程池自证；RF-02/ADR-0015 后：35 严格冻结 + 2 有意分歧（notifications/strategy_recommend 行为修复，参见 `MIGRATION_DIVERGENCES`） |
 | **L10** | `python scripts/concurrency_probe.py --check` | 20 并发 P95 + 前端路径「源码重算 vs 登记清单」双校验（数量不再硬编码）；`--tier-b` 清单由 L8 `--check` 自动校验 |
 
@@ -392,7 +393,7 @@ curl http://localhost:8000/api/scan
 | `scripts/route_ownership_check.py` | 第 7 把尺子：17 域 / 68 端点归属 + 鉴权/async + 契约五重校验（`--capture` / `--check`） |
 | `docs/refactor/contracts/route-ownership.json` | 68 端点归属表（Phase 5 拆分前后比对的权威读数） |
 | `docs/refactor/contracts/frontend-api-paths.json` | 前端 36 条 API 路径清单（Phase 5 实跑验收依据） |
-| `scripts/blocking_io_check.py` | **第 8 把尺子 / L8 门禁**：阻塞 IO 基线采集、`--check`（blocking 只准降 / offloaded 只准升 / other 冻结 / 端点集合与 L7 一致）、`--selftest`（4 类回归各自命中指定门禁） |
+| `scripts/blocking_io_check.py` | **第 8 把尺子 / L8 门禁**：阻塞 IO 基线采集、`--check`（blocking 只准降 / offloaded 只准升 / other 冻结 / 端点集合与 L7 一致）、`--selftest`（6 类注入回归 + 3 条 Tier B 语义断言）；B1 起分 `endpoints`(68 HTTP) 与 `extended_endpoints`(6：/ws、非 /api/ 路由、中间件) 两个集合，Tier B 按符号组合语义分类，`--recapture --mode scope` 做范围扩展取证 |
 | `docs/refactor/contracts/blocking-io-baseline.json` | Phase 6 起点读数：68 端点 / 1052 调用 / 242 阻塞调用 / 63 端点含阻塞点；含 `plan_stated_target` 对照 |
 | `docs/adr/0006-*.md` | 第 6 次判据修正：绝对阈值「≤1」→ 单调下降 + Tier A/B 分层退出判据 |
 | `tests/test_blocking_io_check.py` | L8 的 11 例机器判据（含 helper 展开、表外符号判红、尺子自证） |
@@ -408,7 +409,7 @@ curl http://localhost:8000/api/scan
 | `docs/audit/security-performance-review-2026-11-14.md` | **全仓安全/性能审查（2026-11-14）**：2 条 P0（配置注入永久污染 PRESETS 单例 / DOM XSS→sessionStorage 密钥接管）+ 12 条 P1 + 15 条 P2；含 L8 门禁盲区根因分析（只扫 `/api/` 装饰器端点、Tier B 按 tail 名机械分类）与三批次修复顺序建议。改 `routers/`、`lib/`、`static/` 前先查此表 |
 | `docs/adr/0020-batch-a-security-hardening.md` | **批次 A 安全加固 ADR**：5 项根因修 + L8 G4 recapture 取证（5 变 / 63 未动逐字段一致 / blocking 107→106）+ L9 第 3 项有意分歧的依据；含 L3/L10 既有判红的对照实验结论 |
 | `tests/features/test_batch_a_security.py` | 批次 A 的 22 例机器判据：schema 自动生成零遗漏、恶意配置拒绝、export→import 往返、get_config 隔离、错误上报 401/413/400、缓存键隔离、esc 单一实现、innerHTML 静态守卫、routers 禁裸路径基准 |
-| `tests/features/test_batch_b_gates.py` | 批次 B 第一件事的 8 例机器判据：L3 `get_market_sentiment` 三处 pin 抗污染、L4 `start_date` 透传与窗口锚定、L10 登记清单漂移/counts 篡改/无硬编码数量 |
+| `tests/features/test_batch_b_gates.py` | 批次 B 的 14 例机器判据：L3 `get_market_sentiment` 三处 pin 抗污染、L4 `start_date` 透传与窗口锚定、L10 清单漂移/counts 篡改/无硬编码数量；B1：L8 覆盖 `/ws` 与中间件、HTTP 端点仍与 L7 对齐、扩展端点增删/阻塞增加必判红、Tier B 目录遍历+压缩语义分类 |
 
 ---
 

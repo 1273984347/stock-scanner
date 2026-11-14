@@ -1,15 +1,16 @@
 {
   "counts": {
-    "blocking_calls": 107,
-    "compute_pending_entries": 4,
-    "light_io_entries": 92,
-    "registered": 96,
-    "tier_a_candidate_endpoints": 1,
+    "blocking_calls": 118,
+    "compute_pending_entries": 15,
+    "light_io_entries": 87,
+    "registered": 102,
+    "tier_a_candidate_endpoints": 3,
     "unclassified_entries": 0
   },
   "policy": {
+    "archive_plus_traversal_is_compute_pending": true,
     "compute_endpoints_cannot_be_marked_light_io": true,
-    "group_is_mechanical": true,
+    "group_is_semantic": true,
     "new_blocking_must_be_registered": true
   },
   "registered": [
@@ -206,57 +207,57 @@
       "callee": "backup_dir.mkdir",
       "count": 1,
       "endpoint": "POST /api/backup/create",
-      "group": "light_io",
-      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+      "group": "compute_pending",
+      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
     },
     {
       "callee": "backup_file.stat",
       "count": 1,
       "endpoint": "POST /api/backup/create",
-      "group": "light_io",
-      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+      "group": "compute_pending",
+      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
     },
     {
       "callee": "file_path.is_file",
       "count": 1,
       "endpoint": "POST /api/backup/create",
-      "group": "light_io",
-      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+      "group": "compute_pending",
+      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
     },
     {
       "callee": "target_path.is_dir",
       "count": 1,
       "endpoint": "POST /api/backup/create",
-      "group": "light_io",
-      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+      "group": "compute_pending",
+      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
     },
     {
       "callee": "target_path.is_file",
       "count": 1,
       "endpoint": "POST /api/backup/create",
-      "group": "light_io",
-      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+      "group": "compute_pending",
+      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
     },
     {
       "callee": "target_path.rglob",
       "count": 1,
       "endpoint": "POST /api/backup/create",
-      "group": "light_io",
-      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+      "group": "compute_pending",
+      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
     },
     {
       "callee": "zf.write",
       "count": 2,
       "endpoint": "POST /api/backup/create",
-      "group": "light_io",
-      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+      "group": "compute_pending",
+      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
     },
     {
       "callee": "zipfile.ZipFile",
       "count": 1,
       "endpoint": "POST /api/backup/create",
-      "group": "light_io",
-      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+      "group": "compute_pending",
+      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
     },
     {
       "callee": "backup_dir.exists",
@@ -347,28 +348,28 @@
       "count": 1,
       "endpoint": "GET /api/dashboard",
       "group": "compute_pending",
-      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
     },
     {
       "callee": "evaluate_macro_gate",
       "count": 1,
       "endpoint": "GET /api/dashboard",
       "group": "compute_pending",
-      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
     },
     {
       "callee": "mean",
       "count": 1,
       "endpoint": "GET /api/dashboard",
       "group": "compute_pending",
-      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
     },
     {
       "callee": "orchestrator.get_market_sentiment",
       "count": 1,
       "endpoint": "GET /api/dashboard",
       "group": "compute_pending",
-      "reason": "重计算或外部取数符号：所在端点属 Tier A 候选、尚未 offload，明确列为 Phase 6 遗留，不伪装成 Tier B"
+      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
     },
     {
       "callee": "error_file.parent.mkdir",
@@ -465,13 +466,6 @@
       "callee": "f.stat",
       "count": 1,
       "endpoint": "GET /api/health",
-      "group": "light_io",
-      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
-    },
-    {
-      "callee": "config_file.write_text",
-      "count": 1,
-      "endpoint": "POST /api/import/config",
       "group": "light_io",
       "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
     },
@@ -684,6 +678,55 @@
       "endpoint": "GET /api/treemap/sectors",
       "group": "light_io",
       "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "html.exists",
+      "count": 1,
+      "endpoint": "GET /",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_cache_get",
+      "count": 6,
+      "endpoint": "WEBSOCKET /ws",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "_get_orchestrator",
+      "count": 1,
+      "endpoint": "WEBSOCKET /ws",
+      "group": "compute_pending",
+      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "asyncio.sleep",
+      "count": 1,
+      "endpoint": "WEBSOCKET /ws",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
+    },
+    {
+      "callee": "orchestrator.get_realtime_quotes",
+      "count": 1,
+      "endpoint": "WEBSOCKET /ws",
+      "group": "compute_pending",
+      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "quotes.iterrows",
+      "count": 1,
+      "endpoint": "WEBSOCKET /ws",
+      "group": "compute_pending",
+      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
+    },
+    {
+      "callee": "_record_metric",
+      "count": 1,
+      "endpoint": "MIDDLEWARE track_performance",
+      "group": "light_io",
+      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
     }
   ],
   "schema_version": 1,
@@ -698,6 +741,31 @@
         "orchestrator.get_market_sentiment"
       ],
       "endpoint": "GET /api/dashboard",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 9,
+      "callees": [
+        "backup_dir.mkdir",
+        "backup_file.stat",
+        "file_path.is_file",
+        "target_path.is_dir",
+        "target_path.is_file",
+        "target_path.rglob",
+        "zf.write",
+        "zipfile.ZipFile"
+      ],
+      "endpoint": "POST /api/backup/create",
+      "status": "not_offloaded"
+    },
+    {
+      "blocking_calls": 3,
+      "callees": [
+        "_get_orchestrator",
+        "orchestrator.get_realtime_quotes",
+        "quotes.iterrows"
+      ],
+      "endpoint": "WEBSOCKET /ws",
       "status": "not_offloaded"
     }
   ]

@@ -114,8 +114,23 @@
         "blocking_before": 107,
         "mode": "refactor",
         "reason": "RF-01 Phase 6: 共享状态访问收口为加锁 API"
+      },
+      {
+        "allowed_endpoints": [
+          "GET /",
+          "GET /favicon.svg",
+          "GET /sw.js",
+          "MIDDLEWARE add_security_headers",
+          "MIDDLEWARE track_performance",
+          "WEBSOCKET /ws"
+        ],
+        "blocking_after": 106,
+        "blocking_before": 106,
+        "mode": "scope",
+        "reason": "批次 B1: L8 端点发现扩展到 websocket / 非 /api/ 路由 / 中间件，HTTP 端点记录逐字段不变"
       }
     ],
+    "scan_scope": "HTTP /api/ endpoints (L7-aligned) + non-API routes + websocket + http middlewares; sync AND async top-level helpers expanded (depth<=2)",
     "source": "AST over api.py + routers/*.py, endpoint set cross-checked against runtime route-ownership.json"
   },
   "counts": {
@@ -5205,6 +5220,613 @@
         "logger.error": 1
       },
       "path": "/api/walkforward"
+    }
+  ],
+  "extended_counts": {
+    "blocking_calls": 12,
+    "blocking_endpoints": 3,
+    "endpoints": 6,
+    "offloaded_calls": 0,
+    "offloaded_endpoints": 0,
+    "other_calls": 46,
+    "total_calls": 58
+  },
+  "extended_endpoints": [
+    {
+      "blocking": {
+        "html.exists": 1
+      },
+      "calls": [
+        {
+          "callee": "html.exists",
+          "category": "blocking",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 84,
+          "tail": "exists"
+        },
+        {
+          "callee": "FileResponse",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 85,
+          "tail": "FileResponse"
+        },
+        {
+          "callee": "str",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 85,
+          "tail": "str"
+        }
+      ],
+      "file": "api.py",
+      "handler": "index",
+      "key": "GET /",
+      "lineno": 81,
+      "method": "GET",
+      "offloaded": {},
+      "other": {
+        "FileResponse": 1,
+        "str": 1
+      },
+      "path": "/"
+    },
+    {
+      "blocking": {},
+      "calls": [
+        {
+          "callee": "FileResponse",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 130,
+          "tail": "FileResponse"
+        },
+        {
+          "callee": "str",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 130,
+          "tail": "str"
+        }
+      ],
+      "file": "api.py",
+      "handler": "favicon",
+      "key": "GET /favicon.svg",
+      "lineno": 129,
+      "method": "GET",
+      "offloaded": {},
+      "other": {
+        "FileResponse": 1,
+        "str": 1
+      },
+      "path": "/favicon.svg"
+    },
+    {
+      "blocking": {},
+      "calls": [
+        {
+          "callee": "FileResponse",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 134,
+          "tail": "FileResponse"
+        },
+        {
+          "callee": "str",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 134,
+          "tail": "str"
+        }
+      ],
+      "file": "api.py",
+      "handler": "service_worker",
+      "key": "GET /sw.js",
+      "lineno": 133,
+      "method": "GET",
+      "offloaded": {},
+      "other": {
+        "FileResponse": 1,
+        "str": 1
+      },
+      "path": "/sw.js"
+    },
+    {
+      "blocking": {
+        "_cache_get": 6,
+        "_get_orchestrator": 1,
+        "asyncio.sleep": 1,
+        "orchestrator.get_realtime_quotes": 1,
+        "quotes.iterrows": 1
+      },
+      "calls": [
+        {
+          "callee": "replace",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 92,
+          "tail": "replace"
+        },
+        {
+          "callee": "websocket.headers.get",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 92,
+          "tail": "get"
+        },
+        {
+          "callee": "websocket.query_params.get",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 92,
+          "tail": "get"
+        },
+        {
+          "callee": "verify_ws_token",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 93,
+          "tail": "verify_ws_token"
+        },
+        {
+          "callee": "websocket.close",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 94,
+          "tail": "close"
+        },
+        {
+          "callee": "manager.connect",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 96,
+          "tail": "connect"
+        },
+        {
+          "callee": "websocket.send_json",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 100,
+          "tail": "send_json"
+        },
+        {
+          "callee": "datetime.now",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 102,
+          "tail": "now"
+        },
+        {
+          "callee": "isoformat",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 102,
+          "tail": "isoformat"
+        },
+        {
+          "callee": "_get_ws_data",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 103,
+          "tail": "_get_ws_data"
+        },
+        {
+          "callee": "asyncio.sleep",
+          "category": "blocking",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 108,
+          "tail": "sleep"
+        },
+        {
+          "callee": "websocket.send_json",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 109,
+          "tail": "send_json"
+        },
+        {
+          "callee": "datetime.now",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 111,
+          "tail": "now"
+        },
+        {
+          "callee": "isoformat",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 111,
+          "tail": "isoformat"
+        },
+        {
+          "callee": "_get_ws_data",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 112,
+          "tail": "_get_ws_data"
+        },
+        {
+          "callee": "manager.disconnect",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 115,
+          "tail": "disconnect"
+        },
+        {
+          "callee": "logger.error",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 117,
+          "tail": "error"
+        },
+        {
+          "callee": "manager.disconnect",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 118,
+          "tail": "disconnect"
+        },
+        {
+          "callee": "_orchestrator_cache.get",
+          "category": "other",
+          "depth": 2,
+          "file": "api.py",
+          "lineno": 232,
+          "tail": "get"
+        },
+        {
+          "callee": "ScanOrchestrator",
+          "category": "other",
+          "depth": 2,
+          "file": "api.py",
+          "lineno": 234,
+          "tail": "ScanOrchestrator"
+        },
+        {
+          "callee": "_orchestrator_cache.set",
+          "category": "other",
+          "depth": 2,
+          "file": "api.py",
+          "lineno": 235,
+          "tail": "set"
+        },
+        {
+          "callee": "_cache_get",
+          "category": "blocking",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 428,
+          "tail": "_cache_get"
+        },
+        {
+          "callee": "_cache_get",
+          "category": "blocking",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 429,
+          "tail": "_cache_get"
+        },
+        {
+          "callee": "_cache_get",
+          "category": "blocking",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 430,
+          "tail": "_cache_get"
+        },
+        {
+          "callee": "_cache_get",
+          "category": "blocking",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 431,
+          "tail": "_cache_get"
+        },
+        {
+          "callee": "PositionManager",
+          "category": "other",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 437,
+          "tail": "PositionManager"
+        },
+        {
+          "callee": "_get_orchestrator",
+          "category": "blocking",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 440,
+          "tail": "_get_orchestrator"
+        },
+        {
+          "callee": "orchestrator.get_realtime_quotes",
+          "category": "blocking",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 441,
+          "tail": "get_realtime_quotes"
+        },
+        {
+          "callee": "quotes.iterrows",
+          "category": "blocking",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 444,
+          "tail": "iterrows"
+        },
+        {
+          "callee": "row.get",
+          "category": "other",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 445,
+          "tail": "get"
+        },
+        {
+          "callee": "str",
+          "category": "other",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 445,
+          "tail": "str"
+        },
+        {
+          "callee": "row.get",
+          "category": "other",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 446,
+          "tail": "get"
+        },
+        {
+          "callee": "float",
+          "category": "other",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 448,
+          "tail": "float"
+        },
+        {
+          "callee": "pm.positions.items",
+          "category": "other",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 450,
+          "tail": "items"
+        },
+        {
+          "callee": "prices.get",
+          "category": "other",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 451,
+          "tail": "get"
+        },
+        {
+          "callee": "round",
+          "category": "other",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 457,
+          "tail": "round"
+        },
+        {
+          "callee": "_cache_get",
+          "category": "blocking",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 464,
+          "tail": "_cache_get"
+        },
+        {
+          "callee": "_cache_get",
+          "category": "blocking",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 467,
+          "tail": "_cache_get"
+        },
+        {
+          "callee": "sector_heatmap.get",
+          "category": "other",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 475,
+          "tail": "get"
+        },
+        {
+          "callee": "signals.get",
+          "category": "other",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 476,
+          "tail": "get"
+        },
+        {
+          "callee": "logger.error",
+          "category": "other",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 479,
+          "tail": "error"
+        }
+      ],
+      "file": "api.py",
+      "handler": "websocket_endpoint",
+      "key": "WEBSOCKET /ws",
+      "lineno": 90,
+      "method": "WEBSOCKET",
+      "offloaded": {},
+      "other": {
+        "PositionManager": 1,
+        "ScanOrchestrator": 1,
+        "_get_ws_data": 2,
+        "_orchestrator_cache.get": 1,
+        "_orchestrator_cache.set": 1,
+        "datetime.now": 2,
+        "float": 1,
+        "isoformat": 2,
+        "logger.error": 2,
+        "manager.connect": 1,
+        "manager.disconnect": 2,
+        "pm.positions.items": 1,
+        "prices.get": 1,
+        "replace": 1,
+        "round": 1,
+        "row.get": 2,
+        "sector_heatmap.get": 1,
+        "signals.get": 1,
+        "str": 1,
+        "verify_ws_token": 1,
+        "websocket.close": 1,
+        "websocket.headers.get": 1,
+        "websocket.query_params.get": 1,
+        "websocket.send_json": 2
+      },
+      "path": "/ws"
+    },
+    {
+      "blocking": {},
+      "calls": [
+        {
+          "callee": "_add_security_headers",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 77,
+          "tail": "_add_security_headers"
+        }
+      ],
+      "file": "api.py",
+      "handler": "add_security_headers",
+      "key": "MIDDLEWARE add_security_headers",
+      "lineno": 76,
+      "method": "MIDDLEWARE",
+      "offloaded": {},
+      "other": {
+        "_add_security_headers": 1
+      },
+      "path": "middleware:add_security_headers"
+    },
+    {
+      "blocking": {
+        "_record_metric": 1
+      },
+      "calls": [
+        {
+          "callee": "time.time",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 61,
+          "tail": "time"
+        },
+        {
+          "callee": "call_next",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 62,
+          "tail": "call_next"
+        },
+        {
+          "callee": "time.time",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 63,
+          "tail": "time"
+        },
+        {
+          "callee": "request.url.path.startswith",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 64,
+          "tail": "startswith"
+        },
+        {
+          "callee": "_record_metric",
+          "category": "blocking",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 65,
+          "tail": "_record_metric"
+        },
+        {
+          "callee": "_record_metric_impl",
+          "category": "other",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 143,
+          "tail": "_record_metric_impl"
+        },
+        {
+          "callee": "round",
+          "category": "other",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 145,
+          "tail": "round"
+        },
+        {
+          "callee": "datetime.now",
+          "category": "other",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 147,
+          "tail": "now"
+        },
+        {
+          "callee": "isoformat",
+          "category": "other",
+          "depth": 1,
+          "file": "api.py",
+          "lineno": 147,
+          "tail": "isoformat"
+        }
+      ],
+      "file": "api.py",
+      "handler": "track_performance",
+      "key": "MIDDLEWARE track_performance",
+      "lineno": 59,
+      "method": "MIDDLEWARE",
+      "offloaded": {},
+      "other": {
+        "_record_metric_impl": 1,
+        "call_next": 1,
+        "datetime.now": 1,
+        "isoformat": 1,
+        "request.url.path.startswith": 1,
+        "round": 1,
+        "time.time": 2
+      },
+      "path": "middleware:track_performance"
     }
   ],
   "rules": {

@@ -129,6 +129,7 @@ infra  ←  data  ←  scoring  ←  strategy
 | T3 | **保持 `async def` 签名**，禁止把端点改成 `def` 来「顺手」走线程池 | 会静默改变 FastAPI 调度语义与并发上限；契约快照冻结 async/sync，L2 会判红 |
 | T4 | 每切一个消费者必须跑 off/on 逐字段对拍，**并自证 on 侧真走了线程池**（off=0 / on>0） | 两侧都没切时 diff 也恒 0 = 空判据（坑表 P-56） |
 | T5 | 阻塞判据以 `scripts/blocking_io_check.py` 的 **L8** 为准：**blocking 只准降 / offloaded 只准升 / other 逐字段冻结**；新符号必须显式归类后才能推进 | 计划的绝对阈值「≤1」被实测 242 推翻（ADR-0006 D1）；表外符号由 `other` 冻结兜住，不假设阻塞表完整 |
+| T5-a（B1） | 端点发现不得只认带 `/api/` 前缀的 HTTP 装饰器；`websocket`、非 `/api/` 路由、`@app.middleware` 必须纳入扫描，且 **async 顶层 helper 也要展开** | `ROUTE_METHODS` 原来不含 `websocket`、路径硬过滤 `/api/`，`_helper_index` 只收 `ast.FunctionDef` ⇒ `/ws` 调的 async `_get_ws_data` 整条阻塞链（10 个调用）对门禁完全不可见（审查报告 §5 / 坑表 P-90） |
 | T6 | **`_scan_tasks` / `_perf_metrics` 只允许经 `lib/infra/` 的带锁 API 读写**；`routers/` 中禁止直接下标或 `.get/.append/.clear/.update` | 散落读写会造成半更新状态与指标丢失；AST 守卫见 `tests/test_phase6_batch2.py`（ADR-0007 D4） |
 
 > **阶段边界**：**Phase 6 第 1 批 ✅**（第 8 把尺子 + 基线，零业务代码改动，ADR-0006）；
@@ -258,7 +259,7 @@ python scripts/concurrency_probe.py --check
 | L5 | `[PASS] scoring baseline: 9 sources match (285 samples)`，且每条链路 `mismatches = 0` |
 | L6 | `[PASS] switch diff: 3 branch(es), 9 responses, 0 field(s) differ`；三条分支各自 `kernel calls off=0 on>0`，且 `[PASS] consumers: 3/3` |
 | L7 | `[PASS] route ownership: 68 endpoints / 17 routers / N frontend paths`；路径数由 `capture_frontend_paths()` 从 `static/` 源码重算，不在文档硬编码；鉴权依赖数不得减少、契约 diff = 0 |
-| L8 | `[PASS] blocking-io: 68 endpoints / N blocking calls`；`--selftest` 全绿（4 类回归各自命中指定门禁 + 合法修复全绿）；blocking 只准降、offloaded 只准升、`other` 逐字段不变、端点集合与 L7 一致、async 全 true |
+| L8 | `[PASS] blocking-io: 68 endpoints / N blocking calls ...; extended 6 paths / 12 blocking frozen`。**B1 起端点发现分两个互不干扰的集合**：`endpoints`（HTTP `/api/` 68 个，成员+数量与 L7 对齐，原口径不变）与 `extended_endpoints`（`/ws`、非 `/api/` 路由、`@app.middleware` 中间件，独立冻结）。两者各自 blocking 只准降 / offloaded 只准升 / `other` 逐字段冻结 / 成员+数量双校验；`--selftest` 6 类注入回归 + 3 条 Tier B 语义断言全绿；Tier B 按**符号组合语义**分类（目录遍历 + 压缩 ⇒ `compute_pending`），不再按尾名机械判定 |
 | L9 | `[PASS] offload switch: 34 endpoints migration-AST-equivalent + 3 intentionally diverged`；37 个迁移固定 commit（`523b353` / `77bc366` / `6d0e434` / `497550f` / `c9b4d6f`）源码 AST 逐语句等价，3 项有意分歧仅校验接线完整性（见 ADR-0015 / ADR-0020）；off/on 整份响应字段顺序一致；线程池 off=0 / on=1 且工作线程与主线程不同；消费者登记与实际调用点双向对齐 |
 | L10 | `[PASS] concurrency: 37 endpoints x 20 concurrent x 3 rounds`；P95 按**批次发起**计时、`on <= off × 1.10`（不得放宽阈值）、37/37 改善；前端路径改为「L7 扫描器重算 vs 登记清单」成员+数量双校验（禁止硬编码数量，禁止用清单自身 counts 自证）、`counts.normalized_paths == len(normalized_paths)` 自洽、off/on OpenAPI 一致；Tier B 登记 0 未分类、新增阻塞符号未登记即判红 |
 

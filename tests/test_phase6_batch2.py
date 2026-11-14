@@ -52,7 +52,14 @@ def test_recapture_evidence_records_are_complete_and_monotonic():
     for rec in records:
         assert rec["untouched_identical"] is True
         assert rec["untouched_endpoints"] > 0
-        assert rec["per_endpoint"], "no changed endpoints recorded"
+        if rec.get("mode") == "scope":
+            # 批次 B1：范围扩展类重建刻意 0 个 HTTP 端点变化，取证载体换成
+            # scope_extended_added。「必须记录变更」的约束不变，且这里新增一
+            # 条断言防止 scope 记录被写成空壳（不是放宽判据）。
+            assert rec.get("scope_extended_added"), \
+                "scope recapture must record added extended endpoints"
+        else:
+            assert rec["per_endpoint"], "no changed endpoints recorded"
         assert rec["totals_after"]["blocking_calls"] <= rec["totals_before"]["blocking_calls"]
         assert rec["totals_after"]["offloaded_calls"] >= rec["totals_before"]["offloaded_calls"]
     offload = [r for r in records if r.get("mode", "offload") == "offload"]

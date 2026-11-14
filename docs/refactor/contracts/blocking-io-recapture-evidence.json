@@ -686,5 +686,72 @@
     },
     "untouched_endpoints": 63,
     "untouched_identical": true
+  },
+  {
+    "allowed_endpoints": [
+      "GET /",
+      "GET /favicon.svg",
+      "GET /sw.js",
+      "MIDDLEWARE add_security_headers",
+      "MIDDLEWARE track_performance",
+      "WEBSOCKET /ws"
+    ],
+    "comparison": "endpoint records compared field-by-field; lineno excluded (implementation detail, see _normalize_endpoint)",
+    "mode": "scope",
+    "per_endpoint": [],
+    "reason": "批次 B1: L8 端点发现扩展到 websocket / 非 /api/ 路由 / 中间件，HTTP 端点记录逐字段不变",
+    "schema_version": 1,
+    "scope_extended_added": [
+      {
+        "blocking": 1,
+        "endpoint": "GET /",
+        "other": 2
+      },
+      {
+        "blocking": 0,
+        "endpoint": "GET /favicon.svg",
+        "other": 2
+      },
+      {
+        "blocking": 0,
+        "endpoint": "GET /sw.js",
+        "other": 2
+      },
+      {
+        "blocking": 10,
+        "endpoint": "WEBSOCKET /ws",
+        "other": 31
+      },
+      {
+        "blocking": 0,
+        "endpoint": "MIDDLEWARE add_security_headers",
+        "other": 1
+      },
+      {
+        "blocking": 1,
+        "endpoint": "MIDDLEWARE track_performance",
+        "other": 8
+      }
+    ],
+    "totals_after": {
+      "blocking_calls": 106,
+      "blocking_endpoints": 35,
+      "endpoints": 68,
+      "offloaded_calls": 38,
+      "offloaded_endpoints": 38,
+      "other_calls": 316,
+      "total_calls": 460
+    },
+    "totals_before": {
+      "blocking_calls": 106,
+      "blocking_endpoints": 35,
+      "endpoints": 68,
+      "offloaded_calls": 38,
+      "offloaded_endpoints": 38,
+      "other_calls": 316,
+      "total_calls": 460
+    },
+    "untouched_endpoints": 68,
+    "untouched_identical": true
   }
 ]

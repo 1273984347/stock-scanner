@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import pathlib
@@ -143,3 +144,72 @@ def test_l4_baseline_chain_pins_the_window():
     source = (ROOT / "scripts" / "backtest_baseline.py").read_text(encoding="utf-8")
     assert "start_date=PIN_START_DATE" in source
     assert 'BASELINE_ANCHOR_DATE = "2026-11-07"' in source
+
+
+# ------------------------------------------------- B1: L8 视野扩展 + Tier B 语义
+
+
+def _contract(name: str) -> dict:
+    return json.loads((ROOT / "docs" / "refactor" / "contracts" / name)
+                      .read_text(encoding="utf-8"))
+
+
+def test_b1_scope_covers_websocket_and_middlewares():
+    """上午报告 §5 的盲区：/ws 与两个中间件此前一个调用都没被统计。"""
+    b = _load("blocking_io_check")
+    d = b.capture()
+    keys = {e["key"] for e in d["extended_endpoints"]}
+    assert "WEBSOCKET /ws" in keys
+    assert {"MIDDLEWARE track_performance", "MIDDLEWARE add_security_headers"} <= keys
+    ws = next(e for e in d["extended_endpoints"] if e["key"] == "WEBSOCKET /ws")
+    assert "_cache_get" in ws["blocking"], "async helper _get_ws_data 必须被展开"
+    assert any("get_realtime_quotes" in c for c in ws["blocking"])
+
+
+def test_b1_http_endpoints_stay_l7_aligned():
+    """扩展视野不得改动既有 68 个 HTTP 端点集合（L7/L9/L10 的前提）。"""
+    b = _load("blocking_io_check")
+    d = b.capture()
+    own = _contract("route-ownership.json")
+    assert {(e["method"], e["path"]) for e in d["endpoints"]} == \
+           {(e["method"], e["path"]) for e in own["endpoints"]}
+
+
+def test_b1_extended_blocking_addition_is_red():
+    """在 /ws 里加一个阻塞调用必须判红 —— 这正是 B1 之前做不到的事。"""
+    b = _load("blocking_io_check")
+    base = b.capture()
+    mut = copy.deepcopy(base)
+    ws = next(e for e in mut["extended_endpoints"] if e["key"] == "WEBSOCKET /ws")
+    ws["blocking"]["open"] = ws["blocking"].get("open", 0) + 1
+    b._recount(mut)
+    failures = b.check(mut, base, b.capture_tier_b(base))
+    assert any("extended blocking INCREASED" in f for f in failures), failures
+
+
+def test_b1_extended_endpoint_removal_is_red():
+    b = _load("blocking_io_check")
+    base = b.capture()
+    mut = copy.deepcopy(base)
+    mut["extended_endpoints"] = mut["extended_endpoints"][:-1]
+    b._recount(mut)
+    failures = b.check(mut, base, b.capture_tier_b(base))
+    assert any("extended endpoint set" in f for f in failures), failures
+
+
+def test_b1_tier_b_semantic_rules():
+    """全目录遍历 + 压缩是重 IO，不能被单名 override 稀释回 light_io。"""
+    b = _load("blocking_io_check")
+    peers = frozenset({"cache.rglob", "zf.write", "zipfile.ZipFile"})
+    assert b._tier_b_group("cache.rglob", peers) == "compute_pending"
+    assert b._tier_b_group("zf.write", peers) == "compute_pending"
+    assert b._tier_b_group("cache.rglob") == "light_io"
+
+
+def test_b1_tier_b_register_reclassifies_backup_create():
+    reg = _contract("blocking-io-tier-b.json")
+    rows = [r for r in reg["registered"] if r["endpoint"] == "POST /api/backup/create"]
+    assert rows, "backup/create 的阻塞符号必须登记在案"
+    assert all(r["group"] == "compute_pending" for r in rows)
+    assert reg["counts"]["unclassified_entries"] == 0
+    assert any(r["endpoint"] == "WEBSOCKET /ws" for r in reg["registered"])
