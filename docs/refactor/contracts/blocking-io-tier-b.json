@@ -1,9 +1,9 @@
 {
   "counts": {
-    "blocking_calls": 108,
+    "blocking_calls": 105,
     "compute_pending_entries": 7,
-    "light_io_entries": 86,
-    "registered": 93,
+    "light_io_entries": 83,
+    "registered": 90,
     "tier_a_candidate_endpoints": 2,
     "unclassified_entries": 0
   },
@@ -233,27 +233,6 @@
     },
     {
       "callee": "extract_dir.mkdir",
-      "count": 1,
-      "endpoint": "POST /api/backup/restore",
-      "group": "light_io",
-      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
-    },
-    {
-      "callee": "zf.extractall",
-      "count": 1,
-      "endpoint": "POST /api/backup/restore",
-      "group": "light_io",
-      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
-    },
-    {
-      "callee": "zf.namelist",
-      "count": 1,
-      "endpoint": "POST /api/backup/restore",
-      "group": "light_io",
-      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
-    },
-    {
-      "callee": "zipfile.ZipFile",
       "count": 1,
       "endpoint": "POST /api/backup/restore",
       "group": "light_io",

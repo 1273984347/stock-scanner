@@ -3,6 +3,8 @@
 来源：WeStock Data skill（腾讯自选股 API）
 通过 npx CLI 调用，返回 Markdown 表格 → 解析为 DataFrame
 """
+import os
+import re
 import subprocess
 import pandas as pd
 import io
@@ -11,12 +13,23 @@ from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
-WESTOCK_CMD = ["npx", "-y", "westock-data-clawhub@1.0.4"]
+# 批次 C / P1-11：默认仍走 `npx -y`（会在运行时联网下载并执行第三方包及其依赖树）。
+# 生产环境建议先 `npm i -D westock-data-clawhub@1.0.4`，再用 WESTOCK_CLI 指向本地
+# 可执行文件（或 `npx --no-install`），避免运行时拉包这一供应链面。
+_westock_cli = os.environ.get("WESTOCK_CLI", "").strip()
+WESTOCK_CMD = ([_westock_cli] if _westock_cli
+               else ["npx", "-y", "westock-data-clawhub@1.0.4"])
+
+# 只允许字母数字与点，且不允许以 '-' 开头：subprocess 已用 list（无 shell 注入），
+# 这条挡的是「参数被 CLI 当成 flag」与路径穿越式拼接。
+_CODE_RE = re.compile(r"^[A-Za-z0-9.]{1,12}$")
 
 
 def _to_westock_code(code: str) -> str:
     """转换股票代码格式：000001 → sz000001, 600519 → sh600519"""
-    code = code.strip()
+    code = str(code).strip()
+    if not _CODE_RE.match(code):
+        raise ValueError(f"invalid stock code: {code!r}")
     if code.startswith(("sh", "sz", "bj", "hk", "us")):
         return code
     if code.startswith(("6", "5")):

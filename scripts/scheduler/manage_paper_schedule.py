@@ -77,7 +77,12 @@ def generate_xml(start: datetime, end: datetime, bash_path: str) -> str:
     """
     start_str = start.strftime("%Y-%m-%dT16:00:00")
     end_str = end.strftime("%Y-%m-%dT23:59:59")
-    proj = str(PROJECT_ROOT).replace("\\", "\\\\")
+    # 批次 C / P2-13：XML 必须转义（路径含 & / < 会破坏任务定义）；
+    # 旧实现的 `.replace("\\", "\\\\")` 是字符串字面量习惯，XML 里不需要，
+    # 反而会在 WorkingDirectory 里留下双反斜杠。
+    from xml.sax.saxutils import escape
+    proj = escape(str(PROJECT_ROOT))
+    bash_esc = escape(str(bash_path))
 
     return f"""<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -119,7 +124,7 @@ def generate_xml(start: datetime, end: datetime, bash_path: str) -> str:
   </Settings>
   <Actions>
     <Exec>
-      <Command>{bash_path}</Command>
+      <Command>{bash_esc}</Command>
       <Arguments>scripts/run_daily_paper.sh</Arguments>
       <WorkingDirectory>{proj}</WorkingDirectory>
     </Exec>
@@ -148,11 +153,11 @@ def install(days: int = DEFAULT_TRIAL_DAYS) -> int:
 
     # 已存在则先删（schtasks /create 对同名任务会失败）
     check_cmd = ["schtasks", "/query", "/tn", TASK_NAME]
-    check = subprocess.run(check_cmd, capture_output=True, text=True, shell=True)
+    check = subprocess.run(check_cmd, capture_output=True, text=True)
     if check.returncode == 0:
         print(f"  [INFO] 检测到已存在任务，先删除...")
         del_cmd = ["schtasks", "/delete", "/tn", TASK_NAME, "/f"]
-        subprocess.run(del_cmd, capture_output=True, text=True, shell=True)
+        subprocess.run(del_cmd, capture_output=True, text=True)
 
     start = datetime.now() + timedelta(minutes=1)  # 1 分钟后开始
     end = datetime.now() + timedelta(days=days)
@@ -169,7 +174,7 @@ def install(days: int = DEFAULT_TRIAL_DAYS) -> int:
     # 注册任务
     cmd = ["schtasks", "/create", "/xml", str(xml_path), "/tn", TASK_NAME]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
             print(f"  [OK] 任务已注册: {TASK_NAME}")
             print()
@@ -194,7 +199,7 @@ def verify() -> int:
     """验证任务存在 + 下次运行时间"""
     cmd = ["schtasks", "/query", "/tn", TASK_NAME, "/v", "/fo", "LIST"]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             print(f"  [ERR] 任务不存在: {TASK_NAME}")
             print(f"         提示: 先跑 install")
@@ -210,7 +215,7 @@ def status() -> int:
     """看最近 5 次运行历史"""
     cmd = ["schtasks", "/query", "/tn", TASK_NAME, "/fo", "LIST"]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             print(f"  [ERR] 任务不存在: {TASK_NAME}")
             return 1
@@ -244,7 +249,7 @@ def uninstall() -> int:
     """注销任务"""
     cmd = ["schtasks", "/delete", "/tn", TASK_NAME, "/f"]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
             print(f"  [OK] 任务已注销: {TASK_NAME}")
             return 0

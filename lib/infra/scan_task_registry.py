@@ -67,10 +67,20 @@ def update_task(preset: str, **fields) -> None:
 
 
 def get_task(preset: str) -> Optional[dict]:
-    """取任务状态**快照**（浅拷贝），避免读到并发写了一半的 dict。"""
+    """取任务状态**快照**（浅拷贝），避免读到并发写了一半的 dict。
+
+    批次 C / P2-7：`/api/scan/status` 免鉴权，不得回显内部异常原文
+    （含路径、依赖名、配置片段）。这里把 error 统一替换成固定文案，
+    详情仍完整写在服务端日志里。
+    """
     with _scan_tasks_lock:
         task = _scan_tasks.get(preset)
-        return dict(task) if task is not None else None
+        if task is None:
+            return None
+        snapshot = dict(task)
+        if snapshot.get("error"):
+            snapshot["error"] = "扫描失败（详情见服务端日志）"
+        return snapshot
 
 
 def clear_tasks() -> None:

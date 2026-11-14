@@ -410,7 +410,8 @@ curl http://localhost:8000/api/scan
 | `docs/adr/0020-batch-a-security-hardening.md` | **批次 A 安全加固 ADR**：5 项根因修 + L8 G4 recapture 取证（5 变 / 63 未动逐字段一致 / blocking 107→106）+ L9 第 3 项有意分歧的依据；含 L3/L10 既有判红的对照实验结论 |
 | `tests/features/test_batch_a_security.py` | 批次 A 的 22 例机器判据：schema 自动生成零遗漏、恶意配置拒绝、export→import 往返、get_config 隔离、错误上报 401/413/400、缓存键隔离、esc 单一实现、innerHTML 静态守卫、routers 禁裸路径基准 |
 | `tests/features/test_batch_b_gates.py` | 批次 B/C 的 25 例机器判据：L3 情绪 pin、L4 `start_date`、L10 清单漂移；B1 L8 视野/语义分类；B2 单后台广播、backup 白名单、限流分桶；B3 perf 并发不丢不重/失败还回、缓存锁分片、ML 单例；B4 在飞注册表身份语义、dashboard 单飞只跑一次、板块复用必须在过滤前取原始副本且保留回退 |
-| `lib/infra/scan_task_registry.py` | 扫描任务状态机 + **在飞任务注册表**（B4）：`start/finish/fail/update/get_task` 与 `get/set/clear_inflight_scan`，全部带锁；`routers/` 禁止直接读写 |
+| `lib/infra/scan_task_registry.py` | 扫描任务状态机 + **在飞任务注册表**（B4）：`start/finish/fail/update/get_task` 与 `get/set/clear_inflight_scan`，全部带锁；`routers/` 禁止直接读写。C 起 `get_task` 把 error 替换成固定文案（免鉴权端点不泄露内部异常） |
+| `tests/features/test_batch_c_hardening.py` | 批次 C 的 13 例机器判据：`.env` 解析（引号/行内注释/白名单）、WS 凭据只走握手头、backup Zip Slip 兄弟目录拦截、5xx 不回声异常、`ENABLE_API_DOCS=0` 关文档、ab-test 上界、requirements 上界与 ML 依赖、scheduler 无 `shell=True`+XML 转义、bat 用 `%~dp0`、TDX 下载超时与 ZIP 双闸、postMessage 指定 origin+白名单 |
 
 ---
 

@@ -8,8 +8,19 @@ class WebSocketService {
   connect() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
+    // 批次 C / P1-2：凭据走子协议（不在 URL 里）。此前这一套实现完全不带 token，
+    // 后端会以 4001 拒绝握手 —— 属于「两套 WS 实现」的遗留，这里先补齐可用性。
+    const apiKey = sessionStorage.getItem('api_key') || 'dev';
+    let subprotocols;
+    try {
+      const b64 = btoa(apiKey)
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      subprotocols = [`bearer.${b64}`];
+    } catch (e) {
+      subprotocols = undefined;
+    }
 
-    this.ws = new WebSocket(wsUrl);
+    this.ws = subprotocols ? new WebSocket(wsUrl, subprotocols) : new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
       console.log('[WS] Connected');

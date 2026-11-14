@@ -4,6 +4,10 @@
 以及 17 个域 router 的 include。所有端点逻辑已迁至 routers/ 各域模块。
 """
 
+import base64
+import os
+import uuid
+
 from routers.common import *  # noqa: F401,F403
 from routers import (
     scan,
@@ -25,7 +29,17 @@ from routers import (
     system,
 )
 
-app = FastAPI(title="A股量化交易系统", version="3.0.0")
+# 批次 C / P2-8：文档端点按环境开关，默认保持开启以维持既有 72 条路由契约。
+# 生产部署应设 `ENABLE_API_DOCS=0`：否则未认证 `GET /openapi.json` 就是全部端点的攻击地图。
+_DOCS_ON = os.environ.get("ENABLE_API_DOCS", "1").strip().lower() not in ("0", "false", "no")
+
+app = FastAPI(
+    title="A股量化交易系统",
+    version="3.0.0",
+    docs_url="/docs" if _DOCS_ON else None,
+    redoc_url="/redoc" if _DOCS_ON else None,
+    openapi_url="/openapi.json" if _DOCS_ON else None,
+)
 
 @app.exception_handler(HTTPException)
 async def _http_exception_handler(request: Request, exc: HTTPException):
@@ -34,14 +48,20 @@ async def _http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def _global_exception_handler(request: Request, exc: Exception):
-    """P1-3 修复：处理所有未捕获的异常（漏网之鱼），避免空白 500"""
+    """P1-3 修复：处理所有未捕获的异常（漏网之鱼），避免空白 500。
+
+    批次 C / P2-7：不再把 `str(exc)` 回显给客户端（内部路径/依赖/配置片段会泄露）。
+    改为固定文案 + trace_id，详情只进服务端日志，便于按 id 关联排查。
+    """
+    trace_id = uuid.uuid4().hex[:12]
     logger.error(
-        f"API 未处理异常: {request.method} {request.url.path} -> {type(exc).__name__}: {exc}",
+        f"API 未处理异常 [{trace_id}]: {request.method} {request.url.path} -> "
+        f"{type(exc).__name__}: {exc}",
         exc_info=True,
     )
     return JSONResponse(
         status_code=500,
-        content={"detail": f"内部服务器错误: {str(exc)[:200]}"},
+        content={"detail": "内部服务器错误", "trace_id": trace_id},
     )
 
 
@@ -86,14 +106,40 @@ async def index():
     return {"message": "A股量化交易系统 API v3", "docs": "/docs"}
 
 
+def _ws_credentials(websocket) -> tuple[str, str | None]:
+    """批次 C / P1-2：只从握手头取 WS 凭据，**不再读 URL query**。
+
+    1. `Authorization: Bearer <key>` —— 原生客户端；
+    2. `Sec-WebSocket-Protocol: bearer.<base64url(key)>` —— 浏览器 WebSocket API
+       不能设自定义头，子协议是唯一可携带凭证的头。base64url 让任意 key 都落在
+       子协议合法字符集内（RFC 6455 token），且 key 不会出现在 URL / access log /
+       Referer 里。
+
+    返回 (token, 需要回显给客户端的子协议或 None)。
+    """
+    auth = websocket.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[len("Bearer "):].strip(), None
+    proto = websocket.headers.get("sec-websocket-protocol", "")
+    for part in (p.strip() for p in proto.split(",")):
+        if part.startswith("bearer."):
+            raw = part[len("bearer."):]
+            try:
+                padded = raw + "=" * (-len(raw) % 4)
+                return base64.urlsafe_b64decode(padded.encode()).decode(), part
+            except Exception:
+                return "", None
+    return "", None
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    # S3: WebSocket 认证
-    token = websocket.query_params.get("token", "") or websocket.headers.get("authorization", "").replace("Bearer ", "")
+    # S3: WebSocket 认证（P1-2 起仅走握手头）
+    token, subproto = _ws_credentials(websocket)
     if not verify_ws_token(token):
         await websocket.close(code=4001)
         return
-    if not await manager.connect(websocket):
+    if not await manager.connect(websocket, subprotocol=subproto):
         return  # 连接被拒绝
     try:
         # 连接建立时立即推送一次全量数据。

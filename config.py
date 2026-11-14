@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import os
+import re
 import typing
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,12 +14,38 @@ from typing import Dict
 
 
 # 自动加载 .env 文件
+# 批次 C / P2-14：手写解析器加三条护栏（旧实现三类误读都会静默改行为）：
+#   1. key 白名单 `^[A-Z_][A-Z0-9_]*$`：空 key 不再抛 ValueError 让 `import config`
+#      整体崩掉，也挡住带空格/特殊字符的键；
+#   2. 值处理：成对引号去掉引号；未加引号时截断行内注释（`KEY=xxx # 备注`
+#      以前会把 `# 备注` 一起当值，鉴权必然失败）；
+#   3. `export ` 前缀与空行/纯注释行跳过。
+_ENV_KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+
+
+def _parse_env_value(raw: str) -> str:
+    v = raw.strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+        return v[1:-1]
+    idx = v.find(" #")
+    if idx >= 0:
+        v = v[:idx]
+    return v.rstrip()
+
+
 _env_file = Path(__file__).parent / ".env"
 if _env_file.exists():
-    for _line in _env_file.read_text(encoding="utf-8").strip().split("\n"):
-        if "=" in _line and not _line.startswith("#"):
-            _k, _v = _line.split("=", 1)
-            os.environ.setdefault(_k.strip(), _v.strip())
+    for _line in _env_file.read_text(encoding="utf-8").splitlines():
+        _line = _line.strip()
+        if not _line or _line.startswith("#") or "=" not in _line:
+            continue
+        _k, _v = _line.split("=", 1)
+        _k = _k.strip()
+        if _k.startswith("export "):
+            _k = _k[len("export "):].strip()
+        if not _ENV_KEY_RE.match(_k):
+            continue
+        os.environ.setdefault(_k, _parse_env_value(_v))
 
 
 # 飞书应用配置（优先读环境变量，未配置则留空）
@@ -248,8 +275,13 @@ class MLConfig:
 @dataclass
 class LLMConfig:
     """LLM API 配置"""
-    # 自定义 OpenAI 兼容端点（通过环境变量 OLLM_API_BASE_URL 设置）
-    api_base_url: str = os.environ.get("OLLAMA_API_BASE_URL", os.environ.get("OLLAMA_BASE_URL", ""))
+    # 自定义 OpenAI 兼容端点
+    # 批次 C / P2-14：原注释写 `OLLM_API_BASE_URL`、代码读 `OLLAMA_API_BASE_URL`，
+    # 按文档配置不生效且 key 仍发往公网默认端点。统一主名为 `LLM_API_BASE_URL`，
+    # 保留两条旧名兼容（优先级从高到低）。
+    api_base_url: str = (os.environ.get("LLM_API_BASE_URL")
+                         or os.environ.get("OLLAMA_API_BASE_URL")
+                         or os.environ.get("OLLAMA_BASE_URL", ""))
     # 各 provider API Key（优先读环境变量）
     deepseek_api_key: str = os.environ.get("DEEPSEEK_API_KEY", "")
     kimi_api_key: str = os.environ.get("KIMI_API_KEY", "")

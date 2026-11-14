@@ -43,11 +43,13 @@ python run.py --evaluate                # 因子评价
 ### API 模式
 
 ```bash
-# 设置 API 密钥（必需）
-export API_SECRET_KEY="your-secret-key"
+# 设置 API 密钥（必需）—— 请用随机值，不要照抄示例
+export API_SECRET_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(32))')"
 
-# 启动服务
-uvicorn api:app --host 0.0.0.0 --port 8000
+# 启动服务：默认只监听本机回环地址。
+# 若需对外提供服务，请在前面加 Nginx/Caddy 做 TLS 与访问控制，
+# 不要直接把 --host 改成 0.0.0.0（那会把 68 个端点连同配置写入/备份恢复暴露到全网卡）。
+uvicorn api:app --host 127.0.0.1 --port 8000
 
 # 调用接口
 curl -X POST http://localhost:8000/scan \

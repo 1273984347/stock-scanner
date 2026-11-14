@@ -134,6 +134,7 @@ infra  ←  data  ←  scoring  ←  strategy
 | T6 | **`_scan_tasks` / `_perf_metrics` 只允许经 `lib/infra/` 的带锁 API 读写**；`routers/` 中禁止直接下标或 `.get/.append/.clear/.update` | 散落读写会造成半更新状态与指标丢失；AST 守卫见 `tests/test_phase6_batch2.py`（ADR-0007 D4） |
 | T6-a（B3） | `perf_metrics` 的 `_perf_metrics_lock` **只保护缓冲 list**；读旧文件 / json / 写盘移到独立的 `_flush_io_lock` 下，且 `record_metric` 必须在**锁外**触发 flush。`api_core` 缓存锁改**按 key 分片**（`_lock_for`），同一 key 仍串行 | P2-4/P2-5：单把全局锁把 68 端点与多 WS 客户端串行化，中间件还在事件循环里同步读写全量 `perf_baseline.json`。移锁后「不丢不重」由「锁内立即摘走快照 + 失败还回头部」保证，见 `tests/features/test_batch_b_gates.py` |
 | T6-b（B4） | dashboard 自动重扫描的在飞任务只允许经 `lib/infra/scan_task_registry.py` 的 `get/set/clear_inflight_scan` 带锁 API 读写；同一 preset 并发只起一个任务，超时**不 cancel** `to_thread` 线程，任务后台跑完自己写缓存 | `asyncio.wait_for(asyncio.to_thread(...))` 的线程不可取消，超时后并发请求各起一个重扫描并互相 `_cache_set` 覆盖；完成回调按 task 身份清除，防旧回调误清新任务（P2-6） |
+| T7-a（C） | **WS 凭据只走握手头**：`Authorization: Bearer` 或 `Sec-WebSocket-Protocol: bearer.<base64url(key)>`，禁止 URL query；**API 文档默认按环境开关**（生产设 `ENABLE_API_DOCS=0`）；**5xx 只回 `{detail, trace_id}`**，不回 `str(exc)`；`get_task` 的 error 统一替换成固定文案 | P1-2/P2-7/P2-8：URL 凭据会被反代 access log、浏览器历史、Referer 记录；`/openapi.json` 是未认证的 68 端点攻击地图；异常原文泄露内部路径与依赖名。判据见 `tests/features/test_batch_c_hardening.py` |
 
 > **阶段边界**：**Phase 6 第 1 批 ✅**（第 8 把尺子 + 基线，零业务代码改动，ADR-0006）；
 > **第 2 批 ✅**（`FEATURE_ASYNC_OFFLOAD` 默认 off + `lib/infra/async_offload.py` 唯一入口、

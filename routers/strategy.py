@@ -138,10 +138,25 @@ def _compute_ab_test_run(body):
 
 @router.post("/api/ab-test/run", dependencies=[Security(verify_api_key)])
 async def ab_test_run(request: Request):
-    """运行 A/B 测试"""
+    """运行 A/B 测试（批次 C / P2-9：补参数上界，与 /api/backtest 对齐）"""
     try:
         body = await request.json()
+        # 校验放在端点（不进 _compute_ab_test_run）：L9 对迁移后的计算体做逐字等价，
+        # 端点侧新增校验不影响该判据。
+        symbols = body.get("symbols")
+        if not isinstance(symbols, list) or not (1 <= len(symbols) <= 20):
+            raise HTTPException(status_code=400, detail="symbols 必须为 1-20 个股票代码")
+        if any(not isinstance(s, str) or not re.fullmatch(r"\d{6}", s) for s in symbols):
+            raise HTTPException(status_code=400, detail="symbols 含非法股票代码")
+        days = body.get("days", 250)
+        if not isinstance(days, int) or isinstance(days, bool) or not (60 <= days <= 1000):
+            raise HTTPException(status_code=400, detail="days 必须在 [60, 1000]")
+        num_runs = body.get("num_runs", 10)
+        if not isinstance(num_runs, int) or isinstance(num_runs, bool) or not (1 <= num_runs <= 20):
+            raise HTTPException(status_code=400, detail="num_runs 必须在 [1, 20]")
         return await run_blocking("ab_test", _compute_ab_test_run, body)
+    except HTTPException:
+        raise  # 参数校验的 400 不能被下面的兜底吞成 500
     except Exception as e:
         logger.error(f"A/B test error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

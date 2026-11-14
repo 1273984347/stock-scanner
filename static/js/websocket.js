@@ -5,12 +5,27 @@ import { sendBrowserNotification } from './notifications.js';
  * WebSocketManager — WebSocket 连接管理 + 心跳 + 断线重连
  * 职责：连接/重连/心跳/消息分发到 StateManager
  */
+/**
+ * 批次 C / P1-2：把密钥编成 base64url 放进 WS 子协议。
+ * 浏览器 WebSocket 不能设自定义头，子协议是唯一可携带凭证的头；
+ * 这样密钥不会出现在 URL、反代 access log 或 Referer 里。
+ */
+function _wsSubprotocol(apiKey) {
+  try {
+    const b64 = btoa(apiKey)
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return [`bearer.${b64}`];
+  } catch (e) {
+    console.warn('[WS] 凭据编码失败，改用无凭据连接:', e);
+    return undefined;
+  }
+}
+
 class WebSocketManager {
   constructor(url = `ws://${window.location.host}/ws`) {
     const apiKey = sessionStorage.getItem('api_key') || 'dev';
-    this.url = url
-      ? `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(apiKey)}`
-      : `ws://${window.location.host}/ws?token=${encodeURIComponent(apiKey)}`;
+    this.url = url || `ws://${window.location.host}/ws`;
+    this._subprotocols = _wsSubprotocol(apiKey);
     this._ws = null;
     this._reconnectDelay = 1000;  // 初始重连延迟 1s
     this._maxDelay = 30000;        // 最大重连延迟 30s
@@ -38,7 +53,9 @@ class WebSocketManager {
     this._updateStatus('connecting');
 
     try {
-      this._ws = new WebSocket(this.url);
+      this._ws = this._subprotocols
+        ? new WebSocket(this.url, this._subprotocols)
+        : new WebSocket(this.url);
     } catch (e) {
       console.error('[WS] 创建失败:', e);
       this._scheduleReconnect();

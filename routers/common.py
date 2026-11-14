@@ -406,7 +406,7 @@ class ConnectionManager:
         self.active_connections: list[WebSocket] = []
         self._connections_lock = threading.Lock()
 
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, websocket: WebSocket, subprotocol: str | None = None):
         with self._connections_lock:
             if len(self.active_connections) >= MAX_WS_CONNECTIONS:
                 over = True
@@ -419,7 +419,8 @@ class ConnectionManager:
             logger.warning(f"WebSocket 连接数超限 ({MAX_WS_CONNECTIONS})，拒绝连接")
             return False
         try:
-            await websocket.accept()
+            # 批次 C / P1-2：回显客户端提供的子协议，浏览器才接受握手。
+            await websocket.accept(subprotocol=subprotocol)
         except Exception:
             # accept 失败时不能把占位留在连接表里，否则会泄漏名额
             self.disconnect(websocket)

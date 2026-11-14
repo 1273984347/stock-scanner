@@ -5,6 +5,10 @@ from .common import *  # noqa: F401,F403
 
 router = APIRouter()
 
+# 批次 C / P1-7：恢复 ZIP 的硬上限（旧实现完全没有任何上限）
+MAX_RESTORE_MEMBERS = 200_000
+MAX_RESTORE_BYTES = 8 * 1024 * 1024 * 1024  # 8 GiB
+
 def _compute_backup_create() -> dict:
     """同步压缩体（B2-2）：由端点经 `asyncio.to_thread` 放进线程池。
 
@@ -88,12 +92,47 @@ async def backup_list():
         return {"backups": []}
 
 
+def _compute_backup_restore(backup_path: Path, extract_dir: Path, backup_file: str) -> dict:
+    """同步恢复体（批次 C / P1-7），经 `asyncio.to_thread` 放进线程池。
+
+    旧实现用字符串前缀比较 `str(member_path).startswith(str(root))`，
+    `../restore_temp_evil/x` 这类兄弟目录会误放行（同文件 delete 接口早已用
+    `is_relative_to`）。现在：逐成员 resolve 后二次校验 + 成员数/解压总字节上限，
+    并且不再用 `extractall`（它会自行建目录、绕过逐成员校验）。
+    逐成员写入必然多出 open/mkdir 等阻塞调用，所以整段搬进线程池 ——
+    L8 记 blocking 降、offloaded 升，方向与判据一致，不需要放宽门禁。
+    """
+    import shutil
+    import zipfile
+
+    root = extract_dir.resolve()
+    with zipfile.ZipFile(backup_path, 'r') as zf:
+        infos = zf.infolist()
+        if len(infos) > MAX_RESTORE_MEMBERS:
+            raise HTTPException(status_code=400, detail="Backup has too many entries")
+        declared = sum(i.file_size for i in infos)
+        if declared > MAX_RESTORE_BYTES:
+            raise HTTPException(status_code=400, detail="Backup too large to restore")
+
+        for info in infos:
+            target = (extract_dir / info.filename).resolve()
+            if not target.is_relative_to(root):
+                raise HTTPException(status_code=400,
+                                    detail=f"Invalid path in zip: {info.filename}")
+            if info.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(info) as src, open(target, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+
+    return {"status": "restored", "file": backup_file}
+
+
 @router.post("/api/backup/restore", dependencies=[Security(verify_api_key)])
 async def backup_restore(request: Request):
     """恢复数据备份"""
     try:
-        import zipfile
-
         body = await request.json()
         backup_file = body.get("file")
 
@@ -108,20 +147,10 @@ async def backup_restore(request: Request):
         if not backup_path.exists():
             raise HTTPException(status_code=404, detail="Backup file not found")
 
-        # 解压备份（带路径验证）
         extract_dir = Path("restore_temp")
         extract_dir.mkdir(exist_ok=True)
-
-        with zipfile.ZipFile(backup_path, 'r') as zf:
-            # 验证每个成员的路径（防止 Zip slip）
-            for member in zf.namelist():
-                member_path = (extract_dir / member).resolve()
-                if not str(member_path).startswith(str(extract_dir.resolve())):
-                    raise HTTPException(status_code=400, detail=f"Invalid path in zip: {member}")
-
-            zf.extractall(extract_dir)
-
-        return {"status": "restored", "file": backup_file}
+        return await asyncio.to_thread(
+            _compute_backup_restore, backup_path, extract_dir, backup_file)
     except HTTPException:
         raise
     except Exception as e:

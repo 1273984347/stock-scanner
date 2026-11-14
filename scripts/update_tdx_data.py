@@ -25,7 +25,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from urllib.request import urlretrieve, urlopen, Request
+from urllib.request import urlopen, Request
 import zipfile
 import json
 
@@ -103,6 +103,11 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger(__name__)
+
+# 批次 C / P1-12：下载与解压的硬上限（旧实现完全没有）。
+DOWNLOAD_TIMEOUT_S = 30
+MAX_ZIP_MEMBERS = 200_000
+MAX_EXTRACT_BYTES = 8 * 1024 * 1024 * 1024  # 8 GiB，远高于正常包体量
 
 # TDX 官方下载链接
 TDX_BASE_URL = "https://www.tdx.com.cn/products/data/data/vipdoc"
@@ -296,7 +301,14 @@ def download_with_progress(url: str, dest: Path):
         dest.unlink()
 
     try:
-        urlretrieve(url, str(dest), reporthook)
+        # 批次 C / P1-12：urlretrieve 没有超时参数，官网/链路挂起会让每日定时任务
+        # 无限等待且不告警（同文件 :229 的 HEAD 探测已显式 timeout=15）。
+        with urlopen(url, timeout=DOWNLOAD_TIMEOUT_S) as resp, open(dest, "wb") as fh:
+            while True:
+                chunk = resp.read(1024 * 1024)
+                if not chunk:
+                    break
+                fh.write(chunk)
         print()
         return True
     except Exception as e:
@@ -319,23 +331,36 @@ def extract_zip(zip_path: Path, pkg: dict) -> int:
     file_pattern = pkg.get("file_pattern", "*.day")
 
     count = 0
+    root = target_dir.resolve()
     with zipfile.ZipFile(zip_path, "r") as zf:
-        for name in zf.namelist():
-            if file_format == "csv" and name.endswith(".csv"):
-                target_path = target_dir / name
-                with zf.open(name) as src, open(target_path, "wb") as dst:
-                    shutil.copyfileobj(src, dst)
-                count += 1
-            elif file_pattern == "*.dat" and name.endswith(".dat"):
-                target_path = target_dir / name
-                with zf.open(name) as src, open(target_path, "wb") as dst:
-                    shutil.copyfileobj(src, dst)
-                count += 1
-            elif name.endswith(".day"):
-                target_path = target_dir / name
-                with zf.open(name) as src, open(target_path, "wb") as dst:
-                    shutil.copyfileobj(src, dst)
-                count += 1
+        infos = zf.infolist()
+        # 批次 C / P1-12：ZIP 炸弹与路径穿越双闸。
+        # 旧实现把 `target_dir / name` 直接写盘，成员名含 `../` 或绝对路径时
+        # 可写出 TDX_DATA_PATH 之外（下载源无签名/哈希校验）。
+        if len(infos) > MAX_ZIP_MEMBERS:
+            logger.error("ZIP 成员数 %d 超上限 %d，拒绝解压", len(infos), MAX_ZIP_MEMBERS)
+            return 0
+        declared = sum(i.file_size for i in infos)
+        if declared > MAX_EXTRACT_BYTES:
+            logger.error("ZIP 解压后 %d 字节超上限 %d，拒绝解压",
+                         declared, MAX_EXTRACT_BYTES)
+            return 0
+        for info in infos:
+            name = info.filename
+            if info.is_dir():
+                continue
+            if not (file_format == "csv" and name.endswith(".csv")
+                    or file_pattern == "*.dat" and name.endswith(".dat")
+                    or name.endswith(".day")):
+                continue
+            target_path = (target_dir / name).resolve()
+            if not target_path.is_relative_to(root):
+                logger.warning("跳过越界 ZIP 成员: %s", name)
+                continue
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(info) as src, open(target_path, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+            count += 1
 
     return count
 

@@ -5,6 +5,8 @@
 
 const CHANNEL_NAME = 'stock-scanner-sync';
 const WINDOW_PREFIX = 'stock-detail-';
+// 批次 C / P2-11：跨窗口消息类型白名单（同源 + 白名单双闸）
+const ALLOWED_MESSAGE_TYPES = new Set(['init', 'update', 'close', 'focus', 'sync']);
 
 class MultiWindowManager {
   constructor() {
@@ -32,7 +34,13 @@ class MultiWindowManager {
   }
 
   _onMessage(event) {
-    const { type, data } = event.data;
+    // 批次 C / P2-11：只接受同源消息，且 type 必须在白名单内。
+    // 旧实现直接把 event.data 转发给所有监听者 ⇒ 子窗口被导航到外部 origin
+    // 时可向父窗口注入任意消息。
+    if (event.origin !== window.location.origin) return;
+    const { type, data } = event.data || {};
+    if (typeof type !== 'string' || !ALLOWED_MESSAGE_TYPES.has(type)) return;
+    if (data && data.code != null && !/^\d{6}$/.test(String(data.code))) return;
     this._listeners.forEach(cb => {
       try { cb(type, data); } catch (e) { console.error('[MultiWindow] Listener error:', e); }
     });
@@ -102,7 +110,7 @@ class MultiWindowManager {
       childWin.postMessage({
         type: 'init',
         data: { code, name, ...data }
-      }, '*');
+      }, window.location.origin);  // P2-11：不用 '*'
     } catch (e) {
       console.warn('[MultiWindow] Cannot init child window:', e);
     }
@@ -126,7 +134,7 @@ class MultiWindowManager {
     const win = this._windows.get(code);
     if (win && !win.closed) {
       try {
-        win.postMessage({ type: 'update', code, data }, '*');
+        win.postMessage({ type: 'update', code, data }, window.location.origin);  // P2-11
       } catch (e) {
         // 忽略跨域错误
       }
