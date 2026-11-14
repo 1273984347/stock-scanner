@@ -310,7 +310,7 @@ python scripts/concurrency_probe.py --check
 
 ## 六、遇到坑怎么办
 
-1. 先查 `docs/refactor/pitfalls.md`（61 条，按症状查）
+1. 先查 `docs/refactor/pitfalls.md`（按症状查；条数以该文件头部「规模」行为唯一真源，本文件不硬编码）
 2. 再查 `docs/refactor/README.md`（尺子口径与自证记录）
 3. 新坑 **追加** 到 `pitfalls.md`（现象 → 根因 → 修复 → 推广），**不要改写已有条目** ——
    踩坑记录的价值在于保留了当时的错误判据

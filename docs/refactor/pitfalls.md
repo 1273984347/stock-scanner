@@ -2,7 +2,10 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**81 条**（P-01～P-81），分八类。
+> **规模**：**84 个编号（P-01～P-84）**，分八类；其中 80 条有独立正文条目，
+> P-62～P-65 仅见于下方「一句话索引」（既有状态，append-only 不补写）。
+> **本行是当前编号数的唯一真源**：其它文档一律引用本行，不硬编码数字；
+> 文末「文档状态」里的历史「共 N 条」是当时的取证记录，按 append-only 保留。
 > **姊妹文档**：执行过程与逐批验收见 `docs/plans/2026-11-07-refactor-plan.md` 第七节；
 > 基线读数见 `docs/refactor/baseline.md`；尺子口径见 `docs/refactor/README.md`。
 
@@ -1631,6 +1634,94 @@ ADR-0019 的机器判据 4 例全绿。conftest 的 sleep patch 本身保留（�
 线程/事件原语（Event.wait、queue.get(timeout)）或把桩的阻塞点做成可注入参数。
 写「模拟挂起/慢响应」的测试前，先确认阻塞原语在测试环境里真的会阻塞。
 
+
+### P-82 · 财报「点内过滤」按会计报告期 `end_date` 裁 `as_of`：回测提前数月吃到年报
+
+**现象**（2026-11-14，审查未合并分支 `feature/cycle-top-warning`）：分支
+`lib/cycle_heat.py:8` 与 `backtest/engine.py` 顶部预警注释均声明「回测点内、无未来函数」，
+提交 `f340da0` 据此登记「A/B 改善 58.5%」。但 `lib/data_tushare.py` 三处
+`fields="ts_code,end_date,..."` 不含 `ann_date`，`lib/data_industry.py:62`
+`{"date": q["end_date"].astype(str)}` 把报告期直接当时间轴，`:98-108` 的
+`_AK_BS_MAP` / `_SINA_BS_MAP` 等映射表也无披露日列，`lib/cycle_heat.py:80` 按
+`s[s["date"] <= str(as_of)]` 过滤。
+
+**根因**：`end_date` 是**会计报告期**，不是**信息可获知日**。A 股年报
+`end_date=20231231` 的法定披露可到次年 4 月，`as_of=20240101` 的回测就能读到它。
+「无未来函数」这句声明实际只约束了价格链（`backtest/engine.py` 的
+`hist_x = dfx[dfx["trade_date"] < date]`），**没有约束财报链**——两条链口径不一致，
+声明却整句覆盖。价格链的点内取证被当成整个策略的点内证明。
+
+**修复**：三源统一补披露日（Tushare 取 `ann_date`、东财取 `NOTICE_DATE`；
+确无该列的源用显式 `REPORT_LAG_DAYS` 常量并写明依据），过滤改
+`ann_date <= as_of`，`end_date` 仅用于排序；缓存 key 带数据版本。
+新增 `test_no_lookahead.py`：构造 `end_date=20231231 / ann_date=20240425` 的财报表，
+断言 `get_block_cycle_heat("白酒", as_of="20240101")` 不含该期；
+**A/B 收益数字必须在口径修完后重跑，修前登记的 58.5% 作废**。
+
+**推广**：**「无未来函数」必须逐条数据源列出 `as_of` 究竟绑在哪个日期字段**，
+不能由「价格链点内」外推到「财报链点内」。P-34/35/36 是签名层前视
+（参数收了却仍用 `now()`），本条是**语义层前视**（参数用对了、字段选错了），
+后者更难被静态检查发现。判据：任何新增外部数据序列接入回测，先写一条
+「报告期 vs 披露日」反例单测，再讨论收益数字。
+
+
+### P-83 · 拆包后合并长命分支：Git 跟随 rename 救得下「改动文件」，救不了「新增文件」
+
+**现象**（2026-11-14，`git merge-tree --write-tree master feature/cycle-top-warning`）：
+merge-base `a7c2265`（2026-07-04），master 已领先 77 提交完成 RF-01 八子包拆分。
+结果 tree 的 `lib/` 根新增 `cycle_heat.py` / `data_industry.py` / `top_warning.py`，
+三者内部仍是 `from lib.data_layer import ...`（`top_warning.py:98`）、
+`from lib.market_utils import ...`（`:46`）、`from lib import data_tushare`
+（`data_industry.py:228`）。master 上这些扁平路径**全部 ABSENT**，实际在
+`lib/data/`、`lib/risk/`、`lib/scoring/`，合并后必然 `ModuleNotFoundError`。
+同时 merge-tree 只报 4 处冲突，看起来「冲突很少、容易合」。
+
+**根因**：分支在拆包**之前**开出，新增模块按当时的目录约定写。Git 的 rename
+detection 只把**双方都存在的同名内容**映射到新路径（本次
+`lib/position_manager.py` → `lib/risk/position_manager.py` 等被 Auto-merging 成功），
+对**分支独有的新文件**没有「按新约定归位」的任何信息，只能原样落在旧位置。
+既有机器判据 L7（端点归属）/ L8（阻塞 IO）作用域是 `routers/`，
+**不覆盖 `lib/` 新增文件落点**——RULES.md D1 只是文档规约，没有 AST 守卫。
+
+**修复**：长命功能分支不直接 merge，在 master 上开新分支按文件精选移植；
+新增模块按 RULES.md §1.3 归属表落子包，import 改绝对新路径（I1/I3），
+测试 patch 目标按 I4/G2 同步改；把「`lib/` 根新增 `.py` 即判红」写成机器判据，
+而不是再往 D1 后面加一句提醒。
+
+**推广**：**目录重构后，「旧分支上的新增文件」比「旧分支上的改动文件」更危险**——
+改动文件会被 rename detection 救下，新增文件不会。判据：合并前用
+`git merge-tree --write-tree` 取结果 tree，对**新增路径**单独跑一次目录约定校验，
+不要只看冲突列表；冲突数少 ≠ 结构兼容。
+
+
+### P-84 · 刚收口挂起熔断，新数据源又从 registry 之外把扫描卡死（P-68 同构复发）
+
+**现象**（2026-11-14）：HEAD `65fdf7b`（ADR-0019）刚为 6 个网络源加
+`_call_source_with_timeout`（daemon 线程 + `join SOURCE_CALL_TIMEOUT_S=30s`），
+并给 `CircuitBreaker` 加 `record_failure()` 把挂起计入失败，收口 BaoStock
+socket 无超时挂起卡死扫描 10+ 分钟。同日审查发现待合并分支新增的三条取数链路
+全部在 registry 之外：`lib/data_tushare.py::_fin_request`（Tushare SDK 调用无超时）、
+`lib/data_industry.py:149`（东财 datacenter 有 `timeout=20` 但无 `raise_for_status`、
+无重试退避）、`:171-190`（akshare 新浪 / 东财逐期无超时封装）。
+`_FIN_ACCESS_DENIED` 是无 TTL、无半开、无复位的全局 bool，靠
+`("没有接口", "访问权限", "doc_id=108")` **错误文案字符串**判权限。
+
+**根因**：ADR-0019 修的是**当时已登记的 6 个源**，判据是「这 6 个源接了超时」；
+没有任何机器判据要求「**新增网络源必须登记**」。于是同一个挂起卡死缺口从新链路
+原样复现。这是 P-68「只给调用处补锁，下次又从别处漏进来」在数据源域的同构复发，
+也是「修症状不问机制」的代价。
+
+**修复**：把「网络 IO 调用点必须经 registry / `run_blocking`」做成 AST 硬守卫
+（对照 L8 对 `routers/` 的 `other` 冻结），新源未登记即判红；
+`_FIN_ACCESS_DENIED` 换成带半开探测的 `CircuitBreaker`，权限判定用 SDK 错误类型
+而非文案；挂起测试桩按 P-81 用 `threading.Event().wait()`，不用 `time.sleep`。
+验证：仿 `tests/test_source_call_timeout.py` 挂起 `pro.balancesheet`，
+断言 30s 内返回、5 次后 fail-fast，且该文件现有 4 例保持全绿。
+
+**推广**：**修完一类故障后，先问「还有哪些入口能产生同类故障」，并把答案变成机器判据**，
+而不是只修触发事故的那一个入口。判据：新增 `requests.get` / SDK 取数 / 文件 IO
+调用点时，门禁必须能回答「它归哪个统一入口管」；答不上来就该判红。
+
 ## 附 · 一句话索引（按症状查）
 
 | 症状 | 去查 |
@@ -1674,6 +1765,9 @@ ADR-0019 的机器判据 4 例全绿。conftest 的 sleep patch 本身保留（�
 | CLI/推送链运行时崩 `'dict' has no 'drop'`，测试却全绿（返回值形状漂移） | P-79 |
 | 测试套件把 mock 假数据写进生产缓存，真实运行吃到假价格 | P-80 |
 | sleep 型测试桩在 pytest 下瞬间返回假成功（conftest 全局 patch 了 time.sleep） | P-81 |
+| 声明「无未来函数」却按 `end_date` 过滤财报 → 回测提前数月吃到年报 | P-82 / P-34 / P-36 |
+| 拆包后合并旧分支，新模块落回 `lib/` 根且旧 import 全失效（冲突数却很少） | P-83 |
+| 刚修完挂起熔断，新数据源又从 registry 之外卡死扫描 | P-84 / P-68 |
 | A/B 对照里 OpenAPI / schema 比较恒等 | P-54 / ADR-0009 D3 |
 | Actions 额度消耗太快 | P-40 |
 | commit 失败却把旧代码推上去了 | P-43 |
@@ -1779,3 +1873,11 @@ Tier A 候选 **35 → 30**；**1312 passed / 12 skipped / 0 failed**；L8 188 b
 G4 两次独立 capture 逐字节一致 ⇒ **基线过期非代码回归**，缺口是「删被基线冻结的配置未同步重建 L5」。
 新增 P-78；定因报告 `docs/audit/l5-scoring-baseline-drift-2026-11-13.md`、
 ADR-0015 Consequences「后续发现」段。重建基线按 G4 须用户单独拍板。
+2026-11-14 **合并决策审查（`feature/cycle-top-warning` → master，结论 NO-GO）**：
+取证为 `git merge-tree --write-tree`（只读，77/30 提交、4 处冲突）+ 源码逐行核对，
+全程未改工作树、未实跑测试。追加 P-82（财报按 `end_date` 裁 `as_of` 的语义层前视，
+A/B 收益结论作废待重跑）、P-83（拆包后旧分支新增文件不被 rename detection 归位，
+合并即 ImportError）、P-84（ADR-0019 刚收口的挂起缺口从新数据源原样复发，
+缺「新增源必须登记」的机器判据），共 **84 条**。
+同批修计数漂移的**根因而非补数字**：坑表头部「规模」行定为条数唯一真源，
+`CLAUDE.md` / `RULES.md` 里硬编码的 80 / 61 改为引用该行，今后追加条目不再需要同步三处。
