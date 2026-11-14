@@ -28,25 +28,26 @@ export function initErrorTracker() {
 }
 
 function _reportError(errorData) {
-    // 不要阻塞主线程，用 sendBeacon 或 fire-and-forget fetch
+    // 批次 A / P1-1：sendBeacon 带不了自定义 header，后端已要求 X-API-Key。
+    // 统一改用 fetch(keepalive) 以保证页面卸载时仍能上报，且与其余 API 请求
+    // 走同一套认证边界。只落 pathname，不把完整 URL（可能含查询串凭据）写盘。
     try {
       const payload = {
         ...errorData,
-        url: window.location.href,
+        path: window.location.pathname,
         userAgent: navigator.userAgent,
         timestamp: new Date().toISOString(),
       };
 
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon('/api/errors', JSON.stringify(payload));
-      } else {
-        fetch('/api/errors', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          keepalive: true,
-        }).catch(() => {}); // 忽略上报失败
-      }
+      let apiKey = '';
+      try { apiKey = sessionStorage.getItem('api_key') || ''; } catch (e) { /* 隐私模式 */ }
+
+      fetch('/api/errors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      }).catch(() => {}); // 忽略上报失败
     } catch (e) {
       // 不要让错误追踪本身导致问题
     }

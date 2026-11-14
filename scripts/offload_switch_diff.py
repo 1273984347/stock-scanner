@@ -163,12 +163,16 @@ MIGRATIONS = (
 # RF-02 (ADR-0015 D1/D2) **有意分歧**：以下两个迁移的 `_compute_*` 体在 offload 之后被做了
 # bug 修复，不再与 offload 前的端点体逐字等价（这是修复本身，不是「顺手优化」）。
 # 门禁对它们降级为「接线完整性」校验（`_compute_*` 函数仍存在、offload 接线未断），
-# 严格的逐字等价比对被豁免；行为正确性由 tests/features/test_rf02_bad_endpoints.py 覆盖。
+# 严格的逐字等价比对被豁免；行为正确性由各自的行为契约测试覆盖
+# （RF-02: tests/features/test_rf02_bad_endpoints.py；批次 A: tests/features/test_batch_a_security.py）。
 # 其余迁移继续严格冻结（任何未在此清单中的体改动仍会立刻判红）。
-# 新增有意分歧必须同步更新本清单 + ADR-0015 + tests/features/test_rf02_bad_endpoints.py。
+# 新增有意分歧必须同步更新本清单 + 对应 ADR + 行为契约测试，不能只把端点摘掉。
+# 批次 A / ADR-0020：迁移完成之后的「有意安全修复」同样会让「与 pre-commit 逐字等价」
+# 判据失效——判据把源码相同当作行为相同的代理，而这里行为被刻意修正了。
 MIGRATION_DIVERGENCES: dict[str, str] = {
     "notifications": "RF-02 D1: 关键词检索 message/details → title/body（ADR-0015）",
     "strategy_recommend": "RF-02 D2: FactorOptimizer 幻影类 → eval_current_weights（ADR-0015）",
+    "export_config": "批次 A / P0-1: 导出改用 dataclass 白名单，不再带出 LLM 密钥且 export→import 往返自洽（ADR-0020）",
 }
 
 # 冻结时间，消除 off/on 两侧 datetime.now() 时间戳差异（属测试伪影，非 offload 引入）

@@ -237,8 +237,11 @@ python scripts/blocking_io_check.py --selftest
 
 # L9 offload 开关对拍（Phase 6 第 2 批起；迁移 AST 等价 + off/on 响应 + 线程池自证）
 # 覆盖 37 个迁移：3 回测（523b353）+ 第 4 批 5（77bc366）+ 第 5 批 5（6d0e434）+ 第 6 批 6（497550f）+ 第 7 批 18（c9b4d6f）
-# RF-02/ADR-0015 演化：37 中 35 严格冻结逐字等价 + 2 有意分歧（notifications / strategy_recommend，
-#   因 D1/D2 行为修复豁免逐字等价，仅校验接线完整性；行为正确性由 tests/features/test_rf02_bad_endpoints.py 覆盖）
+# RF-02/ADR-0015 + 批次 A/ADR-0020 演化：37 中 34 严格冻结逐字等价 + 3 有意分歧
+#   （notifications / strategy_recommend / export_config），均因迁移完成后的有意行为修复
+#   豁免逐字等价，仅校验接线完整性；行为正确性分别由
+#   tests/features/test_rf02_bad_endpoints.py 与 tests/features/test_batch_a_security.py 覆盖。
+#   分歧项新增时必须同步：清单 + ADR + 行为契约测试，不得只把端点从检查里摘掉。
 python scripts/offload_switch_diff.py --check
 
 # L10 并发压测 + Tier B 留痕（Phase 6 第 3 批起）
@@ -256,7 +259,7 @@ python scripts/concurrency_probe.py --check
 | L6 | `[PASS] switch diff: 3 branch(es), 9 responses, 0 field(s) differ`；三条分支各自 `kernel calls off=0 on>0`，且 `[PASS] consumers: 3/3` |
 | L7 | `[PASS] route ownership: 68 endpoints / 17 routers / 36 frontend paths`；鉴权依赖数不得减少、契约 diff = 0 |
 | L8 | `[PASS] blocking-io: 68 endpoints / N blocking calls`；`--selftest` 全绿（4 类回归各自命中指定门禁 + 合法修复全绿）；blocking 只准降、offloaded 只准升、`other` 逐字段不变、端点集合与 L7 一致、async 全 true |
-| L9 | `[PASS] offload switch: 8 endpoints`；固定 commit `523b353`（3 回测）+ `77bc366`（第 4 批 5 端点）源码 AST 逐语句等价；off/on 整份响应字段顺序一致；线程池 off=0 / on=1 且工作线程与主线程不同；消费者登记与实际调用点双向对齐 |
+| L9 | `[PASS] offload switch: 34 endpoints migration-AST-equivalent + 3 intentionally diverged`；37 个迁移固定 commit（`523b353` / `77bc366` / `6d0e434` / `497550f` / `c9b4d6f`）源码 AST 逐语句等价，3 项有意分歧仅校验接线完整性（见 ADR-0015 / ADR-0020）；off/on 整份响应字段顺序一致；线程池 off=0 / on=1 且工作线程与主线程不同；消费者登记与实际调用点双向对齐 |
 | L10 | `[PASS] concurrency: 8 endpoints x 20 concurrent x 3 rounds`；P95 按**批次发起**计时、`on <= off × 1.10`（不得放宽阈值）、8/8 改善；36 条前端路径成员+数量双校验且 off/on OpenAPI 一致；Tier B 登记 0 未分类、新增阻塞符号未登记即判红 |
 
 ### 4.2 覆盖率门禁

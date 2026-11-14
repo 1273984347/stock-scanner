@@ -2,15 +2,7 @@ import { apiClient } from '../api.js';
 import { stateManager } from '../state.js';
 import { Pagination } from '../utils/pagination.js';
 import { LazyChart } from '../utils/lazyChart.js';
-
-function esc(s) {
-  if (s == null) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+import { esc } from './utils.js';
 
 export class SignalsRenderer {
   constructor() {

@@ -424,6 +424,7 @@ async def _get_ws_data():
     """获取 WebSocket 推送数据（增强版：含持仓盈亏、板块评分、信号追踪）"""
     try:
         # 只从缓存读取，不触发任何计算
+        # 与 dashboard_cache_key("balanced") 同键；无 preset 上下文，读默认视图。
         dashboard = _cache_get("dashboard", max_age=600) or {}
         scan = _cache_get("scan_balanced", max_age=3600) or {}
         risk = _cache_get("risk", max_age=600) or {}
@@ -477,6 +478,21 @@ async def _get_ws_data():
     except Exception as e:
         logger.error(f"WebSocket data fetch error: {e}")
         return {"dashboard": {}, "scan": {}, "risk": {}, "exposures": {}}
+
+
+def dashboard_cache_key(preset: str = "balanced") -> str:
+    """仪表盘缓存键（批次 A / P1-4）：必须纳入全部影响结果的参数。
+
+    旧实现固定 "dashboard"，先请求 preset=A 后 10 分钟 TTL 内任意 preset=B
+    会直接返回 A 的组合/候选/计数，且不再触发 B 的计算。键生成收口到此处，
+    避免字符串散落导致读写两侧再次漂移。
+    """
+    # 默认 preset 沿用历史键 "dashboard"：export_pdf / WS 等无 preset 上下文的
+    # 消费者读的就是这个键，保持它们零改动（也避免已有缓存整体失效）。
+    # 只隔离非默认 preset，此时才需要把影响结果的参数纳入键。
+    if preset == "balanced":
+        return "dashboard"
+    return f"dashboard_{preset}"
 
 
 ALERT_RULES_FILE = Path("alert_rules.json")

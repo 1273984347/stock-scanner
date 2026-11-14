@@ -1,14 +1,7 @@
 import { stateManager } from '../state.js';
 import { getThemeColor } from '../theme.js';
-
-function esc(s) {
-  if (s == null) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+// 批次 A / P0-2：本文件原有 esc() 却从未调用，因子名被直接拼进 innerHTML。
+// 现改为 createElement + textContent，从数据源头断开 HTML 解释，不再依赖转义。
 
 class ExposuresRenderer {
   constructor() {
@@ -45,11 +38,33 @@ class ExposuresRenderer {
   }
   _renderTable(exposures) {
     const body = document.getElementById('exposureBody');
-    body.innerHTML = '';
+    body.replaceChildren();
     Object.entries(exposures).forEach(([k, v]) => {
       const val = Number(v);
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${k}</td><td>${val.toFixed(4)}</td><td>${val > 0 ? '<span class="tag tag-up">偏多</span>' : val < 0 ? '<span class="tag tag-down">偏空</span>' : '<span class="tag" style="background:rgba(125,133,154,0.12);color:var(--text-sub)">中性</span>'}</td>`;
+
+      const keyTd = document.createElement('td');
+      keyTd.textContent = String(k);
+      const valTd = document.createElement('td');
+      valTd.textContent = val.toFixed(4);
+      const tagTd = document.createElement('td');
+      const tag = document.createElement('span');
+      if (val > 0) {
+        tag.className = 'tag tag-up';
+        tag.textContent = '偏多';
+      } else if (val < 0) {
+        tag.className = 'tag tag-down';
+        tag.textContent = '偏空';
+      } else {
+        tag.className = 'tag';
+        tag.style.cssText = 'background:rgba(125,133,154,0.12);color:var(--text-sub)';
+        tag.textContent = '中性';
+      }
+      tagTd.appendChild(tag);
+
+      tr.appendChild(keyTd);
+      tr.appendChild(valTd);
+      tr.appendChild(tagTd);
       body.appendChild(tr);
     });
   }

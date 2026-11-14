@@ -606,5 +606,85 @@
     },
     "untouched_endpoints": 67,
     "untouched_identical": true
+  },
+  {
+    "allowed_endpoints": [
+      "GET /api/dashboard",
+      "GET /api/health",
+      "GET /api/reports",
+      "POST /api/errors",
+      "POST /api/import/config"
+    ],
+    "comparison": "endpoint records compared field-by-field; lineno excluded (implementation detail, see _normalize_endpoint)",
+    "mode": "refactor",
+    "per_endpoint": [
+      {
+        "blocking_after": 11,
+        "blocking_before": 11,
+        "endpoint": "GET /api/dashboard",
+        "offloaded_after": 1,
+        "offloaded_before": 1,
+        "other_after": 34,
+        "other_before": 32
+      },
+      {
+        "blocking_after": 3,
+        "blocking_before": 3,
+        "endpoint": "GET /api/health",
+        "offloaded_after": 0,
+        "offloaded_before": 0,
+        "other_after": 14,
+        "other_before": 15
+      },
+      {
+        "blocking_after": 5,
+        "blocking_before": 5,
+        "endpoint": "GET /api/reports",
+        "offloaded_after": 0,
+        "offloaded_before": 0,
+        "other_after": 10,
+        "other_before": 11
+      },
+      {
+        "blocking_after": 3,
+        "blocking_before": 3,
+        "endpoint": "POST /api/errors",
+        "offloaded_after": 0,
+        "offloaded_before": 0,
+        "other_after": 17,
+        "other_before": 7
+      },
+      {
+        "blocking_after": 0,
+        "blocking_before": 1,
+        "endpoint": "POST /api/import/config",
+        "offloaded_after": 0,
+        "offloaded_before": 0,
+        "other_after": 9,
+        "other_before": 9
+      }
+    ],
+    "reason": "RF-01 Phase 6: 共享状态访问收口为加锁 API",
+    "schema_version": 1,
+    "totals_after": {
+      "blocking_calls": 106,
+      "blocking_endpoints": 35,
+      "endpoints": 68,
+      "offloaded_calls": 38,
+      "offloaded_endpoints": 38,
+      "other_calls": 316,
+      "total_calls": 460
+    },
+    "totals_before": {
+      "blocking_calls": 107,
+      "blocking_endpoints": 36,
+      "endpoints": 68,
+      "offloaded_calls": 38,
+      "offloaded_endpoints": 38,
+      "other_calls": 306,
+      "total_calls": 451
+    },
+    "untouched_endpoints": 63,
+    "untouched_identical": true
   }
 ]

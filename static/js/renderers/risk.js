@@ -1,15 +1,6 @@
 import { stateManager } from '../state.js';
 import { apiClient } from '../api.js';
-
-// Escape HTML special characters to prevent XSS
-function esc(s) {
-  if (s == null) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+import { esc } from './utils.js';
 
 /**
  * RiskRenderer — 风控中心面板渲染器

@@ -2,6 +2,10 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+<!-- 批次 A / P0-2：dev (vite / npx serve) 下后端不返回 CSP 响应头，此处兜底。
+     内容与 api_core.add_security_headers 保持一致；style-src 保留 unsafe-inline
+     是因为组件大量使用内联 style 属性。 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quant A-Share</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">

@@ -246,22 +246,15 @@ async def export_trades_excel(days: int = Query(default=30, ge=1, le=365)):
 
 
 def _compute_export_config(preset):
-    """原 `GET /api/export/config` try 块内容，逐字搬迁（禁止顺手优化，ADR-0003 D5）。"""
-    import dataclasses
-    from config import get_config
+    """导出配置（批次 A / P0-1）：只输出热更新白名单字段。
+
+    与 config.validate_config_overrides 共用同一份由 dataclass 自动生成的 schema，
+    保证 export → import 往返自洽；同时不再把 LLM 长期密钥带出进程。
+    """
+    from config import get_config, public_config_dict
 
     cfg = get_config(preset)
-
-    def to_dict(obj):
-        if dataclasses.is_dataclass(obj):
-            return {k: to_dict(v) for k, v in dataclasses.asdict(obj).items()}
-        elif isinstance(obj, (list, tuple)):
-            return [to_dict(item) for item in obj]
-        elif isinstance(obj, dict):
-            return {k: to_dict(v) for k, v in obj.items()}
-        return obj
-
-    config_dict = to_dict(cfg)
+    config_dict = public_config_dict(cfg)
     config_dict["_preset"] = preset
     config_dict["_exported_at"] = datetime.now().isoformat()
 
@@ -296,14 +289,18 @@ async def import_config(request: Request, _=Security(verify_api_key)):
         for meta_key in ("_preset", "_exported_at"):
             data.pop(meta_key, None)
 
-        config_file = Path("config.json")
-        config_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        # 批次 A / P0-1：写盘收口到 config.py 的唯一入口（严格白名单校验 + 原子写）。
+        # 读写共用 _CONFIG_FILE，避免两侧落点分裂。
+        from config import write_config_overrides
+        write_config_overrides(data)
 
         return {"status": "ok", "message": "配置已导入，将在下次请求时生效"}
     except HTTPException:
         raise
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="无效的 JSON 格式")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"配置校验失败: {e}")
     except Exception as e:
         logger.error(f"配置导入失败: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -314,6 +311,7 @@ def _compute_export_pdf():
     from lib.infra.pdf_report import pdf_generator
 
     # 收集数据
+    # "dashboard" == dashboard_cache_key("balanced")：无 preset 上下文，读默认视图。
     dashboard = _cache_get("dashboard", max_age=3600) or {}
     positions = _cache_get("positions", max_age=3600) or []
     signals = _cache_get("signals", max_age=3600) or []

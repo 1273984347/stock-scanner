@@ -2,8 +2,19 @@
 
 from fastapi import APIRouter
 from .common import *  # noqa: F401,F403
+from lib.infra.api_core import api_key_is_valid
 
 router = APIRouter()
+
+# 批次 A / P1-1：错误上报的字段白名单与体积上界。
+# sendBeacon 带不了自定义 header，前端已改为 fetch(keepalive + X-API-Key)，
+# 因此这里可以在 handler 内做认证；不挂 Security 依赖是为了保持 L2/L7 的契约形状不变。
+_ERROR_REPORT_FIELDS = frozenset({
+    "type", "message", "filename", "lineno", "colno", "stack",
+    "path", "userAgent", "timestamp",
+})
+_ERROR_REPORT_MAX_BYTES = 4096
+_ERROR_REPORT_MAX_FIELD_LEN = 512
 
 @router.get("/api/health")
 async def health():
@@ -19,7 +30,7 @@ async def health():
             memory_mb = round(mem.rss / 1024 / 1024, 1)
 
         # 数据新鲜度检查
-        cache_dir = Path(__file__).parent / "cache"
+        cache_dir = PROJECT_ROOT / "cache"  # 批次 A / P2-1：禁止裸 Path(__file__).parent
         newest_cache = 0
         if cache_dir.exists():
             for f in cache_dir.glob("*.json"):
@@ -48,7 +59,7 @@ async def dashboard(preset: str = Query("balanced", description="策略预设"))
     if preset not in ALLOWED_PRESETS:
         raise HTTPException(status_code=400, detail=f"无效的preset: {preset}")
     """仪表盘汇总数据（一次请求返回所有仪表盘需要的指标）"""
-    cached = _cache_get("dashboard", max_age=600)  # 10分钟缓存
+    cached = _cache_get(dashboard_cache_key(preset), max_age=600)  # 10分钟缓存
     if cached is not None:
         return cached
 
@@ -134,7 +145,7 @@ async def dashboard(preset: str = Query("balanced", description="策略预设"))
             "index_signal": scan_data.get("index_signal", {}),
             "timestamp": datetime.now().isoformat(),
         }
-        _cache_set("dashboard", result)
+        _cache_set(dashboard_cache_key(preset), result)
         return result
     except Exception as e:
         logger.error(f"仪表盘数据失败: {e}")
@@ -144,7 +155,7 @@ async def dashboard(preset: str = Query("balanced", description="策略预设"))
 @router.get("/api/reports", dependencies=[Security(verify_api_key)])
 async def report_history(_=Security(verify_api_key)):
     """历史报告列表（来自 cache/reports/）"""
-    reports_dir = Path(__file__).parent / "cache" / "reports"
+    reports_dir = PROJECT_ROOT / "cache" / "reports"  # 批次 A / P2-1
     if not reports_dir.exists():
         return {"reports": [], "push_logs": []}
 
@@ -178,19 +189,43 @@ async def report_history(_=Security(verify_api_key)):
 
 @router.post("/api/errors")
 async def report_frontend_error(request: Request):
-    """接收前端错误上报"""
+    """接收前端错误上报（批次 A / P1-1）。
+
+    认证边界：前端已改用 fetch(keepalive + X-API-Key)，未认证直接 401。
+    资源上界：body ≤ 4KB + 字段白名单 + 单字段截断，避免无界写盘与日志投毒。
+    不挂 Security 依赖是为了保持 L2 契约快照 / L7 归属表的鉴权形状不变；
+    认证逻辑复用 api_core.api_key_is_valid，不在此处另写一套比较。
+    """
+    if not api_key_is_valid(request.headers.get("X-API-Key")):
+        raise HTTPException(status_code=401, detail="无效的API密钥")
+
+    body = await request.body()
+    if len(body) > _ERROR_REPORT_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="上报内容过大")
+
     try:
-        data = await request.json()
-        logger.warning(f"Frontend error: {data.get('type')} - {data.get('message')} at {data.get('filename')}")
+        data = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status_code=400, detail="无效的 JSON 格式")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="上报内容必须是对象")
 
-        # 保存到文件
-        error_file = Path("cache/frontend_errors.jsonl")
-        error_file.parent.mkdir(parents=True, exist_ok=True)
+    clean = {}
+    for key in _ERROR_REPORT_FIELDS:
+        if key not in data:
+            continue
+        value = data[key]
+        clean[key] = value if isinstance(value, (int, float, bool)) or value is None \
+            else str(value)[:_ERROR_REPORT_MAX_FIELD_LEN]
 
-        with open(error_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(data, ensure_ascii=False) + "\n")
+    logger.warning(
+        f"Frontend error: {clean.get('type')} - {clean.get('message')} at {clean.get('path')}"
+    )
 
-        return {"status": "ok"}
-    except Exception:
-        return {"status": "ok"}  # 不要让错误上报失败
+    error_file = PROJECT_ROOT / "cache" / "frontend_errors.jsonl"
+    error_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(error_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(clean, ensure_ascii=False) + "\n")
+
+    return {"status": "ok"}
 

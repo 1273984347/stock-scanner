@@ -1,14 +1,5 @@
 import { stateManager } from '../state.js';
-
-// Escape HTML special characters to prevent XSS
-function esc(s) {
-  if (s == null) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+import { esc } from './utils.js';
 
 class AuditRenderer {
   constructor() { this._unsubscribers = []; }

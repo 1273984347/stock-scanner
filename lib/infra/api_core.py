@@ -50,12 +50,23 @@ def _get_api_key() -> str:
     return key
 
 
+def api_key_is_valid(candidate: str | None) -> bool:
+    """API Key 校验的唯一真源（常量时间比较）。
+
+    批次 A / P1-1：/api/errors 需要在 handler 内校验凭据（不能挂 Security 依赖，
+    否则 L2 契约快照与 L7 归属表的鉴权形状会变）；把比较逻辑收口到这里，
+    避免两处各自实现一套、将其中一处漏改。
+    """
+    if not candidate:
+        return False
+    return secrets.compare_digest(candidate, _get_api_key())
+
+
 async def verify_api_key(api_key: str = Security(API_KEY_HEADER)) -> str:
     """验证 API Key（生产模式：API_SECRET_KEY 必须设置）"""
     if api_key is None:
         raise HTTPException(status_code=401, detail="缺少API密钥")
-    expected = _get_api_key()
-    if not secrets.compare_digest(api_key, expected):
+    if not api_key_is_valid(api_key):
         raise HTTPException(status_code=401, detail="无效的API密钥")
     return api_key
 
@@ -85,7 +96,12 @@ async def add_security_headers(request: Request, call_next):
     # X-XSS-Protection 显式设为 "0" 禁用旧过滤器（避免引入漏洞），保留头以兼容老扫描器
     response.headers["X-XSS-Protection"] = "0"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    response.headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+    # 批次 A / P0-2：移除 script-src 的 'unsafe-inline'（注入的 inline handler 不再执行）。
+    # style-src 仍需 'unsafe-inline'：前端大量组件使用内联 style 属性。
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; "
+        "object-src 'none'; base-uri 'self'"
+    )
     return response
 
 

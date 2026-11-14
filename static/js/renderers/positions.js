@@ -244,22 +244,35 @@ class PositionsRenderer {
       return;
     }
 
-    let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">';
+    // 批次 A / P0-2：股票代码曾被直接拼进 innerHTML。改用 DOM API，
+    // 与本文件 _renderRows 已有的正确写法对齐，不依赖转义函数被记得调用。
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px';
 
     entries.forEach(([code, data]) => {
       const pnlPct = ((data.pnl_pct || 0) * 100).toFixed(2);
       const pnlColor = (data.pnl_pct || 0) >= 0 ? 'var(--up)' : 'var(--down)';
       const sign = (data.pnl_pct || 0) >= 0 ? '+' : '';
 
-      html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">
-        <b>${code}</b>
-        <span style="color:${pnlColor}">${sign}${pnlPct}%</span>
-        <br><span style="color:var(--text-sub)">${data.current?.toFixed(2) || '-'}</span>
-      </div>`;
+      const card = document.createElement('div');
+      card.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px';
+      const codeEl = document.createElement('b');
+      codeEl.textContent = String(code);
+      const pnlEl = document.createElement('span');
+      pnlEl.style.color = pnlColor;
+      pnlEl.textContent = `${sign}${pnlPct}%`;
+      const priceEl = document.createElement('span');
+      priceEl.style.color = 'var(--text-sub)';
+      priceEl.textContent = data.current?.toFixed(2) || '-';
+      card.appendChild(codeEl);
+      card.appendChild(document.createTextNode(' '));
+      card.appendChild(pnlEl);
+      card.appendChild(document.createElement('br'));
+      card.appendChild(priceEl);
+      grid.appendChild(card);
     });
 
-    html += '</div>';
-    container.innerHTML = html;
+    container.replaceChildren(grid);
   }
 
   unmount() {

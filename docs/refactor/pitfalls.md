@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**85 个编号（P-01～P-85）**，分八类；其中 81 条有独立正文条目，
+> **规模**：**87 个编号（P-01～P-87）**，分九类；其中 83 条有独立正文条目，
 > P-62～P-65 仅见于下方「一句话索引」（既有状态，append-only 不补写）。
 > **本行是当前编号数的唯一真源**：其它文档一律引用本行，不硬编码数字；
 > 文末「文档状态」里的历史「共 N 条」是当时的取证记录，按 append-only 保留。
@@ -1838,6 +1838,9 @@ A/B 的 off / on 两次回测结果恒等。这是 P-56 / P-59 空判据的另�
 | Windows 上偶发 PermissionError（含 portalocker 抢开 .lock 误判「拿不到锁」） | P-11 / P-13 / P-66 |
 | 并发写丢数据 | P-12 |
 | 回测结果有未来数据 | P-34 / P-35 / P-36 |
+| 白名单/枚举靠手写，加个字段就漏登记 | P-86 |
+| 迁移门禁说「源码漂移」，但那是一次有意的行为修复 | P-87 |
+| 门禁判红就改基线数字让它变绿 | P-86 / P-87 / G3-G4 |
 | mock 了却没生效 | P-18 / P-19 |
 | 某个测试"在 Windows 上跳过" | P-20 |
 | 禁网后 asyncio / FastAPI 全崩 | P-21 |
@@ -2009,3 +2012,59 @@ NeoData `report_date`（须 `output_fields` 显式取，600519 `2025-FY` 滞后 
 Tushare `ann_date`（分支 `fields` 未取，本次未接口实证）。新增
 「公告日默认不返回」「`report_date` 是发布日期不是报告期」两条判据与索引行；
 规模仍为 85 个编号，未新增条目。
+
+---
+
+## 九、批次 A 安全加固追加（2026-11-14）
+
+> 本章按 append-only 追加，不改写上文任何条目。规模由 85 → **87 个编号**。
+> 权威记录见 `docs/adr/0020-batch-a-security-hardening.md`。
+
+### P-86 · 手写白名单必然漂移：修「同步机制」而不是补两个字段
+
+**现象**：`config.py` 的手写 `_CONFIG_SCHEMA` 只登记 4 个类 / 11 个字段，其中
+`MLConfig.min_train_samples`、`CacheConfig.ttl_minutes` 在 dataclass 里根本不存在；
+更致命的是 `_apply_overrides` 对「字段存在但未登记」仍无条件 `setattr`，于是
+`{"factor":{"factor_weights":{"x":"abc"}}}` 可让 `sum(weights.values())` 抛 TypeError、
+全站调用 `get_config()` 的端点 500；`get_config` 又返回 `PRESETS` 共享单例，污染持续到重启。
+
+**根因**：不是「漏登记了哪两个字段」，而是**白名单靠人同步**。只要字段集合有两个真源
+（dataclass 定义 + 手写字典），新增/改名/删除字段就必然漂移；注释写「未知字段跳过」
+而代码写 `else: setattr` 也是同一类漂移。
+
+**修复**：`_build_config_schema()` 由 dataclass 字段与类型标注生成白名单；敏感字段按
+后缀自动排除（新增同类字段无需记得加黑名单）；`Dict[str, float]` 单列 `float_dict`
+强制有限数值；范围约束是唯一手工登记项，由测试校验「键必须存在」；写入侧严格拒绝、
+读取侧兼容跳过；写盘收口到 `write_config_overrides`（tmp + `os.replace`）；导出与导入
+共用同一份白名单，保证 export→import 往返自洽；`get_config` 深拷贝切断共享单例。
+
+**推广**：凡是「XX 集合」+「XX 白名单」两处手写的地方，都应把白名单改成从集合生成；
+剩下必须手工登记的部分，要配一条「登记项必须存在于集合」的机器判据。
+
+### P-87 · 把「源码逐字相同」当「行为相同」的代理，遇到有意修复必然误判
+
+**现象**：批次 A 改了 `_compute_export_config`（导出白名单）与 `_compute_export_pdf`
+（缓存键）后，L9 `offload_switch_diff.py` 判红：`migration export_config: statement
+count 6 -> 5`、`migration export_pdf: statement #0 changed (Assign vs Assign)`。
+L8 `other` 逐字段冻结也因 5 个端点的预期符号变化判红。
+
+**根因**：L9 的设计目标是「证明 Phase 6 的 offload 搬迁没改业务行为」，它用「与
+pre-commit 源码 AST 逐字等价」作代理。这在**搬迁期间**成立，但批次 A 是迁移完成
+**之后**的有意行为修复——源码必须变，判据必然红。L8 的 `other` 冻结同理：它冻结
+的是符号计数，代码一改就红，需要的是「重新取证」而不是「改数字」。
+
+**修复（不是压红灯）**：
+- L8 用脚本自带的 `--recapture --mode refactor --allow-endpoints ...`，按 G4 字段级
+  取证：明确列出 5 个允许变化的端点，机器证明 **63 个未动端点逐字段一致**、
+  blocking 只降不升，证据写入 `blocking-io-recapture-evidence.json` 第 8 条；
+- L9 的 `export_pdf` 分歧通过「默认 preset 沿用历史缓存键」从设计上消除（下游消费者
+  零改动）；`export_config` 沿用 ADR-0015 已有的 `MIGRATION_DIVERGENCES` 机制登记为
+  第 3 项有意分歧 —— 该机制要求「仅校验接线完整性 + 行为正确性由专门测试覆盖」，
+  本批新增 22 例行为契约测试正是配套，其中两条直接锁定 `export_config` 的新行为。
+  严格冻结项 35→34，**其余 34 个迁移的判据强度没有放宽**。
+- 判红时先做 `git stash -u` 对照实验：L3 双跑对拍 9 处判红在干净 HEAD 上**同样出现**，
+  据此判定为取证环境漂移而非本批回归，按 G3 不改基线数字。
+
+**推广**：门禁判红先问「判据在测什么代理」，再问「代理是否还成立」。给端点加豁免、
+改断言值、改基线数字都是补丁；正确顺序是修判据或按取证机制重新取基线，并让新行为
+有独立的机器判据兜住。
