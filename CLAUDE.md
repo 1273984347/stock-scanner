@@ -393,7 +393,7 @@ curl http://localhost:8000/api/scan
 | `scripts/route_ownership_check.py` | 第 7 把尺子：17 域 / 68 端点归属 + 鉴权/async + 契约五重校验（`--capture` / `--check`） |
 | `docs/refactor/contracts/route-ownership.json` | 68 端点归属表（Phase 5 拆分前后比对的权威读数） |
 | `docs/refactor/contracts/frontend-api-paths.json` | 前端 36 条 API 路径清单（Phase 5 实跑验收依据） |
-| `scripts/blocking_io_check.py` | **第 8 把尺子 / L8 门禁**：阻塞 IO 基线采集、`--check`（blocking 只准降 / offloaded 只准升 / other 冻结 / 端点集合与 L7 一致）、`--selftest`（6 类注入回归 + 3 条 Tier B 语义断言）；B1 起分 `endpoints`(68 HTTP) 与 `extended_endpoints`(6：/ws、非 /api/ 路由、中间件) 两个集合，Tier B 按符号组合语义分类，`--recapture --mode scope` 做范围扩展取证 |
+| `scripts/blocking_io_check.py` | **第 8 把尺子 / L8 门禁**：阻塞 IO 基线采集、`--check`（blocking 只准降 / offloaded 只准升 / other 冻结 / 端点集合与 L7 一致）、`--selftest`（6 类注入回归 + 3 条 Tier B 语义断言）；B1 起分 `endpoints`(68 HTTP) 与 `extended_endpoints`(6：/ws、非 /api/ 路由、中间件) 两个集合，Tier B 按符号组合语义分类，`--recapture --mode scope` 做范围扩展取证；B2 起 `--recapture` 的 G4 字段级取证同时覆盖两个集合 |
 | `docs/refactor/contracts/blocking-io-baseline.json` | Phase 6 起点读数：68 端点 / 1052 调用 / 242 阻塞调用 / 63 端点含阻塞点；含 `plan_stated_target` 对照 |
 | `docs/adr/0006-*.md` | 第 6 次判据修正：绝对阈值「≤1」→ 单调下降 + Tier A/B 分层退出判据 |
 | `tests/test_blocking_io_check.py` | L8 的 11 例机器判据（含 helper 展开、表外符号判红、尺子自证） |
@@ -409,7 +409,7 @@ curl http://localhost:8000/api/scan
 | `docs/audit/security-performance-review-2026-11-14.md` | **全仓安全/性能审查（2026-11-14）**：2 条 P0（配置注入永久污染 PRESETS 单例 / DOM XSS→sessionStorage 密钥接管）+ 12 条 P1 + 15 条 P2；含 L8 门禁盲区根因分析（只扫 `/api/` 装饰器端点、Tier B 按 tail 名机械分类）与三批次修复顺序建议。改 `routers/`、`lib/`、`static/` 前先查此表 |
 | `docs/adr/0020-batch-a-security-hardening.md` | **批次 A 安全加固 ADR**：5 项根因修 + L8 G4 recapture 取证（5 变 / 63 未动逐字段一致 / blocking 107→106）+ L9 第 3 项有意分歧的依据；含 L3/L10 既有判红的对照实验结论 |
 | `tests/features/test_batch_a_security.py` | 批次 A 的 22 例机器判据：schema 自动生成零遗漏、恶意配置拒绝、export→import 往返、get_config 隔离、错误上报 401/413/400、缓存键隔离、esc 单一实现、innerHTML 静态守卫、routers 禁裸路径基准 |
-| `tests/features/test_batch_b_gates.py` | 批次 B 的 14 例机器判据：L3 `get_market_sentiment` 三处 pin 抗污染、L4 `start_date` 透传与窗口锚定、L10 清单漂移/counts 篡改/无硬编码数量；B1：L8 覆盖 `/ws` 与中间件、HTTP 端点仍与 L7 对齐、扩展端点增删/阻塞增加必判红、Tier B 目录遍历+压缩语义分类 |
+| `tests/features/test_batch_b_gates.py` | 批次 B 的 18 例机器判据：L3 情绪 pin 抗污染、L4 `start_date` 透传、L10 清单漂移；B1 L8 视野/语义分类；B2 单后台广播、`broadcast` 推全部并摘除失效连接、backup 白名单排除 `cache/` 与原子落地、限流单一真源+分桶 |
 
 ---
 

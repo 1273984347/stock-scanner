@@ -96,26 +96,41 @@ async def websocket_endpoint(websocket: WebSocket):
     if not await manager.connect(websocket):
         return  # 连接被拒绝
     try:
-        # 连接建立时立即推送一次全量数据
+        # 连接建立时立即推送一次全量数据。
+        # 刻意保留 _get_ws_data 的端点内调用点：L8 通过它展开整条阻塞链，
+        # 若把构造全挪进后台任务，B1 刚修好的门禁视野又会退化成盲区。
         await websocket.send_json({
             "type": "data_update",
             "timestamp": datetime.now().isoformat(),
             "data": await _get_ws_data()
         })
 
-        # 定时检测数据变化（每 10s）
+        # 定时推送由 _ws_broadcast_loop 单后台任务统一构造+广播（B2-1 / P1-3）。
+        # 本端点只保持连接，直到客户端断开触发 WebSocketDisconnect。
         while True:
-            await asyncio.sleep(10)
-            await websocket.send_json({
-                "type": "data_update",
-                "timestamp": datetime.now().isoformat(),
-                "data": await _get_ws_data()
-            })
+            await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         manager.disconnect(websocket)
+
+
+@app.on_event("startup")
+async def _start_ws_broadcast():
+    """单后台广播任务，进程内唯一（B2-1）。"""
+    app.state.ws_broadcast_task = asyncio.create_task(_ws_broadcast_loop())
+
+
+@app.on_event("shutdown")
+async def _stop_ws_broadcast():
+    task = getattr(app.state, "ws_broadcast_task", None)
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 if STATIC_DIR.exists():

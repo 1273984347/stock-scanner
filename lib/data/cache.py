@@ -19,21 +19,35 @@ CACHE_DIR.mkdir(exist_ok=True)
 # ========== API 限流 ==========
 
 class RateLimiter:
-    """线程安全的 API 调用频率限制器"""
+    """线程安全的**按数据源分桶**限流器（批次 B2-3 / P1-10 的单一真源）。
+
+    旧实现是「一个全局队列」：所有数据源共用单个 _last_call_time，10 线程
+    并行取数被串行化回 3 次/秒。现在每个 bucket 独立计时 —— 不同数据源
+    互不排队，同一数据源内部仍严格限速，配额常量只来自 config.CACHE_RATE_LIMIT。
+    """
+
     def __init__(self, max_calls_per_second: float = CACHE_RATE_LIMIT):
         self._min_interval = 1.0 / max_calls_per_second
-        self._last_call_time = 0.0
         self._lock = threading.Lock()
+        self._buckets: dict[str, float] = {}
 
-    def acquire(self):
+    def acquire(self, bucket: str = "default") -> None:
         with self._lock:
             now = time.time()
-            wait = self._last_call_time + self._min_interval - now
-            self._last_call_time = max(now, self._last_call_time + self._min_interval)
+            last = self._buckets.get(bucket, 0.0)
+            wait = last + self._min_interval - now
+            self._buckets[bucket] = max(now, last + self._min_interval)
         if wait > 0:
             time.sleep(wait)
 
-_rate_limiter = RateLimiter(max_calls_per_second=CACHE_RATE_LIMIT)
+
+def _bucket_for(func) -> str:
+    """按取数函数的定义模块分桶：同一源共享配额，不同源互不排队。"""
+    return getattr(func, "__module__", None) or "default"
+
+
+rate_limiter = RateLimiter(max_calls_per_second=CACHE_RATE_LIMIT)
+_rate_limiter = rate_limiter  # 兼容既有模块内引用，不再是第二个实例
 
 
 def retry_api_call(func, *args, max_retries: int = 3, **kwargs):
@@ -41,7 +55,7 @@ def retry_api_call(func, *args, max_retries: int = 3, **kwargs):
     last_error = None
     for attempt in range(max_retries):
         try:
-            _rate_limiter.acquire()
+            rate_limiter.acquire(_bucket_for(func))
             return func(*args, **kwargs)
         except Exception as e:
             last_error = e

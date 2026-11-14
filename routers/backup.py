@@ -5,44 +5,62 @@ from .common import *  # noqa: F401,F403
 
 router = APIRouter()
 
-@router.post("/api/backup/create", dependencies=[Security(verify_api_key)])
-async def backup_create():
-    """创建数据备份"""
+def _compute_backup_create() -> dict:
+    """同步压缩体（B2-2）：由端点经 `asyncio.to_thread` 放进线程池。
+
+    两处根因修，替代「给端点补一个 run_blocking consumer」：
+    * **白名单打包**：旧实现递归整个 `cache/`（api_*.json 响应缓存、push_log、
+      user_settings、parquet 行情、ML 模型）做 rglob+DEFLATE，既占住事件循环，
+      又把持仓与推送明细外带进 zip（审查报告 P1-6 / P1-8）。
+      现在只打包用户配置与快照，压缩规模降到可忽略。
+    * **落点不变**：仍用相对 `backups/`，与 list/restore/delete 的既有口径一致，
+      响应字段（file 为相对路径）逐字节不变。
+    用 `asyncio.to_thread` 而非 `run_blocking`：L9 要求 OFFLOAD_CONSUMERS 严格
+    等于 37 个 MIGRATIONS，backup 不是迁移端点，不能塞进灰度消费者集合；
+    `asyncio.to_thread` 是 L8 已登记的合法 offload 符号（OFFLOADED_TAILS）。
+    """
+    import zipfile
+    from datetime import datetime
+
+    backup_dir = Path("backups")
+    backup_dir.mkdir(exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_file = backup_dir / f"backup_{timestamp}.zip"
+
+    backup_targets = [
+        Path("alert_rules.json"),
+        Path("config.json"),
+        Path("snapshots"),
+    ]
+    tmp = backup_file.with_suffix(".zip.tmp")
     try:
-        import shutil
-        import zipfile
-        from datetime import datetime
-
-        backup_dir = Path("backups")
-        backup_dir.mkdir(exist_ok=True)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_file = backup_dir / f"backup_{timestamp}.zip"
-
-        # 需要备份的文件和目录
-        backup_targets = [
-            "alert_rules.json",
-            "config.py",
-            "snapshots/",
-            "cache/",
-        ]
-
-        with zipfile.ZipFile(backup_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zf:
             for target in backup_targets:
-                target_path = Path(target)
-                if target_path.is_file():
-                    zf.write(target_path)
-                elif target_path.is_dir():
-                    for file_path in target_path.rglob('*'):
+                if target.is_file():
+                    zf.write(target)
+                elif target.is_dir():
+                    for file_path in target.rglob('*'):
                         if file_path.is_file():
                             zf.write(file_path)
+        # 原子落地：并发请求不会读到半截 zip，异常时不留 .tmp
+        tmp.replace(backup_file)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
-        return {
-            "status": "created",
-            "file": str(backup_file),
-            "size": backup_file.stat().st_size,
-            "timestamp": timestamp
-        }
+    return {
+        "status": "created",
+        "file": str(backup_file),
+        "size": backup_file.stat().st_size,
+        "timestamp": timestamp
+    }
+
+
+@router.post("/api/backup/create", dependencies=[Security(verify_api_key)])
+async def backup_create():
+    """创建数据备份（B2-2：白名单 + 线程池，响应形状不变）"""
+    try:
+        return await asyncio.to_thread(_compute_backup_create)
     except Exception as e:
         logger.error(f"Backup creation error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

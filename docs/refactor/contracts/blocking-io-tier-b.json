@@ -1,10 +1,10 @@
 {
   "counts": {
-    "blocking_calls": 118,
-    "compute_pending_entries": 15,
-    "light_io_entries": 87,
-    "registered": 102,
-    "tier_a_candidate_endpoints": 3,
+    "blocking_calls": 108,
+    "compute_pending_entries": 7,
+    "light_io_entries": 86,
+    "registered": 93,
+    "tier_a_candidate_endpoints": 2,
     "unclassified_entries": 0
   },
   "policy": {
@@ -202,62 +202,6 @@
       "endpoint": "GET /api/attribution",
       "group": "light_io",
       "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
-    },
-    {
-      "callee": "backup_dir.mkdir",
-      "count": 1,
-      "endpoint": "POST /api/backup/create",
-      "group": "compute_pending",
-      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
-    },
-    {
-      "callee": "backup_file.stat",
-      "count": 1,
-      "endpoint": "POST /api/backup/create",
-      "group": "compute_pending",
-      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
-    },
-    {
-      "callee": "file_path.is_file",
-      "count": 1,
-      "endpoint": "POST /api/backup/create",
-      "group": "compute_pending",
-      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
-    },
-    {
-      "callee": "target_path.is_dir",
-      "count": 1,
-      "endpoint": "POST /api/backup/create",
-      "group": "compute_pending",
-      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
-    },
-    {
-      "callee": "target_path.is_file",
-      "count": 1,
-      "endpoint": "POST /api/backup/create",
-      "group": "compute_pending",
-      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
-    },
-    {
-      "callee": "target_path.rglob",
-      "count": 1,
-      "endpoint": "POST /api/backup/create",
-      "group": "compute_pending",
-      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
-    },
-    {
-      "callee": "zf.write",
-      "count": 2,
-      "endpoint": "POST /api/backup/create",
-      "group": "compute_pending",
-      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
-    },
-    {
-      "callee": "zipfile.ZipFile",
-      "count": 1,
-      "endpoint": "POST /api/backup/create",
-      "group": "compute_pending",
-      "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
     },
     {
       "callee": "backup_dir.exists",
@@ -701,13 +645,6 @@
       "reason": "重计算 / 外部取数 / 全目录遍历压缩：所在端点属 Tier A 候选、尚未 offload，明确列为遗留，不伪装成 Tier B"
     },
     {
-      "callee": "asyncio.sleep",
-      "count": 1,
-      "endpoint": "WEBSOCKET /ws",
-      "group": "light_io",
-      "reason": "本地轻量 IO：缓存命中/元数据查询/小文件读写，已有 TTL、锁与失效策略；单次开销低于线程调度成本，登记保留且禁止新增"
-    },
-    {
       "callee": "orchestrator.get_realtime_quotes",
       "count": 1,
       "endpoint": "WEBSOCKET /ws",
@@ -741,21 +678,6 @@
         "orchestrator.get_market_sentiment"
       ],
       "endpoint": "GET /api/dashboard",
-      "status": "not_offloaded"
-    },
-    {
-      "blocking_calls": 9,
-      "callees": [
-        "backup_dir.mkdir",
-        "backup_file.stat",
-        "file_path.is_file",
-        "target_path.is_dir",
-        "target_path.is_file",
-        "target_path.rglob",
-        "zf.write",
-        "zipfile.ZipFile"
-      ],
-      "endpoint": "POST /api/backup/create",
       "status": "not_offloaded"
     },
     {

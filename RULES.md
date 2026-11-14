@@ -125,6 +125,7 @@ infra  ←  data  ←  scoring  ←  strategy
 | # | 规约 | 理由 |
 |---|---|---|
 | T1 | **`async def` 端点不得直接调用阻塞符号**（数据层取数 / parquet 读 / pandas 计算 / 文件写 / 网络）；必须经 `lib/infra/async_offload.py` 的唯一入口包裹 | 68 端点全为 async，阻塞调用会占住事件循环；契约快照单独冻结 async/sync 的原因见 `docs/refactor/README.md` §二 |
+| T1-a（B2） | **非迁移端点**（WS 后台广播、backup 压缩）的 offload 允许用 `asyncio.to_thread`（已在 `OFFLOADED_TAILS` 登记），但必须被 L8 记为 `offloaded` 且有机器判据 | L9 `check_consumer_registry()` 要求 `OFFLOAD_CONSUMERS` 严格等于 37 个 `MIGRATIONS`；新增灰度消费者会连迁移对拍结构一起判红。要正式纳入灰度须单独 ADR 扩展 L9 契约，不能偷偷塞进清单（ADR-0020 后续 3） |
 | T2 | **灰度判定只允许在 offload 入口**；消费者不得自读 `FEATURE_ASYNC_OFFLOAD`，开关默认 off，按消费者粒度切换 | 与 S8 同构：判定散落就无法回答「到底哪几个消费者切了」 |
 | T3 | **保持 `async def` 签名**，禁止把端点改成 `def` 来「顺手」走线程池 | 会静默改变 FastAPI 调度语义与并发上限；契约快照冻结 async/sync，L2 会判红 |
 | T4 | 每切一个消费者必须跑 off/on 逐字段对拍，**并自证 on 侧真走了线程池**（off=0 / on>0） | 两侧都没切时 diff 也恒 0 = 空判据（坑表 P-56） |
@@ -259,7 +260,7 @@ python scripts/concurrency_probe.py --check
 | L5 | `[PASS] scoring baseline: 9 sources match (285 samples)`，且每条链路 `mismatches = 0` |
 | L6 | `[PASS] switch diff: 3 branch(es), 9 responses, 0 field(s) differ`；三条分支各自 `kernel calls off=0 on>0`，且 `[PASS] consumers: 3/3` |
 | L7 | `[PASS] route ownership: 68 endpoints / 17 routers / N frontend paths`；路径数由 `capture_frontend_paths()` 从 `static/` 源码重算，不在文档硬编码；鉴权依赖数不得减少、契约 diff = 0 |
-| L8 | `[PASS] blocking-io: 68 endpoints / N blocking calls ...; extended 6 paths / 12 blocking frozen`。**B1 起端点发现分两个互不干扰的集合**：`endpoints`（HTTP `/api/` 68 个，成员+数量与 L7 对齐，原口径不变）与 `extended_endpoints`（`/ws`、非 `/api/` 路由、`@app.middleware` 中间件，独立冻结）。两者各自 blocking 只准降 / offloaded 只准升 / `other` 逐字段冻结 / 成员+数量双校验；`--selftest` 6 类注入回归 + 3 条 Tier B 语义断言全绿；Tier B 按**符号组合语义**分类（目录遍历 + 压缩 ⇒ `compute_pending`），不再按尾名机械判定 |
+| L8 | `[PASS] blocking-io: 68 endpoints / 97 blocking calls / 39 offloaded; extended 6 paths / 11 blocking frozen`。**B1 起端点发现分两个互不干扰的集合**：`endpoints`（HTTP `/api/` 68 个，成员+数量与 L7 对齐，原口径不变）与 `extended_endpoints`（`/ws`、非 `/api/` 路由、`@app.middleware` 中间件，独立冻结）。两者各自 blocking 只准降 / offloaded 只准升 / `other` 逐字段冻结 / 成员+数量双校验；`--selftest` 6 类注入回归 + 3 条 Tier B 语义断言全绿；Tier B 按**符号组合语义**分类（目录遍历 + 压缩 ⇒ `compute_pending`）。**B2 起 `--recapture` 的 G4 字段级取证同时覆盖两个集合**（`_all_records`），扩展端点不再能被静默重建 |
 | L9 | `[PASS] offload switch: 34 endpoints migration-AST-equivalent + 3 intentionally diverged`；37 个迁移固定 commit（`523b353` / `77bc366` / `6d0e434` / `497550f` / `c9b4d6f`）源码 AST 逐语句等价，3 项有意分歧仅校验接线完整性（见 ADR-0015 / ADR-0020）；off/on 整份响应字段顺序一致；线程池 off=0 / on=1 且工作线程与主线程不同；消费者登记与实际调用点双向对齐 |
 | L10 | `[PASS] concurrency: 37 endpoints x 20 concurrent x 3 rounds`；P95 按**批次发起**计时、`on <= off × 1.10`（不得放宽阈值）、37/37 改善；前端路径改为「L7 扫描器重算 vs 登记清单」成员+数量双校验（禁止硬编码数量，禁止用清单自身 counts 自证）、`counts.normalized_paths == len(normalized_paths)` 自洽、off/on OpenAPI 一致；Tier B 登记 0 未分类、新增阻塞符号未登记即判红 |
 

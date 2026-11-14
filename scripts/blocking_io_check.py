@@ -402,8 +402,15 @@ def recapture(allowed: set[tuple[str, str]], mode: str = "offload") -> tuple[lis
     new = capture()
     failures: list[str] = []
 
-    old_eps = {(e["method"], e["path"]): e for e in old["endpoints"]}
-    new_eps = {(e["method"], e["path"]): e for e in new["endpoints"]}
+    # 批次 B2：G4 字段级取证必须同时覆盖 extended_endpoints，否则 /ws、
+    # 中间件的变化会在重建时被静默吞掉（B1 扩了视野，取证范围要同步跟上）。
+    def _all_records(data: dict) -> dict[str, dict]:
+        return {e["key"]: e for e in
+                list(data["endpoints"]) + list(data.get("extended_endpoints", []))}
+
+    old_eps = _all_records(old)
+    new_eps = _all_records(new)
+    allowed_keys = {f"{m} {p}" for m, p in allowed}
     if set(old_eps) != set(new_eps):
         failures.append(f"endpoint set changed: missing={sorted(set(old_eps) - set(new_eps))} "
                         f"added={sorted(set(new_eps) - set(old_eps))}")
@@ -421,7 +428,7 @@ def recapture(allowed: set[tuple[str, str]], mode: str = "offload") -> tuple[lis
         n_block = sum(n["blocking"].values())
         b_off = sum(b["offloaded"].values())
         n_off = sum(n["offloaded"].values())
-        if key not in allowed:
+        if key not in allowed_keys:
             if _normalize_endpoint(b) != _normalize_endpoint(n):
                 failures.append(f"UNEXPECTED drift in untouched endpoint {key}")
             continue
@@ -439,7 +446,7 @@ def recapture(allowed: set[tuple[str, str]], mode: str = "offload") -> tuple[lis
             if n_off <= b_off:
                 failures.append(f"{key}: offloaded did not increase ({b_off} -> {n_off})")
         evidence_rows.append({
-            "endpoint": f"{key[0]} {key[1]}",
+            "endpoint": key,
             "blocking_before": b_block, "blocking_after": n_block,
             "offloaded_before": b_off, "offloaded_after": n_off,
             "other_before": sum(b["other"].values()),
@@ -470,7 +477,8 @@ def recapture(allowed: set[tuple[str, str]], mode: str = "offload") -> tuple[lis
 
     reasons = {
         "offload": "RF-01 Phase 6: Tier A 端点阻塞调用 offload 进线程池",
-        "refactor": "RF-01 Phase 6: 共享状态访问收口为加锁 API",
+        "refactor": "批次重构：状态/调用收口、白名单裁剪或线程池迁移；"
+                    "blocking 不得增加，非 allowed 端点逐字段一致",
         "scope": "批次 B1: L8 端点发现扩展到 websocket / 非 /api/ 路由 / 中间件，"
                  "HTTP 端点记录逐字段不变",
     }
@@ -481,7 +489,7 @@ def recapture(allowed: set[tuple[str, str]], mode: str = "offload") -> tuple[lis
         "allowed_endpoints": [f"{m} {p}" for m, p in sorted(allowed)],
         "comparison": "endpoint records compared field-by-field; lineno excluded "
                       "(implementation detail, see _normalize_endpoint)",
-        "untouched_endpoints": len(set(old_eps) - allowed),
+        "untouched_endpoints": len(set(old_eps) - allowed_keys),
         "untouched_identical": not any("UNEXPECTED drift" in f for f in failures),
         "totals_before": old["counts"],
         "totals_after": new["counts"],

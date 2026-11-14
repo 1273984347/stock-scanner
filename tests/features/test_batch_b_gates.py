@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import copy
 import importlib.util
 import json
@@ -207,9 +208,90 @@ def test_b1_tier_b_semantic_rules():
 
 
 def test_b1_tier_b_register_reclassifies_backup_create():
+    """B1 把它从 light_io 翻成 compute_pending；B2 更进一步把它 offload 掉。"""
     reg = _contract("blocking-io-tier-b.json")
-    rows = [r for r in reg["registered"] if r["endpoint"] == "POST /api/backup/create"]
-    assert rows, "backup/create 的阻塞符号必须登记在案"
-    assert all(r["group"] == "compute_pending" for r in rows)
     assert reg["counts"]["unclassified_entries"] == 0
     assert any(r["endpoint"] == "WEBSOCKET /ws" for r in reg["registered"])
+    assert not any(r["endpoint"] == "POST /api/backup/create" for r in reg["registered"]), \
+        "B2 后压缩体已进线程池，端点不应再有裸阻塞符号"
+    base = _contract("blocking-io-baseline.json")
+    ep = next(e for e in base["endpoints"] if e["key"] == "POST /api/backup/create")
+    assert any("to_thread" in c for c in ep["offloaded"]), ep["offloaded"]
+
+
+# ------------------------------------------------- B2: WS / backup / rate limit
+
+
+def test_b2_ws_uses_single_broadcast_loop():
+    """N 个连接不再各自 sleep+构造；端点保留一次调用以维持 L8 helper 视野。"""
+    api_src = (ROOT / "api.py").read_text(encoding="utf-8")
+    common_src = (ROOT / "routers" / "common.py").read_text(encoding="utf-8")
+    assert api_src.count("await _get_ws_data()") == 1
+    assert "asyncio.sleep(10)" not in api_src
+    assert "async def _ws_broadcast_loop" in common_src
+    assert "def broadcast(" in common_src
+    assert "create_task(_ws_broadcast_loop())" in api_src
+    assert "task.cancel()" in api_src
+
+
+def test_b2_ws_broadcast_reaches_all_and_drops_stale():
+    from routers.common import ConnectionManager
+
+    class FakeWS:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, payload):
+            self.sent.append(payload)
+
+    class BrokenWS:
+        async def send_json(self, payload):
+            raise RuntimeError("closed")
+
+    mgr = ConnectionManager()
+    good, bad = FakeWS(), BrokenWS()
+    mgr.active_connections = [good, bad]
+    asyncio.run(mgr.broadcast({"x": 1}))
+    assert good.sent == [{"x": 1}]
+    assert bad not in mgr.active_connections, "推送失败的连接必须就地摘除"
+
+
+def test_b2_backup_whitelist_excludes_cache(tmp_path, monkeypatch):
+    """根因修法：不打包 cache/，压缩体进线程池，异常不留半截 zip。"""
+    src = (ROOT / "routers" / "backup.py").read_text(encoding="utf-8")
+    body = src[src.index("def _compute_backup_create"):
+               src.index('@router.post("/api/backup/create"')]
+    assert '"cache/"' not in body
+    assert "asyncio.to_thread(_compute_backup_create)" in src
+    assert "tmp.replace(backup_file)" in body
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "snapshots").mkdir(exist_ok=True)
+    (tmp_path / "snapshots" / "s.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "cache").mkdir(exist_ok=True)
+    (tmp_path / "cache" / "secret.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "config.json").write_text("{}", encoding="utf-8")
+    from routers.backup import _compute_backup_create
+    out = _compute_backup_create()
+    import zipfile
+    with zipfile.ZipFile(out["file"]) as zf:
+        names = zf.namelist()
+    assert any("snapshots" in n for n in names)
+    assert not any("cache" in n for n in names), names
+
+
+def test_b2_rate_limiter_single_source_and_bucketed(monkeypatch):
+    """两套进程级实例合并为一个；不同数据源分桶互不排队。"""
+    from lib.data import cache, data_layer
+    assert data_layer.rate_limiter is cache.rate_limiter
+    assert not hasattr(data_layer, "_RateLimiter"), "本地第二套限流器必须删除"
+    assert data_layer.RATE_LIMIT_CALLS_PER_SEC == cache.CACHE_RATE_LIMIT
+
+    rl = cache.RateLimiter(max_calls_per_second=1000)
+    calls = []
+    monkeypatch.setattr(cache.time, "sleep", lambda s: calls.append(s))
+    rl.acquire("source_a")
+    rl.acquire("source_b")
+    assert calls == [], "不同 bucket 不应互相排队"
+    rl.acquire("source_b")
+    assert len(calls) == 1, "同一 bucket 内仍必须限速"

@@ -753,5 +753,56 @@
     },
     "untouched_endpoints": 68,
     "untouched_identical": true
+  },
+  {
+    "allowed_endpoints": [
+      "POST /api/backup/create",
+      "WEBSOCKET /ws"
+    ],
+    "comparison": "endpoint records compared field-by-field; lineno excluded (implementation detail, see _normalize_endpoint)",
+    "mode": "refactor",
+    "per_endpoint": [
+      {
+        "blocking_after": 0,
+        "blocking_before": 9,
+        "endpoint": "POST /api/backup/create",
+        "offloaded_after": 1,
+        "offloaded_before": 0,
+        "other_after": 2,
+        "other_before": 7
+      },
+      {
+        "blocking_after": 9,
+        "blocking_before": 10,
+        "endpoint": "WEBSOCKET /ws",
+        "offloaded_after": 0,
+        "offloaded_before": 0,
+        "other_after": 28,
+        "other_before": 31
+      }
+    ],
+    "reason": "批次重构：状态/调用收口、白名单裁剪或线程池迁移；blocking 不得增加，非 allowed 端点逐字段一致",
+    "schema_version": 1,
+    "scope_extended_added": [],
+    "totals_after": {
+      "blocking_calls": 97,
+      "blocking_endpoints": 34,
+      "endpoints": 68,
+      "offloaded_calls": 39,
+      "offloaded_endpoints": 39,
+      "other_calls": 311,
+      "total_calls": 447
+    },
+    "totals_before": {
+      "blocking_calls": 106,
+      "blocking_endpoints": 35,
+      "endpoints": 68,
+      "offloaded_calls": 38,
+      "offloaded_endpoints": 38,
+      "other_calls": 316,
+      "total_calls": 460
+    },
+    "untouched_endpoints": 72,
+    "untouched_identical": true
   }
 ]

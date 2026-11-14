@@ -400,24 +400,76 @@ MAX_WS_CONNECTIONS = 100  # 最大 WebSocket 连接数
 
 
 class ConnectionManager:
+    """B2-1：连接表由锁保护，广播在快照上执行，避免与 connect/disconnect 竞态。"""
+
     def __init__(self):
         self.active_connections: list[WebSocket] = []
+        self._connections_lock = threading.Lock()
 
     async def connect(self, websocket: WebSocket):
-        if len(self.active_connections) >= MAX_WS_CONNECTIONS:
+        with self._connections_lock:
+            if len(self.active_connections) >= MAX_WS_CONNECTIONS:
+                over = True
+            else:
+                over = False
+                # 先占位再 accept：并发连接不会集体越过上限
+                self.active_connections.append(websocket)
+        if over:
             await websocket.close(code=1013, reason="Too many connections")
             logger.warning(f"WebSocket 连接数超限 ({MAX_WS_CONNECTIONS})，拒绝连接")
             return False
-        await websocket.accept()
-        self.active_connections.append(websocket)
+        try:
+            await websocket.accept()
+        except Exception:
+            # accept 失败时不能把占位留在连接表里，否则会泄漏名额
+            self.disconnect(websocket)
+            raise
         return True
 
     def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
+        with self._connections_lock:
+            if websocket in self.active_connections:
+                self.active_connections.remove(websocket)
+
+    async def broadcast(self, payload: dict) -> None:
+        """把同一份数据推给所有连接；推送失败的连接就地摘除。"""
+        with self._connections_lock:
+            targets = list(self.active_connections)
+        stale = []
+        for ws in targets:
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                stale.append(ws)
+        if stale:
+            with self._connections_lock:
+                for ws in stale:
+                    if ws in self.active_connections:
+                        self.active_connections.remove(ws)
 
 
 manager = ConnectionManager()
+
+# 批次 B2-1：唯一的定时构造任务。旧实现每个连接各自 while+sleep(10)+构造，
+# 100 连接 ≈ 10 次/秒全市场拉取，全压在事件循环上；现在全局 1 次/10 秒。
+WS_BROADCAST_INTERVAL_S = 10
+
+
+async def _ws_broadcast_loop():
+    """单后台任务：构造一次，广播给所有连接（P1-3）。"""
+    while True:
+        await asyncio.sleep(WS_BROADCAST_INTERVAL_S)
+        try:
+            data = await _get_ws_data()
+            await manager.broadcast({
+                "type": "data_update",
+                "timestamp": datetime.now().isoformat(),
+                "data": data,
+            })
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"WebSocket broadcast error: {e}")
 
 
 async def _get_ws_data():

@@ -15,8 +15,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from config import (get_config, TDX_DATA_PATH as _CFG_TDX_DATA_PATH,
-                    TDX_REF_PATH as _CFG_TDX_REF_PATH)
-from lib.data.cache import CircuitBreaker, CircuitOpenError
+                    TDX_REF_PATH as _CFG_TDX_REF_PATH, CACHE_RATE_LIMIT)
+from lib.data.cache import (CircuitBreaker, CircuitOpenError,
+                            rate_limiter, _bucket_for)
 from lib.data.broker import LRUCache
 from lib.infra.utils import _safe_float
 from lib.data.data_cache import get_financial_cache
@@ -72,27 +73,13 @@ TDX_CONNECT_TIMEOUT_S = 5      # pytdx 行情服务器连接超时
 NET_INFLOW_WINDOW_DAYS = 5     # 资金流向近 N 日窗口
 
 # ========== API 限流 ==========
-# P2-config-migration-deferred
-RATE_LIMIT_CALLS_PER_SEC = 3.0
+# 批次 B2-3 / P1-10：删掉这里的第二套 _RateLimiter 与第二个进程级实例。
+# 根因是「限流器有两个真源」：cache.py 一个、本模块一个，各自 3 QPS 却
+# 共用不了配额，且 10 线程并行取数被单条全局队列串行化。
+# 现在全部走 lib.data.cache.rate_limiter（分桶）+ config.CACHE_RATE_LIMIT（唯一常量）。
+RATE_LIMIT_CALLS_PER_SEC = CACHE_RATE_LIMIT  # 兼容旧引用，值由 config 单一真源给出
 API_RETRY_MAX_ATTEMPTS = 3
 API_RETRY_BASE_WAIT_S = 2.0
-
-class _RateLimiter:
-    """线程安全的 API 调用频率限制器"""
-    def __init__(self, max_calls_per_second: float = 3.0):
-        self._min_interval = 1.0 / max_calls_per_second
-        self._last_call_time = 0.0
-        self._lock = threading.Lock()
-
-    def acquire(self):
-        with self._lock:
-            now = time.time()
-            wait = self._last_call_time + self._min_interval - now
-            self._last_call_time = max(now, self._last_call_time + self._min_interval)
-        if wait > 0:
-            time.sleep(wait)
-
-_rate_limiter = _RateLimiter(max_calls_per_second=RATE_LIMIT_CALLS_PER_SEC)
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:
@@ -120,7 +107,7 @@ def _retry_api_call(func, *args, max_retries: int = API_RETRY_MAX_ATTEMPTS, **kw
     last_error = None
     for attempt in range(max_retries):
         try:
-            _rate_limiter.acquire()
+            rate_limiter.acquire(_bucket_for(func))
             return func(*args, **kwargs)
         except Exception as e:
             last_error = e
