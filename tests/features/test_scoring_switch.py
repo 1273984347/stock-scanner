@@ -257,14 +257,22 @@ def test_endpoint_classification_is_disjoint_and_complete():
 
 
 def test_dashboard_is_aggregator_not_scorer():
-    """`/api/dashboard` 是缓存聚合端点，评分只经 run_all_strategies 间接受益。"""
+    """`/api/dashboard` 是缓存聚合端点，评分只经 run_all_strategies 间接受益。
+
+    B4 / P2-6：重扫描调用搬进 `_ensure_dashboard_scan`（单飞边界）。
+    按 ADR-0012 D2 的「边界跟随法」同时检查端点与搬迁体 ——
+    评分符号禁止名单覆盖两处、间接路径必须在搬迁体可见，
+    约束强度不降反增（旧版只看端点函数体）。
+    """
     tree = ast.parse((ROOT / "routers/system.py").read_text(encoding="utf-8"))
     fn = _node(tree, "dashboard")
-    names = _call_names(fn)
+    helper = _node(tree, "_ensure_dashboard_scan")
+    names = _call_names(fn) | _call_names(helper)
     for symbol in SCORING_SYMBOLS:
-        assert symbol not in names, f"dashboard unexpectedly calls {symbol}"
+        assert symbol not in names, f"dashboard(+helper) unexpectedly calls {symbol}"
     assert "_cache_get" in names and "_cache_set" in names
-    attrs = {n.attr for n in ast.walk(fn) if isinstance(n, ast.Attribute)}
+    attrs = {n.attr for n in ast.walk(fn) if isinstance(n, ast.Attribute)} | \
+            {n.attr for n in ast.walk(helper) if isinstance(n, ast.Attribute)}
     assert "run_all_strategies" in attrs, "indirect scoring path must stay visible"
 
 

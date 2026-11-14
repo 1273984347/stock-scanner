@@ -804,5 +804,46 @@
     },
     "untouched_endpoints": 72,
     "untouched_identical": true
+  },
+  {
+    "allowed_endpoints": [
+      "GET /api/dashboard"
+    ],
+    "comparison": "endpoint records compared field-by-field; lineno excluded (implementation detail, see _normalize_endpoint)",
+    "mode": "refactor",
+    "per_endpoint": [
+      {
+        "blocking_after": 11,
+        "blocking_before": 11,
+        "endpoint": "GET /api/dashboard",
+        "offloaded_after": 1,
+        "offloaded_before": 1,
+        "other_after": 43,
+        "other_before": 34
+      }
+    ],
+    "reason": "批次重构：状态/调用收口、白名单裁剪或线程池迁移；blocking 不得增加，非 allowed 端点逐字段一致",
+    "schema_version": 1,
+    "scope_extended_added": [],
+    "totals_after": {
+      "blocking_calls": 97,
+      "blocking_endpoints": 34,
+      "endpoints": 68,
+      "offloaded_calls": 39,
+      "offloaded_endpoints": 39,
+      "other_calls": 320,
+      "total_calls": 456
+    },
+    "totals_before": {
+      "blocking_calls": 97,
+      "blocking_endpoints": 34,
+      "endpoints": 68,
+      "offloaded_calls": 39,
+      "offloaded_endpoints": 39,
+      "other_calls": 311,
+      "total_calls": 447
+    },
+    "untouched_endpoints": 73,
+    "untouched_identical": true
   }
 ]

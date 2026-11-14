@@ -13,6 +13,7 @@ import copy
 import importlib.util
 import json
 import pathlib
+import threading
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -389,3 +390,59 @@ def test_b3_ml_predictor_singleton_reuses_and_invalidates(monkeypatch):
     monkeypatch.setattr(mp, "_model_signature", lambda: ("v2",))
     c = mp.get_predictor()
     assert c is not a and len(created) == 2
+
+
+# ------------------------------------------------- B4: 扫描单飞 + 板块复用
+
+
+def test_b4_inflight_registry_is_identity_scoped():
+    """旧完成回调不能误清新登记的任务。"""
+    from lib.infra import scan_task_registry as r
+    r.clear_inflight_scans()
+    first, other = object(), object()
+    r.set_inflight_scan("dashboard:balanced", first)
+    assert r.get_inflight_scan("dashboard:balanced") is first
+    r.clear_inflight_scan("dashboard:balanced", other)
+    assert r.get_inflight_scan("dashboard:balanced") is first
+    r.clear_inflight_scan("dashboard:balanced", first)
+    assert r.get_inflight_scan("dashboard:balanced") is None
+
+
+def test_b4_dashboard_scan_single_flight(monkeypatch):
+    """两个并发 dashboard 请求只起一次不可取消的重扫描。"""
+    import routers.system as sysmod
+    from lib.infra import scan_task_registry as r
+    r.clear_inflight_scans()
+    calls = []
+
+    class Orchestrator:
+        def run_all_strategies(self):
+            calls.append(1)
+            threading.Event().wait(0.2)  # 不用 time.sleep（conftest 会 patch 成 no-op）
+            return {"results": {}}
+
+    monkeypatch.setattr(sysmod, "_cache_set", lambda *a, **k: None)
+
+    async def two_requests():
+        return await asyncio.gather(
+            sysmod._ensure_dashboard_scan("balanced", Orchestrator()),
+            sysmod._ensure_dashboard_scan("balanced", Orchestrator()),
+        )
+
+    asyncio.run(two_requests())
+    assert len(calls) == 1, f"单飞失效：起了 {len(calls)} 次重扫描"
+    assert r.get_inflight_scan("dashboard:balanced") is None
+
+
+def test_b4_hot_board_reuses_raw_copy_not_filtered_result():
+    """复用必须发生在 symbols 过滤 / 权重调整之前，且保留降频回退路径。"""
+    src = (ROOT / "lib" / "strategy" / "pipeline.py").read_text(encoding="utf-8")
+    assert "raw_hot_boards = df.copy()" in src
+    assert src.index("raw_hot_boards = df.copy()") < src.index("if symbols:"), (
+        "原始副本必须在 symbols 过滤之前取，否则主线板块过滤口径会变"
+    )
+    assert "hot_boards = raw_hot_boards" in src
+    assert "hot_boards = get_hot_board_candidates(config)" in src, \
+        "策略被降频/失败时必须回退到原路径"
+    assert "sectors = {str(row.get('板块', '')).strip()" in src, \
+        "同一板块名应去重，避免重复建连"

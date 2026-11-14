@@ -761,6 +761,9 @@ def run_all_strategies(
         except Exception as e:
             return name, pd.DataFrame(), e
 
+    # 批次 B4 / P2-3：留存「热门板块」策略的**原始**输出，供下方主线板块过滤复用。
+    # 必须在 symbols 过滤与策略权重调整之前取，否则复用会改变过滤口径（数值回归）。
+    raw_hot_boards = None
     with ThreadPoolExecutor(max_workers=min(len(active_strategies), 4)) as executor:
         futures = {
             executor.submit(_run_strategy, name, func): name
@@ -772,6 +775,8 @@ def run_all_strategies(
                 _failure_tracker.record_failure(name)
                 logger.error(f"  -> 策略 {name} 执行失败: {error}")
                 continue
+            if name == "热门板块" and not df.empty:
+                raw_hot_boards = df.copy()
             if not df.empty:
                 # 如果指定了symbols，过滤结果
                 if symbols:
@@ -801,14 +806,21 @@ def run_all_strategies(
     _failure_tracker.save()
     # ========== 主线板块过滤 ==========
     try:
-        hot_boards = get_hot_board_candidates(config)
+        # 批次 B4 / P2-3：复用本轮并行策略已拿到的原始热门板块结果，
+        # 少一次完整重跑（含涨停池网络拉取）。策略被降频跳过 / 执行失败 /
+        # 返回空时回退到原路径，保证行为不变。
+        hot_boards = raw_hot_boards
+        if hot_boards is None:
+            hot_boards = get_hot_board_candidates(config)
         if not hot_boards.empty:
             hot_sector_codes = set()
-            for _, row in hot_boards.iterrows():
-                sector = row.get('板块', '')
+            # 同一板块名去重：结果并入 set，重复查询不改变任何数值，
+            # 但能少建几次 pytdx 连接（P2-3 的低风险部分）。
+            sectors = {str(row.get('板块', '')).strip()
+                       for _, row in hot_boards.iterrows()}
+            for sector in sorted(sectors):
                 if sector:
-                    stocks = get_sector_stocks(sector)
-                    hot_sector_codes.update(stocks)
+                    hot_sector_codes.update(get_sector_stocks(sector))
             if hot_sector_codes:
                 logger.info(f"主线板块过滤: {len(hot_sector_codes)} 只股票在主线板块中")
                 filtered_results = {}

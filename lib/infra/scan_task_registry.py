@@ -77,3 +77,38 @@ def clear_tasks() -> None:
     """仅供测试与运维重置，不用于业务路径。"""
     with _scan_tasks_lock:
         _scan_tasks.clear()
+
+
+# ---------------------------------------------------------------------------
+# 批次 B4 / P2-6：dashboard 自动重扫描的跨请求单飞注册表
+#
+# 值是可等待对象（asyncio.Task），与 `_scan_tasks` 一样由本模块唯一持有并用
+# 同一把锁保护，routers/ 不得直接下标读写（RULES §1.7 T6）。
+# 旧实现 `asyncio.wait_for(asyncio.to_thread(...), timeout=5.0)` 的线程不可取消：
+# 超时后重扫描仍在跑，并发 dashboard 各起一个，重复跑多份并互相覆盖缓存。
+# ---------------------------------------------------------------------------
+_inflight_scans: Dict[str, object] = {}
+
+
+def get_inflight_scan(key: str):
+    """取当前在飞的扫描任务；不存在或已完成时由调用方决定是否新建。"""
+    with _scan_tasks_lock:
+        return _inflight_scans.get(key)
+
+
+def set_inflight_scan(key: str, task) -> None:
+    with _scan_tasks_lock:
+        _inflight_scans[key] = task
+
+
+def clear_inflight_scan(key: str, task) -> None:
+    """只清除「自己登记的那个」task，避免旧完成回调误清新任务。"""
+    with _scan_tasks_lock:
+        if _inflight_scans.get(key) is task:
+            _inflight_scans.pop(key, None)
+
+
+def clear_inflight_scans() -> None:
+    """仅供测试与运维重置。"""
+    with _scan_tasks_lock:
+        _inflight_scans.clear()

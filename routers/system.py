@@ -54,6 +54,44 @@ async def health():
         }
 
 
+async def _ensure_dashboard_scan(preset: str, orchestrator) -> dict:
+    """批次 B4 / P2-6：同一 preset 的并发请求只起一个重扫描任务。
+
+    旧实现 `asyncio.wait_for(asyncio.to_thread(...), timeout=5.0)` 的 to_thread
+    线程**不可取消**：超时后重扫描仍在跑，并发 dashboard 各起一个，重复跑多份
+    并各自 `_cache_set` 覆盖缓存。现在改为单飞：
+    * 在飞任务由 `lib/infra/scan_task_registry` 的带锁 API 唯一持有（T6）；
+    * 超时**不 cancel**，任务后台跑完自己写缓存，后续请求等同一个 task；
+    * 完成回调只清自己登记的那个 task，避免旧回调误清新任务。
+    """
+    import asyncio
+    from lib.infra.scan_task_registry import (
+        get_inflight_scan, set_inflight_scan, clear_inflight_scan,
+    )
+
+    key = f"dashboard:{preset}"
+    task = get_inflight_scan(key)
+    if task is None or task.done():
+        async def _run():
+            data = await asyncio.to_thread(orchestrator.run_all_strategies)
+            _cache_set(f"scan_{preset}", data)
+            return data
+
+        task = asyncio.create_task(_run())
+        set_inflight_scan(key, task)
+        task.add_done_callback(lambda t, k=key: clear_inflight_scan(k, t))
+
+    done, _ = await asyncio.wait({task}, timeout=5.0)
+    if not done:
+        logger.warning("Dashboard scan 超时 5s，任务后台续跑（单飞）")
+        return {}
+    try:
+        return task.result()
+    except Exception as e:
+        logger.warning(f"Dashboard 自动触发 scan 失败: {e}")
+        return {}
+
+
 @router.get("/api/dashboard", dependencies=[Security(verify_api_key)])
 async def dashboard(preset: str = Query("balanced", description="策略预设")):
     if preset not in ALLOWED_PRESETS:
@@ -69,19 +107,9 @@ async def dashboard(preset: str = Query("balanced", description="策略预设"))
         market_data = _cache_get("market", max_age=1800) or {}
         scan_data = _cache_get(f"scan_{preset}", max_age=3600) or {}
 
-        # 缓存为空时主动触发一次 scan（确保首页有数据）
+        # 缓存为空时主动触发一次 scan（B4 / P2-6：单飞，超时后台续跑不重复起任务）
         if not scan_data:
-            try:
-                import asyncio
-                scan_data = await asyncio.wait_for(
-                    asyncio.to_thread(orchestrator.run_all_strategies),
-                    timeout=5.0
-                )
-                _cache_set(f"scan_{preset}", scan_data)
-            except asyncio.TimeoutError:
-                logger.warning("Dashboard scan 超时 5s")
-            except Exception as scan_err:
-                logger.warning(f"Dashboard 自动触发 scan 失败: {scan_err}")
+            scan_data = await _ensure_dashboard_scan(preset, orchestrator)
 
         # [RF-02 D4-b] 缓存未命中路径残留 4 个阻塞调用（evaluate_macro_gate /
         # get_market_sentiment / np 运算 / _cache_*）。D4-a 的 run_blocking 注册路径被
