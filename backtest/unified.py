@@ -126,6 +126,10 @@ class BacktestRunner:
             stock_codes=req.symbols,
             symbols=req.symbols,
             days=req.days,
+            # B2：BacktestRequest 早有 start_date 字段却没透传，引擎会用
+            # datetime.now()-days 推窗口 ⇒ 回测口径逐日漂移（跨日交易数 6→5）。
+            # 默认 "" 时引擎仍走原逻辑，生产行为不变；显式传值才锚定窗口。
+            start_date=req.start_date,
             exit_version=req.exit_version,
             parallel=req.parallel,
             max_workers=req.max_workers,
@@ -142,6 +146,8 @@ class BacktestRunner:
             symbols=req.symbols,
             days=req.days,
             max_workers=req.max_workers,
+            # run_full_backtest 把 **kwargs 透传给 engine.run_backtest（full.py:491）
+            start_date=req.start_date,
         )
         return self._normalize_result(result, "full")
 

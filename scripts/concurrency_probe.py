@@ -3,7 +3,7 @@
 
 计划 §三 Phase 6 验证方式要求：
   「20 并发 × 慢端点（/api/scan、/api/backtest），P95 不劣化」
-  「18 条前端路径（ADR-0004 修正为 36 条）× 阻塞端点全集，新旧各跑」
+  「前端路径清单（由 L7 从 static/ 源码重算，不再手抄数字）× 阻塞端点全集，新旧各跑」
 
 本工具把这两条变成**确定性、零触网、低 CPU** 的机器判据：
 
@@ -13,9 +13,10 @@
   * off 侧同步直调会占住事件循环 ⇒ 20 个请求串行完成；
     on 侧走 anyio 线程池 ⇒ 可并行。测的正是「事件循环是否被占住」。
   * 稳定性口径按坑表 P-09：报 3 轮的 max/min，不用小样本 CV。
-  * 36 条前端路径**不逐条实跑**：全量实跑会触网 / 写缓存 / 触发后台预取，
-    破坏 off/on 对照的确定性（坑表 P-69）。改为 L2 契约快照 + L7 归属表
+  * 前端路径**不逐条实跑**：全量实跑会触网 / 写缓存 / 触发后台预取，
+    破坏 off/on 对照的确定性（坑表 P-69）。改为「L7 扫描器重算 vs 登记清单」
     成员+数量双校验，并验证 flag 切换前后 `app.openapi()` 完全一致。
+    数量不再硬编码：计划写 18 / ADR-0004 写 36 / 实测 38，手抄三次必然漂移。
 
 用法：
   python scripts/concurrency_probe.py --check
@@ -722,17 +723,49 @@ async def _one_round(consumer: str, bt, flag: str, worker_idents: list[int]):
             any(i != main_ident for i in idents), shapes)
 
 
+def _load_frontend_scanner():
+    """按项目惯例用 importlib 加载 L7 的前端扫描器（同 _load_contract_tool 的做法）。"""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_route_ownership_for_l10", ROOT / "scripts" / "route_ownership_check.py")
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.capture_frontend_paths
+
+
 def _frontend_freeze() -> tuple[list[str], dict]:
-    """36 条前端路径：与运行时契约成员+数量双校验 + off/on OpenAPI 冻结。"""
+    """前端路径冻结：登记清单必须等于从 static/ 源码重扫的独立集合 + off/on OpenAPI 冻结。
+
+    根因（批次 B）：旧实现把「36」硬编码在探针里，而清单由 L7 从源码 capture 生成，
+    计划写 18、ADR-0004 写 36、实测 38 —— 同一个数字被手抄三次必然漂移。
+    改为「重算 vs 登记」后数量自动跟随；偷偷增删清单成员仍会判红，
+    不会退化成「引用清单自身 counts」那种自己校验自己的空判据（坑表 P-54）。
+    """
     fe = json.loads(FRONTEND_FILE.read_text(encoding="utf-8"))
     contract = json.loads(CONTRACT_FILE.read_text(encoding="utf-8"))
     declared = {r["path"] for r in contract["routes"] if r.get("category") == "api"}
     paths = fe["normalized_paths"]
+    registered = set(paths)
     failures = []
-    if len(paths) != 36:
-        failures.append(f"frontend path count: {len(paths)} (expected 36)")
-    if not set(paths) <= declared:
-        failures.append(f"unmapped frontend paths: {sorted(set(paths) - declared)}")
+
+    live = _load_frontend_scanner()()
+    live_paths = set(live["normalized_paths"])
+    if registered != live_paths:
+        failures.append(
+            "frontend paths drift vs source scan: "
+            f"missing={sorted(live_paths - registered)} added={sorted(registered - live_paths)}"
+        )
+    # counts 是清单自带的登记读数，必须与实际成员数自洽（防止只改 counts 不改清单）
+    if fe["counts"]["normalized_paths"] != len(paths):
+        failures.append(
+            f"frontend counts.normalized_paths={fe['counts']['normalized_paths']} "
+            f"!= len(normalized_paths)={len(paths)}"
+        )
+    if live["counts"]["unmapped"] != 0:
+        failures.append(f"source scan unmapped={live['counts']['unmapped']}")
+    if not registered <= declared:
+        failures.append(f"unmapped frontend paths: {sorted(registered - declared)}")
     if fe["counts"]["unmapped"] != 0:
         failures.append(f"frontend unmapped={fe['counts']['unmapped']}")
 
@@ -748,8 +781,8 @@ def _frontend_freeze() -> tuple[list[str], dict]:
     os.environ.pop("FEATURE_ASYNC_OFFLOAD", None)
     if off != on:
         failures.append("OpenAPI differs between off and on")
-    return failures, {"paths": len(paths), "declared": len(declared),
-                      "openapi_frozen": off == on}
+    return failures, {"paths": len(paths), "scanned": len(live_paths),
+                      "declared": len(declared), "openapi_frozen": off == on}
 
 
 async def _probe_async(bt, report: dict, failures: list[str]) -> None:

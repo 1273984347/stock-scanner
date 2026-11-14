@@ -359,7 +359,17 @@ def _inject_shared_data(codes):
     # 函数内延迟 import（steps.score_without_realtime / full_score 的板块评分）
     # 则 patch **定义方**。两处都 pin，才不存在漏网路径。
     import lib.strategy.strategies as strategies
+    import lib.strategy.pipeline as pipeline
     import lib.data.data_layer as data_layer
+
+    # 批次 B / L3 定因（G2）：get_market_sentiment 此前漏 pin。
+    # risk_checker.py:26 是**函数内延迟 import** ⇒ 必须 patch 定义方 data_layer；
+    # strategies.py:31 / pipeline.py:14 是**模块级 from-import** ⇒ 还要 patch 使用方。
+    # 该函数读 get_realtime_quotes() 的生产缓存，缓存被压测脚本写成非交易日行情后
+    # 情绪比值会跌到 <= -0.30，宏观门控翻成 BLOCK_NEW_RISK，9 个 risk_check 字段全变。
+    # 基线采集时缓存不可用返回 None（evaluate_macro_gate 归零落到中性分支），
+    # 固定为 0.0 与之逐字段等价，且不再受任何运行时状态影响。
+    fixed_sentiment = 0.0
 
     fixed_fund_flow = {"main_net_ratio": 0.06, "net_inflow_5d": 1.2e8}
     fixed_news = {
@@ -374,6 +384,10 @@ def _inject_shared_data(codes):
         (strategies, "get_news_signals", lambda code, *a, **k: dict(fixed_news)),
         (data_layer, "get_stock_fund_flow", lambda code, *a, **k: dict(fixed_fund_flow)),
         (data_layer, "get_news_signals", lambda code, *a, **k: dict(fixed_news)),
+        # G2：外部取数函数两处都 pin（定义方 + 使用方），不存在漏网路径
+        (data_layer, "get_market_sentiment", lambda *a, **k: fixed_sentiment),
+        (strategies, "get_market_sentiment", lambda *a, **k: fixed_sentiment),
+        (pipeline, "get_market_sentiment", lambda *a, **k: fixed_sentiment),
     ):
         if hasattr(mod, name):
             saved_pins.append((mod, name, getattr(mod, name)))

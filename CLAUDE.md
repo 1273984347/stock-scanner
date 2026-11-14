@@ -285,7 +285,7 @@ Tushare (主) → AkShare → WeStock → 通达信 → Baostock → 东方财�
 | **L8（新增）** | `python scripts/blocking_io_check.py --check` | 阻塞 IO 基线：blocking 只准降 / other 冻结 |
 | **L8 自证** | `python scripts/blocking_io_check.py --selftest` | 证明门禁会因回归判红 |
 | **L9** | `python scripts/offload_switch_diff.py --check` | 迁移 AST 等价 + off/on 响应 diff + 线程池自证；RF-02/ADR-0015 后：35 严格冻结 + 2 有意分歧（notifications/strategy_recommend 行为修复，参见 `MIGRATION_DIVERGENCES`） |
-| **L10（新增）** | `python scripts/concurrency_probe.py --check` | 20 并发 P95 + 36 条前端路径冻结；`--tier-b` 清单由 L8 `--check` 自动校验 |
+| **L10** | `python scripts/concurrency_probe.py --check` | 20 并发 P95 + 前端路径「源码重算 vs 登记清单」双校验（数量不再硬编码）；`--tier-b` 清单由 L8 `--check` 自动校验 |
 
 ## 强制触发规则
 
@@ -401,13 +401,14 @@ curl http://localhost:8000/api/scan
 | `docs/refactor/contracts/blocking-io-recapture-evidence.json` | L8 基线历次重建的 G4 字段级取证（历史数组，不覆盖） |
 | `docs/adr/0007-*.md` | 第 2 批决策：灰度入口 / Tier A 切换 / 共享状态加锁 / 分层重建基线 |
 | `tests/features/test_async_offload.py` / `tests/test_shared_state_locks.py` / `tests/test_phase6_batch2.py` | 19 + 5 + 5 例：开关两条路径、并发状态流转、收口 AST 守卫与取证一致性 |
-| `scripts/concurrency_probe.py` | **L10**：20 并发 × 3 轮 P95（批次发起计时，坑表 P-70）+ 36 条前端路径契约冻结 |
+| `scripts/concurrency_probe.py` | **L10**：20 并发 × 3 轮 P95（批次发起计时，坑表 P-70）+ 前端路径由 L7 `capture_frontend_paths()` 重算后与登记清单比对（批次 B 去掉硬编码 36） |
 | `docs/refactor/contracts/blocking-io-tier-b.json` | Tier B 168 条逐条理由 + **30 个 Tier A 候选端点**显式遗留（收官判据依据） |
 | `docs/adr/0008-*.md` / `docs/adr/0009-*.md` | 缓存范围裁剪；压测口径修订与收官前核验结论 |
 | `tests/test_phase6_batch3.py` | 7 例：既有缓存证据、禁止偷偷加缓存开关、压测口径、Tier B 机械分类与遗留不可隐藏 |
 | `docs/audit/security-performance-review-2026-11-14.md` | **全仓安全/性能审查（2026-11-14）**：2 条 P0（配置注入永久污染 PRESETS 单例 / DOM XSS→sessionStorage 密钥接管）+ 12 条 P1 + 15 条 P2；含 L8 门禁盲区根因分析（只扫 `/api/` 装饰器端点、Tier B 按 tail 名机械分类）与三批次修复顺序建议。改 `routers/`、`lib/`、`static/` 前先查此表 |
 | `docs/adr/0020-batch-a-security-hardening.md` | **批次 A 安全加固 ADR**：5 项根因修 + L8 G4 recapture 取证（5 变 / 63 未动逐字段一致 / blocking 107→106）+ L9 第 3 项有意分歧的依据；含 L3/L10 既有判红的对照实验结论 |
 | `tests/features/test_batch_a_security.py` | 批次 A 的 22 例机器判据：schema 自动生成零遗漏、恶意配置拒绝、export→import 往返、get_config 隔离、错误上报 401/413/400、缓存键隔离、esc 单一实现、innerHTML 静态守卫、routers 禁裸路径基准 |
+| `tests/features/test_batch_b_gates.py` | 批次 B 第一件事的 8 例机器判据：L3 `get_market_sentiment` 三处 pin 抗污染、L4 `start_date` 透传与窗口锚定、L10 登记清单漂移/counts 篡改/无硬编码数量 |
 
 ---
 

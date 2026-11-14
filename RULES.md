@@ -257,10 +257,10 @@ python scripts/concurrency_probe.py --check
 | L4 | `[PASS] backtest baseline: all chains match` |
 | L5 | `[PASS] scoring baseline: 9 sources match (285 samples)`，且每条链路 `mismatches = 0` |
 | L6 | `[PASS] switch diff: 3 branch(es), 9 responses, 0 field(s) differ`；三条分支各自 `kernel calls off=0 on>0`，且 `[PASS] consumers: 3/3` |
-| L7 | `[PASS] route ownership: 68 endpoints / 17 routers / 36 frontend paths`；鉴权依赖数不得减少、契约 diff = 0 |
+| L7 | `[PASS] route ownership: 68 endpoints / 17 routers / N frontend paths`；路径数由 `capture_frontend_paths()` 从 `static/` 源码重算，不在文档硬编码；鉴权依赖数不得减少、契约 diff = 0 |
 | L8 | `[PASS] blocking-io: 68 endpoints / N blocking calls`；`--selftest` 全绿（4 类回归各自命中指定门禁 + 合法修复全绿）；blocking 只准降、offloaded 只准升、`other` 逐字段不变、端点集合与 L7 一致、async 全 true |
 | L9 | `[PASS] offload switch: 34 endpoints migration-AST-equivalent + 3 intentionally diverged`；37 个迁移固定 commit（`523b353` / `77bc366` / `6d0e434` / `497550f` / `c9b4d6f`）源码 AST 逐语句等价，3 项有意分歧仅校验接线完整性（见 ADR-0015 / ADR-0020）；off/on 整份响应字段顺序一致；线程池 off=0 / on=1 且工作线程与主线程不同；消费者登记与实际调用点双向对齐 |
-| L10 | `[PASS] concurrency: 8 endpoints x 20 concurrent x 3 rounds`；P95 按**批次发起**计时、`on <= off × 1.10`（不得放宽阈值）、8/8 改善；36 条前端路径成员+数量双校验且 off/on OpenAPI 一致；Tier B 登记 0 未分类、新增阻塞符号未登记即判红 |
+| L10 | `[PASS] concurrency: 37 endpoints x 20 concurrent x 3 rounds`；P95 按**批次发起**计时、`on <= off × 1.10`（不得放宽阈值）、37/37 改善；前端路径改为「L7 扫描器重算 vs 登记清单」成员+数量双校验（禁止硬编码数量，禁止用清单自身 counts 自证）、`counts.normalized_paths == len(normalized_paths)` 自洽、off/on OpenAPI 一致；Tier B 登记 0 未分类、新增阻塞符号未登记即判红 |
 
 ### 4.2 覆盖率门禁
 
@@ -294,9 +294,15 @@ python scripts/concurrency_probe.py --check
 | G4 | **重建基线必须字段级取证**：只有预期链路变化、其余链路逐字节一致；两次独立 `--capture` 的 `chains` 逐字节一致 | ADR-0003 |
 | G5 | 每条 pin 规约必须有**机器判据**（`tests/test_baseline_pinning.py`），不能只写进文档等人记住 | 硬守卫优于文档提醒 |
 
-> **已知边界**：`unified_modes` 链路的 `simple` mode 内部仍由 `datetime.now()` 推导
-> `start_date`，但该链路指纹只含 `metrics` / `trades` / `rounds` 等、**不含 equity 日期字段**，
-> 故不判红。**若将来把 equity 日期纳入指纹，必须先按 G1 同步 pin。**
+> **已修复的历史误判（2026-11-15）**：原文曾写「`unified_modes` 链路的 `simple` mode
+> 由 `datetime.now()` 推导 `start_date`，但指纹不含 equity 日期字段，故不判红」——
+> 这个判断是**错的**：`metrics` / `trades` 本身随窗口变化，2026-11-15 跨日实测
+> 交易数 6→5、26 个 `unified_modes.*.metrics` 字段漂移。
+> 根因是 `BacktestRequest.start_date` 字段存在却未透传给 `engine.run_backtest`（B2）。
+> 现已在 `backtest/unified.py` 的 `_run_simple` / `_run_full` 补透传，
+> 并在 `scripts/backtest_baseline.py::_run_unified_modes` 显式传 `start_date=PIN_START_DATE`
+> （`2025-12-22`，与 2026-11-07 基线采集窗口一致）。默认 `""` 时引擎仍走原逻辑，生产行为不变。
+> 机器判据见 `tests/features/test_batch_b_gates.py`。
 
 ---
 

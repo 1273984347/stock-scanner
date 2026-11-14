@@ -414,6 +414,11 @@ def _run_unified_modes():
                     mode=mode,
                     symbols=list(SYMBOLS),
                     days=DAYS,
+                    # G1：显式 pin 窗口起点。simple/full 此前漏传 start_date，
+                    # 引擎用 datetime.now()-days 推导 ⇒ 每跨一天交易数就变，
+                    # 基线假红（2026-11-15 实测 6→5 笔、26 个 metrics 字段漂移）。
+                    # PIN_START_DATE = 2025-12-22，与 2026-11-07 基线采集窗口一致。
+                    start_date=PIN_START_DATE,
                     **extra_kwargs,
                 )
             except Exception as exc:
