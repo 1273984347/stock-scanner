@@ -132,6 +132,7 @@ infra  ←  data  ←  scoring  ←  strategy
 | T5 | 阻塞判据以 `scripts/blocking_io_check.py` 的 **L8** 为准：**blocking 只准降 / offloaded 只准升 / other 逐字段冻结**；新符号必须显式归类后才能推进 | 计划的绝对阈值「≤1」被实测 242 推翻（ADR-0006 D1）；表外符号由 `other` 冻结兜住，不假设阻塞表完整 |
 | T5-a（B1） | 端点发现不得只认带 `/api/` 前缀的 HTTP 装饰器；`websocket`、非 `/api/` 路由、`@app.middleware` 必须纳入扫描，且 **async 顶层 helper 也要展开** | `ROUTE_METHODS` 原来不含 `websocket`、路径硬过滤 `/api/`，`_helper_index` 只收 `ast.FunctionDef` ⇒ `/ws` 调的 async `_get_ws_data` 整条阻塞链（10 个调用）对门禁完全不可见（审查报告 §5 / 坑表 P-90） |
 | T6 | **`_scan_tasks` / `_perf_metrics` 只允许经 `lib/infra/` 的带锁 API 读写**；`routers/` 中禁止直接下标或 `.get/.append/.clear/.update` | 散落读写会造成半更新状态与指标丢失；AST 守卫见 `tests/test_phase6_batch2.py`（ADR-0007 D4） |
+| T6-a（B3） | `perf_metrics` 的 `_perf_metrics_lock` **只保护缓冲 list**；读旧文件 / json / 写盘移到独立的 `_flush_io_lock` 下，且 `record_metric` 必须在**锁外**触发 flush。`api_core` 缓存锁改**按 key 分片**（`_lock_for`），同一 key 仍串行 | P2-4/P2-5：单把全局锁把 68 端点与多 WS 客户端串行化，中间件还在事件循环里同步读写全量 `perf_baseline.json`。移锁后「不丢不重」由「锁内立即摘走快照 + 失败还回头部」保证，见 `tests/features/test_batch_b_gates.py` |
 
 > **阶段边界**：**Phase 6 第 1 批 ✅**（第 8 把尺子 + 基线，零业务代码改动，ADR-0006）；
 > **第 2 批 ✅**（`FEATURE_ASYNC_OFFLOAD` 默认 off + `lib/infra/async_offload.py` 唯一入口、

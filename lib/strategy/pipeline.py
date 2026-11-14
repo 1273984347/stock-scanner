@@ -457,8 +457,8 @@ def _enrich_with_ml_scores(results: dict) -> dict:
     if not all_codes:
         return {"data": None, "n_candidates": 0, "n_passed": 0, "method": "20d_ml"}
     try:
-        from lib.ml.ml_predictor import MLPredictor
-        _predictor = MLPredictor()
+        from lib.ml.ml_predictor import get_predictor
+        _predictor = get_predictor()
     except Exception as e:
         logger.warning(f"ML 模型加载失败: {e}")
         return {"data": None, "n_candidates": len(all_codes), "n_passed": 0,
@@ -548,8 +548,8 @@ def get_stock_score(code: str) -> dict:
     # 5. ML 预测
     ml_prediction = {}
     try:
-        from lib.ml.ml_predictor import MLPredictor
-        predictor = MLPredictor()
+        from lib.ml.ml_predictor import get_predictor
+        predictor = get_predictor()
         if not predictor.is_model_stale():
             ml_prediction = predictor.predict_single(factors)
     except Exception as e:

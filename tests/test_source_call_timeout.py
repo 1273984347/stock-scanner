@@ -27,6 +27,21 @@ from lib.data.cache import CircuitBreaker
 _HANG_EVENT = threading.Event()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_circuit_breakers(monkeypatch):
+    """隔离全局熔断状态（B3 全量验证时暴露的既有测试隔离缺陷）。
+
+    `monkeypatch.setitem` 只恢复字典的**键**，不恢复 breaker 对象内部累积的
+    failure_count / state。全量序列里若前面用例对同一个源记过失败，恢复出来的
+    breaker 仍可能是 open，导致多源循环全源 fail-fast —— 表现为
+    `AllDataSourcesFailedError: baostock/akshare: empty/invalid`，但单独跑本文件
+    又是全绿。每个用例前换成全新实例，让「用例自身行为」成为唯一变量。
+    """
+    fresh = {name: CircuitBreaker(failure_threshold=5, recovery_timeout=60)
+             for name in registry.DATA_SOURCE_PRIORITY}
+    monkeypatch.setattr(registry, "_CIRCUIT_BREAKERS", fresh)
+
+
 @pytest.fixture
 def fast_timeout(monkeypatch):
     """把超时压到 0.3s，测试秒级完成。"""

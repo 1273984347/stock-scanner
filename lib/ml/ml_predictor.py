@@ -7,6 +7,7 @@
 """
 
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
 
@@ -403,6 +404,48 @@ class MLPredictor:
 
         scored.sort(key=lambda x: x["impact"], reverse=True)  # type: ignore[typeddict-item]
         return scored[:3]
+
+
+# ============================================================
+#  进程级单例（批次 B3 / P2-2）
+# ============================================================
+
+_predictor_singleton: Optional["MLPredictor"] = None
+_predictor_signature: tuple = ()
+_predictor_lock = threading.Lock()
+
+
+def _model_signature(model_dir: str = "cache/models/") -> tuple:
+    """模型目录内容指纹：文件名 + mtime_ns + size；模型一更新单例即失效。"""
+    from pathlib import Path
+    d = Path(model_dir)
+    if not d.is_dir():
+        return ()
+    try:
+        return tuple(sorted(
+            (p.name, p.stat().st_mtime_ns, p.stat().st_size)
+            for p in d.iterdir() if p.is_file()
+        ))
+    except OSError:
+        return ()
+
+
+def get_predictor() -> "MLPredictor":
+    """默认配置的唯一获取入口，避免每次请求重复反序列化 2 个 Booster。
+
+    `MLPredictor` 除 `__init__` 外不写任何 self 属性，实例只读 ⇒ 可安全共享。
+    旧实现在 pipeline 的两条路径里各 `MLPredictor()` 一次（/api/score/{code}
+    每请求一次、_enrich_with_ml_scores 再每候选一次），每次都做目录扫描 +
+    manifest 读取 + 2 次 Booster 反序列化。
+    需要自定义 model_dir / 模型名的调用方仍可直接 `MLPredictor(...)`。
+    """
+    global _predictor_singleton, _predictor_signature
+    sig = _model_signature()
+    with _predictor_lock:
+        if _predictor_singleton is None or sig != _predictor_signature:
+            _predictor_singleton = MLPredictor()
+            _predictor_signature = sig
+        return _predictor_singleton
 
 
 # ============================================================

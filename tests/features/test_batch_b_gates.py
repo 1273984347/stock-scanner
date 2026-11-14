@@ -295,3 +295,97 @@ def test_b2_rate_limiter_single_source_and_bucketed(monkeypatch):
     assert calls == [], "不同 bucket 不应互相排队"
     rl.acquire("source_b")
     assert len(calls) == 1, "同一 bucket 内仍必须限速"
+
+
+# ------------------------------------------------- B3: P2 性能债（低风险三项）
+
+
+def _perf_mod():
+    from lib.infra import perf_metrics
+    return perf_metrics
+
+
+def test_b3_perf_flush_no_loss_no_duplicate_under_concurrency(tmp_path):
+    """文件 IO 移出缓冲锁后，「不丢不重」仍是硬约束。"""
+    from concurrent.futures import ThreadPoolExecutor
+    pm = _perf_mod()
+    pm.clear_metrics()
+    path = tmp_path / "perf_baseline.json"
+    total = 120  # 会多次触发 FLUSH_THRESHOLD=50 的自动 flush
+
+    def worker(i):
+        pm.record_metric({"i": i}, path)
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        list(ex.map(worker, range(total)))
+    pm.flush_metrics(path)
+    ids = [d["i"] for d in json.loads(path.read_text(encoding="utf-8"))]
+    assert len(ids) == len(set(ids)) == total
+
+
+def test_b3_perf_failed_flush_restores_buffer():
+    """IO 失败必须把快照还回缓冲头部，且保持顺序（否则丢指标）。"""
+    pm = _perf_mod()
+    pm.clear_metrics()
+    pm._perf_metrics.extend([{"i": 0}, {"i": 1}, {"i": 2}])
+
+    class BadPath:
+        def exists(self):
+            return False
+
+        @property
+        def parent(self):
+            return self
+
+        def mkdir(self, **kwargs):
+            pass
+
+        def read_text(self, **kwargs):
+            return "[]"
+
+        def write_text(self, *args, **kwargs):
+            raise OSError("disk full")
+
+    assert pm.flush_metrics(BadPath()) == 0
+    assert [d["i"] for d in pm._perf_metrics] == [0, 1, 2]
+    pm.clear_metrics()
+
+
+def test_b3_cache_locks_are_sharded_and_stable(monkeypatch, tmp_path):
+    """不同 key 用不同锁；同一 key 始终同一把锁。"""
+    from lib.infra import api_core
+    assert api_core._CACHE_SHARDS > 1
+    assert len({id(api_core._lock_for(f"k{i}")) for i in range(64)}) > 1
+    assert api_core._lock_for("same") is api_core._lock_for("same")
+
+    # 并发读写不同 key 不丢数据（缓存目录重定向，绝不写生产 cache/）
+    monkeypatch.setattr(api_core, "CACHE_DIR", tmp_path)
+    from concurrent.futures import ThreadPoolExecutor
+
+    def roundtrip(i):
+        api_core._cache_set(f"k{i}", {"v": i})
+        return api_core._cache_get(f"k{i}", max_age=60)
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        out = list(ex.map(roundtrip, range(32)))
+    assert [d["v"] for d in out] == list(range(32))
+
+
+def test_b3_ml_predictor_singleton_reuses_and_invalidates(monkeypatch):
+    """单例复用同一实例；模型目录指纹变化时必须重建。"""
+    import lib.ml.ml_predictor as mp
+    monkeypatch.setattr(mp, "_predictor_singleton", None)
+    monkeypatch.setattr(mp, "_predictor_signature", ())
+    created = []
+
+    class FakePredictor:
+        def __init__(self):
+            created.append(self)
+
+    monkeypatch.setattr(mp, "MLPredictor", FakePredictor)
+    monkeypatch.setattr(mp, "_model_signature", lambda: ("v1",))
+    a, b = mp.get_predictor(), mp.get_predictor()
+    assert a is b and len(created) == 1
+    monkeypatch.setattr(mp, "_model_signature", lambda: ("v2",))
+    c = mp.get_predictor()
+    assert c is not a and len(created) == 2

@@ -130,8 +130,17 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 CACHE_DIR = Path(__file__).parent.parent.parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
 
-# 缓存操作全局锁（保护 JSON 缓存文件的并发读写）
-_cache_lock = threading.Lock()
+# 批次 B3 / P2-4：按 key 分片的锁。
+# 旧实现所有 api_*.json 共用一把全局锁，且锁内做磁盘读 + gzip 解压 +
+# json 解析 + 压缩 + 写盘 + chmod；68 个端点与多 WS 客户端全在单锁上串行。
+# 分片后不同 key 互不阻塞，同一 key 仍然严格串行（语义不变）。
+_CACHE_SHARDS = 16
+_cache_locks = tuple(threading.Lock() for _ in range(_CACHE_SHARDS))
+_cache_lock = _cache_locks[0]  # 兼容既有 `from lib.infra.api_core import _cache_lock`
+
+
+def _lock_for(key: str):
+    return _cache_locks[zlib.crc32(key.encode("utf-8")) % _CACHE_SHARDS]
 
 
 def _cache_get(key: str, max_age: int = 3600):
@@ -141,7 +150,7 @@ def _cache_get(key: str, max_age: int = 3600):
     # 添加 ±10% 随机偏移防止缓存雪崩
     jitter = int(max_age * 0.1 * (random.random() * 2 - 1))
     effective_max_age = max(max_age + jitter, 1)
-    with _cache_lock:
+    with _lock_for(key):
         if not path.exists():
             return None
         age = (datetime.now().timestamp() - path.stat().st_mtime)
@@ -166,7 +175,7 @@ def _cache_set(key: str, data):
     """写 JSON 缓存（线程安全，gzip 压缩）"""
     import zlib
     path = CACHE_DIR / f"api_{key}.json"
-    with _cache_lock:
+    with _lock_for(key):
         try:
             json_data = json.dumps(data, ensure_ascii=False, default=str)
             # 压缩后存储（节省磁盘空间）

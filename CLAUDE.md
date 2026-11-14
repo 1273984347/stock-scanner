@@ -409,7 +409,7 @@ curl http://localhost:8000/api/scan
 | `docs/audit/security-performance-review-2026-11-14.md` | **全仓安全/性能审查（2026-11-14）**：2 条 P0（配置注入永久污染 PRESETS 单例 / DOM XSS→sessionStorage 密钥接管）+ 12 条 P1 + 15 条 P2；含 L8 门禁盲区根因分析（只扫 `/api/` 装饰器端点、Tier B 按 tail 名机械分类）与三批次修复顺序建议。改 `routers/`、`lib/`、`static/` 前先查此表 |
 | `docs/adr/0020-batch-a-security-hardening.md` | **批次 A 安全加固 ADR**：5 项根因修 + L8 G4 recapture 取证（5 变 / 63 未动逐字段一致 / blocking 107→106）+ L9 第 3 项有意分歧的依据；含 L3/L10 既有判红的对照实验结论 |
 | `tests/features/test_batch_a_security.py` | 批次 A 的 22 例机器判据：schema 自动生成零遗漏、恶意配置拒绝、export→import 往返、get_config 隔离、错误上报 401/413/400、缓存键隔离、esc 单一实现、innerHTML 静态守卫、routers 禁裸路径基准 |
-| `tests/features/test_batch_b_gates.py` | 批次 B 的 18 例机器判据：L3 情绪 pin 抗污染、L4 `start_date` 透传、L10 清单漂移；B1 L8 视野/语义分类；B2 单后台广播、`broadcast` 推全部并摘除失效连接、backup 白名单排除 `cache/` 与原子落地、限流单一真源+分桶 |
+| `tests/features/test_batch_b_gates.py` | 批次 B/C 的 22 例机器判据：L3 情绪 pin、L4 `start_date`、L10 清单漂移；B1 L8 视野/语义分类；B2 单后台广播、`broadcast` 摘除失效连接、backup 白名单、限流分桶；B3 perf 并发不丢不重/失败还回、缓存锁分片、ML 单例复用与失效 |
 
 ---
 
