@@ -79,7 +79,14 @@ curl -X POST http://localhost:8000/scan \
 选股/回测的 K 线走多源自动切换，优先级 `baostock > tdx > adata > westock > tushare > akshare > tdx_local_*`（ADR-0017）。实测当前环境**只有 baostock 可用**；本地 TDX 目录（`D:/TDX/vipdoc`）若不存在，本地源会自动跳过，不影响主链路。
 
 - 回测已不再硬编码本地 TDX 死源（ADR-0023），指数基准也有 baostock 兜底。
-- 全市场**实时行情**仍依赖外网（akshare spot / pytdx 公共服务器）。离线环境可跑历史选股与回测，但实时扫描会缺行情；需要稳定实时数据请部署在能访问上述服务的网络，或配置本地 TDX。
+- 全市场**实时行情**走三级源栈（ADR-0024）：新浪全市场（`ak.stock_zh_a_spot`，实测
+  5579 行 / 12.3s，含北交所）→ 腾讯批量（`qt.gtimg.cn`，200 码/请求，按上次成功代码表
+  重建）→ pytdx 公共服务器样本股（仅 ~28 只，最后兜底）。低于 4000 行的降级快照
+  **不写缓存**并逐条告警——避免用样本帧算全市场涨跌比。
+- 东财是**按 host 部分可用**（ADR-0025）：`push2`/`push2his` 可能不通，而
+  `push2ex`（涨停池/龙虎榜）与 `emweb`（F10 财务）正常。排查用
+  `python scripts/host_health_probe.py`；不要用「东财能不能通」下结论。
+- 离线环境可跑历史选股与回测；实时扫描需要能访问上述行情网关的网络。
 
 ## 文件结构
 

@@ -26,6 +26,9 @@ import threading
 import time
 from typing import Optional
 
+from lib.data.host_health import (HOST_EASTMONEY_PUSH2, is_available,
+                                  note_failure, note_success)
+
 logger = logging.getLogger(__name__)
 
 EASTMONEY_FLOW_URL = "https://push2.eastmoney.com/api/qt/stock/fflow/kline/get"
@@ -84,6 +87,12 @@ def get_fund_flow(code: str, days: int = 5, as_of_date: Optional[str] = None) ->
         - small_inflow: 小单净流入（元）
         - inflow_5d_avg: 近5日主力净流入均值（元）
     """
+    # ADR-0025：host 开断期间直接短路——否则每股先付 3s 限流 + 8s 超时再降级
+    # （300 股 = 数十次无意义等待）。这里是「发请求前」判据，必须早于 _rate_limited()。
+    if not is_available(HOST_EASTMONEY_PUSH2):
+        logger.debug(f"[eastmoney_fund] push2 开断中，跳过 {code}（走下游兜底源）")
+        return {}
+
     _rate_limited()
     secid = _secid(code)
     params = {
@@ -98,8 +107,10 @@ def get_fund_flow(code: str, days: int = 5, as_of_date: Optional[str] = None) ->
         resp = requests.get(EASTMONEY_FLOW_URL, params=params, timeout=8)
         resp.raise_for_status()
         json_data = resp.json()
+        note_success(HOST_EASTMONEY_PUSH2)
     except Exception as e:
         logger.debug(f"[eastmoney_fund] 请求失败 {code}: {e}")
+        note_failure(HOST_EASTMONEY_PUSH2, e)
         return {}
 
     try:

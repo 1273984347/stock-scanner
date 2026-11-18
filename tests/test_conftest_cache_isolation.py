@@ -14,6 +14,8 @@ docstring 的列契约（含 成交量）。
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 import lib.data.data_layer as data_layer
 
 
@@ -37,6 +39,10 @@ def test_get_realtime_quotes_writes_tmp_not_repo(monkeypatch):
     判据口径（2026-11-14 修正）：生产 cache/ 里该文件**合法存在**（真实扫描写入的
     生产数据）——回归判据不是「文件不存在」，而是「测试运行前后该文件不变」
     （mtime/存在性快照对照）。
+
+    2026-11-18 再修正（ADR-0024）：降级快照（<4000 行）**不再落缓存**，
+    所以「落盘路径指向 tmp」这件事必须用全市场规模帧来证明；100 行 mock 帧
+    的反向判据见下一条测试。
     """
     repo_file = _repo_cache_root() / "realtime_realtime.parquet"
     before = repo_file.stat().st_mtime if repo_file.exists() else None
@@ -44,8 +50,18 @@ def test_get_realtime_quotes_writes_tmp_not_repo(monkeypatch):
     # 强制 pytdx import 失败，走 akshare 兜底（与事故时环境一致）
     monkeypatch.setitem(sys.modules, "pytdx", None)
 
-    df = data_layer.get_realtime_quotes()
-    assert not df.empty, "autouse akshare mock 应返回 100 行行情"
+    full = pd.DataFrame({
+        "代码": [f"{600000 + i:06d}" for i in range(5000)],
+        "名称": [f"股票{i}" for i in range(5000)],
+        "最新价": 10.0,
+        "涨跌幅": 1.0,
+        "成交量": 1e6,
+        "成交额": 1e7,
+    })
+    monkeypatch.setattr(data_layer.ak, "stock_zh_a_spot", lambda: full)
+
+    df = data_layer.get_realtime_quotes(force=True)
+    assert len(df) == 5000, "全市场规模帧应原样返回"
 
     # mock 契约：get_realtime_quotes docstring 承诺的列（P-80 修正前缺 成交量）
     for col in ("代码", "名称", "最新价", "涨跌幅", "成交量", "成交额"):
@@ -53,10 +69,21 @@ def test_get_realtime_quotes_writes_tmp_not_repo(monkeypatch):
 
     # 落盘进 tmp 隔离区（P-80 修正前：写进生产 cache/）
     saved = data_layer.CACHE_DIR / "realtime_realtime.parquet"
-    assert saved.exists(), "realtime 行情应落盘到被重定向的 tmp 缓存目录"
+    assert saved.exists(), "非降级行情应落盘到被重定向的 tmp 缓存目录"
 
     # 生产缓存零污染：测试运行前后生产文件不变（存在性与 mtime 双对照）
     after = repo_file.stat().st_mtime if repo_file.exists() else None
     assert before == after, (
         "测试运行不得写生产 cache/realtime_realtime.parquet（P-80 毒缓存回归）"
+    )
+
+
+def test_degraded_snapshot_not_cached(monkeypatch):
+    """ADR-0024：降级快照（<4000 行）连 tmp 都不落——28 只样本帧不得污染 30 分钟窗口。"""
+    monkeypatch.setitem(sys.modules, "pytdx", None)
+    # autouse mock 返回 100 行「股票N」帧 → 降级
+    df = data_layer.get_realtime_quotes(force=True)
+    assert len(df) == 100
+    assert not (data_layer.CACHE_DIR / "realtime_realtime.parquet").exists(), (
+        "降级快照被写入缓存：整轮扫描的涨跌比/情绪分会建立在错的分母上"
     )

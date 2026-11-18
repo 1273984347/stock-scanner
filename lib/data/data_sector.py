@@ -151,26 +151,6 @@ def enrich_sector_data(board_stats: pd.DataFrame) -> pd.DataFrame:
     return board_stats
 
 
-def get_tencent_sector_code(code: str) -> Optional[str]:
-    """从腾讯行情获取股票所属板块代码
-
-    Note: field 61 目前返回通用代码（如"GP-A"），不适合细粒度分类
-    """
-    try:
-        import requests
-        sym = f"sh{code}" if code.startswith(("6", "5")) else f"sz{code}"
-        url = f"https://qt.gtimg.cn/q=s_{sym}"
-        resp = requests.get(url, timeout=5)
-        resp.encoding = "gbk"
-        parts = resp.text.split("~")
-        if len(parts) > 10:
-            sector_code = parts[10].strip()
-            return sector_code if sector_code else None
-    except Exception as e:
-        logger.debug(f"[sector] 腾讯板块代码获取失败 [{code}]: {e}")
-    return None
-
-
 if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")

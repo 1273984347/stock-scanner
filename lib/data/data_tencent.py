@@ -1,122 +1,74 @@
-"""腾讯财经行情 API（PE/PB/市值）
+"""腾讯财经估值查询（PE/PB/市值）—— 唯一解析在 ``data_realtime``。
 
 数据来源：https://qt.gtimg.cn/q=sh600519
 
-字段索引（已验证）：
+字段来源（已核验，2026-11-18）：
   parts[39]: PE(TTM)
   parts[44]: 总市值(亿元)
   parts[46]: PB
+
+历史（ADR-0024）：本文件原有一份完整的腾讯报文解析（与 data_ashare 各一份），
+已删除；批量大小由 10 提到 200（实测 500 码单请求可返 500 行，10 码/批是 20 倍
+的请求放大）。这里只做「快照帧 → 估值字典」的投影。
 
 Usage:
   from lib.data.data_tencent import get_tencent_quote
   q = get_tencent_quote("600519")
   print(f"PE={q['pe']}, PB={q['pb']}, 市值={q['market_cap']}亿")
 """
-import requests
 import logging
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-TENCENT_URL = "https://qt.gtimg.cn/q={sym}"
 
+def _project(quote_row) -> dict:
+    """快照行 → {pe, pb, market_cap}（缺值/0/负 PE 统一为 None）。"""
+    def _pick(v) -> Optional[float]:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return None
+        return f if f != 0 else None
 
-def _sym(code: str) -> str:
-    """将 6 位代码转为腾讯格式"""
-    c = code.strip().replace("sh.", "").replace("sz.", "").replace("bj.", "")
-    # 用 helper 替代手写市场判断（修复 bj 静默丢失）
-    from lib.data.market_utils import detect_market
-    market = detect_market(c)
-    if market == "bj":
-        # 腾讯财经对 bj 股票用 sh 前缀（同深圳 0 编号）
-        return f"sh{c}"
-    if market in ("sh", "sz"):
-        return f"{market}{c}"
-    return f"sz{c}"  # 默认深圳（保持向后兼容）
+    pe = _pick(quote_row.get("市盈率-动态"))
+    return {
+        "pe": pe if (pe is not None and pe > 0) else None,
+        "pb": _pick(quote_row.get("市净率")),
+        "market_cap": _pick(quote_row.get("总市值")),
+    }
 
 
 def get_tencent_quote(code: str) -> dict:
-    """获取腾讯财经单只股票行情（含 PE/PB/市值）
+    """获取腾讯财经单只股票估值（含 PE/PB/市值）。
 
     Args:
         code: 6 位股票代码，如 "600519"
 
     Returns:
-        dict with keys: pe, pb, market_cap (亿元)
-        未找到返回空 dict
+        dict with keys: pe, pb, market_cap (亿元)；未找到返回空 dict
     """
-    sym = _sym(code)
-    url = TENCENT_URL.format(sym=sym)
-    try:
-        resp = requests.get(url, timeout=5)
-        resp.encoding = "gbk"
-        parts = resp.text.split("~")
-        if not parts or len(parts) < 47:
-            return {}
-    except Exception as e:
-        logger.debug(f"腾讯 API 请求失败 [{code}]: {e}")
+    from lib.data.data_realtime import fetch_tencent_quotes
+    df = fetch_tencent_quotes([code])
+    if df.empty:
         return {}
-
-    def _v(s: str) -> Optional[float]:
-        if s in ("", "-", "0", "None"):
-            return None
-        try:
-            return float(s)
-        except (ValueError, TypeError):
-            return None
-
-    return {
-        "pe": _v(parts[39]),
-        "pb": _v(parts[46]),
-        "market_cap": _v(parts[44]),  # 亿元
-    }
+    return _project(df.iloc[0])
 
 
 def get_tencent_quotes_batch(codes: list) -> dict:
-    """批量获取腾讯行情（拼 URL，10 个代码一批）
+    """批量获取腾讯估值（200 码/请求，分片并发）。
 
     Args:
         codes: 股票代码列表
 
     Returns:
-        dict {code: quote_dict}
+        dict {code: {pe, pb, market_cap}}
     """
-    result = {}
-    batch_size = 10
-    for i in range(0, len(codes), batch_size):
-        batch = codes[i:i + batch_size]
-        syms = ",".join(_sym(c) for c in batch)
-        url = TENCENT_URL.format(sym=syms)
-        try:
-            resp = requests.get(url, timeout=5)
-            resp.encoding = "gbk"
-            rows = resp.text.strip().split("\n")
-            for row in rows:
-                parts = row.split("~")
-                if len(parts) < 47:
-                    continue
-                # 从 sym 提取代码
-                raw_sym = parts[0].split("=")[-1] if "=" in parts[0] else ""
-                code = raw_sym[2:] if raw_sym.startswith(("sh", "sz")) else ""
-                if not code:
-                    continue
-
-                def _v(s: str) -> Optional[float]:
-                    if s in ("", "-", "0", "None"):
-                        return None
-                    try:
-                        return float(s)
-                    except (ValueError, TypeError):
-                        return None
-
-                result[code] = {
-                    "pe": _v(parts[39]),
-                    "pb": _v(parts[46]),
-                    "market_cap": _v(parts[44]),
-                }
-        except Exception as e:
-            logger.debug(f"腾讯批量 API 请求失败 [batch {i}]: {e}")
-    return result
+    from lib.data.data_realtime import fetch_tencent_quotes
+    df = fetch_tencent_quotes(codes)
+    if df.empty:
+        return {}
+    return {str(row["代码"]): _project(row) for _, row in df.iterrows()}
 
 
 if __name__ == "__main__":
@@ -125,7 +77,5 @@ if __name__ == "__main__":
 
     for code in ["600519", "000001", "000011"]:
         q = get_tencent_quote(code)
-        pe = q.get("pe")
-        pb = q.get("pb")
-        mc = q.get("market_cap")
+        pe, pb, mc = q.get("pe"), q.get("pb"), q.get("market_cap")
         print(f"{code}: PE={pe}, PB={pb}, 市值={mc}亿" if pe else f"{code}: 无数据")

@@ -83,39 +83,6 @@ def get_kline(code: str, days: int = 180, period: str = "daily", as_of_date: Opt
         return pd.DataFrame()
 
 
-def get_realtime_quotes() -> pd.DataFrame:
-    """获取实时行情
-
-    Returns:
-        DataFrame with columns: 代码, 名称, 最新价, 涨跌幅, ...
-    """
-    try:
-        import adata.stock.market as mkt
-        df = mkt.list_market_current()
-        if df.empty:
-            return pd.DataFrame()
-        # 解析列名
-        col_map = {
-            "code": "代码", "shortName": "名称",
-            "latestPrice": "最新价", "changePct": "涨跌幅",
-            "volume": "成交量", "turnover": "成交额",
-            "open": "开盘", "high": "最高", "low": "最低",
-            "preClose": "昨收", "amount": "成交额",
-            "pe": "市盈率", "pb": "市净率",
-            "marketValue": "总市值", "circulateValue": "流通市值",
-        }
-        rename = {}
-        for c in df.columns:
-            if c in col_map:
-                rename[c] = col_map[c]
-        if rename:
-            df = df.rename(columns=rename)
-        return df
-    except Exception as e:
-        logger.error(f"adata 获取实时行情失败: {e}")
-        return pd.DataFrame()
-
-
 def get_capital_flow(code: str, days: int = 30) -> pd.DataFrame:
     """获取资金流向"""
     try:

@@ -23,8 +23,13 @@ API: https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/ZYZBAjax
   PARENTNETPROFITTZ  = 归属母公司净利润同比增长率（%），需除100
 """
 from typing import Dict, Optional
+import logging
 import requests
 from lib.data.cache import retry_api_call
+from lib.data.host_health import (HOST_EASTMONEY_EMWEB, is_available,
+                                  note_failure, note_success)
+
+logger = logging.getLogger(__name__)
 
 _EM_URL = "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/ZYZBAjaxNew"
 
@@ -46,6 +51,11 @@ def _fetch_em_financial(code: str) -> Optional[Dict]:
     em_prefix = {"sh": "SH", "sz": "SZ", "bj": "BJ"}[market]
     bs_code = em_prefix + code if not code.startswith(("SH", "SZ", "BJ")) else code
 
+    # ADR-0025：emweb 与 push2 是两个 host，独立计数。开断期间不再付 2 次重试成本。
+    if not is_available(HOST_EASTMONEY_EMWEB):
+        logger.debug(f"[eastmoney_fin] emweb 开断中，跳过 {code}")
+        return None
+
     def _fetch() -> Dict:
         resp = requests.get(
             _EM_URL,
@@ -55,7 +65,12 @@ def _fetch_em_financial(code: str) -> Optional[Dict]:
         resp.raise_for_status()
         return resp.json()
 
-    data = retry_api_call(_fetch, max_retries=2)
+    try:
+        data = retry_api_call(_fetch, max_retries=2)
+        note_success(HOST_EASTMONEY_EMWEB)
+    except Exception as e:
+        note_failure(HOST_EASTMONEY_EMWEB, e)
+        raise
 
     pages = data.get("pages", 0)
     records = data.get("data", [])

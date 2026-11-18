@@ -746,91 +746,31 @@ def get_xsb_hist(code: str, days: int = 180) -> pd.DataFrame:
 # ========== 实时行情 ==========
 
 def get_realtime_quotes(force: bool = False) -> pd.DataFrame:
-    """获取实时行情（多源：pytdx 本地 → akshare 兜底）。
+    """获取全市场实时行情（唯一实现委托：``lib/data/data_realtime.py``）。
 
-    优先 akshare 全市场 spot（sina，一次调用 ~5.5k 行），失败回退 pytdx 公共行情服务器。
-    盘中时段缓存 5 分钟，盘后缓存 30 分钟（force=True 跳过缓存）。
+    源顺序（ADR-0024，2026-11-18）：sina 全市场（ak.stock_zh_a_spot）→
+    腾讯批量（qt.gtimg.cn，按上次成功代码表重建）→ pytdx 公共服务器样本股。
+    盘中缓存 5 分钟、盘后 30 分钟；降级快照（< 4000 行或缺列）不写缓存。
 
     Args:
         force: True = 跳过缓存强制刷新。
 
     Returns:
         DataFrame，列名含 代码/名称/最新价/开盘价/最高价/最低价/成交量/成交额/涨跌幅。
-        失败返回空 DataFrame。
+        失败返回空 DataFrame（调用方须显式降级，不再静默返回样本帧当全市场）。
 
-    源优先级说明（ADR-0017，2026-11-14）：akshare 升为主源——① 全市场一次拉齐
-    （pytdx 公共行情服务器只返回 ~28 只样本股，量价突破/多因子选股等市场级策略
-    覆盖面不足）；② 用户已删除本地 TDX 客户端与 vipdoc 目录，源栈去 TDX 化；
-    pytdx 走的是公共行情服务器（TDX_HQ_SERVERS），与本地客户端无关，保留为兜底。
+    历史沿革：
+    - ADR-0017（2026-11-14）：akshare 升为主源，解决 pytdx 只返 ~28 只样本股的
+      覆盖面问题；本地 TDX 源全部摘除。
+    - ADR-0024（2026-11-18）：解析、单位归一（腾讯 手/万元 → 股/元）、降级校验
+      收口到 data_realtime。本函数只保留「注入重试包装的主源」这一件事——
+      不得再内置第二套解析或第二份缓存逻辑。
     """
-    # 扫描期间用缓存（避免每个策略函数重复获取阻塞 30s+）
-    # P1-4 修复（2026-06-05）：盘中缩短缓存到 5 分钟，避免盘中价格过期
-    # 判断：当前小时在 9:00-15:00 之间 → 缩短缓存
-    from datetime import datetime
-    now = datetime.now()
-    is_market_hours = 9 <= now.hour < 15  # A 股交易时段 9:30-15:00
-    cache_minutes = 5 if is_market_hours else 30  # 盘中 5min，盘后 30min
-    if force:
-        cache_minutes = 0
-    cached = _load_cache("realtime/realtime", max_age_hours=cache_minutes / 60)
-    if not cached.empty:
-        return cached
-
-    # 1. akshare 全市场 spot（主源，ADR-0017：全市场覆盖 + 成交量列契约满足）
-    try:
-        df = _retry_api_call(ak.stock_zh_a_spot)
-        if not df.empty:
-            _save_cache("realtime/realtime", df)
-            return df
-        logger.warning("akshare 全市场行情返回空，回退 pytdx 公共行情服务器")
-    except Exception as e:
-        logger.warning(f"akshare 全市场行情获取失败，回退 pytdx 公共行情服务器: {e}")
-
-    # 2. 回退 pytdx 公共行情服务器（TDX_HQ_SERVERS，与本地通达信客户端无关；
-    #    仅返回 REALTIME_SAMPLE_CODES ~28 只样本股）
-    try:
-        from pytdx.hq import TdxHq_API
-        api = TdxHq_API()
-        servers = TDX_HQ_SERVERS
-        connected = False
-        # P1-1 修复（2026-06-05）：不再静默吞所有异常
-        # 每次连接失败打 warning log，让运维能诊断限流/网络问题
-        last_error = None
-        for host, port in servers:
-            try:
-                api.connect(host, port, time_out=TDX_CONNECT_TIMEOUT_S)
-                connected = True
-                break
-            except Exception as e:
-                last_error = e
-                logger.warning(f"pytdx 连接失败 {host}:{port}: {e}")
-                continue
-        if not connected and last_error is not None:
-            logger.warning(f"pytdx 所有服务器连接失败，最后错误: {last_error}")
-        if connected:
-            # 用 HS300 成分股 + 已知活跃股票作为样本（避免遍历全部 A 股）
-            sample_codes = REALTIME_SAMPLE_CODES
-            quotes = api.get_security_quotes(sample_codes)
-            api.disconnect()
-            if quotes:
-                df = pd.DataFrame(quotes)
-                col_map = {"code": "代码", "name": "名称", "price": "最新价",
-                           "open": "开盘价", "high": "最高价", "low": "最低价",
-                           "vol": "成交量", "amount": "成交额"}
-                df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
-                if "最新价" in df.columns and "开盘价" in df.columns:
-                    df["涨跌幅"] = df.apply(
-                        lambda r: ((r.get("最新价", 0) - r.get("开盘价", 0)) / r.get("开盘价", 1) * 100)
-                        if r.get("开盘价", 0) > 0 else 0, axis=1
-                    )
-                logger.info(f"[TDX] 实时行情获取成功: {len(df)} 只")
-                _save_cache("realtime/realtime", df)
-                return df
-    except Exception as e:
-        logger.debug(f"[TDX] 实时行情获取失败: {e}")
-
-    logger.error("实时行情全部源失败（akshare 全市场 + pytdx 公共服务器）")
-    return pd.DataFrame()
+    from lib.data.data_realtime import get_market_snapshot
+    return get_market_snapshot(
+        force=force,
+        primary_fetch=lambda: _retry_api_call(ak.stock_zh_a_spot),
+    )
 
 
 def get_market_sentiment() -> Optional[float]:

@@ -137,6 +137,7 @@ infra  ←  data  ←  scoring  ←  strategy
 | T7-a（C） | **WS 凭据只走握手头**：`Authorization: Bearer` 或 `Sec-WebSocket-Protocol: bearer.<base64url(key)>`，禁止 URL query；**API 文档默认按环境开关**（生产设 `ENABLE_API_DOCS=0`）；**5xx 只回 `{detail, trace_id}`**，不回 `str(exc)`；`get_task` 的 error 统一替换成固定文案 | P1-2/P2-7/P2-8：URL 凭据会被反代 access log、浏览器历史、Referer 记录；`/openapi.json` 是未认证的 68 端点攻击地图；异常原文泄露内部路径与依赖名。判据见 `tests/features/test_batch_c_hardening.py` |
 | T7-b（W，完整版） | **部署形态默认单 worker**：启动期 `lib/infra/worker_guard.py` 同时探测命令行 `--workers` 与三个环境变量（命令行优先），>1 默认 fail-fast；确需多 worker 必须显式 `ALLOW_MULTI_WORKER=1`，由 `lib/infra/process_leader.py` 提供跨进程单飞（文件锁选主 + 原子快照 + 扫描槽租约），零 Redis。禁止以「广播去重」为名掩盖状态外置需求 | 实测 `--workers 2` 不写环境变量，只读环境变量会被一行命令绕过（P0 漏洞已修）；单客户端重复推送**不会**发生（连接按进程隔离），真问题是构造 ×N 与缓存分片。判据 `test_worker_guard.py` / `test_process_leader.py` / `test_multiprocess_integration.py`，坑表 P-95/P-97，ADR-0022 |
 | T7-c（L9） | **导出字段统一过 `_csv_safe()`**：CSV/openpyxl 的字符串字段以 `= + - @` / 制表 / 回车开头时前置单引号；Excel 另行强制 `cell.data_type='s'`。数值字段不得包成文本 | P2-10：公式/DDE 注入。冻结迁移体因此偏离的，走 `MIGRATION_DIVERGENCES` 显式登记 + 行为判据，不许直接放宽逐字等价（ADR-0021，坑表 P-96）。判据 `tests/features/test_csv_formula_injection.py` |
+| T7-d（R） | **实时行情只允许一份实现**：编排/解析/单位归一/降级校验都在 `lib/data/data_realtime.py`；`data_layer.get_realtime_quotes` 只做委托，`data_api` 只做门面。**单位统一「股 / 元」**（腾讯手×100、万元×10000），**代码统一 6 位 + `市场` 列**；降级快照（<4000 行 / 缺列）逐条告警且**不写缓存**。数据源健康按 **host** 计数（`lib/data/host_health.py`，3 次 / 300s / 半开），禁止按「东财源」一票否决——`push2` 死时 `push2ex` 必须仍可用 | 三份腾讯解析 + 四套同名实时函数，其中 `data_ashare` 版只跑前 100 只；单位不归一让资金流 `vol_ratio` 差 100 倍、分支静默失效；代码带前缀让 `run.py`/`steps.py` 的精确匹配静默落空。判据 `test_realtime_snapshot_contract.py` / `test_host_health.py`，坑表 P-99，ADR-0024/0025。排查 host 用 `python scripts/host_health_probe.py` |
 
 > **阶段边界**：**Phase 6 第 1 批 ✅**（第 8 把尺子 + 基线，零业务代码改动，ADR-0006）；
 > **第 2 批 ✅**（`FEATURE_ASYNC_OFFLOAD` 默认 off + `lib/infra/async_offload.py` 唯一入口、
@@ -254,6 +255,10 @@ python scripts/offload_switch_diff.py --check
 # L10 并发压测 + Tier B 留痕（Phase 6 第 3 批起）
 python scripts/concurrency_probe.py --check
 # Tier B 清单由 `python scripts/blocking_io_check.py --tier-b` 生成，--check 内自动校验
+
+# 数据源 host 级诊断（非门禁）：东财按 host 部分可用，别用「东财能不能通」下结论
+# --strict 仅在「要求全部 host 可用」的部署环境使用（本机 push2 长期不可用）
+python scripts/host_health_probe.py
 ```
 
 | 判据 | 通过标准 |
