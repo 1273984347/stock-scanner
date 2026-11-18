@@ -48,7 +48,9 @@ export API_SECRET_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(3
 
 # 启动服务：默认只监听本机回环地址。
 # 若需对外提供服务，请在前面加 Nginx/Caddy 做 TLS 与访问控制，
-# 不要直接把 --host 改成 0.0.0.0（那会把 68 个端点连同配置写入/备份恢复暴露到全网卡）。
+# 不要直接把 --host 改成 0.0.0.0（那会把端点连同配置写入/备份恢复暴露到全网卡）。
+# 固定单 worker：任务状态/缓存/WS 连接都是进程内内存，--workers N 会导致
+# 扫描单飞失效、缓存互相覆盖、数据源请求 ×N；多 worker 会在启动时直接拒绝。
 uvicorn api:app --host 127.0.0.1 --port 8000
 
 # 调用接口

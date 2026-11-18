@@ -8,6 +8,7 @@ import base64
 import os
 import uuid
 
+from lib.infra.worker_guard import verify_single_worker
 from routers.common import *  # noqa: F401,F403
 from routers import (
     scan,
@@ -73,6 +74,16 @@ def _verify_api_key_on_startup():
     except RuntimeError as e:
         logger.error(f"启动失败: {e}")
         raise SystemExit(1)
+
+
+@app.on_event("startup")
+def _verify_single_worker_on_startup():
+    """批次 W：多 worker 守卫——任务状态/缓存/WS 连接都是进程内内存。
+
+    放在启动期而非运行时，是为了让错误配置「响亮地失败」而不是静默产生
+    数据不一致；判定逻辑与修复步骤集中在 lib/infra/worker_guard.py（坑表 P-95）。
+    """
+    verify_single_worker()
 
 
 @app.middleware("http")
