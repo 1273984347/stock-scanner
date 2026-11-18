@@ -623,8 +623,21 @@ def get_index_hist(code: str, days: int = 180) -> pd.DataFrame:
     except Exception as e:
         logger.debug(f"[data_layer] TDX 指数日线获取失败 [{code}]: {e}")
 
-    # 网络兜底 2：baostock（2026-11-18 实测可用；本地 TDX 目录与 pytdx
-    # 服务器都不可达时，这是唯一能拿到真实指数数据的源）。列契约与个股一致。
+    # 网络兜底 2（ADR-0027）：腾讯/新浪指数网关。
+    # 本地 TDX 与 pytdx 都不可达时，这是目前唯一稳的指数通道——baostock 已进
+    # 黑名单（10001011），不能当兜底；指数代码歧义（000001 个股 vs 指数）由
+    # data_kline_web.index_sym 显式处理，不复用个股 _sym。
+    try:
+        from lib.data.data_kline_web import get_index_kline_web
+        df = get_index_kline_web(code, days)
+        if not df.empty and "close" in df.columns:
+            _save_cache(cache_key, df)
+            return df
+    except Exception as e:
+        logger.debug(f"[data_layer] 网页网关指数日线获取失败 [{code}]: {e}")
+
+    # 网络兜底 3：baostock（本地 TDX 目录与 pytdx 服务器都不可达时的历史兜底；
+    # 2026-11-19 起该账号/ IP 被列入黑名单，保留但不作为主要依赖）
     try:
         from lib.data.data_baostock import get_index_kline
         df = get_index_kline(code, days)

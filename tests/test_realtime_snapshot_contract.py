@@ -257,8 +257,9 @@ def _non_doc_string_literals(path: pathlib.Path):
 def test_no_second_tencent_parser():
     """除 data_realtime 外不得再有腾讯报文解析。
 
-    判据取腾讯报文独有的 ``split('~')`` 标记 + 非 docstring 的 gtimg URL 字面量；
-    不用泛化的 ``parts[`` 下标（多数解析器都用这个名字，会误伤）。
+    判据取腾讯**行情**报文独有的 ``split('~')`` 标记 + 非 docstring 的
+    ``qt.gtimg.cn/q=`` 字面量（K 线网关 ``web.ifzq.gtimg.cn`` 是另一个接口，
+    不在此判据范围内）；不用泛化的 ``parts[`` 下标（多数解析器都用这个名字）。
     ``host_health.py`` 是 host 注册表（只存 host 名，无请求与解析），豁免 URL 检查。
     """
     split_offenders, url_offenders = [], []
@@ -267,7 +268,7 @@ def test_no_second_tencent_parser():
             continue
         if '.split("~")' in p.read_text(encoding="utf-8"):
             split_offenders.append(p.name)
-        if any("gtimg" in s for s in _non_doc_string_literals(p)):
+        if any("gtimg.cn/q=" in s for s in _non_doc_string_literals(p)):
             url_offenders.append(p.name)
     assert split_offenders == [], f"腾讯报文解析存在第二份: {split_offenders}"
     assert url_offenders == [], f"腾讯行情 URL 在 data_realtime 之外被硬编码: {url_offenders}"

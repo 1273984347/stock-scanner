@@ -73,19 +73,29 @@ def test_realtime_quotes_falls_back_to_pytdx_when_akshare_empty(monkeypatch):
 
 
 def test_registry_priority_demotes_dead_local_tdx_sources():
-    """hist 源栈：本地 TDX 文件源（目录已删）摘到尾部；源集合不变（一个不丢）。"""
+    """hist 源栈：本地 TDX 文件源（目录已删）摘到尾部；源集合不变（一个不丢）。
+
+    ADR-0027（2026-11-19）更新头部：新增两条网页 K 线网关。原断言
+    「baostock 首位」已不成立——baostock 当日进黑名单（10001011），
+    且网页网关实测可返最近交易日。尾部约束与原意（摘除≠删除）保持不变。
+    """
+    assert DATA_SOURCE_PRIORITY[:2] == ["sina_kline", "tencent_kline"], \
+        f"默认栈应由网页网关领头（覆盖最广），实际 {DATA_SOURCE_PRIORITY[:2]}"
     for priority in (DATA_SOURCE_PRIORITY, DATA_SOURCE_PRIORITY_ADJUSTED):
-        assert priority[0] == "baostock", f"首位应是 baostock（网络前复权），实际 {priority[0]}"
         assert priority[-2:] == ["tdx_local_qfq", "tdx_local"], (
             f"本地 TDX 源应在尾部，实际 {priority}"
         )
     # 源集合不变：摘除 ≠ 删除（有 TDX 的环境可经 TDX_DATA_PATH 恢复）
     assert set(DATA_SOURCE_PRIORITY) == {
-        "tdx_local_qfq", "tdx_local", "baostock", "tdx",
+        "sina_kline", "tencent_kline", "baostock", "tdx",
         "adata", "westock", "tushare", "akshare",
+        "tdx_local_qfq", "tdx_local",
     }
-    assert DATA_SOURCE_PRIORITY_ADJUSTED[0] == "baostock"
-    assert DATA_SOURCE_PRIORITY_ADJUSTED[1] == "akshare"
+    # 回测栈：腾讯（唯一提供前复权）领头；新浪**不得**进入——
+    # 不复权价在除权日会造出假跳空，属于隐蔽失真源。
+    assert DATA_SOURCE_PRIORITY_ADJUSTED[0] == "tencent_kline"
+    assert "sina_kline" not in DATA_SOURCE_PRIORITY_ADJUSTED, \
+        "不复权的新浪源不得进回测栈"
 
 
 if __name__ == "__main__":

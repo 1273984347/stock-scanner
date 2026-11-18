@@ -76,9 +76,20 @@ curl -X POST http://localhost:8000/scan \
 
 ### 数据源说明
 
-选股/回测的 K 线走多源自动切换，优先级 `baostock > tdx > adata > westock > tushare > akshare > tdx_local_*`（ADR-0017）。实测当前环境**只有 baostock 可用**；本地 TDX 目录（`D:/TDX/vipdoc`）若不存在，本地源会自动跳过，不影响主链路。
+选股/回测的 K 线走多源自动切换（ADR-0027）：
 
-- 回测已不再硬编码本地 TDX 死源（ADR-0023），指数基准也有 baostock 兜底。
+| 场景 | 源顺序 | 说明 |
+|:--|:--|:--|
+| 实时选股（默认栈） | `sina_kline → tencent_kline → baostock → tdx → adata → westock → tushare → akshare → tdx_local_*` | 新浪覆盖最广（含北交所/指数），**不复权** |
+| 回测（`prefer_adjusted`） | `tencent_kline → baostock → akshare → …` | 只有腾讯给前复权；新浪不复权源**不得**进回测栈（除权日会造假跳空） |
+
+2026-11-19 实测背景：8 个既有源当日**全部返回 0 行**（baostock `10001011` 黑名单、
+akshare 走 `push2his` 不可达、tushare 无 `daily` 权限、adata/westock 缺 Node、
+本地 TDX 已删），而新浪/腾讯网页网关都返到最近交易日。数据健康用
+`python scripts/kline_coverage_probe.py --strict` 一键核验（6 个代表标的）。
+
+- 回测已不再硬编码本地 TDX 死源（ADR-0023）；指数日线在 pytdx 之后接网页网关
+  （ADR-0027），baostock 降为第三兜底。
 - 全市场**实时行情**走三级源栈（ADR-0024）：新浪全市场（`ak.stock_zh_a_spot`，实测
   5579 行 / 12.3s，含北交所）→ 腾讯批量（`qt.gtimg.cn`，200 码/请求，按上次成功代码表
   重建）→ pytdx 公共服务器样本股（仅 ~28 只，最后兜底）。低于 4000 行的降级快照

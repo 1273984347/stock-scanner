@@ -20,14 +20,33 @@ logger = logging.getLogger(__name__)
 # ADR-0017（2026-11-14）：用户已删除本地 TDX 客户端与 vipdoc 目录（D:/TDX 不存在），
 # tdx_local_qfq / tdx_local 两个本地文件源从优先级头部摘到尾部——保留注册（有 TDX 的
 # 环境可用 env TDX_DATA_PATH 重定向恢复），但默认源栈不再每次加载都先撞两下死路径。
-DATA_SOURCE_PRIORITY = ["baostock", "tdx", "adata", "westock", "tushare", "akshare", "tdx_local_qfq", "tdx_local"]
-# 回测用：前复权数据源优先（baostock 网络前复权优先于 akshare；本地 TDX 文件源摘到尾部）
-DATA_SOURCE_PRIORITY_ADJUSTED = ["baostock", "akshare", "tdx", "adata", "westock", "tushare", "tdx_local_qfq", "tdx_local"]
+# ADR-0027（2026-11-19）：新增两条网页 K 线网关。实测 8 个既有源当日全 0
+# （baostock 黑名单 / push2his 不可达 / tushare 无权限 / adata·westock 缺 Node /
+# tdx 已删），而新浪与腾讯网关都能返到最近交易日，故置于头部。
+# - 默认栈：新浪优先（覆盖沪/深/创业/科创/北交所/指数，不复权）
+# - 回测栈：腾讯优先（唯一提供前复权）。新浪**不得**进回测栈——不复权价在除权日
+#   会造出假跳空，属于隐蔽的失真源。
+DATA_SOURCE_PRIORITY = ["sina_kline", "tencent_kline", "baostock", "tdx", "adata",
+                        "westock", "tushare", "akshare", "tdx_local_qfq", "tdx_local"]
+DATA_SOURCE_PRIORITY_ADJUSTED = ["tencent_kline", "baostock", "akshare", "tdx",
+                                 "adata", "westock", "tushare", "tdx_local_qfq", "tdx_local"]
+# 北交所专用：本地 TDX 已删，改由网页网关承担（新浪覆盖 92xxxx，腾讯仅 1 根作兜底）
+BJ_SOURCE_PRIORITY = ["sina_kline", "tencent_kline", "tdx_local"]
 
 
 def _is_bj_stock(code: str) -> bool:
-    """判断是否为北交所股票（4/8 开头：43/83/87/88/92）"""
-    return code.startswith(("4", "8"))
+    """判断是否为北交所股票（43/83/87/88/92）——单一口径走 market_utils。
+
+    旧实现用 ``startswith(("4","8"))``，漏掉 92xxxx（北证新号段），
+    会让 920000 这类标的落进沪深源栈（ADR-0027 修正）。
+    """
+    from lib.data.market_utils import detect_market
+    c = str(code).strip()
+    for p in ("sh", "sz", "bj"):
+        if c.lower().startswith(p):
+            c = c[2:]
+            break
+    return detect_market(c) == "bj"
 
 
 # ADR-0019（2026-11-14）：数据源调用超时——挂起（不抛错、不返回）计入熔断。
@@ -108,6 +127,19 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
     start_str = start_dt.strftime("%Y%m%d")
 
     try:
+        if source == "sina_kline":
+            from lib.data.data_kline_web import get_sina_kline
+            from lib.data.host_health import HOST_SINA_KLINE, call_with_health
+            return _call_source_with_timeout(
+                breaker, call_with_health, HOST_SINA_KLINE,
+                get_sina_kline, code, days=days, as_of_date=as_of_date)
+        if source == "tencent_kline":
+            from lib.data.data_kline_web import get_tencent_kline
+            from lib.data.host_health import HOST_TENCENT_KLINE, call_with_health
+            return _call_source_with_timeout(
+                breaker, call_with_health, HOST_TENCENT_KLINE,
+                get_tencent_kline, code, days=days, adjust="qfq",
+                as_of_date=as_of_date)
         if source == "tdx_local_qfq":
             from lib.data.data_tdx import _fetch_qfq_local_file
             return _fetch_qfq_local_file(code, days, "daily", as_of_date)
@@ -274,15 +306,20 @@ def get_stock_hist_multi_source(
             return pd.DataFrame()
         return df
 
-    # 北交所股票：强制使用 tdx_local（其他数据源不支持）
+    # 北交所股票：按专用优先级（新浪 → 腾讯 → 本地 TDX）。
+    # ADR-0027 起本地 TDX 已删，网页网关是主力；旧实现硬编码 tdx_local 等于直接判死。
     if _is_bj_stock(code):
-        df = _fetch_from_source(code, days, "tdx_local", as_of_date=as_of_date)
-        if not df.empty:
-            df = _normalize_columns(df)
-            if _validate_dataframe(df):
-                logger.debug(f"使用数据源 [tdx_local] 获取北交所 {code}")
-                return df
-        raise AllDataSourcesFailedError(code, ["北交所股票仅支持本地TDX数据源"])
+        bj_errors = []
+        for src in BJ_SOURCE_PRIORITY:
+            df = _fetch_from_source(code, days, src, as_of_date=as_of_date)
+            if not df.empty:
+                df = _normalize_columns(df)
+                if _validate_dataframe(df):
+                    logger.debug(f"使用数据源 [{src}] 获取北交所 {code}")
+                    return df
+            bj_errors.append(f"{src}: empty/invalid")
+        raise AllDataSourcesFailedError(
+            code, bj_errors + ["北交所：本地 TDX 已删且网页网关未取到"])
 
     errors = []
     # 选择数据源优先级：prefer_adjusted=True 时前复权数据源优先

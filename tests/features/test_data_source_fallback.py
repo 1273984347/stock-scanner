@@ -81,6 +81,10 @@ def test_index_hist_has_baostock_fallback(monkeypatch):
     })
     monkeypatch.setattr("lib.data.data_baostock.get_index_kline",
                         lambda *a, **k: fake.copy())
+    # ADR-0027：网页网关排在 baostock 之前。本用例只验证「baostock 兜底仍在」，
+    # 故先屏蔽高优先级源；网关自身由 tests/test_kline_web_sources.py 覆盖。
+    monkeypatch.setattr("lib.data.data_kline_web.get_index_kline_web",
+                        lambda *a, **k: pd.DataFrame())
 
     df = mod.get_index_hist("000300", days=60)
     assert not df.empty
@@ -96,13 +100,23 @@ def test_index_hist_returns_empty_on_all_sources_failing(monkeypatch):
     monkeypatch.setattr("lib.data.data_tdx.get_index_local", lambda *a, **k: pd.DataFrame())
     monkeypatch.setattr("lib.data.data_tdx.get_index_daily", lambda *a, **k: pd.DataFrame())
     monkeypatch.setattr("lib.data.data_baostock.get_index_kline", lambda *a, **k: pd.DataFrame())
+    # ADR-0027：屏蔽更高优先级的网页网关，确保本用例真的走到「全源失败」
+    monkeypatch.setattr("lib.data.data_kline_web.get_index_kline_web",
+                        lambda *a, **k: pd.DataFrame())
     monkeypatch.setattr(mod, "_load_cache", lambda *a, **k: pd.DataFrame())
     assert mod.get_index_hist("000300", days=60).empty
 
 
-def test_baostock_primary_source_is_available():
-    """数据源优先级里 baostock 必须在首位（当前环境唯一可用的真实源）。"""
+def test_primary_source_stack_matches_current_reality():
+    """ADR-0027：网页网关领头；baostock 仍在栈内（当日进黑名单，解封即可用）。
+
+    原断言「baostock 首位」在 2026-11-19 已不成立——`10001011 黑名单用户`，
+    而新浪/腾讯 K 线网关实测可返最近交易日。这里改为钉当前分工，并保留
+    「baostock 不得被摘除」的约束（摘除 ≠ 降权）。
+    """
     from lib.data.data_source_registry import (
         DATA_SOURCE_PRIORITY, DATA_SOURCE_PRIORITY_ADJUSTED)
-    assert DATA_SOURCE_PRIORITY[0] == "baostock"
-    assert DATA_SOURCE_PRIORITY_ADJUSTED[0] == "baostock"
+    assert DATA_SOURCE_PRIORITY[:2] == ["sina_kline", "tencent_kline"]
+    assert DATA_SOURCE_PRIORITY_ADJUSTED[0] == "tencent_kline"
+    assert "sina_kline" not in DATA_SOURCE_PRIORITY_ADJUSTED, "不复权源不得进回测栈"
+    assert "baostock" in DATA_SOURCE_PRIORITY

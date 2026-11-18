@@ -374,6 +374,7 @@ curl http://localhost:8000/api/scan
 | `lib/strategy/pipeline.py` | 策略编排核心 |
 | `lib/data/data_layer.py` | 多源数据层（`get_realtime_quotes` 只做委托，见 ADR-0024） |
 | `lib/data/data_realtime.py` | **实时行情唯一实现**：sina 全市场 → 腾讯批量 → pytdx 样本；单位归一（股/元）+ 6 位代码 + 降级校验（ADR-0024） |
+| `lib/data/data_kline_web.py` | **网页 K 线源**（ADR-0027）：新浪不复权（覆盖北交所/指数）、腾讯 qfq（回测主力）；腾讯 rows 为 日期/开/收/高/低/量 且 volume 是手（判据已钉） |
 | `lib/data/host_health.py` | **host 级健康状态机**（3 次 / 300s / 半开）：东财按 host 部分可用，禁止按源一票否决（ADR-0025） |
 | `.env` | 敏感配置 (禁止 commit) |
 | `cache/models/` | ML 模型存储 |

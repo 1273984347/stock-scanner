@@ -33,8 +33,10 @@ HOST_EASTMONEY_PUSH2HIS = "push2his.eastmoney.com"  # 历史 K 线
 HOST_EASTMONEY_PUSH2EX = "push2ex.eastmoney.com"    # 涨停池 / 龙虎榜（实测可用）
 HOST_EASTMONEY_EMWEB = "emweb.securities.eastmoney.com"  # F10 财务
 HOST_TENCENT_QUOTE = "qt.gtimg.cn"
+HOST_TENCENT_KLINE = "ifzq.gtimg.cn"
 HOST_SINA_QUOTE = "hq.sinajs.cn"
 HOST_SINA_MARKET = "vip.stock.finance.sina.com.cn"
+HOST_SINA_KLINE = "money.finance.sina.com.cn"
 
 DEFAULT_FAILURE_THRESHOLD = 3
 DEFAULT_COOLDOWN_S = 300.0
