@@ -150,9 +150,14 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
             return df
         if source == "akshare":
             import akshare as ak
-            # P0-10: 透传 as_of_date (旧用 datetime.now() 前视)
-            df = _call_source_with_timeout(breaker, ak.stock_zh_a_hist, symbol=code, period="daily",
-                                   start_date=start_str, end_date=end_str, adjust="qfq")
+            from lib.data.host_health import (HOST_EASTMONEY_PUSH2HIS,
+                                              call_with_health)
+            # ADR-0025：`stock_zh_a_hist` 走东财 push2his，host 开断期直接返回空帧
+            # （不发请求、不占超时线程），由多源循环切下一个源。
+            df = _call_source_with_timeout(
+                breaker, call_with_health, HOST_EASTMONEY_PUSH2HIS,
+                ak.stock_zh_a_hist, symbol=code, period="daily",
+                start_date=start_str, end_date=end_str, adjust="qfq")
             if df.empty:
                 return pd.DataFrame()
             df = df.rename(columns={

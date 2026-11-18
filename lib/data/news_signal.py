@@ -10,6 +10,7 @@ import threading
 import time
 
 from lib.data.cache import retry_api_call, load_cache, save_cache
+from lib.data.host_health import HOST_EASTMONEY_PUSH2EX, guarded
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ def _load_news_cache():
         df = load_cache("lhb_codes", max_age_hours=4)
         # P2-5 兼容：load_cache 加载失败时返回 None（与空 DataFrame 区分）
         if df is None or df.empty:
-            df = retry_api_call(ak.stock_lhb_detail_em)
+            df = retry_api_call(guarded(HOST_EASTMONEY_PUSH2EX, ak.stock_lhb_detail_em))
             if not df.empty:
                 save_cache("lhb_codes", df)
         lhb_codes = set()

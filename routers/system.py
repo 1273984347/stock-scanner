@@ -54,6 +54,30 @@ async def health():
         }
 
 
+@router.get("/api/system/host-health", dependencies=[Security(verify_api_key)])
+async def host_health_status():
+    """各数据源 host 健康度（ADR-0025）。
+
+    把「东财按 host 部分可用」从记忆变成可观测事实：`push2` / `push2his` /
+    `push2ex` / `emweb` / 腾讯 / 新浪各自独立计数，一个 host 开断不代表整源不可用。
+
+    只读进程内状态，无阻塞 IO；跨 worker 不共享（每个 worker 各自探测本机网络）。
+    """
+    from lib.data.host_health import health_snapshot
+
+    hosts = health_snapshot()
+    open_hosts = sorted(h for h, st in hosts.items() if st.get("state") != "closed")
+    return {
+        "hosts": hosts,
+        "summary": {
+            "total": len(hosts),
+            "open": len(open_hosts),
+            "open_hosts": open_hosts,
+        },
+        "checked_at": datetime.now().isoformat(),
+    }
+
+
 async def _ensure_dashboard_scan(preset: str, orchestrator) -> dict:
     """批次 B4 / P2-6：同一 preset 的并发请求只起一个重扫描任务。
 

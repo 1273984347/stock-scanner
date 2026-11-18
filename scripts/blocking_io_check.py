@@ -390,6 +390,12 @@ def recapture(allowed: set[tuple[str, str]], mode: str = "offload") -> tuple[lis
       * allowed endpoints actually improved (blocking down, offloaded up,
         and no per-callee blocking increase);
       * the rule table did not shrink.
+
+    新增 HTTP 端点（ADR-0026）：只允许在 ``refactor`` 模式下、显式列进
+    ``--allow-endpoints``、且该端点**零阻塞调用**。缺这三条中的任何一条都判红——
+    新增端点不是「重构已有东西」，不能借 offload/scope 通道混入；若它确实要阻塞，
+    先做 offload 设计，而不是先写基线再补。
+
     A machine-readable evidence file is written next to the baseline.
     """
     if not allowed:
@@ -411,15 +417,35 @@ def recapture(allowed: set[tuple[str, str]], mode: str = "offload") -> tuple[lis
     old_eps = _all_records(old)
     new_eps = _all_records(new)
     allowed_keys = {f"{m} {p}" for m, p in allowed}
-    if set(old_eps) != set(new_eps):
-        failures.append(f"endpoint set changed: missing={sorted(set(old_eps) - set(new_eps))} "
-                        f"added={sorted(set(new_eps) - set(old_eps))}")
+    old_keys, new_keys = set(old_eps), set(new_eps)
+    removed_keys, added_keys = old_keys - new_keys, new_keys - old_keys
+    if removed_keys:
+        failures.append(f"endpoint set shrank: missing={sorted(removed_keys)}")
+    if added_keys - allowed_keys:
+        failures.append(
+            f"endpoint added without --allow-endpoints: {sorted(added_keys - allowed_keys)}")
+    if added_keys and mode != "refactor":
+        failures.append(f"new HTTP endpoint allowed only in --mode refactor (got {mode!r})")
 
     for field in ("blocking_tails", "blocking_fulls", "offloaded_tails", "offloaded_fulls"):
         if not set(old["rules"][field]) <= set(new["rules"][field]):
             failures.append(f"rules.{field} shrank")
 
     evidence_rows = []
+    # 新增端点（ADR-0026）：零阻塞是硬条件，否则先做 offload 设计再来登记。
+    for key in sorted(added_keys & allowed_keys):
+        n = new_eps[key]
+        new_block = sum(n["blocking"].values())
+        if new_block:
+            failures.append(f"new endpoint {key} introduces {new_block} blocking call(s)")
+        evidence_rows.append({
+            "endpoint": key, "added": True,
+            "blocking_before": 0, "blocking_after": new_block,
+            "offloaded_before": 0,
+            "offloaded_after": sum(n["offloaded"].values()),
+            "other_before": 0, "other_after": sum(n["other"].values()),
+        })
+
     for key in sorted(old_eps.keys() | new_eps.keys()):
         b, n = old_eps.get(key), new_eps.get(key)
         if b is None or n is None:

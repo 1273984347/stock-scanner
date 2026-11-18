@@ -260,7 +260,11 @@ def get_kline(code: str, days: int = 180, period: str = "daily", as_of_date: Opt
             logger.debug(f"akshare 不支持 bj 股票 {code}，返回空")
             return pd.DataFrame()
         symbol = code if code.startswith(("sh", "sz")) else (market + code)
-        df_ak = ak.stock_zh_a_hist(symbol=symbol, period="daily", adjust="qfq")
+        # ADR-0025：akshare hist 走东财 push2his，host 开断期返回空帧（不占超时）
+        from lib.data.host_health import (HOST_EASTMONEY_PUSH2HIS,
+                                          call_with_health)
+        df_ak = call_with_health(HOST_EASTMONEY_PUSH2HIS, ak.stock_zh_a_hist,
+                                 symbol=symbol, period="daily", adjust="qfq")
         if df_ak is not None and not df_ak.empty:
             df_ak = df_ak.rename(columns={
                 "日期": "date", "开盘": "open", "收盘": "close",

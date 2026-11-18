@@ -26,6 +26,7 @@ from lib.scoring.scoring_gateway import score_4d
 #       被错误触发 REDUCE 动作（多策略状态污染）。
 # 修复: 改为各策略函数内自行实例化 VolCorrRiskManager（按需），状态天然隔离。
 #       当前模块未在任何策略函数中直接使用 RiskManager，移除 import 即可。
+from lib.data.host_health import HOST_EASTMONEY_PUSH2EX, guarded
 from lib.data.data_layer import (get_stock_hist_multi_source, get_realtime_quotes,
                              get_stock_fund_flow, get_news_signals,
                              get_market_sentiment, _get_financial_data,
@@ -308,7 +309,8 @@ def get_zt_candidates(config: SystemConfig, as_of_date: Optional[str] = None) ->
     """
     _ = as_of_date  # 当前实现未使用（涨停板复盘依赖当日池 API），保留参数以备未来扩展
     try:
-        df = _retry_api_call(ak.stock_zt_pool_em, date=_safe_signal_date().replace("-", ""))
+        df = _retry_api_call(guarded(HOST_EASTMONEY_PUSH2EX, ak.stock_zt_pool_em),
+                             date=_safe_signal_date().replace("-", ""))
         if df.empty:
             return pd.DataFrame()
         df = df[df["连板数"] >= config.scan.min_zt_days]
@@ -542,7 +544,8 @@ def get_hot_board_candidates(config: SystemConfig, as_of_date: Optional[str] = N
     """
     _ = as_of_date  # 当前实现未使用（依赖当日池 API）
     try:
-        df = _retry_api_call(ak.stock_zt_pool_em, date=_safe_signal_date().replace("-", ""))
+        df = _retry_api_call(guarded(HOST_EASTMONEY_PUSH2EX, ak.stock_zt_pool_em),
+                             date=_safe_signal_date().replace("-", ""))
         if df.empty:
             return pd.DataFrame()
 
@@ -585,7 +588,7 @@ def get_lhb_candidates(config: SystemConfig, as_of_date: Optional[str] = None) -
     """
     _ = as_of_date  # 当前实现未使用（依赖当日榜 API）
     try:
-        df = _retry_api_call(ak.stock_lhb_detail_em)
+        df = _retry_api_call(guarded(HOST_EASTMONEY_PUSH2EX, ak.stock_lhb_detail_em))
         if df.empty:
             return pd.DataFrame()
         if "方向" in df.columns:

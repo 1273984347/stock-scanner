@@ -50,15 +50,16 @@ def test_classify_does_not_confuse_ambiguous_tails():
     assert mod.classify("anyio.to_thread.run_sync", "run_sync") == "offloaded"
 
 
-def test_baseline_exists_with_68_endpoints_and_matches_ownership():
+def test_baseline_exists_with_69_endpoints_and_matches_ownership():
     assert BASELINE_FILE.exists(), "run: python scripts/blocking_io_check.py --capture"
     base = json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
     own = json.loads(OWNERSHIP_FILE.read_text(encoding="utf-8"))
-    assert base["counts"]["endpoints"] == 68
+    # ADR-0026：新增 GET /api/system/host-health（零阻塞）后 68 → 69
+    assert base["counts"]["endpoints"] == 69
     base_pairs = {(e["method"], e["path"]) for e in base["endpoints"]}
     own_pairs = {(e["method"], e["path"]) for e in own["endpoints"]}
     assert base_pairs == own_pairs
-    assert len(base_pairs) == len(own_pairs) == 68
+    assert len(base_pairs) == len(own_pairs) == 69
 
 
 def test_all_endpoints_remain_async():
@@ -159,3 +160,73 @@ def test_selftest_passes_and_live_gate_is_green():
     mod = _load_script()
     assert mod.selftest() == []
     assert mod.check() == []
+
+
+# ========== ADR-0026：recapture 的「新增端点」通道 ==========
+# 门禁原本没有任何「合法新增端点」的路径，只能 --capture 全量重建（丢掉逐字段取证）。
+# 新增通道必须自带护栏：只允许 refactor + 显式 allow + 零阻塞，否则判红。
+
+TARGET = "GET /api/system/host-health"
+
+
+def _baseline_without(mod, key: str) -> tuple[dict, dict]:
+    new = mod.capture()
+    old = copy.deepcopy(new)
+    old["endpoints"] = [e for e in old["endpoints"] if e["key"] != key]
+    old["counts"]["endpoints"] = len(old["endpoints"])
+    return old, new
+
+
+def _replay(mod, tmp_path, monkeypatch, old: dict, new: dict, allowed: set, mode: str):
+    baseline = tmp_path / "blocking-io-baseline.json"
+    baseline.write_text(json.dumps(old, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(mod, "BASELINE_FILE", baseline)
+    monkeypatch.setattr(mod, "capture", lambda: copy.deepcopy(new))
+    return mod.recapture(allowed, mode=mode)
+
+
+def test_recapture_allows_explicit_zero_blocking_addition(tmp_path, monkeypatch):
+    mod = _load_script()
+    old, new = _baseline_without(mod, TARGET)
+    failures, _, evidence = _replay(mod, tmp_path, monkeypatch, old, new,
+                                    {("GET", "/api/system/host-health")}, "refactor")
+    assert failures == [], failures
+    added = [r for r in evidence["per_endpoint"] if r.get("added")]
+    assert [r["endpoint"] for r in added] == [TARGET]
+    assert added[0]["blocking_after"] == 0
+
+
+def test_recapture_rejects_undeclared_addition(tmp_path, monkeypatch):
+    """allowed 非空但没列出新端点 —— 新增必须逐条声明，不能靠「反正有 allow」混过。"""
+    mod = _load_script()
+    old, new = _baseline_without(mod, TARGET)
+    failures, _, _ = _replay(mod, tmp_path, monkeypatch, old, new,
+                             {("GET", "/api/health")}, "refactor")
+    assert any("added without --allow-endpoints" in f for f in failures), failures
+
+
+def test_recapture_rejects_addition_outside_refactor_mode(tmp_path, monkeypatch):
+    mod = _load_script()
+    old, new = _baseline_without(mod, TARGET)
+    failures, _, _ = _replay(mod, tmp_path, monkeypatch, old, new,
+                             {("GET", "/api/system/host-health")}, "offload")
+    assert any("only in --mode refactor" in f for f in failures), failures
+
+
+def test_recapture_rejects_added_endpoint_with_blocking(tmp_path, monkeypatch):
+    mod = _load_script()
+    old, new = _baseline_without(mod, TARGET)
+    for e in new["endpoints"]:
+        if e["key"] == TARGET:
+            e["blocking"]["open"] = 1
+    failures, _, _ = _replay(mod, tmp_path, monkeypatch, old, new,
+                             {("GET", "/api/system/host-health")}, "refactor")
+    assert any("introduces 1 blocking call" in f for f in failures), failures
+
+
+def test_recapture_rejects_endpoint_removal(tmp_path, monkeypatch):
+    mod = _load_script()
+    old, new = _baseline_without(mod, TARGET)   # old 少一个 → 反向构造「删除」
+    failures, _, _ = _replay(mod, tmp_path, monkeypatch, new, old,
+                             {("GET", "/api/system/host-health")}, "refactor")
+    assert any("endpoint set shrank" in f for f in failures), failures

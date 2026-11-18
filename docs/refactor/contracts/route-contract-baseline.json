@@ -1,29 +1,29 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-10T12:16:13+00:00",
+  "generated_at": "2026-11-18T15:13:28+00:00",
   "app_version": "3.0.0",
   "auth_mechanism": "APIKeyHeader via Depends 链（本项目不使用 FastAPI SecurityRequirement，\n                            故 OpenAPI 中不存在 apiKey security scheme；鉴权只能靠依赖名识别）",
   "source": {
-    "commit": "a14b6bd",
+    "commit": "8fdaec5",
     "branch": "master",
-    "api_py_sha256": "df06f4eff608ac361515d98e11a80ea08170fdafa80ab7cd12fa82a1bfa605b8"
+    "api_py_sha256": "64217e7b26458ba04883c5d655d24820d90e5034a542d51fcd03d55c2efb6941"
   },
   "counts": {
     "total_routes": 27,
-    "http_api": 68,
+    "http_api": 69,
     "http_non_api": 3,
     "websocket": 1,
     "static_mount": 2,
     "framework_builtin": 4,
     "methods": {
-      "GET": 49,
+      "GET": 50,
       "POST": 15,
       "DELETE": 3,
       "PATCH": 1
     },
-    "async_true": 68,
+    "async_true": 69,
     "async_false": 0,
-    "auth_required": 65
+    "auth_required": 66
   },
   "routes": [
     {
@@ -2402,6 +2402,32 @@
       "path": "/api/strategy/snapshots",
       "method": "GET",
       "handler": "strategy_snapshots_list",
+      "async": true,
+      "auth_required": true,
+      "dependencies": [
+        "verify_api_key"
+      ],
+      "auth_dependencies": [
+        "verify_api_key"
+      ],
+      "params": [],
+      "responses": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "status_code": 200,
+      "category": "api"
+    },
+    {
+      "path": "/api/system/host-health",
+      "method": "GET",
+      "handler": "host_health_status",
       "async": true,
       "auth_required": true,
       "dependencies": [

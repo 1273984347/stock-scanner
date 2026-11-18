@@ -243,6 +243,20 @@ _REAL_CONNECT = socket.socket.connect
 _REAL_CREATE_CONNECTION = socket.create_connection
 
 
+@pytest.fixture(autouse=True)
+def _reset_host_health_between_tests():
+    """ADR-0025/0026：host 健康是进程级单例，测试间必须清零。
+
+    否则某个用例模拟的「push2his 连续失败 3 次」会开断后续用例的取数短路，
+    表现为顺序依赖的假失败（实测：tests/test_data_tdx.py 单跑全绿、全量跑 2 红）。
+    与 `_isolate_repo_cache_dirs` 同源纪律：测试基础设施不得把状态泄漏给下一个用例。
+    """
+    from lib.data.host_health import reset_host_health
+    reset_host_health()
+    yield
+    reset_host_health()
+
+
 # 放行的地址：loopback（127.0.0.1 / ::1 / localhost）与 unix socket path
 #   —— 这些不是"外部网络"，且必须放行，否则会打断基础设施：
 #   · Windows 上 asyncio 的 self-pipe 用 socket.socketpair()，而它在 Windows

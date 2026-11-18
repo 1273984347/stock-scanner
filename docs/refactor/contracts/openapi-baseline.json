@@ -110,7 +110,7 @@
     },
     "/api/ab-test/run": {
       "post": {
-        "description": "运行 A/B 测试",
+        "description": "运行 A/B 测试（批次 C / P2-9：补参数上界，与 /api/backtest 对齐）",
         "operationId": "ab_test_run_api_ab_test_run_post",
         "responses": {
           "200": {
@@ -593,7 +593,7 @@
     },
     "/api/backup/create": {
       "post": {
-        "description": "创建数据备份",
+        "description": "创建数据备份（B2-2：白名单 + 线程池，响应形状不变）",
         "operationId": "backup_create_api_backup_create_post",
         "responses": {
           "200": {
@@ -747,7 +747,7 @@
     },
     "/api/errors": {
       "post": {
-        "description": "接收前端错误上报",
+        "description": "接收前端错误上报（批次 A / P1-1）。\n\n认证边界：前端已改用 fetch(keepalive + X-API-Key)，未认证直接 401。\n资源上界：body ≤ 4KB + 字段白名单 + 单字段截断，避免无界写盘与日志投毒。\n不挂 Security 依赖是为了保持 L2 契约快照 / L7 归属表的鉴权形状不变；\n认证逻辑复用 api_core.api_key_is_valid，不在此处另写一套比较。",
         "operationId": "report_frontend_error_api_errors_post",
         "responses": {
           "200": {
@@ -2437,6 +2437,28 @@
           }
         ],
         "summary": "Strategy Snapshots List"
+      }
+    },
+    "/api/system/host-health": {
+      "get": {
+        "description": "各数据源 host 健康度（ADR-0025）。\n\n把「东财按 host 部分可用」从记忆变成可观测事实：`push2` / `push2his` /\n`push2ex` / `emweb` / 腾讯 / 新浪各自独立计数，一个 host 开断不代表整源不可用。\n\n只读进程内状态，无阻塞 IO；跨 worker 不共享（每个 worker 各自探测本机网络）。",
+        "operationId": "host_health_status_api_system_host_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Host Health Status"
       }
     },
     "/api/trade-history": {

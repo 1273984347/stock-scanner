@@ -1,7 +1,7 @@
 {
   "constraints": {
     "auth_must_not_decrease": true,
-    "declared_path_count": 65,
+    "declared_path_count": 66,
     "router_count": 17,
     "source": "runtime app.routes via scripts/contract_snapshot.py::collect()"
   },
@@ -23,11 +23,11 @@
       "signals_audit": 4,
       "stock": 1,
       "strategy": 10,
-      "system": 4
+      "system": 5
     },
-    "endpoints": 68,
+    "endpoints": 69,
     "unassigned": 0,
-    "unique_paths": 65
+    "unique_paths": 66
   },
   "endpoints": [
     {
@@ -669,6 +669,16 @@
       "method": "GET",
       "path": "/api/strategy/snapshots",
       "router": "strategy"
+    },
+    {
+      "async": true,
+      "auth_dependency_count": 1,
+      "auth_required": true,
+      "dependency_count": 1,
+      "handler": "host_health_status",
+      "method": "GET",
+      "path": "/api/system/host-health",
+      "router": "system"
     },
     {
       "async": true,

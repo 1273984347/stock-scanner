@@ -392,11 +392,11 @@ curl http://localhost:8000/api/scan
 | `docs/refactor/scoring-baseline.json` | 评分对拍基线读数（改动评分前后必比对） |
 | `docs/adr/0003-*.md` | 基线 pin 修复 + Phase 4 归一范围 / 覆盖率判据修正 |
 | `docs/adr/0004-*.md` | Phase 5 端点归属表基线 + 前端路径读数 18→36 修正 |
-| `scripts/route_ownership_check.py` | 第 7 把尺子：17 域 / 68 端点归属 + 鉴权/async + 契约五重校验（`--capture` / `--check`） |
-| `docs/refactor/contracts/route-ownership.json` | 68 端点归属表（Phase 5 拆分前后比对的权威读数） |
+| `scripts/route_ownership_check.py` | 第 7 把尺子：17 域 / 69 端点归属 + 鉴权/async + 契约五重校验（`--capture` / `--check`） |
+| `docs/refactor/contracts/route-ownership.json` | 69 端点归属表（Phase 5 拆分前后比对的权威读数；ADR-0026 新增 host-health） |
 | `docs/refactor/contracts/frontend-api-paths.json` | 前端 36 条 API 路径清单（Phase 5 实跑验收依据） |
-| `scripts/blocking_io_check.py` | **第 8 把尺子 / L8 门禁**：阻塞 IO 基线采集、`--check`（blocking 只准降 / offloaded 只准升 / other 冻结 / 端点集合与 L7 一致）、`--selftest`（6 类注入回归 + 3 条 Tier B 语义断言）；B1 起分 `endpoints`(68 HTTP) 与 `extended_endpoints`(6：/ws、非 /api/ 路由、中间件) 两个集合，Tier B 按符号组合语义分类，`--recapture --mode scope` 做范围扩展取证；B2 起 `--recapture` 的 G4 字段级取证同时覆盖两个集合 |
-| `docs/refactor/contracts/blocking-io-baseline.json` | Phase 6 起点读数：68 端点 / 1052 调用 / 242 阻塞调用 / 63 端点含阻塞点；含 `plan_stated_target` 对照 |
+| `scripts/blocking_io_check.py` | **第 8 把尺子 / L8 门禁**：阻塞 IO 基线采集、`--check`（blocking 只准降 / offloaded 只准升 / other 冻结 / 端点集合与 L7 一致）、`--selftest`（6 类注入回归 + 3 条 Tier B 语义断言）；B1 起分 `endpoints`(69 HTTP) 与 `extended_endpoints`(6：/ws、非 /api/ 路由、中间件) 两个集合，Tier B 按符号组合语义分类，`--recapture --mode scope` 做范围扩展取证；B2 起 `--recapture` 的 G4 字段级取证同时覆盖两个集合 |
+| `docs/refactor/contracts/blocking-io-baseline.json` | Phase 6 起点读数：68 端点 / 1052 调用（ADR-0026 起 69 端点 / 94 阻塞 / 44 offloaded） / 242 阻塞调用 / 63 端点含阻塞点；含 `plan_stated_target` 对照 |
 | `docs/adr/0006-*.md` | 第 6 次判据修正：绝对阈值「≤1」→ 单调下降 + Tier A/B 分层退出判据 |
 | `tests/test_blocking_io_check.py` | L8 的 11 例机器判据（含 helper 展开、表外符号判红、尺子自证） |
 | `lib/infra/async_offload.py` | **Phase 6 唯一 offload 入口**：`run_blocking(consumer, fn, ...)`，off 同步直调 / on 走线程池；`OFFLOAD_CONSUMERS` 显式登记 |

@@ -50,14 +50,16 @@ def test_router_definition_is_disjoint_and_17_domains():
     assert len(mod.ROUTERS) == 17
     all_paths = [p for paths in mod.ROUTERS.values() for p in paths]
     assert len(all_paths) == len(set(all_paths)), "a path must belong to exactly one router"
-    assert len(all_paths) == 65
+    # ADR-0026：新增 /api/system/host-health（归属 system 域）后 65 → 66
+    assert len(all_paths) == 66
 
 
-def test_all_68_endpoints_have_a_router(ownership):
-    assert ownership["counts"]["endpoints"] == 68
-    assert ownership["counts"]["unique_paths"] == 65
+def test_all_69_endpoints_have_a_router(ownership):
+    """ADR-0026：新增 host-health 运维端点后 68 → 69（唯一路径 65 → 66）。"""
+    assert ownership["counts"]["endpoints"] == 69
+    assert ownership["counts"]["unique_paths"] == 66
     assert ownership["counts"]["unassigned"] == 0
-    assert sum(ownership["counts"]["by_router"].values()) == 68
+    assert sum(ownership["counts"]["by_router"].values()) == 69
     assert all(e["router"] for e in ownership["endpoints"])
 
 
@@ -65,7 +67,7 @@ def test_ownership_matches_contract_members_and_count(ownership, contract):
     base = [r for r in contract["routes"] if r.get("category") == "api"]
     base_pairs = {(r["path"], r["method"]) for r in base}
     own_pairs = {(e["path"], e["method"]) for e in ownership["endpoints"]}
-    assert len(base_pairs) == len(own_pairs) == 68
+    assert len(base_pairs) == len(own_pairs) == 69
     assert own_pairs == base_pairs
 
 

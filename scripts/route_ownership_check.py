@@ -87,7 +87,8 @@ ROUTERS: dict[str, tuple[str, ...]] = {
         "/api/backup/{backup_file}",
     ),
     "notifications": ("/api/notifications", "/api/notifications/stats"),
-    "system": ("/api/health", "/api/dashboard", "/api/reports", "/api/errors"),
+    "system": ("/api/health", "/api/dashboard", "/api/reports", "/api/errors",
+               "/api/system/host-health"),
 }
 
 PATH_RE = re.compile(r"['\"`](/api/[A-Za-z0-9_/{}.$\-]+)['\"`]")

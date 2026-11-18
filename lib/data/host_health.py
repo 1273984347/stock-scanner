@@ -17,10 +17,13 @@
     - 冷却到期 → 半开：放行**一次**探测；成功闭合，失败立即重开并重置计时。
     - host 之间完全独立：push2 开断不影响 push2ex（有机器判据钉死）。
 """
+import functools
 import logging
 import threading
 import time
 from typing import Callable, Dict, Optional
+
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -124,3 +127,44 @@ def health_snapshot() -> Dict[str, dict]:
 
 def reset_host_health() -> None:
     _HOST_HEALTH.reset()
+
+
+# ========== 调用包装：把 host 健康度接进取数链路 ==========
+
+class HostUnavailableError(Exception):
+    """host 已开断（保留给需要显式区分「没发请求」的调用方）。"""
+
+
+def _call(host: str, fn: Callable, args: tuple, kwargs: dict):
+    """开断期直接返回空帧；异常记失败并**原样抛出**；成功闭合。
+
+    为什么异常要原样抛出：既有调用方（`_retry_api_call` / 多源循环）靠异常
+    触发重试与切源；在这里吞掉会静默降低重试能力。开断期返回空帧则是
+    「源返回无数据」的等价语义，既有兜底链照常工作，且不再付超时成本。
+    """
+    if not is_available(host):
+        logger.debug(f"[host_health] {host} 开断中，跳过 {getattr(fn, '__name__', fn)}")
+        return pd.DataFrame()
+    try:
+        result = fn(*args, **kwargs)
+    except Exception as e:
+        note_failure(host, e)
+        logger.warning(
+            f"[host_health] {host} 调用失败 {getattr(fn, '__name__', fn)}: {e}")
+        raise
+    note_success(host)
+    return result
+
+
+def call_with_health(host: str, fn: Callable, *args, **kwargs):
+    """直接调用（用于不需要重试包装的取数点）。"""
+    return _call(host, fn, args, kwargs)
+
+
+def guarded(host: str, fn: Callable) -> Callable:
+    """返回带 host 健康度的包装函数；``functools.wraps`` 保留 ``__module__``，
+    以维持 `rate_limiter` 按模块分桶的既有配额语义（不能退化成单桶）。"""
+    @functools.wraps(fn)
+    def _wrapped(*args, **kwargs):
+        return _call(host, fn, args, kwargs)
+    return _wrapped

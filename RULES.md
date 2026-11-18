@@ -129,7 +129,7 @@ infra  ←  data  ←  scoring  ←  strategy
 | T2 | **灰度判定只允许在 offload 入口**；消费者不得自读 `FEATURE_ASYNC_OFFLOAD`，开关默认 off，按消费者粒度切换 | 与 S8 同构：判定散落就无法回答「到底哪几个消费者切了」 |
 | T3 | **保持 `async def` 签名**，禁止把端点改成 `def` 来「顺手」走线程池 | 会静默改变 FastAPI 调度语义与并发上限；契约快照冻结 async/sync，L2 会判红 |
 | T4 | 每切一个消费者必须跑 off/on 逐字段对拍，**并自证 on 侧真走了线程池**（off=0 / on>0） | 两侧都没切时 diff 也恒 0 = 空判据（坑表 P-56） |
-| T5 | 阻塞判据以 `scripts/blocking_io_check.py` 的 **L8** 为准：**blocking 只准降 / offloaded 只准升 / other 逐字段冻结**；新符号必须显式归类后才能推进 | 计划的绝对阈值「≤1」被实测 242 推翻（ADR-0006 D1）；表外符号由 `other` 冻结兜住，不假设阻塞表完整 |
+| T5 | 阻塞判据以 `scripts/blocking_io_check.py` 的 **L8** 为准：**blocking 只准降 / offloaded 只准升 / other 逐字段冻结**；新符号必须显式归类后才能推进。**新增 HTTP 端点只允许走 `--recapture --mode refactor --allow-endpoints "METHOD /path"`**（该端点须零阻塞 + 显式声明 + 其余端点逐字段一致），禁止用 `--capture` 全量重建绕过取证（ADR-0026） | 计划的绝对阈值「≤1」被实测 242 推翻（ADR-0006 D1）；表外符号由 `other` 冻结兜住，不假设阻塞表完整。原 recapture 没有「新增端点」路径，只能全量重建——那会丢掉其他端点的逐字段取证 |
 | T5-a（B1） | 端点发现不得只认带 `/api/` 前缀的 HTTP 装饰器；`websocket`、非 `/api/` 路由、`@app.middleware` 必须纳入扫描，且 **async 顶层 helper 也要展开** | `ROUTE_METHODS` 原来不含 `websocket`、路径硬过滤 `/api/`，`_helper_index` 只收 `ast.FunctionDef` ⇒ `/ws` 调的 async `_get_ws_data` 整条阻塞链（10 个调用）对门禁完全不可见（审查报告 §5 / 坑表 P-90） |
 | T6 | **`_scan_tasks` / `_perf_metrics` 只允许经 `lib/infra/` 的带锁 API 读写**；`routers/` 中禁止直接下标或 `.get/.append/.clear/.update` | 散落读写会造成半更新状态与指标丢失；AST 守卫见 `tests/test_phase6_batch2.py`（ADR-0007 D4） |
 | T6-a（B3） | `perf_metrics` 的 `_perf_metrics_lock` **只保护缓冲 list**；读旧文件 / json / 写盘移到独立的 `_flush_io_lock` 下，且 `record_metric` 必须在**锁外**触发 flush。`api_core` 缓存锁改**按 key 分片**（`_lock_for`），同一 key 仍串行 | P2-4/P2-5：单把全局锁把 68 端点与多 WS 客户端串行化，中间件还在事件循环里同步读写全量 `perf_baseline.json`。移锁后「不丢不重」由「锁内立即摘走快照 + 失败还回头部」保证，见 `tests/features/test_batch_b_gates.py` |
@@ -137,7 +137,7 @@ infra  ←  data  ←  scoring  ←  strategy
 | T7-a（C） | **WS 凭据只走握手头**：`Authorization: Bearer` 或 `Sec-WebSocket-Protocol: bearer.<base64url(key)>`，禁止 URL query；**API 文档默认按环境开关**（生产设 `ENABLE_API_DOCS=0`）；**5xx 只回 `{detail, trace_id}`**，不回 `str(exc)`；`get_task` 的 error 统一替换成固定文案 | P1-2/P2-7/P2-8：URL 凭据会被反代 access log、浏览器历史、Referer 记录；`/openapi.json` 是未认证的 68 端点攻击地图；异常原文泄露内部路径与依赖名。判据见 `tests/features/test_batch_c_hardening.py` |
 | T7-b（W，完整版） | **部署形态默认单 worker**：启动期 `lib/infra/worker_guard.py` 同时探测命令行 `--workers` 与三个环境变量（命令行优先），>1 默认 fail-fast；确需多 worker 必须显式 `ALLOW_MULTI_WORKER=1`，由 `lib/infra/process_leader.py` 提供跨进程单飞（文件锁选主 + 原子快照 + 扫描槽租约），零 Redis。禁止以「广播去重」为名掩盖状态外置需求 | 实测 `--workers 2` 不写环境变量，只读环境变量会被一行命令绕过（P0 漏洞已修）；单客户端重复推送**不会**发生（连接按进程隔离），真问题是构造 ×N 与缓存分片。判据 `test_worker_guard.py` / `test_process_leader.py` / `test_multiprocess_integration.py`，坑表 P-95/P-97，ADR-0022 |
 | T7-c（L9） | **导出字段统一过 `_csv_safe()`**：CSV/openpyxl 的字符串字段以 `= + - @` / 制表 / 回车开头时前置单引号；Excel 另行强制 `cell.data_type='s'`。数值字段不得包成文本 | P2-10：公式/DDE 注入。冻结迁移体因此偏离的，走 `MIGRATION_DIVERGENCES` 显式登记 + 行为判据，不许直接放宽逐字等价（ADR-0021，坑表 P-96）。判据 `tests/features/test_csv_formula_injection.py` |
-| T7-d（R） | **实时行情只允许一份实现**：编排/解析/单位归一/降级校验都在 `lib/data/data_realtime.py`；`data_layer.get_realtime_quotes` 只做委托，`data_api` 只做门面。**单位统一「股 / 元」**（腾讯手×100、万元×10000），**代码统一 6 位 + `市场` 列**；降级快照（<4000 行 / 缺列）逐条告警且**不写缓存**。数据源健康按 **host** 计数（`lib/data/host_health.py`，3 次 / 300s / 半开），禁止按「东财源」一票否决——`push2` 死时 `push2ex` 必须仍可用 | 三份腾讯解析 + 四套同名实时函数，其中 `data_ashare` 版只跑前 100 只；单位不归一让资金流 `vol_ratio` 差 100 倍、分支静默失效；代码带前缀让 `run.py`/`steps.py` 的精确匹配静默落空。判据 `test_realtime_snapshot_contract.py` / `test_host_health.py`，坑表 P-99，ADR-0024/0025。排查 host 用 `python scripts/host_health_probe.py` |
+| T7-d（R） | **实时行情只允许一份实现**：编排/解析/单位归一/降级校验都在 `lib/data/data_realtime.py`；`data_layer.get_realtime_quotes` 只做委托，`data_api` 只做门面。**单位统一「股 / 元」**（腾讯手×100、万元×10000），**代码统一 6 位 + `市场` 列**；降级快照（<4000 行 / 缺列）逐条告警且**不写缓存**。数据源健康按 **host** 计数（`lib/data/host_health.py`，3 次 / 300s / 半开），禁止按「东财源」一票否决——`push2` 死时 `push2ex` 必须仍可用。**push2his/push2ex 在调用边界用 `call_with_health` / `guarded` 接入**（不注入 akshare）：异常必须原样抛出、`functools.wraps` 保留 `__module__`（限流分桶）；运维查看 `GET /api/system/host-health`（需鉴权，只读内存） | 三份腾讯解析 + 四套同名实时函数，其中 `data_ashare` 版只跑前 100 只；单位不归一让资金流 `vol_ratio` 差 100 倍、分支静默失效；代码带前缀让 `run.py`/`steps.py` 的精确匹配静默落空。判据 `test_realtime_snapshot_contract.py` / `test_host_health.py`，坑表 P-99，ADR-0024/0025。排查 host 用 `python scripts/host_health_probe.py` |
 
 > **阶段边界**：**Phase 6 第 1 批 ✅**（第 8 把尺子 + 基线，零业务代码改动，ADR-0006）；
 > **第 2 批 ✅**（`FEATURE_ASYNC_OFFLOAD` 默认 off + `lib/infra/async_offload.py` 唯一入口、
@@ -264,13 +264,13 @@ python scripts/host_health_probe.py
 | 判据 | 通过标准 |
 |---|---|
 | L1 | 0 failed；用例数变化须能逐条解释（新增/改名/删除） |
-| L2 | `[PASS] contract unchanged`（当前 72 路由） |
+| L2 | `[PASS] contract unchanged`（当前 73 路由） |
 | L3 | `[PASS] dual-run: 3 chains match baseline` |
 | L4 | `[PASS] backtest baseline: all chains match` |
 | L5 | `[PASS] scoring baseline: 9 sources match (285 samples)`，且每条链路 `mismatches = 0` |
 | L6 | `[PASS] switch diff: 3 branch(es), 9 responses, 0 field(s) differ`；三条分支各自 `kernel calls off=0 on>0`，且 `[PASS] consumers: 3/3` |
-| L7 | `[PASS] route ownership: 68 endpoints / 17 routers / N frontend paths`；路径数由 `capture_frontend_paths()` 从 `static/` 源码重算，不在文档硬编码；鉴权依赖数不得减少、契约 diff = 0 |
-| L8 | `[PASS] blocking-io: 68 endpoints / 97 blocking calls / 39 offloaded; extended 6 paths / 11 blocking frozen`。**B1 起端点发现分两个互不干扰的集合**：`endpoints`（HTTP `/api/` 68 个，成员+数量与 L7 对齐，原口径不变）与 `extended_endpoints`（`/ws`、非 `/api/` 路由、`@app.middleware` 中间件，独立冻结）。两者各自 blocking 只准降 / offloaded 只准升 / `other` 逐字段冻结 / 成员+数量双校验；`--selftest` 6 类注入回归 + 3 条 Tier B 语义断言全绿；Tier B 按**符号组合语义**分类（目录遍历 + 压缩 ⇒ `compute_pending`）。**B2 起 `--recapture` 的 G4 字段级取证同时覆盖两个集合**（`_all_records`），扩展端点不再能被静默重建 |
+| L7 | `[PASS] route ownership: 69 endpoints / 17 routers / N frontend paths`；路径数由 `capture_frontend_paths()` 从 `static/` 源码重算，不在文档硬编码；鉴权依赖数不得减少、契约 diff = 0 |
+| L8 | `[PASS] blocking-io: 69 endpoints / 94 blocking calls / 44 offloaded; extended 6 paths / 11 blocking frozen`。**B1 起端点发现分两个互不干扰的集合**：`endpoints`（HTTP `/api/` 69 个，成员+数量与 L7 对齐，原口径不变）与 `extended_endpoints`（`/ws`、非 `/api/` 路由、`@app.middleware` 中间件，独立冻结）。两者各自 blocking 只准降 / offloaded 只准升 / `other` 逐字段冻结 / 成员+数量双校验；`--selftest` 6 类注入回归 + 3 条 Tier B 语义断言全绿；Tier B 按**符号组合语义**分类（目录遍历 + 压缩 ⇒ `compute_pending`）。**B2 起 `--recapture` 的 G4 字段级取证同时覆盖两个集合**（`_all_records`），扩展端点不再能被静默重建 |
 | L9 | `[PASS] offload switch: 34 endpoints migration-AST-equivalent + 3 intentionally diverged`；37 个迁移固定 commit（`523b353` / `77bc366` / `6d0e434` / `497550f` / `c9b4d6f`）源码 AST 逐语句等价，3 项有意分歧仅校验接线完整性（见 ADR-0015 / ADR-0020）；off/on 整份响应字段顺序一致；线程池 off=0 / on=1 且工作线程与主线程不同；消费者登记与实际调用点双向对齐 |
 | L10 | `[PASS] concurrency: 37 endpoints x 20 concurrent x 3 rounds`；P95 按**批次发起**计时、`on <= off × 1.10`（不得放宽阈值）、37/37 改善；前端路径改为「L7 扫描器重算 vs 登记清单」成员+数量双校验（禁止硬编码数量，禁止用清单自身 counts 自证）、`counts.normalized_paths == len(normalized_paths)` 自洽、off/on OpenAPI 一致；Tier B 登记 0 未分类、新增阻塞符号未登记即判红 |
 

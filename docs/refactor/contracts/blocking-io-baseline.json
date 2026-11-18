@@ -186,6 +186,15 @@
         "blocking_before": 94,
         "mode": "refactor",
         "reason": "批次重构：状态/调用收口、白名单裁剪或线程池迁移；blocking 不得增加，非 allowed 端点逐字段一致"
+      },
+      {
+        "allowed_endpoints": [
+          "GET /api/system/host-health"
+        ],
+        "blocking_after": 94,
+        "blocking_before": 94,
+        "mode": "refactor",
+        "reason": "批次重构：状态/调用收口、白名单裁剪或线程池迁移；blocking 不得增加，非 allowed 端点逐字段一致"
       }
     ],
     "scan_scope": "HTTP /api/ endpoints (L7-aligned) + non-API routes + websocket + http middlewares; sync AND async top-level helpers expanded (depth<=2)",
@@ -194,11 +203,11 @@
   "counts": {
     "blocking_calls": 94,
     "blocking_endpoints": 34,
-    "endpoints": 68,
+    "endpoints": 69,
     "offloaded_calls": 44,
     "offloaded_endpoints": 40,
-    "other_calls": 343,
-    "total_calls": 481
+    "other_calls": 351,
+    "total_calls": 489
   },
   "endpoints": [
     {
@@ -1507,7 +1516,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 80,
+          "lineno": 104,
           "tail": "multi_worker_mode"
         },
         {
@@ -1515,7 +1524,7 @@
           "category": "offloaded",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 83,
+          "lineno": 107,
           "tail": "to_thread"
         },
         {
@@ -1523,7 +1532,7 @@
           "category": "offloaded",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 87,
+          "lineno": 111,
           "tail": "to_thread"
         },
         {
@@ -1531,7 +1540,7 @@
           "category": "offloaded",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 92,
+          "lineno": 116,
           "tail": "to_thread"
         },
         {
@@ -1539,7 +1548,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 94,
+          "lineno": 118,
           "tail": "warning"
         },
         {
@@ -1547,7 +1556,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 97,
+          "lineno": 121,
           "tail": "get_inflight_scan"
         },
         {
@@ -1555,7 +1564,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 98,
+          "lineno": 122,
           "tail": "done"
         },
         {
@@ -1563,7 +1572,7 @@
           "category": "offloaded",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 101,
+          "lineno": 125,
           "tail": "to_thread"
         },
         {
@@ -1571,7 +1580,7 @@
           "category": "blocking",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 102,
+          "lineno": 126,
           "tail": "_cache_set"
         },
         {
@@ -1579,7 +1588,7 @@
           "category": "offloaded",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 106,
+          "lineno": 130,
           "tail": "to_thread"
         },
         {
@@ -1587,7 +1596,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 108,
+          "lineno": 132,
           "tail": "_run"
         },
         {
@@ -1595,7 +1604,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 108,
+          "lineno": 132,
           "tail": "create_task"
         },
         {
@@ -1603,7 +1612,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 109,
+          "lineno": 133,
           "tail": "set_inflight_scan"
         },
         {
@@ -1611,7 +1620,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 110,
+          "lineno": 134,
           "tail": "clear_inflight_scan"
         },
         {
@@ -1619,7 +1628,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 110,
+          "lineno": 134,
           "tail": "add_done_callback"
         },
         {
@@ -1627,7 +1636,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 112,
+          "lineno": 136,
           "tail": "wait"
         },
         {
@@ -1635,7 +1644,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 114,
+          "lineno": 138,
           "tail": "warning"
         },
         {
@@ -1643,7 +1652,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 117,
+          "lineno": 141,
           "tail": "result"
         },
         {
@@ -1651,7 +1660,7 @@
           "category": "other",
           "depth": 1,
           "file": "routers/system.py",
-          "lineno": 119,
+          "lineno": 143,
           "tail": "warning"
         },
         {
@@ -1659,7 +1668,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 126,
+          "lineno": 150,
           "tail": "HTTPException"
         },
         {
@@ -1667,7 +1676,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 128,
+          "lineno": 152,
           "tail": "_cache_get"
         },
         {
@@ -1675,7 +1684,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 128,
+          "lineno": 152,
           "tail": "dashboard_cache_key"
         },
         {
@@ -1683,7 +1692,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 133,
+          "lineno": 157,
           "tail": "_get_orchestrator"
         },
         {
@@ -1691,64 +1700,8 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 135,
-          "tail": "_cache_get"
-        },
-        {
-          "callee": "_cache_get",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/system.py",
-          "lineno": 136,
-          "tail": "_cache_get"
-        },
-        {
-          "callee": "_ensure_dashboard_scan",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/system.py",
-          "lineno": 140,
-          "tail": "_ensure_dashboard_scan"
-        },
-        {
-          "callee": "orchestrator.get_market_sentiment",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/system.py",
-          "lineno": 152,
-          "tail": "get_market_sentiment"
-        },
-        {
-          "callee": "logger.warning",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/system.py",
-          "lineno": 153,
-          "tail": "warning"
-        },
-        {
-          "callee": "logger.warning",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/system.py",
-          "lineno": 156,
-          "tail": "warning"
-        },
-        {
-          "callee": "evaluate_macro_gate",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/system.py",
-          "lineno": 158,
-          "tail": "evaluate_macro_gate"
-        },
-        {
-          "callee": "logger.warning",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/system.py",
           "lineno": 159,
-          "tail": "warning"
+          "tail": "_cache_get"
         },
         {
           "callee": "_cache_get",
@@ -1759,44 +1712,28 @@
           "tail": "_cache_get"
         },
         {
-          "callee": "idx_cache.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/system.py",
-          "lineno": 163,
-          "tail": "get"
-        },
-        {
-          "callee": "len",
+          "callee": "_ensure_dashboard_scan",
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
           "lineno": 164,
-          "tail": "len"
+          "tail": "_ensure_dashboard_scan"
         },
         {
-          "callee": "np.array",
+          "callee": "orchestrator.get_market_sentiment",
+          "category": "blocking",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 176,
+          "tail": "get_market_sentiment"
+        },
+        {
+          "callee": "logger.warning",
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 166,
-          "tail": "array"
-        },
-        {
-          "callee": "mean",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/system.py",
-          "lineno": 167,
-          "tail": "mean"
-        },
-        {
-          "callee": "_cache_set",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/system.py",
-          "lineno": 179,
-          "tail": "_cache_set"
+          "lineno": 177,
+          "tail": "warning"
         },
         {
           "callee": "logger.warning",
@@ -1807,15 +1744,31 @@
           "tail": "warning"
         },
         {
+          "callee": "evaluate_macro_gate",
+          "category": "blocking",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 182,
+          "tail": "evaluate_macro_gate"
+        },
+        {
           "callee": "logger.warning",
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 182,
+          "lineno": 183,
           "tail": "warning"
         },
         {
-          "callee": "market_data.get",
+          "callee": "_cache_get",
+          "category": "blocking",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 184,
+          "tail": "_cache_get"
+        },
+        {
+          "callee": "idx_cache.get",
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
@@ -1823,27 +1776,83 @@
           "tail": "get"
         },
         {
-          "callee": "market_data.get",
+          "callee": "len",
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
           "lineno": 188,
-          "tail": "get"
+          "tail": "len"
         },
         {
-          "callee": "market_data.get",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/system.py",
-          "lineno": 189,
-          "tail": "get"
-        },
-        {
-          "callee": "market_data.get",
+          "callee": "np.array",
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
           "lineno": 190,
+          "tail": "array"
+        },
+        {
+          "callee": "mean",
+          "category": "blocking",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 191,
+          "tail": "mean"
+        },
+        {
+          "callee": "_cache_set",
+          "category": "blocking",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 203,
+          "tail": "_cache_set"
+        },
+        {
+          "callee": "logger.warning",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 204,
+          "tail": "warning"
+        },
+        {
+          "callee": "logger.warning",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 206,
+          "tail": "warning"
+        },
+        {
+          "callee": "market_data.get",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 211,
+          "tail": "get"
+        },
+        {
+          "callee": "market_data.get",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 212,
+          "tail": "get"
+        },
+        {
+          "callee": "market_data.get",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 213,
+          "tail": "get"
+        },
+        {
+          "callee": "market_data.get",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 214,
           "tail": "get"
         },
         {
@@ -1851,7 +1860,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 192,
+          "lineno": 216,
           "tail": "get"
         },
         {
@@ -1859,7 +1868,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 193,
+          "lineno": 217,
           "tail": "get"
         },
         {
@@ -1867,7 +1876,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 194,
+          "lineno": 218,
           "tail": "get"
         },
         {
@@ -1875,7 +1884,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 195,
+          "lineno": 219,
           "tail": "get"
         },
         {
@@ -1883,7 +1892,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 197,
+          "lineno": 221,
           "tail": "len"
         },
         {
@@ -1891,7 +1900,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 198,
+          "lineno": 222,
           "tail": "items"
         },
         {
@@ -1899,7 +1908,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 198,
+          "lineno": 222,
           "tail": "get"
         },
         {
@@ -1907,7 +1916,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 200,
+          "lineno": 224,
           "tail": "get"
         },
         {
@@ -1915,7 +1924,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 201,
+          "lineno": 225,
           "tail": "get"
         },
         {
@@ -1923,7 +1932,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 202,
+          "lineno": 226,
           "tail": "now"
         },
         {
@@ -1931,7 +1940,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 202,
+          "lineno": 226,
           "tail": "isoformat"
         },
         {
@@ -1939,7 +1948,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 204,
+          "lineno": 228,
           "tail": "_cache_set"
         },
         {
@@ -1947,7 +1956,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 204,
+          "lineno": 228,
           "tail": "dashboard_cache_key"
         },
         {
@@ -1955,7 +1964,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 207,
+          "lineno": 231,
           "tail": "error"
         },
         {
@@ -1963,7 +1972,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 208,
+          "lineno": 232,
           "tail": "HTTPException"
         },
         {
@@ -1994,7 +2003,7 @@
       "file": "routers/system.py",
       "handler": "dashboard",
       "key": "GET /api/dashboard",
-      "lineno": 124,
+      "lineno": 148,
       "method": "GET",
       "offloaded": {
         "asyncio.to_thread": 5
@@ -2041,7 +2050,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 255,
+          "lineno": 279,
           "tail": "api_key_is_valid"
         },
         {
@@ -2049,7 +2058,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 255,
+          "lineno": 279,
           "tail": "get"
         },
         {
@@ -2057,7 +2066,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 256,
+          "lineno": 280,
           "tail": "HTTPException"
         },
         {
@@ -2065,7 +2074,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 258,
+          "lineno": 282,
           "tail": "body"
         },
         {
@@ -2073,7 +2082,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 259,
+          "lineno": 283,
           "tail": "len"
         },
         {
@@ -2081,7 +2090,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 260,
+          "lineno": 284,
           "tail": "HTTPException"
         },
         {
@@ -2089,7 +2098,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 263,
+          "lineno": 287,
           "tail": "loads"
         },
         {
@@ -2097,7 +2106,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 265,
+          "lineno": 289,
           "tail": "HTTPException"
         },
         {
@@ -2105,7 +2114,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 266,
+          "lineno": 290,
           "tail": "isinstance"
         },
         {
@@ -2113,7 +2122,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 267,
+          "lineno": 291,
           "tail": "HTTPException"
         },
         {
@@ -2121,7 +2130,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 274,
+          "lineno": 298,
           "tail": "isinstance"
         },
         {
@@ -2129,7 +2138,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 275,
+          "lineno": 299,
           "tail": "str"
         },
         {
@@ -2137,7 +2146,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 277,
+          "lineno": 301,
           "tail": "warning"
         },
         {
@@ -2145,7 +2154,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 278,
+          "lineno": 302,
           "tail": "get"
         },
         {
@@ -2153,7 +2162,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 278,
+          "lineno": 302,
           "tail": "get"
         },
         {
@@ -2161,7 +2170,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 278,
+          "lineno": 302,
           "tail": "get"
         },
         {
@@ -2169,7 +2178,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 282,
+          "lineno": 306,
           "tail": "mkdir"
         },
         {
@@ -2177,7 +2186,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 283,
+          "lineno": 307,
           "tail": "open"
         },
         {
@@ -2185,7 +2194,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 284,
+          "lineno": 308,
           "tail": "write"
         },
         {
@@ -2193,14 +2202,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 284,
+          "lineno": 308,
           "tail": "dumps"
         }
       ],
       "file": "routers/system.py",
       "handler": "report_frontend_error",
       "key": "POST /api/errors",
-      "lineno": 247,
+      "lineno": 271,
       "method": "POST",
       "offloaded": {},
       "other": {
@@ -3768,7 +3777,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 215,
+          "lineno": 239,
           "tail": "exists"
         },
         {
@@ -3776,7 +3785,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 220,
+          "lineno": 244,
           "tail": "glob"
         },
         {
@@ -3784,7 +3793,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 220,
+          "lineno": 244,
           "tail": "sorted"
         },
         {
@@ -3792,7 +3801,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 222,
+          "lineno": 246,
           "tail": "read_text"
         },
         {
@@ -3800,7 +3809,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 222,
+          "lineno": 246,
           "tail": "loads"
         },
         {
@@ -3808,7 +3817,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 223,
+          "lineno": 247,
           "tail": "append"
         },
         {
@@ -3816,7 +3825,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 225,
+          "lineno": 249,
           "tail": "get"
         },
         {
@@ -3824,7 +3833,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 225,
+          "lineno": 249,
           "tail": "replace"
         },
         {
@@ -3832,7 +3841,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 226,
+          "lineno": 250,
           "tail": "get"
         },
         {
@@ -3840,7 +3849,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 227,
+          "lineno": 251,
           "tail": "get"
         },
         {
@@ -3848,7 +3857,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 236,
+          "lineno": 260,
           "tail": "exists"
         },
         {
@@ -3856,7 +3865,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 238,
+          "lineno": 262,
           "tail": "loads"
         },
         {
@@ -3864,7 +3873,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 238,
+          "lineno": 262,
           "tail": "read_text"
         },
         {
@@ -3872,7 +3881,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 239,
+          "lineno": 263,
           "tail": "sorted"
         },
         {
@@ -3880,14 +3889,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
-          "lineno": 239,
+          "lineno": 263,
           "tail": "get"
         }
       ],
       "file": "routers/system.py",
       "handler": "report_history",
       "key": "GET /api/reports",
-      "lineno": 212,
+      "lineno": 236,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -5204,6 +5213,91 @@
         "logger.error": 1
       },
       "path": "/api/strategy/snapshots"
+    },
+    {
+      "blocking": {},
+      "calls": [
+        {
+          "callee": "health_snapshot",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 68,
+          "tail": "health_snapshot"
+        },
+        {
+          "callee": "hosts.items",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 69,
+          "tail": "items"
+        },
+        {
+          "callee": "sorted",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 69,
+          "tail": "sorted"
+        },
+        {
+          "callee": "st.get",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 69,
+          "tail": "get"
+        },
+        {
+          "callee": "len",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 73,
+          "tail": "len"
+        },
+        {
+          "callee": "len",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 74,
+          "tail": "len"
+        },
+        {
+          "callee": "datetime.now",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 77,
+          "tail": "now"
+        },
+        {
+          "callee": "isoformat",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/system.py",
+          "lineno": 77,
+          "tail": "isoformat"
+        }
+      ],
+      "file": "routers/system.py",
+      "handler": "host_health_status",
+      "key": "GET /api/system/host-health",
+      "lineno": 58,
+      "method": "GET",
+      "offloaded": {},
+      "other": {
+        "datetime.now": 1,
+        "health_snapshot": 1,
+        "hosts.items": 1,
+        "isoformat": 1,
+        "len": 2,
+        "sorted": 1,
+        "st.get": 1
+      },
+      "path": "/api/system/host-health"
     },
     {
       "blocking": {},

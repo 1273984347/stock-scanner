@@ -186,5 +186,99 @@ def test_host_constants_are_real_hosts():
             assert isinstance(val, str) and "." in val and " " not in val, f"{name}={val!r}"
 
 
+# ========== 调用包装（call_with_health / guarded） ==========
+
+def test_call_with_health_short_circuits_when_open():
+    for _ in range(3):
+        hh.note_failure(hh.HOST_EASTMONEY_PUSH2HIS)
+    calls = []
+    out = hh.call_with_health(hh.HOST_EASTMONEY_PUSH2HIS, lambda: calls.append(1))
+    assert calls == [], "host 已开断仍调用底层函数"
+    assert isinstance(out, pd.DataFrame) and out.empty
+
+
+def test_call_with_health_records_failure_and_reraises():
+    """异常必须原样抛出——调用方的重试/切源语义不能在这里被吞掉。"""
+    def boom():
+        raise ConnectionError("push2his dead")
+
+    with pytest.raises(ConnectionError):
+        hh.call_with_health(hh.HOST_EASTMONEY_PUSH2HIS, boom)
+    assert hh.health_snapshot()[hh.HOST_EASTMONEY_PUSH2HIS]["failures"] == 1
+
+
+def test_call_with_health_notes_success():
+    out = hh.call_with_health(hh.HOST_EASTMONEY_PUSH2HIS, lambda: "ok")
+    assert out == "ok"
+    assert hh.health_snapshot()[hh.HOST_EASTMONEY_PUSH2HIS]["state"] == "closed"
+
+
+def test_guarded_preserves_module_for_rate_limit_bucket():
+    """限流按 __module__ 分桶（cache._bucket_for）；包装不得把配额并成单桶。"""
+    from lib.data.cache import _bucket_for
+
+    def ak_like():
+        return 1
+    ak_like.__module__ = "akshare.stock_feature"
+    wrapped = hh.guarded(hh.HOST_EASTMONEY_PUSH2EX, ak_like)
+    assert wrapped.__module__ == "akshare.stock_feature"
+    assert wrapped.__name__ == "ak_like"
+    assert _bucket_for(wrapped) == "akshare.stock_feature"
+
+
+def test_eastmoney_call_sites_are_guarded():
+    """四个东财调用点必须接 host 健康（否则状态机收不到 push2his/push2ex 信号）。"""
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    # 直接断「调用形式」（registry 走超时包装，host 作为位置参数传入，形态不同）
+    checks = [
+        ("lib/data/data_source_registry.py", "call_with_health, HOST_EASTMONEY_PUSH2HIS"),
+        ("lib/data/data_tdx.py", "call_with_health(HOST_EASTMONEY_PUSH2HIS"),
+        ("lib/strategy/strategies.py", "guarded(HOST_EASTMONEY_PUSH2EX"),
+        ("lib/data/news_signal.py", "guarded(HOST_EASTMONEY_PUSH2EX"),
+    ]
+    for rel, needle in checks:
+        src = (repo / rel).read_text(encoding="utf-8")
+        assert needle in src, f"{rel} 未接 host 健康：缺 {needle!r}"
+
+    strat = (repo / "lib/strategy/strategies.py").read_text(encoding="utf-8")
+    assert "_retry_api_call(ak." not in strat, "strategies 仍有裸 ak 调用绕过 host 健康"
+    news = (repo / "lib/data/news_signal.py").read_text(encoding="utf-8")
+    assert "retry_api_call(ak." not in news, "news_signal 仍有裸 ak 调用绕过 host 健康"
+
+
+# ========== 运维端点 ==========
+
+@pytest.fixture
+def client(monkeypatch):
+    monkeypatch.setenv("API_SECRET_KEY", "test-secret-key-for-unit-tests")
+    from fastapi.testclient import TestClient
+    from api import app
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_host_health_endpoint_requires_auth(client):
+    assert client.get("/api/system/host-health").status_code == 401
+
+
+def test_host_health_endpoint_reports_state(client):
+    hh.note_failure(hh.HOST_EASTMONEY_PUSH2, RuntimeError("boom"))
+    resp = client.get("/api/system/host-health",
+                      headers={"X-API-Key": "test-secret-key-for-unit-tests"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert hh.HOST_EASTMONEY_PUSH2 in body["hosts"]
+    assert body["hosts"][hh.HOST_EASTMONEY_PUSH2]["failures"] == 1
+    assert set(body["summary"]) == {"total", "open", "open_hosts"}
+
+
+def test_host_health_endpoint_is_non_blocking():
+    """端点只读内存：不得出现 requests / sleep / to_thread（L8 的前置源码判据）。"""
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    src = (repo / "routers/system.py").read_text(encoding="utf-8")
+    fn = src.split("async def host_health_status", 1)[1].split("\nasync def ", 1)[0]
+    for banned in ("requests.", "time.sleep", "to_thread", "run_in_executor"):
+        assert banned not in fn, f"host-health 端点出现阻塞调用: {banned}"
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
