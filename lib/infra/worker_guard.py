@@ -16,36 +16,80 @@
     那个进程的 ``active_connections`` 里也只有这一条连接。审查报告
     2026-11-14 的原始表述有误，已按实现纠正（坑表 P-95）。
 
-策略（轻量版，零架构改动、零新增路由）：
-    启动期探测部署意图（uvicorn 的 ``--workers`` 对应 ``WEB_CONCURRENCY``），
-    默认 fail-fast 拒绝；确需多 worker 可设 ``ALLOW_MULTI_WORKER=1`` 放行并告警，
-    但须自行承担状态分片后果。真正的根治是把上述状态外置到 Redis / 独立进程，
-    属于 L9 契约拆分之后的架构决策，不在本批范围。
+策略演进：
+    - W 批（轻量版）：启动期只探测环境变量，默认 fail-fast 拒绝。
+    - 2026-11-18 实测发现漏洞：``uvicorn api:app --workers 2`` 不写环境变量，
+      守卫被一行命令绕过（两个 worker 都 startup complete）。P0 修复为同时
+      探测 ``sys.argv``（命令行 > 环境变量），spawn 子进程 argv 保留该参数。
+    - 完整版（进程间单飞）：由 ``lib/infra/process_leader.py`` 选主，
+      单飞承担广播构造与状态写入；本模块退化为「探测 + 部署意图」职责。
 """
 
 import logging
 import os
-from typing import Dict, Optional
+import sys
+from typing import Dict, Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
 
-# 按优先级排列：项目自定义变量 > 通用部署变量 > uvicorn/gunicorn 默认变量。
+# 按优先级排列：命令行 > 项目自定义变量 > 通用部署变量 > uvicorn/gunicorn 默认变量。
+# 2026-11-18 实测：uvicorn --workers N 不会写回环境变量，只读环境变量会被
+# `uvicorn api:app --workers 2` 一行命令绕过。spawn 的子进程 argv 仍保留 --workers
+# （已实测），故命令行探测在 worker 进程里同样有效。
 WORKER_ENV_KEYS = ("STOCK_SCANNER_WORKERS", "UVICORN_WORKERS", "WEB_CONCURRENCY")
 OPT_IN_ENV = "ALLOW_MULTI_WORKER"
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 
 
-def declared_worker_count(environ: Optional[Dict[str, str]] = None) -> int:
+def _worker_count_from_argv(argv: Sequence[str]) -> Optional[int]:
+    """从命令行解析 worker 数；支持 ``--workers N`` / ``--workers=N`` / gunicorn ``-w N``。
+
+    只接受纯数字（uvicorn 的 ``auto`` 等非法值降级为未声明），避免把
+    ``--workers-config`` 这类前缀误当成 worker 数。
+    """
+    for i, arg in enumerate(argv):
+        if arg in ("--workers", "-w"):
+            if i + 1 < len(argv) and str(argv[i + 1]).strip().isdigit():
+                return max(1, int(str(argv[i + 1]).strip()))
+        elif arg.startswith("--workers="):
+            raw = arg.split("=", 1)[1].strip()
+            if raw.isdigit():
+                return max(1, int(raw))
+    return None
+
+
+def declared_worker_count(environ: Optional[Dict[str, str]] = None,
+                          argv: Optional[Sequence[str]] = None) -> int:
     """返回部署意图声明的 worker 数；未声明/非法值一律按单 worker 处理。
 
-    传入 ``environ`` 是为了让判据可以离线测试，不依赖进程环境。
+    优先级：命令行 > ``STOCK_SCANNER_WORKERS`` > ``UVICORN_WORKERS`` >
+    ``WEB_CONCURRENCY``。传入 ``environ`` / ``argv`` 是为了让判据可以离线测试。
     """
+    args = sys.argv if argv is None else argv
+    from_cli = _worker_count_from_argv(args)
+    if from_cli is not None:
+        return from_cli
     env = os.environ if environ is None else environ
     for key in WORKER_ENV_KEYS:
         raw = (env.get(key) or "").strip()
         if raw.isdigit():
             return max(1, int(raw))
     return 1
+
+
+def worker_count_source(environ: Optional[Dict[str, str]] = None,
+                        argv: Optional[Sequence[str]] = None) -> Tuple[int, str]:
+    """返回 (worker 数, 声明来源)，供错误信息精确指出是哪条配置触发的。"""
+    args = sys.argv if argv is None else argv
+    from_cli = _worker_count_from_argv(args)
+    if from_cli is not None:
+        return from_cli, "--workers 命令行参数"
+    env = os.environ if environ is None else environ
+    for key in WORKER_ENV_KEYS:
+        raw = (env.get(key) or "").strip()
+        if raw.isdigit():
+            return max(1, int(raw)), key
+    return 1, "默认（未声明）"
 
 
 def _opted_in(environ: Dict[str, str]) -> bool:
@@ -67,25 +111,26 @@ def _rejection_message(count: int, key: str) -> str:
     )
 
 
-def verify_single_worker(environ: Optional[Dict[str, str]] = None) -> int:
+def verify_single_worker(environ: Optional[Dict[str, str]] = None,
+                         argv: Optional[Sequence[str]] = None) -> int:
     """校验 worker 形态：单 worker 静默通过；多 worker 默认拒绝，显式 opt-in 放行并告警。
 
+    P0 修复：同时探测命令行 --workers，堵住「清空环境变量 + --workers N」的绕过路径。
     :return: 声明的 worker 数。
     :raises SystemExit: 多 worker 且未显式 opt-in 时拒绝启动（消息直接给部署修复步骤）。
     """
     env = os.environ if environ is None else environ
-    count = declared_worker_count(env)
+    count, source = worker_count_source(env, argv)
     if count <= 1:
         return count
 
-    source = next(
-        (k for k in WORKER_ENV_KEYS if (env.get(k) or "").strip().isdigit()),
-        WORKER_ENV_KEYS[0],
-    )
     message = _rejection_message(count, source)
     if _opted_in(env):
-        logger.warning(message.replace("拒绝启动", "放行多 worker（风险自负）")
-                       + "已设 ALLOW_MULTI_WORKER=1，进程内状态分片后果由部署方承担。")
+        logger.warning(
+            f"[worker_guard] 放行多 worker（{source} 声明 {count} 个）："
+            "已启用 lib/infra/process_leader.py 跨进程单飞——广播构造与扫描"
+            "由文件锁选主，缓存/快照通过磁盘共享，WS 连接各进程独立推送。"
+        )
         return count
     logger.error(message)
     raise SystemExit(message)

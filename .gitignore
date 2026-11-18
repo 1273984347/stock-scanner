@@ -27,6 +27,9 @@ logs/
 # Data corrections (运行时人工修正日志, 不是源代码)
 data_corrections.json
 
+# 跨进程单飞协调产物（W 完整版）：锁/快照含 PID 与运行期数据，不入库
+data/shared/
+
 # 覆盖率产物 (CI 每次重跑都会变; 只有基线 docs/refactor/coverage-baseline.json 入库)
 .coverage
 coverage.json

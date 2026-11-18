@@ -49,9 +49,13 @@ export API_SECRET_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(3
 # 启动服务：默认只监听本机回环地址。
 # 若需对外提供服务，请在前面加 Nginx/Caddy 做 TLS 与访问控制，
 # 不要直接把 --host 改成 0.0.0.0（那会把端点连同配置写入/备份恢复暴露到全网卡）。
-# 固定单 worker：任务状态/缓存/WS 连接都是进程内内存，--workers N 会导致
-# 扫描单飞失效、缓存互相覆盖、数据源请求 ×N；多 worker 会在启动时直接拒绝。
+# 默认固定单 worker。传 --workers N 会在启动时被守卫拒绝（命令行也会探测到），
+# 并给出可直接粘贴的修复命令——不再是「传了也没人管」。
 uvicorn api:app --host 127.0.0.1 --port 8000
+
+# 确需多 worker：显式 opt-in，启用跨进程单飞（文件锁选主 + 磁盘共享快照），
+# 广播构造/扫描全局只做一次；WS 连接各进程独立推送。无需 Redis。
+# ALLOW_MULTI_WORKER=1 uvicorn api:app --host 127.0.0.1 --port 8000 --workers 2
 
 # 调用接口
 curl -X POST http://localhost:8000/scan \

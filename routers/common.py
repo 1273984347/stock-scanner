@@ -457,11 +457,23 @@ WS_BROADCAST_INTERVAL_S = 10
 
 
 async def _ws_broadcast_loop():
-    """单后台任务：构造一次，广播给所有连接（P1-3）。"""
+    """单后台任务：构造一次，广播给所有连接（P1-3）。
+
+    批次 W 完整版：多 worker 下每进程都会跑这份循环，但**构造**必须全局
+    单飞——用 OS 文件锁抢广播槽，抢到的进程构造并写原子快照，其余进程读
+    同一份快照。推送仍由每个进程做（连接本就进程隔离，不能省）。
+    单 worker 分支逐字保留原路径，零文件 IO、零性能变化。
+    """
+    from lib.infra.process_leader import multi_worker_mode, shared_ws_payload
+
     while True:
         await asyncio.sleep(WS_BROADCAST_INTERVAL_S)
         try:
-            data = await _get_ws_data()
+            if multi_worker_mode():
+                # 多 worker：文件 IO 放在 to_thread，不占事件循环（L8 语义）。
+                data = await asyncio.to_thread(shared_ws_payload, _get_ws_data_sync)
+            else:
+                data = await _get_ws_data()
             await manager.broadcast({
                 "type": "data_update",
                 "timestamp": datetime.now().isoformat(),
@@ -473,8 +485,12 @@ async def _ws_broadcast_loop():
             logger.error(f"WebSocket broadcast error: {e}")
 
 
-async def _get_ws_data():
-    """获取 WebSocket 推送数据（增强版：含持仓盈亏、板块评分、信号追踪）"""
+def _get_ws_data_sync():
+    """_get_ws_data 的同步实现（批次 W 完整版）。
+
+    与 async 版逐字同源，供多 worker 的 to_thread 分支复用同一份构造逻辑，
+    避免两份实现漂移。不含 await——本来就是纯同步的取数/计算。
+    """
     try:
         # 只从缓存读取，不触发任何计算
         # 与 dashboard_cache_key("balanced") 同键；无 preset 上下文，读默认视图。
@@ -531,6 +547,15 @@ async def _get_ws_data():
     except Exception as e:
         logger.error(f"WebSocket data fetch error: {e}")
         return {"dashboard": {}, "scan": {}, "risk": {}, "exposures": {}}
+
+
+async def _get_ws_data():
+    """WebSocket 推送数据入口：单 worker 直接走同步构造。
+
+    保留 async 签名与 helper 名，L8 的 /ws 冻结链（_cache_get×6 等）不变；
+    多 worker 分支在 _ws_broadcast_loop 里改用 _get_ws_data_sync + to_thread。
+    """
+    return _get_ws_data_sync()
 
 
 def dashboard_cache_key(preset: str = "balanced") -> str:

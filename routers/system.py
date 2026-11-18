@@ -70,12 +70,40 @@ async def _ensure_dashboard_scan(preset: str, orchestrator) -> dict:
     )
 
     key = f"dashboard:{preset}"
+
+    # 批次 W 完整版：多 worker 下进程内 task 注册表挡不住其他进程重复扫描。
+    # 先用 OS 文件槽认领扫描权；缓存本身是磁盘 JSON（_cache_set 写盘），
+    # 天然跨进程可见，所以没抢到槽的 worker 直接轮询缓存即可。
+    from lib.infra.process_leader import (
+        multi_worker_mode, try_claim_scan, release_scan, wait_for_peer_scan,
+    )
+    cross_process = multi_worker_mode()
+    claimed_here = False
+    if cross_process:
+        claimed_here = await asyncio.to_thread(try_claim_scan, key)
+        if not claimed_here:
+            # 别的 worker 正在跑：轮询磁盘缓存（lib 内同步实现 + to_thread，
+            # L8 记为 offloaded，不给冻结端点增加 blocking）。
+            found, cached = await asyncio.to_thread(
+                wait_for_peer_scan, _cache_get, key, f"scan_{preset}")
+            if found:
+                return cached
+            # 轮询失败：对方可能崩溃。再抢一次槽；仍抢不到就绝不重复跑。
+            claimed_here = await asyncio.to_thread(try_claim_scan, key)
+            if not claimed_here:
+                logger.warning(f"Dashboard scan 槽被其他 worker 持有，跳过重复扫描: {key}")
+                return {}
+
     task = get_inflight_scan(key)
     if task is None or task.done():
         async def _run():
-            data = await asyncio.to_thread(orchestrator.run_all_strategies)
-            _cache_set(f"scan_{preset}", data)
-            return data
+            try:
+                data = await asyncio.to_thread(orchestrator.run_all_strategies)
+                _cache_set(f"scan_{preset}", data)
+                return data
+            finally:
+                if cross_process and claimed_here:
+                    await asyncio.to_thread(release_scan, key)
 
         task = asyncio.create_task(_run())
         set_inflight_scan(key, task)
