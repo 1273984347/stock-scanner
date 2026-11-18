@@ -35,3 +35,6 @@ data/shared/
 coverage.json
 docs/refactor/coverage-*.json
 !docs/refactor/coverage-baseline.json
+
+# 坑表 P-100 隔离探针：运行时生成、finally 删除；残留也不许入库
+tests/test_zz_host_isolation_probe.py

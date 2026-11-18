@@ -5,6 +5,8 @@
 要么完全不计数、每股先付 3s 限流 + 8s 超时再降级。
 """
 import pathlib
+import subprocess
+import sys
 
 import pandas as pd
 import pytest
@@ -278,6 +280,52 @@ def test_host_health_endpoint_is_non_blocking():
     fn = src.split("async def host_health_status", 1)[1].split("\nasync def ", 1)[0]
     for banned in ("requests.", "time.sleep", "to_thread", "run_in_executor"):
         assert banned not in fn, f"host-health 端点出现阻塞调用: {banned}"
+
+
+# ========== 跨用例隔离（坑表 P-100） ==========
+
+def test_host_health_reset_fixture_is_autouse(request):
+    """注册判据：写了 fixture 但没挂 autouse 等于没写。"""
+    assert "_reset_host_health_between_tests" in request.fixturenames, \
+        "conftest 的 host 健康隔离 fixture 未生效——跨用例状态会泄漏"
+
+
+_ISOLATION_PROBE = '''"""临时探针：由 test_host_health.py 生成并在 finally 删除（坑表 P-100）。"""
+from lib.data import host_health as hh
+
+
+def test_a_opens_push2his():
+    for _ in range(3):
+        hh.note_failure(hh.HOST_EASTMONEY_PUSH2HIS, RuntimeError("simulated failure"))
+    assert hh.is_available(hh.HOST_EASTMONEY_PUSH2HIS) is False, \\
+        "前置条件：A 用例必须真的把 host 打开，否则本探针是空判据"
+
+
+def test_b_sees_clean_state():
+    assert hh.is_available(hh.HOST_EASTMONEY_PUSH2HIS) is True, \\
+        "B 用例看到了 A 的开断状态 => conftest 隔离失效（单跑绿、全量红的根因）"
+'''
+
+
+def test_cross_test_isolation_end_to_end():
+    """端到端判据：子进程跑两条有序用例，A 开断 → B 必须看到干净状态。
+
+    隔离失效时 B 必红（返回码非 0），所以这条判据本身可被证伪，不是摆设。
+    """
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    probe = pathlib.Path(__file__).resolve().parent / "test_zz_host_isolation_probe.py"
+    probe.write_text(_ISOLATION_PROBE, encoding="utf-8")
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "pytest", str(probe), "-q", "--no-header",
+             "-p", "no:cacheprovider", "-o", "addopts=", "-o", "log_cli=false"],
+            cwd=str(repo), capture_output=True, text=True, timeout=300)
+    finally:
+        probe.unlink(missing_ok=True)
+
+    out = (proc.stdout or "") + (proc.stderr or "")
+    assert proc.returncode == 0, f"跨用例隔离判据失败：\n{out[-2000:]}"
+    assert "2 passed" in out, f"探针未按预期执行：\n{out[-2000:]}"
 
 
 if __name__ == "__main__":
