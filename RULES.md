@@ -125,7 +125,7 @@ infra  ←  data  ←  scoring  ←  strategy
 | # | 规约 | 理由 |
 |---|---|---|
 | T1 | **`async def` 端点不得直接调用阻塞符号**（数据层取数 / parquet 读 / pandas 计算 / 文件写 / 网络）；必须经 `lib/infra/async_offload.py` 的唯一入口包裹 | 68 端点全为 async，阻塞调用会占住事件循环；契约快照单独冻结 async/sync 的原因见 `docs/refactor/README.md` §二 |
-| T1-a（B2） | **非迁移端点**（WS 后台广播、backup 压缩）的 offload 允许用 `asyncio.to_thread`（已在 `OFFLOADED_TAILS` 登记），但必须被 L8 记为 `offloaded` 且有机器判据 | L9 `check_consumer_registry()` 要求 `OFFLOAD_CONSUMERS` 严格等于 37 个 `MIGRATIONS`；新增灰度消费者会连迁移对拍结构一起判红。要正式纳入灰度须单独 ADR 扩展 L9 契约，不能偷偷塞进清单（ADR-0020 后续 3） |
+| T1-a（B2，L9 已扩展） | **非迁移端点**（WS 后台广播、backup 压缩）的 offload 允许用 `asyncio.to_thread`（已在 `OFFLOADED_TAILS` 登记），但必须被 L8 记为 `offloaded` 且有机器判据 | L9 契约已于 ADR-0021 拆分：`OFFLOAD_CONSUMERS` 不再强制等于 37 个 `MIGRATIONS`；新增消费者须走 `run_blocking` 且在 `RUNTIME_EVIDENCE` 登记可复现对拍测试（文件存在 + 点名 + 含 assert）。裸 `asyncio.to_thread` 仍允许但不能绕过 L8 视野 |
 | T2 | **灰度判定只允许在 offload 入口**；消费者不得自读 `FEATURE_ASYNC_OFFLOAD`，开关默认 off，按消费者粒度切换 | 与 S8 同构：判定散落就无法回答「到底哪几个消费者切了」 |
 | T3 | **保持 `async def` 签名**，禁止把端点改成 `def` 来「顺手」走线程池 | 会静默改变 FastAPI 调度语义与并发上限；契约快照冻结 async/sync，L2 会判红 |
 | T4 | 每切一个消费者必须跑 off/on 逐字段对拍，**并自证 on 侧真走了线程池**（off=0 / on>0） | 两侧都没切时 diff 也恒 0 = 空判据（坑表 P-56） |
@@ -136,6 +136,7 @@ infra  ←  data  ←  scoring  ←  strategy
 | T6-b（B4） | dashboard 自动重扫描的在飞任务只允许经 `lib/infra/scan_task_registry.py` 的 `get/set/clear_inflight_scan` 带锁 API 读写；同一 preset 并发只起一个任务，超时**不 cancel** `to_thread` 线程，任务后台跑完自己写缓存 | `asyncio.wait_for(asyncio.to_thread(...))` 的线程不可取消，超时后并发请求各起一个重扫描并互相 `_cache_set` 覆盖；完成回调按 task 身份清除，防旧回调误清新任务（P2-6） |
 | T7-a（C） | **WS 凭据只走握手头**：`Authorization: Bearer` 或 `Sec-WebSocket-Protocol: bearer.<base64url(key)>`，禁止 URL query；**API 文档默认按环境开关**（生产设 `ENABLE_API_DOCS=0`）；**5xx 只回 `{detail, trace_id}`**，不回 `str(exc)`；`get_task` 的 error 统一替换成固定文案 | P1-2/P2-7/P2-8：URL 凭据会被反代 access log、浏览器历史、Referer 记录；`/openapi.json` 是未认证的 68 端点攻击地图；异常原文泄露内部路径与依赖名。判据见 `tests/features/test_batch_c_hardening.py` |
 | T7-b（W） | **部署形态固定单 worker**：启动期 `lib/infra/worker_guard.py` 对 `WEB_CONCURRENCY` / `UVICORN_WORKERS` / `STOCK_SCANNER_WORKERS` > 1 默认 fail-fast；确需多 worker 必须显式 `ALLOW_MULTI_WORKER=1` 并知悉进程内状态分片，禁止以「广播去重」为名掩盖状态外置需求 | 任务状态/缓存/WS 连接全是进程内内存，多 worker 下扫描单飞失效、缓存互相覆盖、数据源 ×N；单客户端重复推送反而是**不会**发生的（连接按进程分发）。判据 `tests/features/test_worker_guard.py`，坑表 P-95 |
+| T7-c（L9） | **导出字段统一过 `_csv_safe()`**：CSV/openpyxl 的字符串字段以 `= + - @` / 制表 / 回车开头时前置单引号；Excel 另行强制 `cell.data_type='s'`。数值字段不得包成文本 | P2-10：公式/DDE 注入。冻结迁移体因此偏离的，走 `MIGRATION_DIVERGENCES` 显式登记 + 行为判据，不许直接放宽逐字等价（ADR-0021，坑表 P-96）。判据 `tests/features/test_csv_formula_injection.py` |
 
 > **阶段边界**：**Phase 6 第 1 批 ✅**（第 8 把尺子 + 基线，零业务代码改动，ADR-0006）；
 > **第 2 批 ✅**（`FEATURE_ASYNC_OFFLOAD` 默认 off + `lib/infra/async_offload.py` 唯一入口、

@@ -122,21 +122,21 @@ def test_off_and_on_propagate_exceptions_identically(monkeypatch):
 # ---------------------------------------------------------------- 边界守卫
 
 def test_consumer_registry_is_explicit_and_unique():
-    assert OFFLOAD_CONSUMERS == (
+    # 批次 L9 契约拆分：注册表不再整体冻结（新消费者可以加入），
+    # 但历史迁移消费者集合仍冻结，新增者必须有运行时证据登记。
+    # 两集合的完整判据在 test_l9_contract_split.py，这里只守「不重不漏历史项」。
+    legacy = (
         "backtest", "backtest_compare", "walkforward",
-        # Phase 6 第 4 批（Tier A 候选 Top5）
         "factor_eval", "factor_scatter", "kline", "risk", "export_config",
-        # Phase 6 第 5 批（Tier A 候选，blocking ≥4）
         "factor_contribution", "market", "positions", "risk_exposure", "stock",
-        # Phase 6 第 6 批（Tier A 候选，blocking ≥2 且不含 await）
         "signals", "exposures", "position", "regime_history", "score", "sector_flow",
-        # Phase 6 第 7 批（Tier A 候选 1 阻塞调用，最后一批）
         "attribution", "audit", "audit_detail", "export_trades", "export_trades_excel",
         "export_pdf", "factor_ic_history", "factor_weights", "notifications",
         "notification_stats", "position_distribution", "risk_correlation",
         "sector_heatmap", "signals_accuracy_trend", "strategy_ranking",
         "strategy_recommend", "trade_history", "ab_test",
     )
+    assert set(legacy) <= set(OFFLOAD_CONSUMERS)
     assert len(set(OFFLOAD_CONSUMERS)) == len(OFFLOAD_CONSUMERS)
 
 

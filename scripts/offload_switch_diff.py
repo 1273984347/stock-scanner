@@ -173,7 +173,19 @@ MIGRATION_DIVERGENCES: dict[str, str] = {
     "notifications": "RF-02 D1: 关键词检索 message/details → title/body（ADR-0015）",
     "strategy_recommend": "RF-02 D2: FactorOptimizer 幻影类 → eval_current_weights（ADR-0015）",
     "export_config": "批次 A / P0-1: 导出改用 dataclass 白名单，不再带出 LLM 密钥且 export→import 往返自洽（ADR-0020）",
+    "export_trades": "批次 L9 / P2-10: CSV 字符串字段统一 _csv_safe 消毒，防公式/DDE 注入",
+    "export_trades_excel": "批次 L9 / P2-10: Excel 字符串单元格强制 data_type='s' + _csv_safe 消毒",
 }
+
+# 批次 L9：运行时证据消费者。契约解耦后，活跃消费者不再强制等于历史迁移证据集合
+# （MIGRATIONS 是冻结的历史源码快照，新消费者天生没有 pre_commit 可比）。
+# 新消费者只能通过这里登记「可复现的运行时证据」加入灰度，不能只往
+# OFFLOAD_CONSUMERS 里塞名字（那会让消费者脱离判据视野，等于放宽门禁）。
+#
+# 格式：consumer -> {"test": "<测试文件相对路径>", "reason": "<为什么没有迁移快照>"}
+# 判据（check_runtime_evidence）强制：测试文件存在 + 含该 consumer 名 + 含 assert，
+# 且测试本身纳入 L1 全量运行。三者缺一判红。
+RUNTIME_EVIDENCE: dict[str, dict[str, str]] = {}
 
 # 冻结时间，消除 off/on 两侧 datetime.now() 时间戳差异（属测试伪影，非 offload 引入）
 FIXED_DT = _dt.datetime(2026, 1, 1, 0, 0, 0)
@@ -857,10 +869,12 @@ async def _collect_all() -> dict:
     return results
 
 
-def check_consumer_registry() -> list[str]:
-    """新增消费者却没登记 / 没做对拍 => 判红（与 scoring_switch_diff 的消费者自证同构）。"""
-    from lib.infra.async_offload import OFFLOAD_CONSUMERS
+def _discover_registered_consumers() -> set[str]:
+    """AST 扫描 routers/ 下所有 run_blocking 的 consumer 字面量。
 
+    单独抽函数是为了让「注册表解耦」可被精确测试：判据测试可以替换发现结果，
+    独立验证「新增消费者必须登记证据」而不被「调用点未登记」的断言掩盖。
+    """
     found = set()
     for path in sorted((ROOT / "routers").glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -870,15 +884,61 @@ def check_consumer_registry() -> list[str]:
                     and isinstance(node.args[0], ast.Constant)
                     and isinstance(node.args[0].value, str)):
                 found.add(node.args[0].value)
+    return found
+
+
+def check_consumer_registry() -> list[str]:
+    """新增消费者却没登记 / 没做对拍 => 判红（与 scoring_switch_diff 的消费者自证同构）。"""
+    from lib.infra.async_offload import OFFLOAD_CONSUMERS
+
+    found = _discover_registered_consumers()
     registered = set(OFFLOAD_CONSUMERS)
     covered = {m.consumer for m in MIGRATIONS}
+
+    # 批次 L9 契约拆分：三条独立约束，不再要求「注册表 == 迁移集合」。
+    #   1) 代码里每个 run_blocking 消费者都必须登记（防偷加消费者，保留）；
+    #   2) 每个历史迁移消费者必须仍在登记表里（防历史证据被静默摘除，保留）；
+    #   3) 新增消费者（在注册表但无迁移快照）必须在 RUNTIME_EVIDENCE 提供
+    #      可复现的运行时对拍证据（新约束，替代原先的「直接判红」）。
     failures = []
     if found != registered:
         failures.append(f"consumer registry mismatch: unregistered={sorted(found - registered)} "
                         f"registered-but-unused={sorted(registered - found)}")
-    if registered != covered:
-        failures.append(f"switch evidence missing for consumers: "
-                        f"{sorted(registered - covered)}")
+    if not covered.issubset(registered):
+        failures.append(f"migration evidence consumers missing from registry: "
+                        f"{sorted(covered - registered)}")
+    for c in sorted(registered - covered):
+        if c not in RUNTIME_EVIDENCE:
+            failures.append(f"switch evidence missing for consumer {c}: "
+                            f"no migration snapshot and no runtime evidence registration")
+    for c in sorted(set(RUNTIME_EVIDENCE) - registered):
+        failures.append(f"stale runtime evidence for consumer not registered: {c}")
+    for c in sorted(covered & set(RUNTIME_EVIDENCE)):
+        failures.append(f"consumer {c} has both migration and runtime evidence (ambiguous)")
+    return failures
+
+
+def check_runtime_evidence() -> list[str]:
+    """新消费者的运行时证据必须可复现：测试文件存在、点名该消费者、含 assert。
+
+    这是「空判据」防线（坑表 P-56）：只登记一个路径但不写断言，
+    和没登记一样无法通过。测试本身由 L1 全量执行，这里做静态前置校验。
+    """
+    failures = []
+    for consumer, evidence in sorted(RUNTIME_EVIDENCE.items()):
+        rel = evidence.get("test", "")
+        if not rel:
+            failures.append(f"runtime evidence {consumer}: missing test path")
+            continue
+        path = ROOT / rel
+        if not path.is_file():
+            failures.append(f"runtime evidence {consumer}: test file not found: {rel}")
+            continue
+        text = path.read_text(encoding="utf-8")
+        if consumer not in text:
+            failures.append(f"runtime evidence {consumer}: test file {rel} does not name it")
+        if "assert" not in text:
+            failures.append(f"runtime evidence {consumer}: test file {rel} has no assertion")
     return failures
 
 
@@ -913,12 +973,14 @@ def main() -> int:
 
     migration = check_migration()
     registry = check_consumer_registry()
+    runtime = check_runtime_evidence()
     switch_failures, results = check_switch()
-    failures = migration + registry + switch_failures
+    failures = migration + registry + runtime + switch_failures
 
     if args.summary:
         print(f"[INFO] migrations: {len(MIGRATIONS)} "
-              f"({len(MIGRATION_DIVERGENCES)} intentionally diverged per RF-02/ADR-0015)")
+              f"({len(MIGRATION_DIVERGENCES)} intentionally diverged, see MIGRATION_DIVERGENCES) "
+              f"runtime-evidence consumers: {len(RUNTIME_EVIDENCE)}")
         for m in MIGRATIONS:
             mark = " [diverged]" if m.consumer in MIGRATION_DIVERGENCES else ""
             print(f"       {m.consumer:18s} {m.key:32s} {m.old_fn} -> {m.new_fn} "
@@ -936,7 +998,8 @@ def main() -> int:
     diverged = len(MIGRATION_DIVERGENCES)
     strict = len(MIGRATIONS) - diverged
     print(f"[PASS] offload switch: {strict} endpoints migration-AST-equivalent "
-          f"+ {diverged} intentionally diverged (RF-02/ADR-0015, wiring-only check); "
+          f"+ {diverged} intentionally diverged (registered, wiring-only check) "
+          f"+ {len(RUNTIME_EVIDENCE)} runtime-evidence consumers (L9 contract split); "
           f"off/on responses identical (field order kept), "
           f"thread pool off=0 on=1 with different worker thread")
     return 0

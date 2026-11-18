@@ -91,4 +91,9 @@ def test_consumer_registry_matches_actual_call_sites_and_evidence():
     mod = _load_script("_offload_switch2", ROOT / "scripts" / "offload_switch_diff.py")
     assert mod.check_consumer_registry() == []
     from lib.infra.async_offload import OFFLOAD_CONSUMERS
-    assert {m[0] for m in mod.MIGRATIONS} == set(OFFLOAD_CONSUMERS)
+    # 批次 L9 契约拆分：不再要求「注册表 == 迁移集合」。
+    # 历史迁移证据仍是注册表的子集（不能静默摘除），
+    # 增量消费者须有 RUNTIME_EVIDENCE（由 test_l9_contract_split.py 覆盖）。
+    migrated = {m[0] for m in mod.MIGRATIONS}
+    assert migrated <= set(OFFLOAD_CONSUMERS)
+    assert all(c in mod.RUNTIME_EVIDENCE for c in set(OFFLOAD_CONSUMERS) - migrated)

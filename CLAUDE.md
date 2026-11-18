@@ -285,7 +285,7 @@ Tushare (主) → AkShare → WeStock → 通达信 → Baostock → 东方财�
 | **L8** | `python scripts/blocking_io_check.py --check` | 阻塞 IO 基线：blocking 只准降 / other 冻结；B1 起覆盖 `/ws`、非 `/api/` 路由、中间件与 async helper（独立 extended 集合） |
 | **L8 自证** | `python scripts/blocking_io_check.py --selftest` | 6 类注入回归 + 3 条 Tier B 语义断言，证明门禁会因回归判红 |
 | **L8 取证重建** | `python scripts/blocking_io_check.py --recapture --mode scope --allow-endpoints "..."` | 判据范围扩展专用模式：既有 HTTP 端点必须逐字段不变，新增扩展端点须显式列出；证据写 G4 历史 |
-| **L9** | `python scripts/offload_switch_diff.py --check` | 迁移 AST 等价 + off/on 响应 diff + 线程池自证；RF-02/ADR-0015 后：35 严格冻结 + 2 有意分歧（notifications/strategy_recommend 行为修复，参见 `MIGRATION_DIVERGENCES`） |
+| **L9** | `python scripts/offload_switch_diff.py --check` | 迁移 AST 等价 + off/on 响应 diff + 线程池自证；ADR-0021 后：**32 严格冻结 + 5 有意分歧**（`MIGRATION_DIVERGENCES`）+ 运行时证据消费者（`RUNTIME_EVIDENCE`）。37 条迁移集合本身不变 |
 | **L10** | `python scripts/concurrency_probe.py --check` | 20 并发 P95 + 前端路径「源码重算 vs 登记清单」双校验（数量不再硬编码）；`--tier-b` 清单由 L8 `--check` 自动校验 |
 
 ## 强制触发规则
@@ -398,7 +398,7 @@ curl http://localhost:8000/api/scan
 | `docs/adr/0006-*.md` | 第 6 次判据修正：绝对阈值「≤1」→ 单调下降 + Tier A/B 分层退出判据 |
 | `tests/test_blocking_io_check.py` | L8 的 11 例机器判据（含 helper 展开、表外符号判红、尺子自证） |
 | `lib/infra/async_offload.py` | **Phase 6 唯一 offload 入口**：`run_blocking(consumer, fn, ...)`，off 同步直调 / on 走线程池；`OFFLOAD_CONSUMERS` 显式登记 |
-| `scripts/offload_switch_diff.py` | **L9 门禁**：固定 commit `523b353`（backtest 系）+ `77bc366`（第 4 批）源码 AST 逐语句等价 + off/on 整份响应 + 线程池调用自证 + 消费者登记双向对齐；RF-02/ADR-0015 演化：37 迁移中 35 严格冻结 + 2 有意分歧（`MIGRATION_DIVERGENCES` 清单——notifications/strategy_recommend 因 D1/D2 行为修复豁免逐字等价，仅校验接线完整性，行为正确性由 `tests/features/test_rf02_bad_endpoints.py` 覆盖） |
+| `scripts/offload_switch_diff.py` | **L9 门禁**：固定 commit `523b353`（backtest 系）+ `77bc366`（第 4 批）源码 AST 逐语句等价 + off/on 整份响应 + 线程池调用自证 + 消费者登记分层校验。ADR-0021：37 迁移中 **32 严格 + 5 有意分歧**（`MIGRATION_DIVERGENCES`：notifications/strategy_recommend 行为修复、export_config 密钥白名单、export_trades / export_trades_excel 的 P2-10 公式消毒；分歧项仅校验接线完整性，行为由各自测试覆盖）；`RUNTIME_EVIDENCE` 让无历史快照的新消费者以可复现对拍测试加入灰度 |
 | `docs/refactor/contracts/blocking-io-recapture-evidence.json` | L8 基线历次重建的 G4 字段级取证（历史数组，不覆盖） |
 | `docs/adr/0007-*.md` | 第 2 批决策：灰度入口 / Tier A 切换 / 共享状态加锁 / 分层重建基线 |
 | `tests/features/test_async_offload.py` / `tests/test_shared_state_locks.py` / `tests/test_phase6_batch2.py` | 19 + 5 + 5 例：开关两条路径、并发状态流转、收口 AST 守卫与取证一致性 |

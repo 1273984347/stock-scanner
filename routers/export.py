@@ -6,6 +6,19 @@ from lib.infra.async_offload import run_blocking
 
 router = APIRouter()
 
+# 批次 L9 / P2-10：CSV / Excel 公式注入防护。
+# 字符串字段以 = + - @（以及制表/回车）开头时前置单引号，Excel/WPS 打开后
+# 只当作文本，不解释公式或 DDE。数值字段原样返回，避免把 -1.5 变成文本。
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value):
+    """对单个导出字段做公式注入消毒；非字符串类型原样返回。"""
+    if isinstance(value, str) and value[:1] in _CSV_FORMULA_PREFIXES:
+        return "'" + value
+    return value
+
+
 @router.get("/api/export/positions", dependencies=[Security(verify_api_key)])
 async def export_positions():
     """导出持仓为 CSV"""
@@ -27,15 +40,15 @@ async def export_positions():
             except Exception:
                 pass
             writer.writerow([
-                code,
-                pos.name,
+                _csv_safe(code),
+                _csv_safe(pos.name),
                 pos.shares,
                 pos.buy_price,
                 pos.stop_loss,
                 pos.take_profit,
-                pos.buy_date,
+                _csv_safe(pos.buy_date),
                 hold_days,
-                pos.notes,
+                _csv_safe(pos.notes),
             ])
 
         output.seek(0)
@@ -61,14 +74,14 @@ def _compute_export_trades(days):
 
     for t in trades:
         writer.writerow([
-            t.get("timestamp", ""),
-            t.get("code", ""),
-            t.get("action", ""),
+            _csv_safe(t.get("timestamp", "")),
+            _csv_safe(t.get("code", "")),
+            _csv_safe(t.get("action", "")),
             t.get("price", 0),
             t.get("shares", 0),
             round(t.get("pnl_pct", 0) * 100, 2),
             t.get("hold_days", 0),
-            t.get("exit_reason", ""),
+            _csv_safe(t.get("exit_reason", "")),
         ])
 
     output.seek(0)
@@ -132,12 +145,15 @@ async def export_positions_excel():
             except Exception:
                 pass
             row_data = [
-                code, pos.name, pos.shares, pos.buy_price,
-                pos.stop_loss, pos.take_profit, pos.buy_date,
-                hold_days, pos.notes,
+                _csv_safe(code), _csv_safe(pos.name), pos.shares, pos.buy_price,
+                pos.stop_loss, pos.take_profit, _csv_safe(pos.buy_date),
+                hold_days, _csv_safe(pos.notes),
             ]
             for col, val in enumerate(row_data, 1):
                 cell = ws.cell(row=row_idx, column=col, value=val)
+                # P2-10：即便字符串被消毒过，也强制按文本单元格写入，双保险。
+                if isinstance(val, str):
+                    cell.data_type = 's'
                 cell.border = thin_border
                 if col in (3, 4, 5, 6, 8):  # numeric columns
                     cell.alignment = Alignment(horizontal="right")
@@ -199,17 +215,20 @@ def _compute_export_trades_excel(days):
     for row_idx, t in enumerate(trades, 2):
         pnl_pct = round(t.get("pnl_pct", 0) * 100, 2)
         row_data = [
-            t.get("timestamp", ""),
-            t.get("code", ""),
-            t.get("action", ""),
+            _csv_safe(t.get("timestamp", "")),
+            _csv_safe(t.get("code", "")),
+            _csv_safe(t.get("action", "")),
             t.get("price", 0),
             t.get("shares", 0),
             pnl_pct,
             t.get("hold_days", 0),
-            t.get("exit_reason", ""),
+            _csv_safe(t.get("exit_reason", "")),
         ]
         for col, val in enumerate(row_data, 1):
             cell = ws.cell(row=row_idx, column=col, value=val)
+            # P2-10：强制文本单元格，杜绝 =cmd|... 被 Excel 当公式执行。
+            if isinstance(val, str):
+                cell.data_type = 's'
             cell.border = thin_border
             if col in (4, 5, 6, 7):
                 cell.alignment = Alignment(horizontal="right")
