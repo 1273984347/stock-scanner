@@ -121,6 +121,66 @@ def get_kline(code: str, days: int = 180, period: str = "daily", as_of_date: Opt
         bs.logout()
 
 
+def _to_bs_index_code(code: str) -> str:
+    """指数代码 → baostock 格式（不能复用 _to_bs_code）。
+
+    detect_market("000300") 返回 "sz"（按个股规则），但沪深300指数实际是
+    sh.000300——指数有独立的市场归属，必须单独映射（实测 baostock 可用）。
+    """
+    code = code.strip()
+    if code.startswith(("sh.", "sz.", "bj.")):
+        return code
+    if code.startswith(("399", "398", "399")):
+        return f"sz.{code}"       # 深证成指 / 创业板指等
+    if code.startswith(("000", "880", "950")):
+        return f"sh.{code}"       # 上证系指数（000300 沪深300 / 000905 中证500）
+    return f"sh.{code}"
+
+
+def get_index_kline(code: str, days: int = 180, as_of_date=None) -> pd.DataFrame:
+    """指数日线（baostock 兜底）——返回与个股 K 线一致的列契约。
+
+    用于本地 TDX 目录缺失、pytdx 行情服务器不可达时给回测/择时提供基准数据。
+    """
+    import baostock as bs
+    from datetime import datetime, timedelta
+
+    end = datetime.strptime(as_of_date, "%Y-%m-%d") if as_of_date else datetime.now()
+    start = end - timedelta(days=days + 30)
+    bs_code = _to_bs_index_code(code)
+
+    lg = bs.login()
+    if lg.error_code != "0":
+        logger.error(f"BaoStock 登录失败: {lg.error_msg}")
+        return pd.DataFrame()
+    try:
+        rs = bs.query_history_k_data_plus(
+            bs_code,
+            "date,open,high,low,close,volume,amount",
+            start_date=start.strftime("%Y-%m-%d"),
+            end_date=end.strftime("%Y-%m-%d"),
+            frequency="d",
+        )
+        rows = []
+        while rs.error_code == "0" and rs.next():
+            rows.append(rs.get_row_data())
+        if not rows:
+            return pd.DataFrame()
+        df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume", "amount"])
+        for c in ["open", "high", "low", "close", "volume", "amount"]:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        df = df.dropna(subset=["date", "close"])
+        if len(df) > days:
+            df = df.tail(days)
+        return df.reset_index(drop=True)
+    except Exception as e:
+        logger.error(f"BaoStock 获取指数 {code} 失败: {e}")
+        return pd.DataFrame()
+    finally:
+        bs.logout()
+
+
 def _to_bs_code(code: str) -> str:
     """转换为 baostock 代码格式
 

@@ -88,7 +88,7 @@ def run_backtest(
 
     for code in stock_codes:
         try:
-            df = get_stock_hist_multi_source(code, days=500, source="tdx_local_qfq")
+            df = get_stock_hist_multi_source(code, days=500, source="auto", prefer_adjusted=True)
             if df is None or len(df) < 60:
                 continue
             df = add_indicators(df)

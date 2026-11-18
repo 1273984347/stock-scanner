@@ -72,6 +72,14 @@ curl -X POST http://localhost:8000/scan \
 | `FEISHU_APP_ID` | 飞书应用 AppID | 推送必需 |
 | `FEISHU_APP_SECRET` | 飞书应用密钥 | 推送必需 |
 | `TUSHARE_TOKEN` | Tushare Token | Tushare 数据源必需 |
+| `TDX_DATA_PATH` | 本地通达信 vipdoc 目录（历史日线/板块），无则不启用本地源 | 否（最新实现默认走 baostock） |
+
+### 数据源说明
+
+选股/回测的 K 线走多源自动切换，优先级 `baostock > tdx > adata > westock > tushare > akshare > tdx_local_*`（ADR-0017）。实测当前环境**只有 baostock 可用**；本地 TDX 目录（`D:/TDX/vipdoc`）若不存在，本地源会自动跳过，不影响主链路。
+
+- 回测已不再硬编码本地 TDX 死源（ADR-0023），指数基准也有 baostock 兜底。
+- 全市场**实时行情**仍依赖外网（akshare spot / pytdx 公共服务器）。离线环境可跑历史选股与回测，但实时扫描会缺行情；需要稳定实时数据请部署在能访问上述服务的网络，或配置本地 TDX。
 
 ## 文件结构
 

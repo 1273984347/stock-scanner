@@ -285,7 +285,7 @@ def build_stock_returns(stock_codes: List[str], days: int = 500):
     stock_rets = {}
     for code in stock_codes:
         try:
-            df = get_stock_hist_multi_source(code, days=days, source="tdx_local_qfq")
+            df = get_stock_hist_multi_source(code, days=days, source="auto", prefer_adjusted=True)
             if df is None or len(df) < 20:
                 continue
             df = df.copy()
@@ -360,7 +360,7 @@ def _process_single_stock(args):
 
     trades = []
     try:
-        df = get_stock_hist_multi_source(code, days=data_days, source="tdx_local_qfq")
+        df = get_stock_hist_multi_source(code, days=data_days, source="auto", prefer_adjusted=True)
         if df is None or len(df) < 60:
             return trades
         df = add_indicators(df)

@@ -309,7 +309,7 @@ def _process_single_stock_engine(args):
 
     trades = []
     try:
-        df = _get_hist(code, days=data_days, source="tdx_local_qfq")
+        df = _get_hist(code, days=data_days, source="auto", prefer_adjusted=True)
         # P0-4：include_delisted 开启 + 活股数据不足 → 用退市股数据补
         if (df is None or len(df) < 60) and include_delisted:
             try:
@@ -722,7 +722,7 @@ def run_backtest(
     # 预计算：每只股票每天的5日收益率（用于板块强度代理）
     stock_returns: Dict[str, pd.DataFrame] = {}
     for code in stock_codes:
-        df_s = get_stock_hist_multi_source(code, days=days, source="tdx_local_qfq")
+        df_s = get_stock_hist_multi_source(code, days=days, source="auto", prefer_adjusted=True)
         if df_s is None or len(df_s) < 10:
             continue
         df_s = df_s.copy()
@@ -762,7 +762,7 @@ def run_backtest(
 
     for code in stock_codes:
         try:
-            df = get_stock_hist_multi_source(code, days=days, source="tdx_local_qfq")
+            df = get_stock_hist_multi_source(code, days=days, source="auto", prefer_adjusted=True)
             if df is None or len(df) < 60:
                 continue
             df = add_indicators(df)

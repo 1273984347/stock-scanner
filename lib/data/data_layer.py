@@ -613,16 +613,27 @@ def get_index_hist(code: str, days: int = 180) -> pd.DataFrame:
     if not df.empty:
         _save_cache(cache_key, df)
         return df
-    # 网络兜底
+    # 网络兜底 1：pytdx 行情服务器
     try:
         from lib.data.data_tdx import get_index_daily as _get_index_daily_net
         df = _get_index_daily_net(code, days)
-        if not df.empty:
+        if not df.empty and "close" in df.columns:
             _save_cache(cache_key, df)
-        return df
+            return df
     except Exception as e:
-        logger.debug(f"[data_layer] 指数日线获取失败 [{code}]: {e}")
-        return pd.DataFrame()
+        logger.debug(f"[data_layer] TDX 指数日线获取失败 [{code}]: {e}")
+
+    # 网络兜底 2：baostock（2026-11-18 实测可用；本地 TDX 目录与 pytdx
+    # 服务器都不可达时，这是唯一能拿到真实指数数据的源）。列契约与个股一致。
+    try:
+        from lib.data.data_baostock import get_index_kline
+        df = get_index_kline(code, days)
+        if not df.empty and "close" in df.columns:
+            _save_cache(cache_key, df)
+            return df
+    except Exception as e:
+        logger.debug(f"[data_layer] BaoStock 指数日线获取失败 [{code}]: {e}")
+    return pd.DataFrame()
 
 
 def get_ggt_hist(code: str, days: int = 180) -> pd.DataFrame:
