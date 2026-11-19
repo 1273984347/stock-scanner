@@ -27,10 +27,16 @@ _LOG_LOCK = threading.Lock()
 
 
 def _get_db():
-    """获取数据库连接"""
+    """获取数据库连接（评审 P0-1 就绪链 2026-11-20：WAL + busy_timeout——
+    并发写/读不互堵的前提；跨进程多连接兜底）"""
     DB_PATH.parent.mkdir(exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+    except sqlite3.Error:
+        pass  # WAL 不可用环境（如网络盘）退回默认日志模式，锁仍在
     _init_db(conn)
     return conn
 
@@ -74,14 +80,24 @@ def _init_db(conn):
 
 
 def log_scan(scan_result: Dict) -> int:
-    """记录一次完整扫描
+    """记录一次完整扫描（写入全链持进程级 _LOG_LOCK）
+
+    架构评审 P0-1 就绪链（2026-11-20）：``_LOG_LOCK`` 此前定义后**从未 acquire**
+    （:23-25 注释与代码不符，「写了没接线」同族，见坑表 P-108/P-109）——offload
+    默认值翻转 all 后，线程池并发写入会撞 ``database is locked`` → 审计记录静默丢失。
 
     Args:
         scan_result: run_all_strategies() 的返回值
 
     Returns:
-        scan_id
+        scan_id（0 = 写入失败）
     """
+    with _LOG_LOCK:
+        return _log_scan_locked(scan_result)
+
+
+def _log_scan_locked(scan_result: Dict) -> int:
+    """log_scan 的写入体（调用方须已持 _LOG_LOCK）。"""
     conn = _get_db()
     try:
         risk = scan_result.get("risk_check", {})

@@ -8,14 +8,17 @@
 
 * 灰度判定**只在这里**。消费者不得自读 `FEATURE_ASYNC_OFFLOAD` /
   调 `async_offload_enabled()`（与评分域 S8 同构，有 AST 硬守卫）。
-* `off`（默认）：**同步直调** `fn(*args, **kwargs)`。与改造前完全等价 ——
+* `off`：**同步直调** `fn(*args, **kwargs)`。与改造前完全等价 ——
   同一线程、同一返回值对象、异常原样传播，不做任何包装。
-* `on`：`anyio.to_thread.run_sync` 把 `fn` 放进线程池，端点保持 `async def`
-  签名不变（禁止改成 `def` 来「顺手」走线程池，那会静默改变调度语义）。
+* `on`（**默认**，评审 P0-1 2026-11-20 翻转）：`anyio.to_thread.run_sync` 把 `fn`
+  放进线程池，端点保持 `async def` 签名不变（禁止改成 `def` 来「顺手」走线程池，
+  那会静默改变调度语义）。
 * 不做重试、不做超时包装、不吞异常：工作线程里的异常由 anyio 原样重新抛出，
   端点的 `try/except` 结构与改造前一致。
 
-回滚：`FEATURE_ASYNC_OFFLOAD=0`（或删除环境变量）即刻回到同步直调路径。
+回滚：`FEATURE_ASYNC_OFFLOAD=0` **显式置 0** 即回到同步直调路径（注意：删除环境变量
+回到的是默认 `all`，不是 off——翻转记录见 `docs/audit/architecture-review-2026-11-20.md`
+批次 C2，前置条件 audit 锁 + WAL 已落地）。
 """
 
 from __future__ import annotations

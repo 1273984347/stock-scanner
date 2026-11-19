@@ -400,7 +400,7 @@ curl http://localhost:8000/api/scan
 | `docs/refactor/contracts/blocking-io-baseline.json` | Phase 6 起点读数：68 端点 / 1052 调用（ADR-0026 起 69 端点 / 94 阻塞 / 44 offloaded） / 242 阻塞调用 / 63 端点含阻塞点；含 `plan_stated_target` 对照 |
 | `docs/adr/0006-*.md` | 第 6 次判据修正：绝对阈值「≤1」→ 单调下降 + Tier A/B 分层退出判据 |
 | `tests/test_blocking_io_check.py` | L8 的 11 例机器判据（含 helper 展开、表外符号判红、尺子自证） |
-| `lib/infra/async_offload.py` | **Phase 6 唯一 offload 入口**：`run_blocking(consumer, fn, ...)`，off 同步直调 / on 走线程池；`OFFLOAD_CONSUMERS` 显式登记 |
+| `lib/infra/async_offload.py` | **Phase 6 唯一 offload 入口**：`run_blocking(consumer, fn, ...)`，默认走线程池（评审 P0-1 2026-11-20 翻转 all）/ 显式置 0 = 同步直调回滚值；`OFFLOAD_CONSUMERS` 显式登记 |
 | `scripts/offload_switch_diff.py` | **L9 门禁**：固定 commit `523b353`（backtest 系）+ `77bc366`（第 4 批）源码 AST 逐语句等价 + off/on 整份响应 + 线程池调用自证 + 消费者登记分层校验。ADR-0021：37 迁移中 **32 严格 + 5 有意分歧**（`MIGRATION_DIVERGENCES`：notifications/strategy_recommend 行为修复、export_config 密钥白名单、export_trades / export_trades_excel 的 P2-10 公式消毒；分歧项仅校验接线完整性，行为由各自测试覆盖）；`RUNTIME_EVIDENCE` 让无历史快照的新消费者以可复现对拍测试加入灰度 |
 | `docs/refactor/contracts/blocking-io-recapture-evidence.json` | L8 基线历次重建的 G4 字段级取证（历史数组，不覆盖） |
 | `docs/adr/0007-*.md` | 第 2 批决策：灰度入口 / Tier A 切换 / 共享状态加锁 / 分层重建基线 |

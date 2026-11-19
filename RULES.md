@@ -126,7 +126,7 @@ infra  ←  data  ←  scoring  ←  strategy
 |---|---|---|
 | T1 | **`async def` 端点不得直接调用阻塞符号**（数据层取数 / parquet 读 / pandas 计算 / 文件写 / 网络）；必须经 `lib/infra/async_offload.py` 的唯一入口包裹 | 68 端点全为 async，阻塞调用会占住事件循环；契约快照单独冻结 async/sync 的原因见 `docs/refactor/README.md` §二 |
 | T1-a（B2，L9 已扩展） | **非迁移端点**（WS 后台广播、backup 压缩）的 offload 允许用 `asyncio.to_thread`（已在 `OFFLOADED_TAILS` 登记），但必须被 L8 记为 `offloaded` 且有机器判据 | L9 契约已于 ADR-0021 拆分：`OFFLOAD_CONSUMERS` 不再强制等于 37 个 `MIGRATIONS`；新增消费者须走 `run_blocking` 且在 `RUNTIME_EVIDENCE` 登记可复现对拍测试（文件存在 + 点名 + 含 assert）。裸 `asyncio.to_thread` 仍允许但不能绕过 L8 视野 |
-| T2 | **灰度判定只允许在 offload 入口**；消费者不得自读 `FEATURE_ASYNC_OFFLOAD`，开关默认 off，按消费者粒度切换 | 与 S8 同构：判定散落就无法回答「到底哪几个消费者切了」 |
+| T2 | **灰度判定只允许在 offload 入口**；消费者不得自读 `FEATURE_ASYNC_OFFLOAD`，开关默认 `all`（评审 P0-1 2026-11-20 翻转，前置 = audit 锁+WAL + L9/L10 门禁；回滚 = env **显式置 0**，删除变量 = 回默认 all），按消费者粒度切换仍受支持 | 与 S8 同构：判定散落就无法回答「到底哪几个消费者切了」 |
 | T3 | **保持 `async def` 签名**，禁止把端点改成 `def` 来「顺手」走线程池 | 会静默改变 FastAPI 调度语义与并发上限；契约快照冻结 async/sync，L2 会判红 |
 | T4 | 每切一个消费者必须跑 off/on 逐字段对拍，**并自证 on 侧真走了线程池**（off=0 / on>0） | 两侧都没切时 diff 也恒 0 = 空判据（坑表 P-56） |
 | T5 | 阻塞判据以 `scripts/blocking_io_check.py` 的 **L8** 为准：**blocking 只准降 / offloaded 只准升 / other 逐字段冻结**；新符号必须显式归类后才能推进。**新增 HTTP 端点只允许走 `--recapture --mode refactor --allow-endpoints "METHOD /path"`**（该端点须零阻塞 + 显式声明 + 其余端点逐字段一致），禁止用 `--capture` 全量重建绕过取证（ADR-0026） | 计划的绝对阈值「≤1」被实测 242 推翻（ADR-0006 D1）；表外符号由 `other` 冻结兜住，不假设阻塞表完整。原 recapture 没有「新增端点」路径，只能全量重建——那会丢掉其他端点的逐字段取证 |

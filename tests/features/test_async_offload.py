@@ -46,11 +46,25 @@ def test_off_never_uses_thread_pool(monkeypatch):
     def poison(*args, **kwargs):
         raise AssertionError("off-side must not enter the thread pool")
 
-    monkeypatch.delenv("FEATURE_ASYNC_OFFLOAD", raising=False)
+    # 评审 P0-1（2026-11-20）默认值翻转 all 后，off 侧判据改用显式回滚值 0 触发
+    # （原 delenv 触发的是「默认 off」——语义已变；判据意图「显式 off 绝不进线程池」不变）
+    monkeypatch.setenv("FEATURE_ASYNC_OFFLOAD", "0")
     monkeypatch.setattr(offload.anyio.to_thread, "run_sync", poison)
     assert _run(run_blocking("backtest", _compute, 2, 3, scale=4)) == {
         "sum": 20, "parts": [2, 3]
     }
+
+
+def test_default_is_all_after_p0_1_flip(monkeypatch):
+    """评审 P0-1：默认值 = all（env 未设时任意消费者走线程池）；显式 0 仍可回滚。"""
+    from config import async_offload_enabled
+
+    monkeypatch.delenv("FEATURE_ASYNC_OFFLOAD", raising=False)
+    assert async_offload_enabled("backtest") is True
+    assert async_offload_enabled("risk") is True
+    assert async_offload_enabled("unregistered_consumer") is True
+    monkeypatch.setenv("FEATURE_ASYNC_OFFLOAD", "0")
+    assert async_offload_enabled("backtest") is False
 
 
 @pytest.mark.parametrize("flag", ["1", "on", "all", "*", "backtest"])

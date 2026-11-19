@@ -90,14 +90,18 @@ def stock_font_path_override() -> str:
 # FEATURE_UNIFIED_SCORING / unified_scoring_enabled 已删除；
 # 数值口径由 L5 评分基线（9 入口 × 285 样本，容差 1e-9）继续锁定。
 
-# ---- RF-01 Phase 6：异步 offload 开关（默认 off，可按消费者灰度）----------
+# ---- RF-01 Phase 6：异步 offload 开关（默认 all；回滚值 0，可按消费者灰度）----
 # 取值（与已收口的评分灰度同构）：
-#   0/off/false/no/""      -> 全部同步直调（默认，逐字节等价于改造前）
-#   1/on/true/yes/all      -> 全部已接入消费者走线程池
+#   0/off/false/no/""      -> 全部同步直调（回滚值，逐字节等价于改造前）
+#   1/on/true/yes/all      -> 全部已接入消费者走线程池（**当前默认**）
 #   "backtest,walkforward" -> 仅列出的消费者走线程池
-# 回滚：环境变量改回 0 或删除即可，无需回滚部署。
+# 默认值翻转（架构评审 P0-1，2026-11-20，docs/audit/architecture-review-2026-11-20.md
+# 批次 C2）：Phase 6 期间默认 0 是回滚安全阀，灰度收口（37 迁移 + L9/L10 门禁）后
+# 长期裸奔在事件循环上（/api/risk 冷路径整批 wall-time 阻塞冻结全站）。翻转前置条件：
+# ① audit_logger._LOG_LOCK 真持锁 + WAL（并发 sqlite 写入）；② L9 真数据 off/on 对拍
+# + L10 并发 P95 门禁 PASS。回滚：环境变量 **显式置 0**（删除变量 = 回到默认 all）。
 # 判定只允许在 lib/infra/async_offload.py::run_blocking（RULES §1.7 T2）。
-FEATURE_ASYNC_OFFLOAD_DEFAULT = "0"
+FEATURE_ASYNC_OFFLOAD_DEFAULT = "all"
 
 
 def async_offload_enabled(consumer: str = "default") -> bool:
