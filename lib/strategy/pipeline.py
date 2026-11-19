@@ -509,9 +509,16 @@ def _enrich_with_ml_scores(results: dict) -> dict:
         logger.warning(f"ML 信号频率过低: 仅 {len(result_df)} 只候选股通过，月均可能不足 3 次")
 
     logger.info(f"20d ML 评分: {len(all_codes)} 候选 -> {len(result_df)} 通过 -> Top 10 输出")
-    return {"data": result_df.head(10), "n_candidates": len(all_codes),
+    # 契约（P-101）："data" 必须是 list[dict]，与 "top10" 同形。
+    # 三个消费方都按这个形状写：
+    #   - 本模块 _apply_regime_adjustment(candidates: list) 逐条 c.copy()/c.get()
+    #   - 本模块 run_all_strategies 的 if ml_ranking.get("data")（DataFrame 布尔判断会抛 ValueError）
+    #   - reporter/report_generator 的 `for item in data[:10]`（DataFrame 迭代出列名）
+    # 旧实现塞 DataFrame，只有 ML 分支被数据恢复激活后才暴露（2026-11-19 扫描崩溃）。
+    top10 = result_df.head(10).to_dict(orient="records")
+    return {"data": top10, "n_candidates": len(all_codes),
             "n_passed": len(result_df),
-            "top10": result_df.head(10).to_dict(orient="records"),
+            "top10": top10,
             "method": "20d_ml", "recommended_config": "纯20dML·月频·tc=0.01"}
 
 

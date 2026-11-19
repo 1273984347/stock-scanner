@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-18T14:08:50+00:00",
+  "generated_at": "2026-11-19T14:00:14+00:00",
   "constraints": {
     "as_of_date": "2026-05-30",
     "data_sources": [
@@ -120,7 +120,7 @@
           "bull_market": false
         },
         "macro_filter": {
-          "index_ma20": 3648.3976000000002,
+          "index_ma20": 3644.3769999999995,
           "index_trend": "BEAR",
           "position_mult": 0.5,
           "shibor": null,
@@ -391,7 +391,7 @@
       "result": {
         "benchmark": {
           "name": "沪深300",
-          "total_return": 0.2417
+          "total_return": 0.263
         },
         "cost_summary": {
           "cost_ratio": 0.0004916681134951462,

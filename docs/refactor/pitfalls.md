@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**100 个编号（P-01～P-100）**，分九类；其中 96 条有独立正文条目，
+> **规模**：**101 个编号（P-01～P-101）**，分九类；其中 97 条有独立正文条目，
 > P-62～P-65 仅见于下方「一句话索引」（既有状态，append-only 不补写）。
 > **本行是当前编号数的唯一真源**：其它文档一律引用本行，不硬编码数字；
 > 文末「文档状态」里的历史「共 N 条」是当时的取证记录，按 append-only 保留。
@@ -1845,6 +1845,7 @@ A/B 的 off / on 两次回测结果恒等。这是 P-56 / P-59 空判据的另�
 | 取证链路读生产缓存或 datetime.now()，换个日子就假红 | P-89 / G1-G2 |
 | 「源不可用」但换个时间又通了 / 东财一个接口死一个活 | P-99 |
 | 单文件跑绿、全量跑红（顺序依赖） | P-100 |
+| 数据恢复后主流程崩在 `if dict.get("data")` | P-101 |
 | 门禁说「全绿」，但 /ws、中间件根本没被扫描 | P-90 |
 | 按函数名尾字分类，把「全目录遍历+压缩」判成轻量 IO | P-90 |
 | 想给新端点加 offload，却被「消费者集合必须等于迁移集合」卡住 | P-91 |
@@ -2472,3 +2473,32 @@ def _reset_host_health_between_tests():
   先用「单跑 vs 全量」二分，不要先去怀疑被测逻辑。
 - 别用「给生产代码加重置开关」解决测试隔离——那会让业务代码知道测试的存在，
   且开关本身又会变成新的全局状态。
+
+
+### P-101 · 同一份数据的两种形状：只有数据分支被激活才暴露的契约分裂
+
+**现象**：2026-11-19 日线源恢复后第一次真实盘后扫描崩在
+`pipeline.py:905` —— `ValueError: The truth value of a DataFrame is ambiguous`。
+此前扫描走不到 ML 分支（个股日线全 0 → 无候选），所以问题潜伏。
+
+**根因**：`_enrich_with_ml_scores` 返回 `"data": result_df.head(10)`（DataFrame），
+但三个消费方全部按 `list[dict]` 使用：
+
+| 消费方 | 用法 | DataFrame 下的结果 |
+|:--|:--|:--|
+| `pipeline._apply_regime_adjustment` | `for c in candidates: c.copy()/c.get()` | 迭代出列名 → AttributeError |
+| `pipeline.run_all_strategies` | `if ml_ranking.get("data")` | 布尔判断直接抛 ValueError |
+| `reporter.report_generator` | `for item in data[:10]` | item 是列名字符串 |
+
+同一个函数还返回 `top10`（已经是 `to_dict("records")`）——一份内容两种形状。
+
+**修法（根因，不是调用处特判）**：`"data"` 与 `"top10"` 共用同一份 `list[dict]`。
+不在 `if` 处加 `isinstance(df, pd.DataFrame)` 分支——那只会让契约继续分裂。
+
+**推广**：
+- 被长期跳过的功能分支是**契约盲区**：数据一恢复，潜藏的类型不匹配会集中暴露。
+  修完数据源必须真跑主流程，不能只跑判据。
+- `DataFrame` 不能做布尔判断、不可直接 JSON 序列化；跨模块传递的候选列表
+  统一用 `list[dict]`（这也是项目其它 scan_result 字段的口径）。
+- 同一函数里出现 `data` 与 `top10` 两个表示同一集合的字段，是形状漂移的早期信号。
+  判据：`tests/test_ml_ranking_contract.py`（形状 / JSON / 消费方联动 5 例）。
