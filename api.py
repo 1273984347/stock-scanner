@@ -86,6 +86,13 @@ def _verify_single_worker_on_startup():
     verify_single_worker()
 
 
+@app.on_event("startup")
+def _register_push_sink_on_startup():
+    """P1-6 推送倒置：API 触发的扫描（pipeline IC 告警等）走 push_sink——
+    顶层显式加载 reporter 注册 sink（lib 层自身不 import reporter）。"""
+    import reporter.feishu_pusher  # noqa: F401
+
+
 @app.middleware("http")
 async def track_performance(request: Request, call_next):
     """请求性能追踪"""

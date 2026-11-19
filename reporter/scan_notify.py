@@ -192,38 +192,7 @@ def send_feishu_message(results: dict, preset: str = "balanced",
     return ok
 
 
-def build_alert_content(alert_type: str, alerts: list) -> str:
-    """P-79 遗留项（2026-11-14）：告警类消息的文本构造。
-
-    pipeline 的因子监控告警此前把 alert dict（{"type", "alerts"}）直接传
-    send_feishu_message，build_message_content 按裸策略映射消费非 DataFrame 值
-    → AttributeError 被 try/except 静默吞掉，告警从未真正推送。
-    告警不走「策略名: N 只」统计形状，独立构造。
-    """
-    type_labels = {
-        "ic_decay_alert": "IC 衰减告警",
-        "ic_decay": "IC 衰减告警",
-    }
-    label = type_labels.get(alert_type, alert_type)
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-    lines = [
-        f"【{label}】({now})",
-        "=" * 30,
-    ]
-    if not alerts:
-        lines.append("（无告警明细）")
-    for a in alerts or []:
-        if not isinstance(a, dict):
-            lines.append(f"- {a}")
-            continue
-        severity = a.get("severity", "")
-        message = a.get("message", "")
-        prefix = f"[{severity}] " if severity else ""
-        lines.append(f"- {prefix}{message}")
-    lines.append("=" * 30)
-    lines.append(f"共 {len(alerts or [])} 条告警")
-    return "\n".join(lines)
+from lib.monitoring.alert_content import build_alert_content  # noqa: F401 —— 兼容 re-export（实现已下沉，P1-6）
 
 
 def send_alert_message(alert_type: str, alerts: list) -> bool:

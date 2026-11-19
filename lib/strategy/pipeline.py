@@ -458,9 +458,13 @@ def _check_monitor_alerts(ml_ranking: dict = None):
                         logger.warning(f"IC衰减告警 [{alert['severity']}]: {alert['message']}")
                     # 尝试推送飞书告警（P-79 遗留项修复：此前把 alert dict 直接传
                     # 旧策略统计入口，形状不匹配 AttributeError 被吞，从未真正推送）
+                    # P1-6 推送倒置：文本构造下沉 lib.monitoring.alert_content，
+                    # 通道走 push_sink（reporter 注册）——lib 不再 import reporter
                     try:
-                        from reporter.scan_notify import send_alert_message
-                        send_alert_message("ic_decay_alert", decay_alerts)
+                        from lib.monitoring.alert_content import build_alert_content
+                        from lib.infra.push_sink import push_text
+                        push_text(build_alert_content("ic_decay_alert", decay_alerts),
+                                  title="IC 衰减告警")
                     except Exception as e:
                         logger.debug(f"[pipeline] 飞书告警发送失败: {e}")
                 else:

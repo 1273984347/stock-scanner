@@ -208,8 +208,9 @@ class AlertMonitor:
         # 生成 alert_id（每次推送唯一）
         alert_id = f"alert-{int(_time.time())}-{uuid.uuid4().hex[:8]}"
         try:
-            from reporter.feishu_pusher import push_report
-            success = push_report(message, [])
+            # P1-6 推送倒置：lib 层走 push_sink（reporter 注册）
+            from lib.infra.push_sink import push_text
+            success = push_text(message)
             if success:
                 logger.info(f"告警推送成功 alert_id={alert_id}：{len(self.alerts)} 条")
             else:

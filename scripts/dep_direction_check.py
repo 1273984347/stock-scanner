@@ -31,15 +31,11 @@ LEVEL = {
 }
 
 # 已登记例外（src_pkg, dst_pkg) → justification。新增未登记 = 判红。
+# P1-6 推送倒置后 strategy/monitoring → reporter 三边已收口进 push_sink，例外撤销。
 EXCEPTIONS = {
     ("scoring", "strategy"):
         "scoring_adapters 反向调策略层 quick_score/full_score（P7-2 灰度适配器架构，"
         "待评分域重构；与 strategy→scoring 构成已登记互反对）",
-    ("strategy", "reporter"):
-        "pipeline/paper_trading_runner 推送出口（IC 告警/模拟盘日报，"
-        "依赖倒置待 P1-6 第二阶段）",
-    ("monitoring", "reporter"):
-        "alert_monitor 推送出口（告警降级落 logs/alert_fallback/ 后仍需触达飞书）",
     ("monitoring", "backtest"):
         "backtest_unified.py 是 B5 规约定义的薄壳 re-export（兼容旧路径，不新增引用）",
     ("scoring", "backtest"):

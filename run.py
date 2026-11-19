@@ -10,6 +10,7 @@ from scanner import run_all_strategies
 from reporter.scan_notify import send_feishu_message, print_results, unwrap_scan_results
 from config import FEISHU_RECEIVE_ID
 from lib.data.trade_calendar import is_trading_day
+import reporter.feishu_pusher  # noqa: F401 —— 注册推送 sink（P1-6 倒置）
 import logging
 
 logging.basicConfig(

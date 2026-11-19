@@ -414,9 +414,10 @@ class PaperTradingRunner:
     def _push_report(self, report: DailyReport):
         """推送日报到飞书"""
         try:
-            from reporter.feishu_pusher import push_report
+            # P1-6 推送倒置：lib 层走 push_sink（reporter 注册）
+            from lib.infra.push_sink import push_text
             msg = self._format_report_text(report)
-            success = push_report(text=msg, chart_paths=[])
+            success = push_text(msg)
             if success:
                 logger.info("日报已推送到飞书")
             else:

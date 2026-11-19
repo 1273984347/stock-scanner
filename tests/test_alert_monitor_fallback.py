@@ -1,6 +1,10 @@
 """P1 修复测试：alert_monitor.push_alerts 失败时降级到本地文件 + 计数器 + 日志
 
-P1-1 修复：失败时必须降级，不能仅 warning 后 return False
+P1-1 修复：失败时必须降级，不能仅 warning 后 return False。
+
+C10（P1-6 推送倒置）更新：隔离接缝从 sys.modules 换掉 reporter 模块，
+改为 patch lib.infra.push_sink.push_text（新推送出口，定义方模块属性）。
+意图全部保留：成功/失败/计数器/降级文件语义零变化。
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -47,11 +51,13 @@ class TestAlertPushFallback:
         am.check_drawdown([100, 110, 90], threshold=0.03)  # 触发 18% 回撤
         return am
 
-    def _patch_feishu_pusher_failure(self, exc=ConnectionError("push failed")):
-        """返回 context manager: 让 reporter.feishu_pusher.push_report 抛异常"""
-        fake_module = MagicMock()
-        fake_module.push_report = MagicMock(side_effect=exc)
-        return patch.dict("sys.modules", {"reporter.feishu_pusher": fake_module})
+    def _patch_push_success(self):
+        """返回 context manager: push_text 返回 True（推送成功）"""
+        return patch("lib.infra.push_sink.push_text", return_value=True)
+
+    def _patch_push_failure(self, exc=ConnectionError("push failed")):
+        """返回 context manager: 让 push_text 抛异常（新接缝：push_sink，P1-6）"""
+        return patch("lib.infra.push_sink.push_text", side_effect=exc)
 
     def test_push_failure_writes_local_file(self, lib_logger_capture):
         """推送失败时必须落本地文件 + 计数器 + ERROR 日志"""
@@ -59,7 +65,7 @@ class TestAlertPushFallback:
         am = self._make_alert()
         assert len(am.alerts) >= 1
 
-        with self._patch_feishu_pusher_failure():
+        with self._patch_push_failure():
             result = am.push_alerts()
 
         # 1. 必须返回 False
@@ -88,9 +94,7 @@ class TestAlertPushFallback:
         from lib.monitoring.alert_monitor import AlertMonitor
         am = self._make_alert()
 
-        fake_module = MagicMock()
-        fake_module.push_report = MagicMock(return_value=True)
-        with patch.dict("sys.modules", {"reporter.feishu_pusher": fake_module}):
+        with self._patch_push_success():
             result = am.push_alerts()
 
         assert result is True
@@ -101,11 +105,8 @@ class TestAlertPushFallback:
         """多次失败计数器累加（同一实例多次推送）"""
         from lib.monitoring.alert_monitor import AlertMonitor
 
-        fake_module = MagicMock()
-        fake_module.push_report = MagicMock(side_effect=RuntimeError("network down"))
-
         am = self._make_alert()
-        with patch.dict("sys.modules", {"reporter.feishu_pusher": fake_module}):
+        with self._patch_push_failure(exc=RuntimeError("network down")):
             for i in range(3):
                 # 每次都触发新 alert 再推送
                 am.check_drawdown([100, 110, 90], threshold=0.03)
@@ -118,7 +119,7 @@ class TestAlertPushFallback:
         from lib.monitoring.alert_monitor import AlertMonitor
         am = self._make_alert()
 
-        with self._patch_feishu_pusher_failure():
+        with self._patch_push_failure():
             am.push_alerts()
 
         # 1. 日志必须含 alert_id

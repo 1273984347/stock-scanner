@@ -297,3 +297,19 @@ def _push(push_type: str, text: str, chart_paths: List[str]) -> bool:
             _log_push_result(push_type, False, "text_fallback_failed")
 
     return success
+
+
+# P1-6 推送倒置（2026-11-20）：reporter 被 import 即注册 lib 层推送 sink——
+# pipeline IC 告警 / paper_trading_runner 日报 / alert_monitor 告警统一走
+# lib.infra.push_sink.push_text → 本模块 push_report（图表通道不变）。
+# 三个扫描入口（run.py / api.py / scripts/daily_scan.py）显式 import 本模块保证注册。
+# 注意 _push_sink_entry 必须**调用期**解析 push_report（模块全局查找）——
+# 注册期捕获会让测试 patch 定义方失效（I4 同源纪律）。
+from lib.infra.push_sink import set_push_sink as _set_push_sink
+
+
+def _push_sink_entry(text: str) -> bool:
+    return push_report(text, [])
+
+
+_set_push_sink(_push_sink_entry)

@@ -166,11 +166,18 @@ def test_send_alert_message_posts_alert_body(monkeypatch):
 
 
 def test_pipeline_monitor_alerts_wired_to_alert_path():
-    """接线守卫：pipeline._check_monitor_alerts 必须走 send_alert_message，
-    不得再把 alert dict 传 send_feishu_message（P-79 静默断流的回归钉）。"""
+    """接线守卫：pipeline._check_monitor_alerts 必须走告警推送路径。
+
+    P-79 静默断流的回归钉（意图不变，机制随 C10 推送倒置演化）：
+    文本构造走下沉的 build_alert_content（lib.monitoring.alert_content）、
+    通道走 push_sink.push_text（reporter 注册）；不得再把 alert dict 传
+    send_feishu_message（旧 bug），也不得倒挂回 reporter（lib 层边界）。
+    """
     src = Path("lib/strategy/pipeline.py").read_text(encoding="utf-8")
     start = src.index("def _check_monitor_alerts")
     end = src.index("\ndef ", start + 1)
     body = src[start:end]
-    assert "send_alert_message" in body
+    assert "build_alert_content(" in body
+    assert "push_text(" in body
     assert "send_feishu_message" not in body
+    assert "from reporter" not in body

@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+import reporter.feishu_pusher  # noqa: F401 —— 注册推送 sink（P1-6 倒置）
 logger = logging.getLogger(__name__)
 
 
