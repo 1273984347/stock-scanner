@@ -46,6 +46,14 @@ KLINE_HTTP_TIMEOUT_S = 10
 
 COLUMNS = ["date", "open", "high", "low", "close", "volume"]
 
+
+class SinaKlinePayloadError(Exception):
+    """新浪 200 响应但报文不可解析（WAF 挑战页/HTML 的典型形态）。
+
+    与「真无数据」（``[]``/``null``/空串）必须区分：静默返空会让主源失败
+    不可观测——host_health 永闭合、源级熔断永不计数（评审 P0-2，2026-11-20）。
+    """
+
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; stock-scanner)",
     "Referer": "https://finance.sina.com.cn",
@@ -135,6 +143,11 @@ def get_sina_kline(code: str, days: int = 250,
 
     as_of_date 不为空时多取一些再截断（该接口只有 datalen、没有 end 参数）——
     取 ``max(days*3, days+60)`` 根，最多 2000 根，保证跨节假日也够。
+
+    快失败语义（评审 P0-2，2026-11-20）：HTTP 错误/超时与「200 但报文不可解析」
+    **上抛**，让 ``call_with_health``（HOST_SINA_KLINE）与源级 CircuitBreaker
+    计数——旧实现 catch-all 返空帧，主源失败不仅不计数还 note_success 清零。
+    「真无数据」（``[]`` / ``null`` / 空串，新股/停牌）仍返空帧不计失败。
     """
     if days <= 0:
         return _empty()
@@ -143,12 +156,12 @@ def get_sina_kline(code: str, days: int = 250,
     else:
         want = min(days, SINA_MAX_BARS)
     url = f"{SINA_KLINE_URL}?symbol={_sym(code)}&scale=240&ma=no&datalen={want}"
-    try:
-        payload = _http_get(url)
-    except Exception as e:
-        logger.warning(f"[sina_kline] 请求失败 {code}: {e}")
-        return _empty()
-    return _slice(parse_sina_kline(payload), days, as_of_date)
+    payload = _http_get(url)
+    df = parse_sina_kline(payload)
+    if df.empty and payload.strip() not in ("", "null", "[]"):
+        raise SinaKlinePayloadError(
+            f"sina 200 但报文不可解析（len={len(payload)}）: {payload[:80]!r}")
+    return _slice(df, days, as_of_date)
 
 
 # ========== 腾讯（支持前复权，北交所覆盖差） ==========
@@ -245,8 +258,10 @@ def get_index_kline_web(code: str, days: int = 250,
         return df
     want = min(max(days * 3, days + 60), SINA_MAX_BARS) if as_of_date else min(days, SINA_MAX_BARS)
     url = f"{SINA_KLINE_URL}?symbol={sym}&scale=240&ma=no&datalen={want}"
+    # 评审 P0-2：指数兜底同样经 HOST_SINA_KLINE 计数（异常捕获保持既有「返空」行为）
+    from lib.data.host_health import HOST_SINA_KLINE, call_with_health
     try:
-        payload = _http_get(url)
+        payload = call_with_health(HOST_SINA_KLINE, _http_get, url)
     except Exception as e:
         logger.warning(f"[index_kline] 新浪请求失败 {code}: {e}")
         return _empty()

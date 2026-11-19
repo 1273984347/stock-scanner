@@ -5,6 +5,7 @@
 """
 import os
 import re
+import shutil
 import subprocess
 import pandas as pd
 import io
@@ -13,12 +14,26 @@ from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
+
+def _resolve_westock_cmd() -> List[str]:
+    """解析 westock CLI 命令（WESTOCK_CLI 环境变量优先，否则 shutil.which 解析 npx）。
+
+    Windows 坑（P-111，2026-11-20 实测）：``subprocess.run(list)`` 不走 PATHEXT，
+    裸 ``"npx"`` → FileNotFoundError → 误报「npx 未找到，请安装 Node.js >= v18」——
+    本机装有 Node 18+（``shutil.which("npx")`` 能解析出 npx.CMD 完整路径），
+    westock 源因此全灭数月，被误诊为「缺 Node」。shutil.which 两平台都正确。
+    """
+    override = os.environ.get("WESTOCK_CLI", "").strip()
+    if override:
+        return [override]
+    npx = shutil.which("npx") or shutil.which("npx.cmd") or "npx"
+    return [npx, "-y", "westock-data-clawhub@1.0.4"]
+
+
 # 批次 C / P1-11：默认仍走 `npx -y`（会在运行时联网下载并执行第三方包及其依赖树）。
 # 生产环境建议先 `npm i -D westock-data-clawhub@1.0.4`，再用 WESTOCK_CLI 指向本地
 # 可执行文件（或 `npx --no-install`），避免运行时拉包这一供应链面。
-_westock_cli = os.environ.get("WESTOCK_CLI", "").strip()
-WESTOCK_CMD = ([_westock_cli] if _westock_cli
-               else ["npx", "-y", "westock-data-clawhub@1.0.4"])
+WESTOCK_CMD = _resolve_westock_cmd()
 
 # 只允许字母数字与点，且不允许以 '-' 开头：subprocess 已用 list（无 shell 注入），
 # 这条挡的是「参数被 CLI 当成 flag」与路径穿越式拼接。
@@ -97,9 +112,12 @@ def get_kline(code: str, period: str = "day", limit: int = 200,
     wc = _to_westock_code(code)
     output = _run_westock(["kline", wc, "--period", period, "--limit", str(limit), "--fq", fq])
     df = _parse_markdown_table(output)
-    if as_of_date is not None and not df.empty and "日期" in df.columns:
+    # P-112：CLI 1.0.4 实测返回英文表头（date/open/last/...），旧版可能为中文——
+    # as_of 截断若只认「日期」，英文表头下静默跳过 = 回测前视偏差，必须双形态兼容
+    date_col = "日期" if "日期" in df.columns else ("date" if "date" in df.columns else None)
+    if as_of_date is not None and not df.empty and date_col:
         cutoff = pd.Timestamp(as_of_date)
-        dates = pd.to_datetime(df["日期"], errors="coerce")
+        dates = pd.to_datetime(df[date_col], errors="coerce")
         df = df[dates <= cutoff].copy()
     return df
 

@@ -160,12 +160,19 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
                                        as_of_date=as_of_date)
             if df.empty:
                 return pd.DataFrame()
-            col_map = {"日期": "date", "开盘": "open", "收盘": "close",
+            # P-112：CLI 1.0.4 实测英文表头（date/open/**last**/high/low/volume/...），
+            # 旧版中文——`last`→`close` 必须显式映射，否则 6 列校验不过 = 整链白取
+            col_map = {"日期": "date", "开盘": "open", "收盘": "close", "last": "close",
                        "最高": "high", "最低": "low", "成交量": "volume"}
             df = df.rename(columns=col_map)
             for c in ["open", "close", "high", "low", "volume"]:
                 if c in df.columns:
                     df[c] = pd.to_numeric(df[c], errors="coerce")
+            # 成交量单位 = 手（2026-11-20 实测 sh600519：westock 42692 vs 新浪
+            # 4269153 股，比值恰 100.0，收盘价逐日一致）——与腾讯同口径 ×100 归一到股。
+            # 顺带发现：westock 默认 fq=qfq，修活后是第三条独立协议源（评审 P0-2 冗余目标）
+            if "volume" in df.columns:
+                df["volume"] = df["volume"] * 100.0
             return df
         if source == "tushare":
             from lib.data.data_tushare import get_daily, _to_ts_code

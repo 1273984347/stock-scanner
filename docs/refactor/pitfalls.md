@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**110 个编号（P-01～P-110）**，分九类；其中 106 条有独立正文条目，
+> **规模**：**112 个编号（P-01～P-112）**，分九类；其中 108 条有独立正文条目，
 > P-62～P-65 仅见于下方「一句话索引」（既有状态，append-only 不补写）。
 > **本行是当前编号数的唯一真源**：其它文档一律引用本行，不硬编码数字；
 > 文末「文档状态」里的历史「共 N 条」是当时的取证记录，按 append-only 保留。
@@ -2753,3 +2753,43 @@ dual-run 门禁的链路对拍依赖「冷重算 vs pin 基线」，暖缓存让
 
 **推广**：门禁脚本的「只读」假设要验证——凡写过 `cache/` 的门禁，都要在
 RULES 里登记其对后续判据的副作用；「串行」不等于「无共享状态」。
+
+
+### P-111 · Windows 下 subprocess 裸 "npx" 不解析 .cmd shim，源死亡被误诊为「缺 Node」
+
+**现象**：westock 数据源在本机「全灭数月」，registry 注释与 CLAUDE.md 记载为
+「adata·westock 缺 Node」（ADR-0027 源栈审计同口径）。实测（2026-11-20 批次 C3）：
+`shutil.which("npx")` 能解析出 `C:\Program Files\nodejs\npx.CMD`——Node 明明装了；
+真因是 `subprocess.run(["npx", ...])` **不走 PATHEXT**，裸 `"npx"` 直接
+`FileNotFoundError`，被 `_run_westock` 捕获后误报「npx 未找到，请安装 Node.js >= v18」。
+
+**根因**：Windows 上 `subprocess` list 形式不做 shell 式可执行名解析（`.cmd/.bat`
+shim 不可见）；报错文案把环境问题误诊成「没装」。
+
+**修法**：`data_westock._resolve_westock_cmd()` 用 `shutil.which("npx")`（沿 PATHEXT
+解析完整路径）生成命令，WESTOCK_CLI 环境变量覆盖优先级不变。判据
+`tests/test_sina_fast_fail.py`（which 解析/缺失回退/环境变量覆盖/本机 import 期已解析）。
+复活后 westock 经 registry 端到端实测返回完整 6 列 schema（有效日线源 2→3）。
+
+**推广**：Windows 下 `subprocess.run(list)` 调 `.cmd/.bat` shim 一律先
+`shutil.which`；「缺 XX」类日志先跑 `shutil.which("XX")` 再下结论，别让误诊写进文档
+（本例误诊进了 ADR-0027 与源栈注释）。
+
+
+### P-112 · 第三方 CLI 升级改表头语言（中文→英文），映射层静默失配
+
+**现象**：修活 westock（P-111）后发现 registry `col_map` 全是中文键（日期/开盘/收盘），
+而 CLI 1.0.4 实测返回英文表头（`date/open/last/high/low/volume`）——列名映射全部落空；
+`last`→`close` 缺失使 6 列校验不过 = 整链白取且**不报错**。更隐蔽的是
+`get_kline` 的 `as_of_date` 截断只认 `"日期"`，英文表头下**静默跳过 = 回测前视偏差**。
+
+**根因**：第三方 CLI 无版本化契约，升级改了表头语言/列名；映射层对「预期列不存在」
+静默降级（与 P-107 腾讯 rows 错位同族：错位/缺失不报错）。
+
+**修法**：双表头映射（`"last"→"close"` + 中文键保留）+ `as_of` 日期列双形态兼容
+（`日期` 或 `date`）；成交量单位实测钉死 = 手（sh600519 westock 42692 vs 新浪
+4269153 股，比值恰 100.0），registry 分支**就地 ×100**（勿放共享 `_normalize_columns`，
+否则新浪/腾讯重复 ×100）。判据 3 例（映射/×100/as_of 英文表头截断）。
+
+**推广**：第三方子进程数据源必须把「表头快照」钉进判据（升级即判红）；
+对「预期列缺失」要么显式抛错要么打 warning，静默返空帧是前视与漏数据的最爱。
