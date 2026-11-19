@@ -151,11 +151,15 @@ def main():
     print_results(results, args.preset)
 
     # 飞书推送
+    push_ok = True
     if not args.no_push:
         if not FEISHU_RECEIVE_ID:
             logger.warning("FEISHU_RECEIVE_ID 未配置，跳过推送")
         else:
-            send_feishu_message(results, args.preset)
+            # P1-5/P0-4（2026-11-20）：接住返回值——推送失败（重试后）不可静默
+            push_ok = send_feishu_message(results, args.preset)
+            if not push_ok:
+                logger.error("盘后选股推送失败（已重试 3 次），详见 cache/reports/push_log.json")
 
             # === IC 面板构建 ===
             try:
@@ -256,6 +260,10 @@ def main():
             send_strategy_report(results, preset=args.preset)
     else:
         logger.info("已跳过飞书推送")
+
+    # P1-5/P0-4：扫描成功但推送失败（重试 3 次后）→ 非零退出码让任务计划/调度器可见
+    if not push_ok:
+        sys.exit(1)
 
     logger.info("选股完成")
 
@@ -962,10 +970,14 @@ def run_rebalance_mode(preset: str, no_push: bool):
 
     # 飞书推送
     if not no_push:
+        # P1-5/P0-4：接住返回值。调仓模式不设非零退出码——mark_rebalanced 必须执行
+        # （退出会让次日重复调仓），失败可见性由 push_log + 心跳哨兵兜底
         try:
-            send_feishu_message(results, preset)
+            rebalance_push_ok = send_feishu_message(results, preset)
+            if not rebalance_push_ok:
+                logger.error("调仓扫描推送失败（已重试 3 次），详见 cache/reports/push_log.json")
         except Exception as e:
-            logger.warning(f"飞书推送失败: {e}")
+            logger.error(f"飞书推送失败: {e}")
 
     # 标记调仓完成
     scheduler.mark_rebalanced(today)

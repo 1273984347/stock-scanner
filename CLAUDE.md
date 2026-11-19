@@ -1,6 +1,6 @@
 # CLAUDE.md — Stock Scanner (个人量化选股系统)
 
-> 最后更新：2026-11-12 | 本次更新：RF-01 Phase 7 P7-3 —— 评分灰度收口（ADR-0014，用户拍板删 flag）：score_4d 唯一路径 = ScoringKernel（返回值恒等，L5 285 样本锁定）、L6 对拍退役、GRAY_CONSUMERS/死 API 删除、L1 基线 1293 passed；评分域过渡层清零
+> 最后更新：2026-11-20 | 本次更新：架构评审 P0 批次 C1-C4 落地（交易日历链 / offload 默认值翻转 all（audit 锁+WAL 前置，L8/L9/L10 全绿）/ 新浪快失败+westock 三层复活=有效源 2→3 / 推送心跳哨兵+scan_notify 重试+pre-push 兜底）；L1 基线 1631 passed / 12 skipped / 2 failed（均归因为既有顺序污染）；坑表至 P-112
 
 ## 工作流
 
@@ -412,6 +412,7 @@ curl http://localhost:8000/api/scan
 | `docs/audit/security-performance-review-2026-11-14.md` | **全仓安全/性能审查（2026-11-14）**：2 条 P0（配置注入永久污染 PRESETS 单例 / DOM XSS→sessionStorage 密钥接管）+ 12 条 P1 + 15 条 P2；含 L8 门禁盲区根因分析（只扫 `/api/` 装饰器端点、Tier B 按 tail 名机械分类）与三批次修复顺序建议。改 `routers/`、`lib/`、`static/` 前先查此表 |
 | `docs/audit/architecture-review-2026-11-20.md` | **全仓架构评审（2026-11-20，经对抗性复核 v2）**：P0×4（offload 翻转就绪链 / 新浪健康盲区 / 交易日历链✅ / 无人值守防线）+ P1/P2 + 扩展性上限 + 修复批次状态。改 `run.py`、调度脚本、数据源、持久化前先查对应项 |
 | `lib/data/trade_calendar.py` | **交易日历单一真源**（P-108 / 评审 P0-3）：akshare 新浪日历 + 本地 JSON 缓存（继承 conftest 隔离）+ 刷取 daemon 守卫 + 失败显式退化周末判断；`daily_scan` / `scheduler` / `run.py` 交易日门统一委托 |
+| `reporter/heartbeat.py` | **推送心跳哨兵**（评审 P0-4）：push_log 末条成功推送 + 交易日历判定失联（容忍 2 交易日，节假日按日历跳过）；晨报入口自检接线；`scan_notify` 推送已接入同一日志真源（3 次退避重试）；`scripts/bootstrap_schedules.ps1` 注册三任务（入库不执行，由用户运行） |
 | `docs/adr/0020-batch-a-security-hardening.md` | **批次 A 安全加固 ADR**：5 项根因修 + L8 G4 recapture 取证（5 变 / 63 未动逐字段一致 / blocking 107→106）+ L9 第 3 项有意分歧的依据；含 L3/L10 既有判红的对照实验结论 |
 | `tests/features/test_batch_a_security.py` | 批次 A 的 22 例机器判据：schema 自动生成零遗漏、恶意配置拒绝、export→import 往返、get_config 隔离、错误上报 401/413/400、缓存键隔离、esc 单一实现、innerHTML 静态守卫、routers 禁裸路径基准 |
 | `tests/features/test_batch_b_gates.py` | 批次 B/C 的 25 例机器判据：L3 情绪 pin、L4 `start_date`、L10 清单漂移；B1 L8 视野/语义分类；B2 单后台广播、backup 白名单、限流分桶；B3 perf 并发不丢不重/失败还回、缓存锁分片、ML 单例；B4 在飞注册表身份语义、dashboard 单飞只跑一次、板块复用必须在过滤前取原始副本且保留回退 |

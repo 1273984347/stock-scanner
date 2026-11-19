@@ -10,6 +10,7 @@
 
 import json
 import logging
+import time
 from datetime import datetime
 
 import pandas as pd
@@ -129,7 +130,22 @@ def build_message_content(results: dict, preset: str = "balanced") -> str:
     return "\n".join(parts)
 
 
-def send_feishu_message(results: dict, preset: str = "balanced") -> bool:
+# 推送重试退避（评审 P0-4/P1-5，2026-11-20）：第 1/2 次失败后分别等待 1s/2s。
+# 坑表 P-81：pytest 把全局 time.sleep patch 成 no-op，判据只数尝试次数不依赖等待语义。
+RETRY_BACKOFF_S = (1.0, 2.0)
+
+
+def send_feishu_message(results: dict, preset: str = "balanced",
+                        max_attempts: int = 3) -> bool:
+    """盘后选股信号推送。
+
+    评审 P0-4/P1-5（2026-11-20）改造：
+    - **3 次退避重试**（旧实现单次 POST，偶发网络抖动即失败且不可知）；
+    - 最终结果写 push_log（``feishu_pusher.log_push_result``，与晨报/策略报告同一
+      真源）——心跳哨兵（``reporter/heartbeat.py``）据此判定失联。P-79 的教训：
+      本管线断流 6 个月的根因之一是**无任何日志**。
+    文本构造与发送路径仍与本模块 ``send_alert_message`` 独立（两条管线勿合并）。
+    """
     if not results:
         logger.info("无结果，跳过推送")
         return True
@@ -138,6 +154,8 @@ def send_feishu_message(results: dict, preset: str = "balanced") -> bool:
         return False
     token = get_tenant_token()
     if not token:
+        from reporter.feishu_pusher import log_push_result
+        log_push_result("scan_notify", False, "获取 token 失败")
         return False
     content = build_message_content(results, preset)
     body = {
@@ -145,21 +163,31 @@ def send_feishu_message(results: dict, preset: str = "balanced") -> bool:
         "msg_type": "text",
         "content": json.dumps({"text": content}, ensure_ascii=False)
     }
-    try:
-        resp = requests.post(MESSAGE_URL, headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json; charset=utf-8"
-        }, params={"receive_id_type": FEISHU_RECEIVE_ID_TYPE},
-            json=body, timeout=10)
-        data = resp.json()
-        if data.get("code") == 0:
-            logger.info("飞书推送成功")
-            return True
-        logger.error(f"飞书返回错误: {data}")
-        return False
-    except Exception as e:
-        logger.error(f"飞书推送异常: {e}")
-        return False
+    ok = False
+    detail = ""
+    for attempt in range(1, max_attempts + 1):
+        try:
+            resp = requests.post(MESSAGE_URL, headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json; charset=utf-8"
+            }, params={"receive_id_type": FEISHU_RECEIVE_ID_TYPE},
+                json=body, timeout=10)
+            data = resp.json()
+            if data.get("code") == 0:
+                logger.info("飞书推送成功（第 %d/%d 次尝试）", attempt, max_attempts)
+                ok = True
+                detail = "ok"
+                break
+            detail = f"飞书返回错误: {data}"
+            logger.error("飞书推送失败（第 %d/%d 次）: %s", attempt, max_attempts, data)
+        except Exception as e:
+            detail = f"飞书推送异常: {e}"
+            logger.error("飞书推送异常（第 %d/%d 次）: %s", attempt, max_attempts, e)
+        if attempt < max_attempts:
+            time.sleep(RETRY_BACKOFF_S[min(attempt - 1, len(RETRY_BACKOFF_S) - 1)])
+    from reporter.feishu_pusher import log_push_result
+    log_push_result("scan_notify", ok, detail[:200])
+    return ok
 
 
 def build_alert_content(alert_type: str, alerts: list) -> str:

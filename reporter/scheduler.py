@@ -43,6 +43,17 @@ def send_morning_report() -> bool:
 
     chart_builder.cleanup_old_charts()
     text, chart_paths = report_generator.build_morning_report()
+
+    # 心跳自检（评审 P0-4，2026-11-20）：晨报是每日固定触点，任何一次运行都先
+    # 检查上一段推送是否断流（P-79 断流 6 个月的对策：机器主动看 push_log），
+    # 失联则把告警段插进报告一起推送。
+    from reporter.heartbeat import check_push_heartbeat
+    hb = check_push_heartbeat()
+    if hb["stale"]:
+        logger.warning("推送心跳失联: %s", hb["reason"])
+        text = (f"【推送心跳告警】{hb['reason']}\n"
+                f"若连续多日出现本告警，请检查调度任务与网络。\n\n") + text
+
     ok = feishu_pusher.push_morning_report(text, chart_paths)
     if not ok:
         print("[FALLBACK]", text)

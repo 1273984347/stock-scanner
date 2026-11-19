@@ -24,3 +24,17 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
         require_serial: false
+
+  # CI 停摆期的回归兜底（评审 P0-4，2026-11-20）：push 前跑 L1 快判（-x 首败即停，
+  # 套件实测 ~2min）。启用 = pre-commit install --hook-type pre-push
+  # （`pre-commit install` 默认只装 pre-commit stage，pre-push 需显式装一次）。
+  # 豁免 = git push --no-verify（显式例外，勿习惯化——[skip ci] 69/200 的教训）。
+  - repo: local
+    hooks:
+      - id: l1-quick-before-push
+        name: L1 quick suite before push
+        description: Push gate replacing disabled CI (billing-blocked) — pytest -x first-fail
+        entry: python -m pytest tests/ -x -q --tb=line -p no:warnings -o log_cli=false
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

@@ -28,6 +28,11 @@ FEISHU_TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token
 FEISHU_IM_API = "https://open.feishu.cn/open-apis/im/v1/messages"
 FEISHU_IMAGE_API = "https://open.feishu.cn/open-apis/im/v1/images"
 
+# 推送心跳唯一真源（评审 P0-4，2026-11-20）：两条推送管线（本模块 + scan_notify）
+# 都写这里，reporter/heartbeat.py 据此判定失联——复核 B5：废弃独立 stamp 方案
+# （重复真源 + 春节 26h 固定阈值误报），以「末条成功推送时间 + 交易日历」判定。
+PUSH_LOG_PATH = Path("cache/reports/push_log.json")
+
 
 def _get_tenant_token(force_refresh: bool = False) -> str:
     """获取飞书 tenant token，带缓存."""
@@ -68,8 +73,8 @@ def _get_tenant_token(force_refresh: bool = False) -> str:
 
 
 def _log_push_result(push_type: str, success: bool, detail: str = ""):
-    """写入 cache/reports/push_log.json，只保留最近100条。"""
-    log_file = Path("cache/reports/push_log.json")
+    """写入 PUSH_LOG_PATH，只保留最近100条。"""
+    log_file = PUSH_LOG_PATH
     entries: List[dict] = []
 
     try:
@@ -96,6 +101,16 @@ def _log_push_result(push_type: str, success: bool, detail: str = ""):
         log_file.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception as e:
         logger.warning("写入push_log失败: %s", e)
+
+
+def log_push_result(push_type: str, success: bool, detail: str = "") -> None:
+    """公开写入口：feishu_pusher 之外的推送管线（scan_notify）写同一心跳真源。
+
+    评审 P0-4/P1-5（2026-11-20）：盘后扫描推送此前无任何日志——P-79 断流 6 个月
+    的结构性根因之一；两条管线的**文本构造与发送路径保持独立**（勿合并），
+    仅共享日志真源。
+    """
+    _log_push_result(push_type, success, detail)
 
 
 def _upload_image(token: str, image_path: str) -> Optional[str]:
