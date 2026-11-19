@@ -43,6 +43,7 @@ Usage:
 import struct
 import logging
 from pathlib import Path
+import os
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -50,7 +51,22 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 # ========== 配置 ==========
-TDX_FIN_PATH = Path("D:/TDX/vipdoc/cw")
+# ADR-0017：本地 TDX 目录默认已删，但允许 TDX_DATA_PATH 显式指回（与 K 线本地源同一口径）。
+# 旧实现硬编码 D:/TDX，导致用户恢复目录后财务数据仍找不到。
+TDX_FIN_PATH = Path(os.environ.get("TDX_DATA_PATH", "D:/TDX/vipdoc")) / "cw"
+
+def tdx_fin_available(path=None) -> bool:
+    """本地 gpcw*.dat 是否可用（ADR-0017：默认环境已删除 TDX 目录）。
+
+    所有入口（适配层、data_layer、因子层）共用这一处判定，避免
+    「一个入口短路了、另一个入口还在逐股告警」——P-104 的直接成因。
+    """
+    target = Path(path) if path is not None else TDX_FIN_PATH
+    try:
+        return any(target.glob("gpcw*.dat"))
+    except OSError:
+        return False
+
 
 # ========== gpcw 格式定义 ==========
 HEADER_SIZE = 31854

@@ -401,6 +401,12 @@ def _fetch_baostock_fundamentals(code: str) -> Optional[Dict]:
         return None
 
 
+def _tdx_fin_available() -> bool:
+    """复用 data_tdx_fin 的单一可用性判据（P-104）。"""
+    from lib.data.data_tdx_fin import tdx_fin_available
+    return tdx_fin_available()
+
+
 def get_stock_fundamentals(code: str, period: Optional[str] = None) -> Optional[Dict]:
     """获取单只股票的完整财务指标（优先 TDX gpcw，TDX 无数据或 ROE 明显异常时 fallback 到 baostock）"""
     # 1. 缓存检查
@@ -409,9 +415,13 @@ def get_stock_fundamentals(code: str, period: Optional[str] = None) -> Optional[
     if cached is not None:
         return cached
 
-    # 2. TDX 本地数据
-    adapter = get_tdx_fin_adapter()
-    result = adapter.compute_fundamentals(code, period=period)
+    # 2. TDX 本地数据（目录不存在时直接走兜底，不逐股触发 "找不到 gpcw" 告警）
+    result = None
+    if _tdx_fin_available():
+        adapter = get_tdx_fin_adapter()
+        result = adapter.compute_fundamentals(code, period=period)
+    else:
+        logger.debug("[tdx_fin_adapter] 本地 gpcw 数据不可用，直接走 baostock 兜底")
     if result is not None:
         roe = result.get("profitability", {}).get("ROE")
         if roe is not None and -0.1 < roe < 0.5:

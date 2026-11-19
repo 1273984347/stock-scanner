@@ -1107,11 +1107,15 @@ def get_stock_financial(code: str) -> pd.DataFrame:
     注意：字段含义（收入/利润/EPS等）尚未完全解码。
     具体含义参考 lib/data_tdx_fin.py 头部注释。
     """
-    from lib.data.data_tdx_fin import GpcwReader
+    from lib.data.data_tdx_fin import GpcwReader, tdx_fin_available
     cache_key = f"fin/cw/{code}"
     cached = _load_cache(cache_key, max_age_hours=CACHE_TTL["financial_default"])  # 财务报表季度更新，缓存7天
     if not cached.empty:
         return cached
+    # P-104：TDX 财务目录不存在时直接返回空帧——factors.get_financial_valuation_factor
+    # 每只候选股都会走这里，旧实现对每只都打一条 "找不到 gpcw" 告警。
+    if not tdx_fin_available():
+        return pd.DataFrame()
 
     reader = GpcwReader()
     df = reader.read_stock(code)
@@ -1121,7 +1125,9 @@ def get_stock_financial(code: str) -> pd.DataFrame:
 
 def get_financial_codes() -> list:
     """获取所有有财务数据的股票代码"""
-    from lib.data.data_tdx_fin import GpcwReader
+    from lib.data.data_tdx_fin import GpcwReader, tdx_fin_available
+    if not tdx_fin_available():
+        return []
     reader = GpcwReader()
     return reader.read_all_codes()
 
