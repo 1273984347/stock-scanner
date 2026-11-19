@@ -185,6 +185,11 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
                 "trade_date": "date", "open": "open", "close": "close",
                 "high": "high", "low": "low", "vol": "volume"
             })
+            # 成交量单位 = 手（复核 B3 确认 tushare pro.daily vol 口径；P1-9，2026-11-20）
+            # ——各源**就地**归一到股；勿放进共享 _normalize_columns，否则新浪/腾讯
+            # （已是股）会被重复 ×100 制造新事故
+            if "volume" in df.columns:
+                df["volume"] = pd.to_numeric(df["volume"], errors="coerce") * 100.0
             return df
         if source == "akshare":
             import akshare as ak
@@ -203,6 +208,10 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
                 "最高": "high", "最低": "low", "成交量": "volume",
                 "成交额": "amount", "换手率": "turnover", "涨跌幅": "pct_chg"
             })
+            # 成交量单位 = 手（东财 push2his 口径，复核 B3 确认；P1-9）——就地 ×100
+            # 归一到股，与腾讯/westock 同口径；勿进共享归一层（见 tushare 分支注释）
+            if "volume" in df.columns:
+                df["volume"] = pd.to_numeric(df["volume"], errors="coerce") * 100.0
             return df
     except CircuitOpenError:
         logger.warning(f"[{source}] 熔断器开启，跳过该数据源")

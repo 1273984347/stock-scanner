@@ -124,7 +124,8 @@ def main():
 
     # 月频调仓模式
     if args.rebalance:
-        run_rebalance_mode(args.preset, args.no_push)
+        run_rebalance_mode(args.preset, args.no_push,
+                           allow_non_trading=args.allow_non_trading_day)
         return
 
     # 压力测试模式
@@ -926,8 +927,19 @@ def _load_ic_stats() -> Dict:
     }
 
 
-def run_rebalance_mode(preset: str, no_push: bool):
-    """月频调仓模式 —— 集成退出规则"""
+def run_rebalance_mode(preset: str, no_push: bool, allow_non_trading: bool = False):
+    """月频调仓模式 —— 集成退出规则
+
+    交易日门（评审 P0-3 后半，2026-11-20）：节假日跑调仓会用上一交易日数据
+    产生**真实交易动作**，比盘后扫描更危险；``--allow-non-trading-day`` 显式旁路。
+    门放在一切 I/O 之前（rebalance_state 读取都不发生），保证旁路零副作用。
+    """
+    if not allow_non_trading and not is_trading_day():
+        logger.warning(
+            "今日非交易日（周末或节假日），跳过月频调仓；"
+            "如需强制运行请加 --allow-non-trading-day"
+        )
+        return
     from lib.strategy.rebalance_scheduler import RebalanceScheduler, RebalanceConfig
     from scanner import run_all_strategies
     from config import get_config

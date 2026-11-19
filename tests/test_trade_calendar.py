@@ -232,3 +232,44 @@ def test_run_main_wires_gate_and_flag():
     main_src = inspect.getsource(run_module.main)
     assert "_trading_day_gate(args.allow_non_trading_day)" in main_src
     assert "--allow-non-trading-day" in main_src
+
+
+# ---------------------------------------------------------------------------
+# --rebalance 交易日门（评审 P0-3 后半，批次 C5）：调仓产生真实交易动作，比扫描更危险
+# ---------------------------------------------------------------------------
+
+
+def test_rebalance_mode_gates_on_trading_day(monkeypatch):
+    """非交易日直接返回——门在一切 I/O 之前，RebalanceScheduler 零触碰。"""
+    import run as run_module
+    from lib.strategy import rebalance_scheduler as rs
+
+    monkeypatch.setattr(run_module, "is_trading_day", lambda: False)
+
+    def _poison(*args, **kwargs):
+        raise AssertionError("非交易日不得构造 RebalanceScheduler（零副作用）")
+
+    monkeypatch.setattr(rs, "RebalanceScheduler", _poison)
+    run_module.run_rebalance_mode("balanced", True)  # 不抛 = 门生效
+
+
+def test_rebalance_mode_explicit_bypass_runs_scheduler(monkeypatch):
+    """--allow-non-trading-day 旁路必须真的越过门（构造调度器 = 越过证明）。"""
+    import run as run_module
+    from lib.strategy import rebalance_scheduler as rs
+
+    monkeypatch.setattr(run_module, "is_trading_day", lambda: False)
+
+    def _poison(*args, **kwargs):
+        raise AssertionError("越过交易日门后应构造 RebalanceScheduler")
+
+    monkeypatch.setattr(rs, "RebalanceScheduler", _poison)
+    with pytest.raises(AssertionError, match="越过交易日门"):
+        run_module.run_rebalance_mode("balanced", True, allow_non_trading=True)
+
+
+def test_run_main_wires_rebalance_gate_bypass():
+    """接线守卫：main() 调仓调用必须透传 --allow-non-trading-day。"""
+    import run as run_module
+
+    assert "allow_non_trading=args.allow_non_trading_day" in inspect.getsource(run_module.main)
