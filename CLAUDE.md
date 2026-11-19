@@ -17,7 +17,7 @@
 - **类型**: Python 量化选股工具 + REST API 服务
 - **定位**: A股个人量化投资辅助系统 (非机构级，注重实用性)
 - **技术栈**: Python 3.12 / FastAPI / pandas / XGBoost / LightGBM
-- **数据源**: Tushare (主) → AkShare → WeStock → 通达信 → Baostock → 东方财富
+- **数据源**: 新浪/腾讯网页 K 线网关（主）+ westock（第三协议源）→ baostock/akshare 兜底；真源 = `lib/data/data_source_registry.py`（Tushare 无权限、本地 TDX 已删 ADR-0017）
 
 ---
 
@@ -164,9 +164,13 @@ uvicorn api:app --reload --port 8000
 
 ### 数据源优先级
 
-Tushare (主) → AkShare → WeStock → 通达信 → Baostock → 东方财富
+- **默认栈（实时）**：新浪 → 腾讯 → baostock → tdx → adata → westock → tushare → akshare → 本地 TDX
+- **回测栈（前复权）**：腾讯 → ...（新浪不进——不复权在除权日造假跳空）
+- **北交所**：新浪 → 腾讯 → 本地 TDX
 
-自动降级，更高优先级失败时切换。
+真源 = `lib/data/data_source_registry.py`（ADR-0017/0027/0032）。8 个既有注册源
+2026-11 实测多数不可用，有效源 = 新浪/腾讯/westock 三条。自动降级 + 源级
+CircuitBreaker + host 级健康（`GET /api/system/host-health`）。
 
 ### 环境变量
 
@@ -334,8 +338,10 @@ Tushare (主) → AkShare → WeStock → 通达信 → Baostock → 东方财�
 
 ### 启动服务
 ```bash
-uvicorn api:app --reload --port 8000
+uvicorn api:app --host 127.0.0.1 --port 8000
 ```
+> **勿在生产加 `--reload`**（watchfiles 热重载清空进程内任务态/缓存/WS 连接，与
+> worker_guard 单进程前提冲突）；`--reload` 仅限开发期短时使用。
 
 ### 停止服务
 ```bash
@@ -444,7 +450,11 @@ python3 scripts/update_tdx_data.py --list       # 列出所有包
 - 服务器文件未更新时跳过下载，节省时间
 - 首次运行后生效；需要时可用 `--force` 强制全量更新
 
-**定时任务**: 每个工作日 18:30 自动运行 (收盘后 ~3.5 小时)
+**定时任务**: 截至本文件更新时**无已注册的 OS 级计划任务**（2026-11-20 评审实测
+`schtasks` 零命中——文档与现实的差距）。用
+`powershell -ExecutionPolicy Bypass -File scripts\bootstrap_schedules.ps1` 注册
+（晨报 08:45 / paper 日报 16:00 / TDX 更新 18:30，幂等可重跑）；任务失联由推送心跳
+兜底（`reporter/heartbeat.py`，晨报自检）。
 
 **环境变量**:
 ```bash

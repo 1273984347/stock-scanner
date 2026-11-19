@@ -373,8 +373,16 @@ Returns:
     return to_float(v, strip_grouping=True, strip_cn_units=True)
 
 
-def _get_financial_data(code: str, as_of_date: Optional[str] = None) -> Optional[pd.Series]:
+def _get_financial_data(code: str, as_of_date: Optional[str] = None,
+                        live: bool = False) -> Optional[pd.Series]:
     """获取个股基本面数据（PE/PB/市值/质押率等）
+
+    P2-2（2026-11-20）：新增 ``live=True`` 实时入口——实时扫描批量路径
+    （strategies._batch_get_financial_data）此前调本函数不传 as_of_date，
+    撞防前视 tripwire 恒 NotImplementedError → 被调用方吞掉 → **财务约束
+    静默失效 6 个月**（评审 P2-2：报错文案指向的 get_stock_fundamentals_lite
+    从未被实现）。live=True 声明「实时语义、数据取最新是正确行为」；
+    backtest 守卫保持不变（默认 live=False + 无 as_of_date 仍 raise）。
 
     数据源优先级：
     1. FinancialCache（统一缓存，内存5min + 磁盘7天）
@@ -404,14 +412,15 @@ def _get_financial_data(code: str, as_of_date: Optional[str] = None) -> Optional
     - 实时扫描路径 (scanner.py) 不传 as_of_date → caller 改用 get_stock_fundamentals_lite()
     - 真正历史快照实现需 akshare 历史接口, 本次仅"stamp"防止误用
     """
-    if as_of_date is None:
+    if as_of_date is None and not live:
         # P0 #1 修复 (2026-06-08): 强制 raise 替代 warning
         # 旧 warning 被忽略导致 backtest 误用, 现在硬阻断
-        # 实时扫描改用 get_stock_fundamentals_lite() (无 as_of_date 走实时)
+        # 实时扫描走 live=True（P2-2：报错文案指向的 get_stock_fundamentals_lite
+        # 从未被实现——实时路径因此断了 6 个月）
         # backtest 必传 as_of_date='YYYY-MM-DD'
         raise NotImplementedError(
             f"_get_financial_data({code}) 必须传 as_of_date, "
-            f"防止 backtest 前视偏差。实时扫描请改用 get_stock_fundamentals_lite() (走实时, 无 as_of_date)"
+            f"防止 backtest 前视偏差。实时扫描请显式传 live=True (走实时, 无 as_of_date)"
         )
     # 1. 缓存检查（优先复用 get_stock_fundamentals 的结果）
     cached = _financial_cache.get(code)

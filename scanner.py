@@ -63,23 +63,6 @@ class ScanOrchestrator:
         """
         return get_stock_score(symbol)
 
-    def get_realtime_signals(self, symbols: List[str]) -> Dict[str, Any]:
-        """获取实时信号（行情 + 情绪 + 资金流）"""
-        result = {}
-        for sym in symbols:
-            try:
-                quote = get_realtime_quotes(sym)
-                sentiment = get_market_sentiment()
-                fund_flow = get_stock_fund_flow(sym)
-                result[sym] = {
-                    "quote": quote,
-                    "sentiment": sentiment,
-                    "fund_flow": fund_flow,
-                }
-            except Exception:
-                result[sym] = {"error": "failed to fetch"}
-        return result
-
     # ========== 数据获取接口（统一入口）==========
 
     def get_stock_hist(self, code: str, days: int = 180):

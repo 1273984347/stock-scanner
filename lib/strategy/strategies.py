@@ -81,11 +81,17 @@ def _safe_signal_date(now: Optional[datetime] = None) -> str:
 
 
 def _batch_get_financial_data(codes: List[str]) -> Dict[str, Optional[pd.Series]]:
-    """批量并行获取财务数据（解决 N+1 查询问题）"""
+    """批量并行获取财务数据（解决 N+1 查询问题）
+
+    P2-2（2026-11-20）：live=True——实时扫描语义，数据取最新是正确行为；
+    旧实现不传 as_of_date 撞防前视 tripwire 恒 NotImplementedError →
+    被下方 except 吞掉 → **财务约束静默失效**（评审 P2-2：文案指向的
+    get_stock_fundamentals_lite 从未被实现）。
+    """
     results = {}
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {
-            executor.submit(_get_financial_data, code): code
+            executor.submit(_get_financial_data, code, None, True): code
             for code in codes
         }
         for future in as_completed(futures):
