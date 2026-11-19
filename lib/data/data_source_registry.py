@@ -319,14 +319,14 @@ class AllDataSourcesFailedError(Exception):
         super().__init__(f"所有数据源均无法获取 {code}: {errors}")
 
 
-def get_stock_hist_multi_source(
+def _get_stock_hist_multi_source_online(
     code: str,
     days: int = 180,
     source: str = "auto",
     prefer_adjusted: bool = False,
     as_of_date: Optional[str] = None,
 ) -> pd.DataFrame:
-    """多数据源自动切换获取个股日线
+    """在线多数据源取数（内部实现；对外请用 get_stock_hist_multi_source）。
 
     统一返回列名: date/open/high/low/close/vol
     所有数据源均失败时抛出 AllDataSourcesFailedError
@@ -379,6 +379,71 @@ def get_stock_hist_multi_source(
                 return df
         errors.append(f"{src}: empty/invalid")
     raise AllDataSourcesFailedError(code, errors)
+
+
+def _store_key(code: str) -> str:
+    """统一落盘键：纯 6 位数字（去掉 sh/sz/bj 前缀）。"""
+    c = str(code).strip().lower()
+    if len(c) == 8 and c[:2] in ("sh", "sz", "bj"):
+        c = c[2:]
+    return c.zfill(6) if c.isdigit() else c
+
+
+def _merge_write(dataset: str, key: str, df: pd.DataFrame, keep_rows: int = 1500) -> None:
+    """与本地已有数据合并后写回（只增不减，避免越取越短）。"""
+    from lib.data import local_store
+    if df is None or df.empty:
+        return
+    try:
+        old = local_store.read_frame(dataset, key)
+        if not old.empty and "date" in old.columns:
+            merged = (pd.concat([old, df], ignore_index=True)
+                      .drop_duplicates(subset=["date"], keep="last")
+                      .sort_values("date"))
+        else:
+            merged = df
+        local_store.write_frame(dataset, key, merged.tail(keep_rows).reset_index(drop=True))
+    except Exception as e:  # 落盘失败不影响取数
+        logger.warning(f"[local_store] 写回失败 {dataset}/{key}: {e}")
+
+
+def get_stock_hist_multi_source(
+    code: str,
+    days: int = 180,
+    source: str = "auto",
+    prefer_adjusted: bool = False,
+    as_of_date: Optional[str] = None,
+) -> pd.DataFrame:
+    """个股日线：本地仓优先，在线取数成功后回填（ADR-0033）。
+
+    本地仓按复权口径分两份：``kline``（前复权，回测用）与 ``kline_raw``（不复权）。
+    绝不混用——不复权价在除权日会造假跳空，且不会报错。
+
+    仅当 ``source="auto"`` 且无 ``as_of_date`` 时走本地；显式指定源或历史快照
+    仍走在线链路（回测的 as_of_date 语义不能被本地“最新数据”替换）。
+    """
+    from lib.data import local_store
+
+    key = _store_key(code)
+    dataset = "kline" if prefer_adjusted else "kline_raw"
+    use_local = (source == "auto" and as_of_date is None and local_store.enabled())
+
+    if use_local:
+        cached = local_store.read_frame(dataset, key)
+        if not cached.empty and len(cached) >= min(days, 20) and \
+                local_store.is_fresh(dataset, key):
+            logger.debug(f"[local_store] 命中 {dataset}/{key} rows={len(cached)}")
+            return cached.tail(days).reset_index(drop=True)
+
+    if local_store.enabled() and local_store.offline():
+        raise AllDataSourcesFailedError(
+            code, [f"offline: 本地仓无可用 {dataset}/{key}（{local_store.STORE_ROOT}）"])
+
+    df = _get_stock_hist_multi_source_online(
+        code, days, source, prefer_adjusted, as_of_date)
+    if use_local and not df.empty:
+        _merge_write(dataset, key, df)
+    return df
 
 
 def get_circuit_breaker_status() -> Dict[str, dict]:

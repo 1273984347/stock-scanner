@@ -158,7 +158,12 @@ def _blocked_socket():
 @contextlib.contextmanager
 def pinned_environment():
     """pin 数据源 + as_of_date + 阻断网络。"""
+    import os
     import lib.data.data_source_registry as reg
+
+    # ADR-0033：取证链路必须绕过项目内本地数据仓，否则基线会被本地数据替换。
+    _old_store = os.environ.get("QUANT_LOCAL_STORE")
+    os.environ["QUANT_LOCAL_STORE"] = "off"
 
     old_priority = list(reg.DATA_SOURCE_PRIORITY)
     old_adj = list(getattr(reg, "DATA_SOURCE_PRIORITY_ADJUSTED", []))
@@ -175,6 +180,10 @@ def pinned_environment():
         try:
             yield
         finally:
+            if _old_store is None:
+                os.environ.pop("QUANT_LOCAL_STORE", None)
+            else:
+                os.environ["QUANT_LOCAL_STORE"] = _old_store
             reg.DATA_SOURCE_PRIORITY = old_priority
             if old_adj:
                 reg.DATA_SOURCE_PRIORITY_ADJUSTED = old_adj

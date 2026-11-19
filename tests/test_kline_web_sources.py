@@ -143,7 +143,8 @@ def test_index_hist_prefers_web_before_baostock():
     """ADR-0027：指数链必须是 本地 → pytdx → 网页网关 → baostock（黑名单降为末位）。"""
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "lib/data/data_layer.py").read_text(encoding="utf-8")
-    body = src.split("def get_index_hist", 1)[1].split("def get_ggt_hist", 1)[0]
+    # ADR-0033 后实现改名为 _get_index_hist_online，本地仓包装层单独存在
+    body = src.split("def _get_index_hist_online", 1)[1].split("def get_ggt_hist", 1)[0]
     assert body.index("get_index_kline_web") < body.index("get_index_kline\n"), \
         "网页网关必须排在 baostock 之前"
 

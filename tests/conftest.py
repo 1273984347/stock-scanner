@@ -50,7 +50,9 @@ logging.config.fileConfig(os.path.join(os.path.dirname(__file__), "logging.conf"
 def pytest_configure(config):
     """注册 enable_socket 标记"""
     config.addinivalue_line(
-        "markers", "enable_socket: 允许此测试访问真实网络（默认禁用）"
+        "markers", "enable_socket: 允许此测试访问真实网络（默认禁用）")
+    config.addinivalue_line(
+        "markers", "local_store: 该用例显式使用项目内本地数据仓（ADR-0033）"
     )
 
 
@@ -241,6 +243,21 @@ _BLOCKED_NETWORK_CALLS = []
 # 原始实现，供"放行本机地址"时回退调用
 _REAL_CONNECT = socket.socket.connect
 _REAL_CREATE_CONNECTION = socket.create_connection
+
+
+@pytest.fixture(autouse=True)
+def _disable_local_store_by_default(request, monkeypatch):
+    """默认关闭项目内本地数据仓（ADR-0033）。
+
+    测试必须显式声明数据来源：本地仓一旦有数据，会把「在线取数」的用例
+    变成「读盘」的用例，掩盖真实回归。本地仓自身的判据在
+    tests/test_local_store.py 里显式开启（其 fixture 会 delenv）。
+    """
+    if request.node.get_closest_marker("local_store"):
+        yield
+        return
+    monkeypatch.setenv("QUANT_LOCAL_STORE", "off")
+    yield
 
 
 @pytest.fixture(autouse=True)

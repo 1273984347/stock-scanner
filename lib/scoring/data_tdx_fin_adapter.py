@@ -409,10 +409,20 @@ def _tdx_fin_available() -> bool:
 
 def get_stock_fundamentals(code: str, period: Optional[str] = None) -> Optional[Dict]:
     """获取单只股票的完整财务指标（优先 TDX gpcw，TDX 无数据或 ROE 明显异常时 fallback 到 baostock）"""
+    # 0. 项目内本地数据仓（ADR-0033）：离线只读；在线时新鲜数据直接复用
+    from lib.data import local_store
+    if local_store.enabled():
+        stored = local_store.read_json("financial", code)
+        if stored is not None and (local_store.offline() or local_store.is_fresh("financial", code)):
+            return stored
+        if local_store.offline():
+            return None
+
     # 1. 缓存检查
     cache = get_financial_cache()
     cached = cache.get(code)
     if cached is not None:
+        local_store.write_json("financial", code, cached)
         return cached
 
     # 2. TDX 本地数据（目录不存在时直接走兜底，不逐股触发 "找不到 gpcw" 告警）
@@ -451,6 +461,7 @@ def get_stock_fundamentals(code: str, period: Optional[str] = None) -> Optional[
 
             result["_source"] = "tdx"
             cache.set(code, result)
+            local_store.write_json("financial", code, result)
             return result
 
     # 3. TDX 无数据或 ROE 异常，fallback 到 baostock
@@ -474,6 +485,7 @@ def get_stock_fundamentals(code: str, period: Optional[str] = None) -> Optional[
 
         bs_result["_source"] = "baostock"
         cache.set(code, bs_result)
+        local_store.write_json("financial", code, bs_result)
     return bs_result
 
 

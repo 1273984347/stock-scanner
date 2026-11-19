@@ -605,8 +605,8 @@ def get_stock_hist(code: str, days: int = 180) -> pd.DataFrame:
 
 # ========== 指数/板块日线（本地 TDX 优先）==========
 
-def get_index_hist(code: str, days: int = 180) -> pd.DataFrame:
-    """获取指数/板块日线（本地 TDX 优先，网络兜底）
+def _get_index_hist_online(code: str, days: int = 180) -> pd.DataFrame:
+    """指数/板块日线在线实现（对外请用 get_index_hist）。
 
     Args:
         code: 指数代码，如 "000001"（上证）、"399001"（深证）、"880001"（板块）
@@ -656,6 +656,34 @@ def get_index_hist(code: str, days: int = 180) -> pd.DataFrame:
     except Exception as e:
         logger.debug(f"[data_layer] BaoStock 指数日线获取失败 [{code}]: {e}")
     return pd.DataFrame()
+
+
+def get_index_hist(code: str, days: int = 180) -> pd.DataFrame:
+    """指数日线：本地仓优先，在线取数成功后回填（ADR-0033）。
+
+    指数没有复权概念，单一口径；离线模式只读本地仓，不发起请求。
+    """
+    from lib.data import local_store
+
+    key = str(code).strip()
+    if local_store.enabled():
+        cached = local_store.read_frame("index", key)
+        if not cached.empty and local_store.is_fresh("index", key):
+            return cached.tail(days).reset_index(drop=True)
+        if local_store.offline():
+            return cached.tail(days).reset_index(drop=True) if not cached.empty else pd.DataFrame()
+
+    df = _get_index_hist_online(code, days)
+    if local_store.enabled() and not df.empty and "date" in df.columns:
+        try:
+            old = local_store.read_frame("index", key)
+            merged = (pd.concat([old, df], ignore_index=True)
+                      .drop_duplicates(subset=["date"], keep="last")
+                      .sort_values("date")) if not old.empty else df
+            local_store.write_frame("index", key, merged.tail(1500).reset_index(drop=True))
+        except Exception as e:
+            logger.warning(f"[local_store] 指数写回失败 {key}: {e}")
+    return df
 
 
 def get_ggt_hist(code: str, days: int = 180) -> pd.DataFrame:
@@ -788,11 +816,57 @@ def get_realtime_quotes(force: bool = False) -> pd.DataFrame:
       收口到 data_realtime。本函数只保留「注入重试包装的主源」这一件事——
       不得再内置第二套解析或第二份缓存逻辑。
     """
+    from lib.data import local_store
     from lib.data.data_realtime import get_market_snapshot
-    return get_market_snapshot(
+
+    if local_store.enabled() and local_store.offline():
+        latest = _latest_snapshot()
+        if not latest.empty:
+            logger.warning(f"[local_store] 离线模式：使用本地快照 {latest.attrs.get('store_key')}")
+        return latest
+
+    df = get_market_snapshot(
         force=force,
         primary_fetch=lambda: _retry_api_call(ak.stock_zh_a_spot),
     )
+    # 写回本地仓：只存完整快照（与 data_realtime 的降级判定同口径）
+    if local_store.enabled() and not df.empty and len(df) >= 4000:
+        key = _snapshot_key(df)
+        try:
+            local_store.write_frame("snapshot", key, df)
+        except Exception as e:
+            logger.warning(f"[local_store] 快照写回失败 {key}: {e}")
+    return df
+
+
+def _snapshot_key(df: pd.DataFrame) -> str:
+    """快照按交易日归档：优先用时间戳列，退化到当天。"""
+    try:
+        if "时间戳" in df.columns:
+            try:
+                ts = pd.to_datetime(df["时间戳"], errors="coerce", format="mixed").max()
+            except (ValueError, TypeError):
+                ts = pd.to_datetime(df["时间戳"], errors="coerce").max()
+            if pd.notna(ts):
+                return ts.date().isoformat()
+    except Exception:
+        pass
+    return datetime.now().date().isoformat()
+
+
+def _latest_snapshot() -> pd.DataFrame:
+    """离线模式读取最新一份本地快照（按文件名日期排序）。"""
+    from lib.data import local_store
+    folder = local_store.STORE_ROOT / "snapshot"
+    if not folder.exists():
+        return pd.DataFrame()
+    files = sorted(folder.glob("*.parquet"))
+    if not files:
+        return pd.DataFrame()
+    df = local_store.read_frame("snapshot", files[-1].stem)
+    if not df.empty:
+        df.attrs["store_key"] = files[-1].stem
+    return df
 
 
 def get_market_sentiment() -> Optional[float]:
@@ -840,6 +914,15 @@ def get_stock_fund_flow(code: str) -> dict:
     3 次尝试的成本。真实零值（停牌/零流）与全源失败由异常路径区分，
     前者不计失败、不触发熔断。
     """
+    # 0) 项目内本地数据仓（ADR-0033）：离线只读；在线且新鲜则直接复用
+    from lib.data import local_store
+    if local_store.enabled():
+        stored = local_store.read_json("fundflow", code)
+        if stored is not None and (local_store.offline() or local_store.is_fresh("fundflow", code)):
+            return stored
+        if local_store.offline():
+            return {"main_net_ratio": 0, "net_inflow_5d": 0}
+
     # 1) 进程内缓存（同进程内重复调用直接命中，O(1)）
     with _fundflow_cache_lock:
         cached = _fundflow_cache.get(code)
@@ -886,6 +969,7 @@ def get_stock_fund_flow(code: str) -> dict:
     if result.get("main_net_ratio", 0) != 0 or result.get("net_inflow_5d", 0) != 0:
         with _fundflow_cache_lock:
             _fundflow_cache[code] = result
+        local_store.write_json("fundflow", code, result)
         try:
             _save_cache(f"fundflow/{code}", pd.DataFrame([result]))
         except Exception:

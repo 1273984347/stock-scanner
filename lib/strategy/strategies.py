@@ -384,6 +384,7 @@ def get_zt_candidates(config: SystemConfig, as_of_date: Optional[str] = None) ->
             # P-103：按代码写回，不用「两份不同成员列表按位置对齐」
             result = _attach_quick_scores(result, codes, row_map,
                                           batch_flows, batch_news)
+        _store_events("zt", result)
         return result
     except Exception as e:
         logger.error(f"涨停板策略出错: {e}")
@@ -626,6 +627,27 @@ def get_hot_board_candidates(config: SystemConfig, as_of_date: Optional[str] = N
         return pd.DataFrame()
 
 
+def _local_events_offline(kind: str):
+    """离线模式：读本地最新一份事件数据（无则空帧）。"""
+    from lib.data import local_store
+    if not (local_store.enabled() and local_store.offline()):
+        return None
+    folder = local_store.STORE_ROOT / "events" / kind
+    files = sorted(folder.glob("*.parquet")) if folder.exists() else []
+    return local_store.read_frame("events", f"{kind}/{files[-1].stem}") if files else pd.DataFrame()
+
+
+def _store_events(kind: str, df):
+    """在线取数成功后回填（ADR-0033）。"""
+    from lib.data import local_store
+    if df is None or getattr(df, "empty", True):
+        return
+    try:
+        local_store.write_frame("events", f"{kind}/{_safe_signal_date()}", df)
+    except Exception as e:
+        logger.warning(f"[local_store] 事件写回失败 {kind}: {e}")
+
+
 def get_lhb_candidates(config: SystemConfig, as_of_date: Optional[str] = None) -> pd.DataFrame:
     """龙虎榜策略
 
@@ -667,6 +689,7 @@ def get_lhb_candidates(config: SystemConfig, as_of_date: Optional[str] = None) -
         result["策略"] = "龙虎榜"
         result["entry_timing"] = "次日开盘"
         result["signal_date"] = _safe_signal_date()
+        _store_events("lhb", result)
         return result
     except Exception as e:
         logger.error(f"龙虎榜策略出错: {e}")

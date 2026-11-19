@@ -38,3 +38,7 @@ docs/refactor/coverage-*.json
 
 # 坑表 P-100 隔离探针：运行时生成、finally 删除；残留也不许入库
 tests/test_zz_host_isolation_probe.py
+
+# 本地数据仓（ADR-0033）：数据文件不入库，只提交 manifest 记录覆盖
+data/store/*
+!data/store/manifest.json
