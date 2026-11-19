@@ -3,6 +3,7 @@
 import pandas as pd
 import numpy as np
 import math
+import threading
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 import logging
@@ -21,6 +22,9 @@ logger = logging.getLogger(__name__)
 # ========== 信号计算缓存 ==========
 _signals_cache: Dict[str, dict] = {}
 _signals_cache_maxsize = 500
+# P1-1（2026-11-20）：ML 富集并行化（8 线程）后 compute_all_signals 并发读写此缓存，
+# check-then-set 加锁（GIL 单操作原子，但组合序需互斥；容量竞争下宁丢一次缓存不损坏）
+_signals_cache_lock = threading.Lock()
 
 
 def clear_signals_cache():
@@ -1402,14 +1406,17 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
         except Exception:
             last_date = str(len(hist_df))
         cache_key = f"{code}_{len(hist_df)}_{last_date}_{fast_mode}"
-        if cache_key in _signals_cache:
-            return _signals_cache[cache_key]
+        with _signals_cache_lock:
+            if cache_key in _signals_cache:
+                return _signals_cache[cache_key]
 
     result = _compute_all_signals_impl(hist_df, macro_score, factor_config, code, market, fast_mode)
 
-    # 存入缓存（bounded）
-    if cache_key is not None and len(_signals_cache) < _signals_cache_maxsize:
-        _signals_cache[cache_key] = result
+    # 存入缓存（bounded；锁内 check-then-set，见 _signals_cache_lock 注释）
+    if cache_key is not None:
+        with _signals_cache_lock:
+            if len(_signals_cache) < _signals_cache_maxsize:
+                _signals_cache[cache_key] = result
 
     return result
 

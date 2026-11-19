@@ -257,6 +257,21 @@ def _reset_host_health_between_tests():
     reset_host_health()
 
 
+@pytest.fixture(autouse=True)
+def _block_westock_subprocess(monkeypatch):
+    """P-113（2026-11-20）：westock 复活后，multi-source 链每次取数起真 ``npx``
+    子进程——下面的进程内禁网**挡不住子进程**（包缓存命中后仍 ~1-2s/次 × 80 次
+    取数），L1 全量实测 81s→130s。测试一律桩掉 ``_run_westock`` 返回空串
+    （multi-source 链照常降级）；westock 自身判据显式 patch（test_sina_fast_fail）。
+    """
+    try:
+        import lib.data.data_westock as _westock
+        monkeypatch.setattr(_westock, "_run_westock", lambda args, timeout=30: "")
+    except ImportError:
+        pass
+    yield
+
+
 # 放行的地址：loopback（127.0.0.1 / ::1 / localhost）与 unix socket path
 #   —— 这些不是"外部网络"，且必须放行，否则会打断基础设施：
 #   · Windows 上 asyncio 的 self-pipe 用 socket.socketpair()，而它在 Windows

@@ -1,6 +1,8 @@
 """管道层：策略编排、组合优化、ML 集成"""
 import pandas as pd
 import numpy as np
+import os
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
@@ -35,6 +37,40 @@ _risk_manager = VolCorrRiskManager(VolCorrRiskConfig())
 
 # ML 因子缓存（容量限制的 LRU 缓存，避免无界增长）
 _ml_factor_cache = LRUCache(maxsize=256)
+
+
+# ========== 扫描全局 deadline（评审 P1-1，2026-11-20） ==========
+
+class ScanDeadlineExceeded(Exception):
+    """扫描预算耗尽（部分结果语义：候选股与风控保留，昂贵尾相位跳过）。"""
+
+
+def _scan_deadline_s() -> float:
+    """扫描全局预算（秒）。env ``SCAN_DEADLINE_S`` 秒调；0 = 关闭（回滚值）。
+
+    默认 480s：冷扫正常 2~4 分钟、源降级最坏路径（ADR-0019 后单源有界）叠加
+    ML 富集 < 8 分钟——超线说明有相位病态卡死，宁要部分结果不要无限等
+    （ADR-0019 Context 实测「10+ 分钟无新日志」的复发封堵）。
+    """
+    raw = os.environ.get("SCAN_DEADLINE_S", "480").strip()
+    try:
+        return float(raw)
+    except ValueError:
+        return 480.0
+
+
+def _deadline_left(t0: float, deadline_s: float, phase: str) -> bool:
+    """相位检查点：预算耗尽 → warning 一次，调用方跳过该相位。
+
+    只护**昂贵尾相位**（板块过滤 / 组合优化 / ML 富集），策略并行是扫描核心价值
+    不设检查点——部分结果 = 候选股 + 风控 + 宏观上下文保留。
+    """
+    if deadline_s > 0 and (time.monotonic() - t0) > deadline_s:
+        logger.warning(
+            f"[scan-deadline] 预算 {deadline_s:.0f}s 在相位 [{phase}] 前耗尽——"
+            f"跳过该相位，返回部分结果")
+        return False
+    return True
 
 
 # ========== 策略降频机制（V6 设计要求） ==========
@@ -464,18 +500,33 @@ def _enrich_with_ml_scores(results: dict) -> dict:
         return {"data": None, "n_candidates": len(all_codes), "n_passed": 0,
                 "method": "20d_ml", "error": str(e)}
     # ML 因子缓存：模块级 LRUCache（容量256，自动淘汰）
+    # P1-1（2026-11-20）：历史**串行**逐股 0.5~1.5s × 80-130 只 = 50~150s（ADR-0019
+    # Context 实测 10+ min 的主要贡献段）→ 拆两阶段：取数+因子计算 8 线程并行（≈6-20s），
+    # predict 保持串行（predictor 单例，单样本毫秒级，避免并发触模型内部状态）。
+    # None 也入缓存（负缓存：本轮不重取空历史）。
+    pending = [c for c in all_codes if c not in _ml_factor_cache]
+
+    def _compute_one(code):
+        try:
+            hist = get_stock_hist_multi_source(code, days=180, source="auto",
+                                                prefer_adjusted=True)
+            if hist.empty or len(hist) < 60:
+                return code, None
+            return code, compute_all_signals(hist, code=code)
+        except Exception as e:
+            logger.warning(f"[pipeline] {code} ML 因子计算失败: {e}")
+            return code, None
+
+    if pending:
+        with ThreadPoolExecutor(max_workers=min(8, len(pending)),
+                                thread_name_prefix="ml-enrich") as _pool:
+            for code, sig in _pool.map(_compute_one, pending):
+                _ml_factor_cache[code] = sig
+
     candidates = []
     for code in all_codes:
         try:
-            if code in _ml_factor_cache:
-                result = _ml_factor_cache[code]
-            else:
-                hist = get_stock_hist_multi_source(code, days=180, source="auto", prefer_adjusted=True)
-                if hist.empty or len(hist) < 60:
-                    _ml_factor_cache[code] = None
-                    continue
-                result = compute_all_signals(hist, code=code)
-                _ml_factor_cache[code] = result
+            result = _ml_factor_cache[code] if code in _ml_factor_cache else None
             if not result:
                 continue
             factors = result["factors"]
@@ -623,6 +674,10 @@ def run_all_strategies(
     config = get_config(preset)
     results = {}
     clean_cache(max_age_hours=24)
+    # P1-1：全局预算（env SCAN_DEADLINE_S 可秒调，0=关闭）
+    t0 = time.monotonic()
+    budget = _scan_deadline_s()
+    deadline_skipped: list = []
 
     # 市场情绪：用缓存，不阻塞扫描（实时行情获取耗时 30s+）
     sentiment = 0
@@ -812,41 +867,49 @@ def run_all_strategies(
     # 保存降频状态
     _failure_tracker.save()
     # ========== 主线板块过滤 ==========
-    try:
-        # 批次 B4 / P2-3：复用本轮并行策略已拿到的原始热门板块结果，
-        # 少一次完整重跑（含涨停池网络拉取）。策略被降频跳过 / 执行失败 /
-        # 返回空时回退到原路径，保证行为不变。
-        hot_boards = raw_hot_boards
-        if hot_boards is None:
-            hot_boards = get_hot_board_candidates(config)
-        if not hot_boards.empty:
-            hot_sector_codes = set()
-            # 同一板块名去重：结果并入 set，重复查询不改变任何数值，
-            # 但能少建几次 pytdx 连接（P2-3 的低风险部分）。
-            sectors = {str(row.get('板块', '')).strip()
-                       for _, row in hot_boards.iterrows()}
-            for sector in sorted(sectors):
-                if sector:
-                    hot_sector_codes.update(get_sector_stocks(sector))
-            if hot_sector_codes:
-                logger.info(f"主线板块过滤: {len(hot_sector_codes)} 只股票在主线板块中")
-                filtered_results = {}
-                for name, df in results.items():
-                    if df.empty or "代码" not in df.columns:
-                        filtered_results[name] = df
-                        continue
-                    mask = df["代码"].astype(str).isin(hot_sector_codes)
-                    filtered = df[mask]
-                    if not filtered.empty:
-                        filtered_results[name] = filtered
-                    logger.info(f"  {name}: {len(df)} -> {len(filtered)} (板块过滤后)")
-                results = filtered_results
-    except Exception as e:
-        logger.debug(f"主线板块过滤失败（跳过）: {e}")
+    if _deadline_left(t0, budget, "主线板块过滤"):
+        try:
+            # 批次 B4 / P2-3：复用本轮并行策略已拿到的原始热门板块结果，
+            # 少一次完整重跑（含涨停池网络拉取）。策略被降频跳过 / 执行失败 /
+            # 返回空时回退到原路径，保证行为不变。
+            hot_boards = raw_hot_boards
+            if hot_boards is None:
+                hot_boards = get_hot_board_candidates(config)
+            if not hot_boards.empty:
+                hot_sector_codes = set()
+                # 同一板块名去重：结果并入 set，重复查询不改变任何数值，
+                # 但能少建几次 pytdx 连接（P2-3 的低风险部分）。
+                sectors = {str(row.get('板块', '')).strip()
+                           for _, row in hot_boards.iterrows()}
+                for sector in sorted(sectors):
+                    if sector:
+                        hot_sector_codes.update(get_sector_stocks(sector))
+                if hot_sector_codes:
+                    logger.info(f"主线板块过滤: {len(hot_sector_codes)} 只股票在主线板块中")
+                    filtered_results = {}
+                    for name, df in results.items():
+                        if df.empty or "代码" not in df.columns:
+                            filtered_results[name] = df
+                            continue
+                        mask = df["代码"].astype(str).isin(hot_sector_codes)
+                        filtered = df[mask]
+                        if not filtered.empty:
+                            filtered_results[name] = filtered
+                        logger.info(f"  {name}: {len(df)} -> {len(filtered)} (板块过滤后)")
+                    results = filtered_results
+        except Exception as e:
+            logger.debug(f"主线板块过滤失败（跳过）: {e}")
+    else:
+        deadline_skipped.append("主线板块过滤")
 
     risk_check = _check_portfolio_risk(results, shibor_mult=macro_filter["position_mult"])
     factor_health = _check_factor_health(results)
-    portfolio = _optimize_portfolio(results)
+    if _deadline_left(t0, budget, "组合优化"):
+        portfolio = _optimize_portfolio(results)
+    else:
+        deadline_skipped.append("组合优化")
+        # 最小合法形状：RegimeAwarePositionSizer 读 weights、审计读 n_positions 均有默认
+        portfolio = {"weights": {}, "details": []}
 
     # ========== RegimeAwarePositionSizer: 市场状态仓位限制 ==========
     regime = macro_filter.get("v4_regime")
@@ -906,18 +969,19 @@ def run_all_strategies(
 
     ml_ranking = {}
     if include_ml:
-        ml_ranking = _enrich_with_ml_scores(results)
-        # V4 市场状态调整
-        regime = macro_filter.get("v4_regime", MEAN_REVERSION)
-        if ml_ranking.get("data"):
-            ml_ranking = ml_ranking.copy()
-            ml_ranking["data"] = _apply_regime_adjustment(
-                ml_ranking["data"], regime
-            )
-        # 因子监控预警
-        _check_monitor_alerts(ml_ranking)
-    else:
-        ml_ranking = {}
+        if _deadline_left(t0, budget, "ML 富集"):
+            ml_ranking = _enrich_with_ml_scores(results)
+            # V4 市场状态调整
+            regime = macro_filter.get("v4_regime", MEAN_REVERSION)
+            if ml_ranking.get("data"):
+                ml_ranking = ml_ranking.copy()
+                ml_ranking["data"] = _apply_regime_adjustment(
+                    ml_ranking["data"], regime
+                )
+            # 因子监控预警
+            _check_monitor_alerts(ml_ranking)
+        else:
+            deadline_skipped.append("ML 富集")
 
     scan_result = {
         "results": results, "risk_check": risk_check,
@@ -927,6 +991,10 @@ def run_all_strategies(
         "macro_filter": macro_filter,
         "index_signal": index_signal,
     }
+    # P1-1：仅当发生过相位跳过才打标（正常路径零新增键，L2/L9 基线无漂移）
+    if deadline_skipped:
+        scan_result["scan_deadline"] = {
+            "budget_s": budget, "skipped": deadline_skipped}
     try:
         from lib.monitoring.audit_logger import log_scan
         log_scan(scan_result)

@@ -59,25 +59,55 @@ def _is_bj_stock(code: str) -> bool:
 # 挂起线程为 daemon：不阻塞解释器退出，等 socket 自行死亡/进程结束回收。
 SOURCE_CALL_TIMEOUT_S = 30.0
 
+# P1-1（2026-11-20）：挂起守卫的泄漏可观测计量——超时后 daemon 线程继续跑
+# （ADR-0019 D3 接受），此前无任何计数；_hung_threads = 当前挂起未返回的调用数
+# （超时 +1，worker 完成后 -1）。
+_hang_lock = threading.Lock()
+_hung_threads = 0
+
+
+def get_source_hang_stats() -> Dict[str, int]:
+    """源调用挂起计量出口：``{"hung_threads": N}``（0 = 无泄漏在飞）。"""
+    with _hang_lock:
+        return {"hung_threads": _hung_threads}
+
 
 class SourceCallTimeoutError(Exception):
     """数据源调用超时（挂起检测，ADR-0019）。"""
 
 
 def _call_source_with_timeout(breaker: CircuitBreaker, fn, *args, **kwargs) -> pd.DataFrame:
-    """带超时的数据源调用：超时计入熔断失败并抛 SourceCallTimeoutError。"""
+    """带超时的数据源调用：超时计入熔断失败并抛 SourceCallTimeoutError。
+
+    P1-1（2026-11-20）：daemon 超时线程此前完全不可观测（泄漏无计量）——加
+    ``_hung_threads`` 计数：超时时 +1、worker 最终完成时 -1，经
+    ``get_source_hang_stats()`` 出口暴露（每 +10 打一次 warning）。
+    """
     result = {}
+    timed_out = {"flag": False}
 
     def _worker():
         try:
             result["df"] = breaker.call(fn, *args, **kwargs)
         except BaseException as e:  # 含 CircuitOpenError / 数据源内部异常，原样回抛
             result["err"] = e
+        finally:
+            if timed_out["flag"]:
+                with _hang_lock:
+                    global _hung_threads
+                    _hung_threads -= 1
 
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
     t.join(SOURCE_CALL_TIMEOUT_S)
     if t.is_alive():
+        timed_out["flag"] = True
+        with _hang_lock:
+            global _hung_threads
+            _hung_threads += 1
+            if _hung_threads and _hung_threads % 10 == 0:
+                logger.warning(f"[source-timeout] 当前挂起未返回的源调用线程 "
+                               f"{_hung_threads} 个（daemon，socket 死亡或进程结束回收）")
         breaker.record_failure()
         raise SourceCallTimeoutError(
             f"{getattr(fn, '__name__', fn)} timed out after {SOURCE_CALL_TIMEOUT_S}s (hang)"
