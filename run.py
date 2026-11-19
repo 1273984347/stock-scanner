@@ -9,6 +9,7 @@ import pandas as pd
 from scanner import run_all_strategies
 from reporter.scan_notify import send_feishu_message, print_results, unwrap_scan_results
 from config import FEISHU_RECEIVE_ID
+from lib.data.trade_calendar import is_trading_day
 import logging
 
 logging.basicConfig(
@@ -19,9 +20,29 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _trading_day_gate(allow_non_trading: bool) -> bool:
+    """交易日门：True = 放行盘后扫描（架构评审 P0 修复，坑表 P-108）。
+
+    节假日跑盘后扫描会用上一交易日数据产出并推送「格式合法、内容过期」的
+    信号——直接污染交易决策链，故默认拒绝；``--allow-non-trading-day`` 显式旁路。
+    """
+    if allow_non_trading:
+        logger.warning("已显式跳过交易日门（--allow-non-trading-day）")
+        return True
+    if is_trading_day():
+        return True
+    logger.warning(
+        "今日非交易日（周末或节假日），跳过盘后扫描；"
+        "如需强制运行请加 --allow-non-trading-day"
+    )
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="A股盘后选股工具")
     parser.add_argument("--no-push", action="store_true", help="不推送飞书")
+    parser.add_argument("--allow-non-trading-day", action="store_true",
+                        help="跳过交易日门（节假日/周末手动跑盘后扫描）")
     parser.add_argument("--preset", choices=["balanced", "aggressive", "conservative"],
                         default="balanced", help="策略预设")
     parser.add_argument("--evaluate", action="store_true", help="运行因子评价")
@@ -110,6 +131,12 @@ def main():
     if args.stress:
         run_stress_test_mode(args.symbols)
         return
+
+    # 交易日门（架构评审 P0 修复，坑表 P-108）：节假日跑盘后扫描会用上一交易日
+    # 数据产出并推送「格式合法、内容过期」的信号。仅门控默认盘后扫描；
+    # --backtest / --evaluate 等离线模式不受限。
+    if not _trading_day_gate(args.allow_non_trading_day):
+        sys.exit(0)
 
     # 运行策略
     # P-79：pipeline.run_all_strategies 返回复合 scan_result，print_results/推送

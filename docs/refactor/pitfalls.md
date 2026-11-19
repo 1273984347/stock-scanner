@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**105 个编号（P-01～P-105）**，分九类；其中 101 条有独立正文条目，
+> **规模**：**108 个编号（P-01～P-108）**，分九类；其中 104 条有独立正文条目，
 > P-62～P-65 仅见于下方「一句话索引」（既有状态，append-only 不补写）。
 > **本行是当前编号数的唯一真源**：其它文档一律引用本行，不硬编码数字；
 > 文末「文档状态」里的历史「共 N 条」是当时的取证记录，按 append-only 保留。
@@ -2685,3 +2685,30 @@ baostock.query_stock_industry → socketutil.send_msg`。baostock 的 socket 无
 **推广**：性能问题先 profile（`cProfile` 按 cumtime 排序、`faulthandler` 抓挂起点），
 不要凭直觉优化。缓存数据帧时务必确认「可变参数的处理发生在缓存之后」，
 否则会把防前视机制一起缓存掉。
+
+
+### P-108 · 交易日判定硬编码死路径，兜底方向反了：节假日照跑推陈旧信号
+
+**现象**：架构评审（`docs/audit/architecture-review-2026-11-20.md` P0-3）发现
+`scripts/daily_scan.py:41` 硬编码 `D:/TDX/vipdoc/sh/lday_4/sh600000.day` 判定交易日；
+该包 2026-11-14 起停更（`update_tdx_data.py:148` 注释禁用）且目录已随 ADR-0017 删除。
+文件不存在时走兜底「仅跳过周末」→ **节假日的工作日照常跑扫描并推送上一交易日的
+陈旧信号**。评审 v1 曾误判为「永远跳过不跑」，对抗性复核实测兜底方向相反——
+「兜底会静默接管」比「兜底不跑」更危险。同链：`reporter/scheduler.py:9` 晨报门只看
+周末；`run.py` 盘后扫描无任何交易日门。
+
+**根因**：交易日判定散落三处，唯一带日历语义的实现依赖已死的本地 TDX 文件；
+兜底语义（跑/不跑）从未被机器判据钉住。
+
+**修法**：`lib/data/trade_calendar.py` 单一真源（akshare 新浪日历 +
+本地 JSON 缓存 + 刷取 daemon 守卫（ADR-0019 模式）+ 失败显式退化周末判断 + warning）；
+三处消费端统一委托；`run.py` 加交易日门 + `--allow-non-trading-day` 显式旁路。
+判据 `tests/test_trade_calendar.py` 13 例。
+
+**测试坑**：tests/conftest.py 的 `logging.config.fileConfig` 把 `lib` logger 配成
+`propagate=0`（自带 console handler）→ pytest caplog（挂 root）**收不到任何 lib.*
+记录**；判据日志断言必须直挂目标 logger 的 Handler，caplog 仅对根命名空间（如 run）有效。
+
+**推广**：① 时间语义的兜底方向（跑/不跑）必须与主语义一起被机器判据钉住，
+否则死源会让兜底静默接管；② 判定类散落实现先用 grep 收口再动手；③ 测试里断言
+`lib.*` 日志永远不要用 caplog（fileConfig propagate=0），直挂 handler。

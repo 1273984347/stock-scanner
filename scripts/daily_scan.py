@@ -27,32 +27,16 @@ logger = logging.getLogger(__name__)
 
 
 def _is_trading_day() -> bool:
-    """检查今天是否是交易日（通过 TDX 数据验证）"""
-    import struct
-    from pathlib import Path
-    from datetime import datetime
+    """检查今天是否是交易日（委托交易日历单一真源 lib/data/trade_calendar.py）。
 
-    dt = datetime.now()
-    # 周末直接跳过
-    if dt.weekday() >= 5:
-        return False
+    架构评审 P0 修复（2026-11-20，坑表 P-108）：旧实现硬编码
+    ``D:/TDX/vipdoc/sh/lday_4/sh600000.day`` 判定——该包 2026-11 起停更
+    （update_tdx_data.py 注释禁用）且目录已随 ADR-0017 删除，文件缺失时
+    兜底「仅跳过周末」→ 节假日的工作日照常跑、推陈旧信号。
+    """
+    from lib.data.trade_calendar import is_trading_day
 
-    # 检查 TDX 数据
-    tdx_path = Path("D:/TDX/vipdoc/sh/lday_4/sh600000.day")
-    if tdx_path.exists():
-        date_int = int(dt.strftime("%Y%m%d"))
-        try:
-            with open(tdx_path, "rb") as f:
-                raw = f.read()
-                for i in range(0, len(raw), 32):
-                    if struct.unpack_from("<I", raw, i)[0] == date_int:
-                        return True
-        except Exception:
-            pass
-        return False  # TDX 中没有今天数据 = 非交易日
-
-    # 无 TDX 文件时仅跳过周末
-    return True
+    return is_trading_day()
 
 
 def run_daily_scan(push_feishu: bool = True, extra_symbols: list = None):

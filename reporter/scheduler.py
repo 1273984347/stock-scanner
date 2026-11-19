@@ -1,18 +1,19 @@
 """调度逻辑 — 交易日判断 + 错误处理"""
 
 import logging
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 
 def is_trading_day() -> bool:
-    """判断今天是否为 A 股交易日"""
-    today = datetime.now()
-    # 周末不是
-    if today.weekday() >= 5:
-        return False
-    return True
+    """判断今天是否为 A 股交易日（委托交易日历单一真源）。
+
+    架构评审 P0 修复（2026-11-20，坑表 P-108）：旧实现只看周末，
+    节假日晨报/策略报告照推上一交易日的陈旧数据。
+    """
+    from lib.data.trade_calendar import is_trading_day as _calendar_is_trading_day
+
+    return _calendar_is_trading_day()
 
 
 def send_strategy_report(results: dict, preset: str = "balanced") -> bool:
