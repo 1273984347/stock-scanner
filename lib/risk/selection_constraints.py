@@ -8,7 +8,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 import logging
 
-# 延迟导入避免循环依赖
+# 按需加载（broker 内含 akshare 重依赖，不在 risk 包 import 期拉起）；
+# 原因注释「避免循环依赖」已失效——V1 环由 C8 数据类型下沉解除（P1-6）
 def _get_limit_pct(code: str, name: str = "") -> float:
     """获取涨跌停幅度（委托给 broker.ABroker.get_limit_pct）"""
     from lib.data.broker import ABroker

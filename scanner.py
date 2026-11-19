@@ -1,23 +1,19 @@
-"""选股策略入口 —— 组合协调器
+"""选股策略入口 —— 组合协调器门面（只导出公共 API）
 
-原有功能已拆分到 lib/data_layer.py / lib/strategies.py / lib/pipeline.py。
-本模块提供 ScanOrchestrator 统一编排跨模块调用。
+实现已拆分到 lib/data/data_layer.py、lib/strategy/strategies.py、lib/strategy/pipeline.py
+（P1-6 收缩：私有符号 re-export 已删——全库消费方只用公共名；lib 层不得
+import 本模块，见 scripts/dep_direction_check.py 的方向判据）。
 """
 from lib.data.data_layer import (
     get_stock_hist, get_stock_hist_multi_source, get_realtime_quotes,
-    get_market_sentiment, get_stock_fund_flow, get_news_signals,
-    _load_cache, _save_cache, clean_cache, _retry_api_call, _safe_float, _get_financial_data,
+    get_market_sentiment, get_stock_fund_flow, get_news_signals, clean_cache,
 )
 from lib.strategy.strategies import (
     quick_score, full_score,
     get_zt_candidates, get_volume_breakout_candidates,
     get_hot_board_candidates, get_lhb_candidates, get_multi_factor_candidates,
 )
-from lib.strategy.pipeline import (
-    run_all_strategies, get_stock_score,
-    _enrich_with_ml_scores, _optimize_portfolio, _check_portfolio_risk,
-    _run_alpha_analysis,
-)
+from lib.strategy.pipeline import run_all_strategies, get_stock_score
 from typing import Dict, List, Optional, Any
 
 

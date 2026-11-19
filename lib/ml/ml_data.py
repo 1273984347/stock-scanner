@@ -22,7 +22,8 @@ from factors import (
     calc_rsi,
     safe_float,
 )
-from scanner import get_stock_hist_multi_source
+# P1-6（2026-11-20）：直连真源——lib 层不得 import 根级门面 scanner
+from lib.data.data_layer import get_stock_hist_multi_source
 
 logger = logging.getLogger(__name__)
 

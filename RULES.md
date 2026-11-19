@@ -70,6 +70,15 @@ infra  ←  data  ←  scoring  ←  strategy
 - 允许 `infrastructure → data → 上层` 单向依赖
 - **禁止包级循环导入** —— 拆包前用 AST 建依赖图验证（见 §四·V4）
 - 已知必须同包的互反依赖对（拆包时不可拆开）：`broker ↔ data_layer`、`data_fund_flow ↔ data_layer`、`dynamic_exit ↔ partial_exit`、`market_utils ↔ tdx_batch`
+- **机器判据（2026-11-20 起）**：方向约束由 `scripts/dep_direction_check.py` 强制——
+  层级（低→高）`infra < data < {scoring, risk, portfolio, ml, monitoring} < strategy`；
+  **低层 import 高层 = 违规**（同级横向合法，由环检测管辖）；lib 不得 import 根级业务
+  模块（scanner 等）与顶层包（reporter/backtest），例外必须在该脚本 `EXCEPTIONS`
+  登记 justification（新增未登记判红）。环检测已登记互反对：scoring↔strategy。
+  **V1（data.broker→lib.risk 包级环）已由类型下沉解除**：Order/Trade/Holding →
+  `lib.data.trade_datatypes`、ImpactConfig/MarketImpactModel → `lib.data.market_impact`、
+  TradingConstraints → `lib.data.trading_constraints`；`from lib.risk import Order`
+  聚合出口保留兼容（backtest/tests 在用）。
 
 ---
 

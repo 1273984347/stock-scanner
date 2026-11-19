@@ -15,7 +15,7 @@ os.environ['NO_VERIFY_TDX'] = '1'
 import pytest
 
 from lib.data.broker import validate_order, LiveBrokerABC
-from lib.risk.datatypes import Order
+from lib.data.trade_datatypes import Order
 
 
 # ─────────────────────────────────────────────────────────────

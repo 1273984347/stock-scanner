@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 
 from lib.data.broker import PaperBroker, Order
-from lib.risk.datatypes import Holding
+from lib.data.trade_datatypes import Holding
 
 
 # ─────────────────────────────────────────────────────────────

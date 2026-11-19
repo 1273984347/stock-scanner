@@ -19,7 +19,9 @@ import requests
 from config import (FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_RECEIVE_ID,
                     FEISHU_RECEIVE_ID_TYPE, get_config)
 from factors import evaluate_macro_gate
-from scanner import get_market_sentiment
+# P1-6（2026-11-20）：直连真源 lib.data.data_layer——经 scanner 门面会构成
+# scanner→pipeline→本模块→scanner 三节点环（评审 V9）
+from lib.data.data_layer import get_market_sentiment
 
 logger = logging.getLogger(__name__)
 

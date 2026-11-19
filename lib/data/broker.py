@@ -5,10 +5,11 @@ A 股模拟券商 —— 严格模拟 A 股交易规则
 - 停牌处理
 - 交易成本（佣金+印花税+滑点+冲击成本）
 
-本模块已拆分为 lib/broker_data/ 子包：
-- lib.risk.datatypes: Order/Trade/Holding
-- lib.risk.impact: ImpactConfig/MarketImpactModel
-- lib.risk.constraints: TradingConstraints
+交易数据类型已下沉到本包（评审 P1-6 V1：data.broker 顶层 import lib.risk
+构成唯一的低层→高层包级环；lib.risk 聚合出口保留兼容）：
+- lib.data.trade_datatypes: Order/Trade/Holding
+- lib.data.market_impact: ImpactConfig/MarketImpactModel
+- lib.data.trading_constraints: TradingConstraints
 - ABroker 核心券商仍在本文件
 """
 import pandas as pd
@@ -28,9 +29,9 @@ from config import (
 )
 
 # 从拆分模块导入
-from lib.risk.datatypes import Order, Trade, Holding
-from lib.risk.impact import ImpactConfig, MarketImpactModel, get_impact_config_by_market_cap
-from lib.risk.constraints import TradingConstraints
+from lib.data.trade_datatypes import Order, Trade, Holding
+from lib.data.market_impact import ImpactConfig, MarketImpactModel, get_impact_config_by_market_cap
+from lib.data.trading_constraints import TradingConstraints
 
 logger = logging.getLogger(__name__)
 

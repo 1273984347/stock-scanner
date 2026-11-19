@@ -1,4 +1,9 @@
-"""Broker 数据类：Order / Trade / Holding"""
+"""Broker 数据类：Order / Trade / Holding（评审 P1-6 V1 下沉，2026-11-20）
+
+原 lib/risk/datatypes.py —— data.broker 顶层 import lib.risk 构成全库唯一的
+「低层→高层」包级环（V1）。纯数据类下沉到更低层 data 包后环解除：
+lib.risk 聚合出口（__init__）保留 ``from lib.risk import Order`` 兼容。
+"""
 from dataclasses import dataclass
 from typing import Optional
 
