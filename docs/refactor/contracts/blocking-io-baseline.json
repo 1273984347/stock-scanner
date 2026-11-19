@@ -195,19 +195,28 @@
         "blocking_before": 94,
         "mode": "refactor",
         "reason": "批次重构：状态/调用收口、白名单裁剪或线程池迁移；blocking 不得增加，非 allowed 端点逐字段一致"
+      },
+      {
+        "allowed_endpoints": [
+          "POST /api/errors"
+        ],
+        "blocking_after": 91,
+        "blocking_before": 94,
+        "mode": "refactor",
+        "reason": "批次重构：状态/调用收口、白名单裁剪或线程池迁移；blocking 不得增加，非 allowed 端点逐字段一致"
       }
     ],
     "scan_scope": "HTTP /api/ endpoints (L7-aligned) + non-API routes + websocket + http middlewares; sync AND async top-level helpers expanded (depth<=2)",
     "source": "AST over api.py + routers/*.py, endpoint set cross-checked against runtime route-ownership.json"
   },
   "counts": {
-    "blocking_calls": 94,
-    "blocking_endpoints": 34,
+    "blocking_calls": 91,
+    "blocking_endpoints": 33,
     "endpoints": 69,
     "offloaded_calls": 44,
     "offloaded_endpoints": 40,
     "other_calls": 351,
-    "total_calls": 489
+    "total_calls": 486
   },
   "endpoints": [
     {
@@ -1124,7 +1133,7 @@
           "category": "offloaded",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 67,
+          "lineno": 81,
           "tail": "to_thread"
         },
         {
@@ -1132,7 +1141,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 69,
+          "lineno": 83,
           "tail": "error"
         },
         {
@@ -1140,14 +1149,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 70,
+          "lineno": 84,
           "tail": "HTTPException"
         }
       ],
       "file": "routers/backup.py",
       "handler": "backup_create",
       "key": "POST /api/backup/create",
-      "lineno": 64,
+      "lineno": 78,
       "method": "POST",
       "offloaded": {
         "asyncio.to_thread": 1
@@ -1170,7 +1179,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 77,
+          "lineno": 91,
           "tail": "Path"
         },
         {
@@ -1178,7 +1187,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 78,
+          "lineno": 92,
           "tail": "exists"
         },
         {
@@ -1186,7 +1195,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 82,
+          "lineno": 96,
           "tail": "glob"
         },
         {
@@ -1194,7 +1203,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 82,
+          "lineno": 96,
           "tail": "sorted"
         },
         {
@@ -1202,7 +1211,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 83,
+          "lineno": 97,
           "tail": "append"
         },
         {
@@ -1210,7 +1219,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 85,
+          "lineno": 99,
           "tail": "stat"
         },
         {
@@ -1218,7 +1227,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 86,
+          "lineno": 100,
           "tail": "fromtimestamp"
         },
         {
@@ -1226,7 +1235,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 86,
+          "lineno": 100,
           "tail": "stat"
         },
         {
@@ -1234,7 +1243,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 86,
+          "lineno": 100,
           "tail": "isoformat"
         },
         {
@@ -1242,14 +1251,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 91,
+          "lineno": 105,
           "tail": "error"
         }
       ],
       "file": "routers/backup.py",
       "handler": "backup_list",
       "key": "GET /api/backup/list",
-      "lineno": 74,
+      "lineno": 88,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -1273,7 +1282,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 136,
+          "lineno": 150,
           "tail": "json"
         },
         {
@@ -1281,7 +1290,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 137,
+          "lineno": 151,
           "tail": "get"
         },
         {
@@ -1289,72 +1298,8 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 140,
+          "lineno": 154,
           "tail": "HTTPException"
-        },
-        {
-          "callee": "HTTPException",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backup.py",
-          "lineno": 144,
-          "tail": "HTTPException"
-        },
-        {
-          "callee": "Path",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backup.py",
-          "lineno": 146,
-          "tail": "Path"
-        },
-        {
-          "callee": "backup_path.exists",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/backup.py",
-          "lineno": 147,
-          "tail": "exists"
-        },
-        {
-          "callee": "HTTPException",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backup.py",
-          "lineno": 148,
-          "tail": "HTTPException"
-        },
-        {
-          "callee": "Path",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backup.py",
-          "lineno": 150,
-          "tail": "Path"
-        },
-        {
-          "callee": "extract_dir.mkdir",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/backup.py",
-          "lineno": 151,
-          "tail": "mkdir"
-        },
-        {
-          "callee": "asyncio.to_thread",
-          "category": "offloaded",
-          "depth": 0,
-          "file": "routers/backup.py",
-          "lineno": 152,
-          "tail": "to_thread"
-        },
-        {
-          "callee": "logger.error",
-          "category": "other",
-          "depth": 0,
-          "file": "routers/backup.py",
-          "lineno": 157,
-          "tail": "error"
         },
         {
           "callee": "HTTPException",
@@ -1363,12 +1308,76 @@
           "file": "routers/backup.py",
           "lineno": 158,
           "tail": "HTTPException"
+        },
+        {
+          "callee": "Path",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/backup.py",
+          "lineno": 160,
+          "tail": "Path"
+        },
+        {
+          "callee": "backup_path.exists",
+          "category": "blocking",
+          "depth": 0,
+          "file": "routers/backup.py",
+          "lineno": 161,
+          "tail": "exists"
+        },
+        {
+          "callee": "HTTPException",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/backup.py",
+          "lineno": 162,
+          "tail": "HTTPException"
+        },
+        {
+          "callee": "Path",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/backup.py",
+          "lineno": 164,
+          "tail": "Path"
+        },
+        {
+          "callee": "extract_dir.mkdir",
+          "category": "blocking",
+          "depth": 0,
+          "file": "routers/backup.py",
+          "lineno": 165,
+          "tail": "mkdir"
+        },
+        {
+          "callee": "asyncio.to_thread",
+          "category": "offloaded",
+          "depth": 0,
+          "file": "routers/backup.py",
+          "lineno": 166,
+          "tail": "to_thread"
+        },
+        {
+          "callee": "logger.error",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/backup.py",
+          "lineno": 171,
+          "tail": "error"
+        },
+        {
+          "callee": "HTTPException",
+          "category": "other",
+          "depth": 0,
+          "file": "routers/backup.py",
+          "lineno": 172,
+          "tail": "HTTPException"
         }
       ],
       "file": "routers/backup.py",
       "handler": "backup_restore",
       "key": "POST /api/backup/restore",
-      "lineno": 133,
+      "lineno": 147,
       "method": "POST",
       "offloaded": {
         "asyncio.to_thread": 1
@@ -1393,7 +1402,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 167,
+          "lineno": 181,
           "tail": "HTTPException"
         },
         {
@@ -1401,7 +1410,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 169,
+          "lineno": 183,
           "tail": "Path"
         },
         {
@@ -1409,7 +1418,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 172,
+          "lineno": 186,
           "tail": "Path"
         },
         {
@@ -1417,7 +1426,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 172,
+          "lineno": 186,
           "tail": "resolve"
         },
         {
@@ -1425,7 +1434,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 172,
+          "lineno": 186,
           "tail": "is_relative_to"
         },
         {
@@ -1433,7 +1442,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 172,
+          "lineno": 186,
           "tail": "resolve"
         },
         {
@@ -1441,7 +1450,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 173,
+          "lineno": 187,
           "tail": "HTTPException"
         },
         {
@@ -1449,7 +1458,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 175,
+          "lineno": 189,
           "tail": "exists"
         },
         {
@@ -1457,7 +1466,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 176,
+          "lineno": 190,
           "tail": "HTTPException"
         },
         {
@@ -1465,7 +1474,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 178,
+          "lineno": 192,
           "tail": "unlink"
         },
         {
@@ -1473,7 +1482,7 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 183,
+          "lineno": 197,
           "tail": "error"
         },
         {
@@ -1481,14 +1490,14 @@
           "category": "other",
           "depth": 0,
           "file": "routers/backup.py",
-          "lineno": 184,
+          "lineno": 198,
           "tail": "HTTPException"
         }
       ],
       "file": "routers/backup.py",
       "handler": "backup_delete",
       "key": "DELETE /api/backup/{backup_file}",
-      "lineno": 162,
+      "lineno": 176,
       "method": "DELETE",
       "offloaded": {},
       "other": {
@@ -2039,11 +2048,7 @@
       "path": "/api/dashboard"
     },
     {
-      "blocking": {
-        "error_file.parent.mkdir": 1,
-        "f.write": 1,
-        "open": 1
-      },
+      "blocking": {},
       "calls": [
         {
           "callee": "api_key_is_valid",
@@ -2174,36 +2179,12 @@
           "tail": "get"
         },
         {
-          "callee": "error_file.parent.mkdir",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/system.py",
-          "lineno": 306,
-          "tail": "mkdir"
-        },
-        {
-          "callee": "open",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/system.py",
-          "lineno": 307,
-          "tail": "open"
-        },
-        {
-          "callee": "f.write",
-          "category": "blocking",
-          "depth": 0,
-          "file": "routers/system.py",
-          "lineno": 308,
-          "tail": "write"
-        },
-        {
-          "callee": "json.dumps",
+          "callee": "append_jsonl",
           "category": "other",
           "depth": 0,
           "file": "routers/system.py",
           "lineno": 308,
-          "tail": "dumps"
+          "tail": "append_jsonl"
         }
       ],
       "file": "routers/system.py",
@@ -2215,9 +2196,9 @@
       "other": {
         "HTTPException": 4,
         "api_key_is_valid": 1,
+        "append_jsonl": 1,
         "clean.get": 3,
         "isinstance": 2,
-        "json.dumps": 1,
         "json.loads": 1,
         "len": 1,
         "logger.warning": 1,

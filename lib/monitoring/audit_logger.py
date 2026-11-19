@@ -10,7 +10,7 @@
 import json
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional
 import logging
@@ -18,6 +18,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent.parent.parent / "cache" / "audit.db"
+
+# P1-3（2026-11-20）：审计保留期——此前只增不减（每扫描 ≤50KB raw_json），
+# 决策审计在保留期内可回查（/api/audit），过期清理。
+AUDIT_RETENTION_DAYS = 90
 
 # §4.2 P1 #11 修复 (2026-06-08, lib-incremental-audit §2.5):
 # 旧实现 log_scan 等模块函数每次新建 conn (sqlite3.connect), 多线程并发
@@ -96,6 +100,30 @@ def log_scan(scan_result: Dict) -> int:
         return _log_scan_locked(scan_result)
 
 
+def _prune_old_scans(conn) -> int:
+    """按保留期清理过期审计（评审 P1-3）：scan_logs + 关联 stock_decisions 同清。
+
+    scan_time 存 ISO 字符串，同格式下字典序 == 时间序。只在 log_scan 写入路径
+    触发（WAL 下 DELETE 成本可忽略）；失败不阻塞本次写入。
+    """
+    try:
+        cutoff = (datetime.now() - timedelta(days=AUDIT_RETENTION_DAYS)).isoformat()
+        old = conn.execute(
+            "SELECT id FROM scan_logs WHERE scan_time < ?", (cutoff,)).fetchall()
+        if not old:
+            return 0
+        for row in old:
+            conn.execute("DELETE FROM stock_decisions WHERE scan_id = ?", (row["id"],))
+        conn.execute("DELETE FROM scan_logs WHERE scan_time < ?", (cutoff,))
+        conn.commit()
+        logger.info("audit retention: 清理 %d 条超过 %d 天的审计记录",
+                    len(old), AUDIT_RETENTION_DAYS)
+        return len(old)
+    except Exception as e:  # noqa: BLE001 —— 卫生措施失败不阻塞审计写入
+        logger.debug(f"audit retention 清理失败（不阻塞）: {e}")
+        return 0
+
+
 def _log_scan_locked(scan_result: Dict) -> int:
     """log_scan 的写入体（调用方须已持 _LOG_LOCK）。"""
     conn = _get_db()
@@ -160,6 +188,8 @@ def _log_scan_locked(scan_result: Dict) -> int:
                 continue
 
         conn.commit()
+        # P1-3：retention 卫生措施（失败不阻塞，见 _prune_old_scans）
+        _prune_old_scans(conn)
         return scan_id
     except Exception as e:
         logger.error(f"审计日志写入失败: {e}")

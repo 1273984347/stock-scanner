@@ -18,6 +18,7 @@
 
 import argparse
 import logging
+import logging.handlers
 import os
 import shutil
 import struct
@@ -99,7 +100,10 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("logs/update_tdx.log", encoding="utf-8"),
+        # P1-3（2026-11-20）：单文件无限追加 → 轮转（5MB × 当前+2 份历史）
+        logging.handlers.RotatingFileHandler(
+            "logs/update_tdx.log", maxBytes=5 * 1024 * 1024,
+            backupCount=2, encoding="utf-8"),
     ],
 )
 logger = logging.getLogger(__name__)

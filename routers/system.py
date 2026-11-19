@@ -303,9 +303,9 @@ async def report_frontend_error(request: Request):
     )
 
     error_file = PROJECT_ROOT / "cache" / "frontend_errors.jsonl"
-    error_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(error_file, "a", encoding="utf-8") as f:
-        f.write(json.dumps(clean, ensure_ascii=False) + "\n")
+    # P1-3（2026-11-20）：带轮转追加——此前无限 append，磁盘满即静默哑火
+    from lib.infra.append_log import append_jsonl
+    append_jsonl(error_file, clean)
 
     return {"status": "ok"}
 

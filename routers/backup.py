@@ -31,10 +31,24 @@ def _compute_backup_create() -> dict:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_file = backup_dir / f"backup_{timestamp}.zip"
 
+    # P1-3（2026-11-20）：白名单补 4 类**不可再生**资产——此前只含可再生的配置类，
+    # 「跑过备份」也无法恢复信号追踪史 / 模拟盘权益 / 决策审计 / ML 模型：
+    #   cache/signals/signal_history.json（60 天信号验证史）
+    #   cache/paper_trading/（模拟盘权益曲线与交易流水）
+    #   cache/audit.db（+WAL/-shm 侧车，决策审计；缺省文件自动跳过）
+    #   cache/models/（ML 模型，丢失后 MLPredictor 无模型可加载）
+    # api_*.json / parquet 行情缓存等可再生数据仍不进备份（P1-8 口径不变：
+    # 本 zip 只落本地 backups/，含模拟盘持仓明细属预期，端点有鉴权）。
     backup_targets = [
         Path("alert_rules.json"),
         Path("config.json"),
         Path("snapshots"),
+        Path("cache/signals/signal_history.json"),
+        Path("cache/paper_trading"),
+        Path("cache/audit.db"),
+        Path("cache/audit.db-wal"),
+        Path("cache/audit.db-shm"),
+        Path("cache/models"),
     ]
     tmp = backup_file.with_suffix(".zip.tmp")
     try:

@@ -45,7 +45,9 @@ class NotificationLogger:
                 with open(log_file, "a", encoding="utf-8") as f:
                     f.write(json.dumps(asdict(notification), ensure_ascii=False) + "\n")
             except Exception as e:
-                logger.debug(f"通知日志写入失败: {e}")
+                # P1-3（2026-11-20）：debug→warning——磁盘满的表现是「静默停止落盘」，
+                # debug 在默认配置下不可见，写失败必须可观测
+                logger.warning(f"通知日志写入失败: {e}")
 
     def log_signal(self, code: str, signal: str, confidence: float):
         """记录信号通知"""

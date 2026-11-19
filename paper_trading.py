@@ -122,9 +122,9 @@ def run_scan(preset: str = "balanced"):
             }
             signals.append(signal)
 
-            # 追加到 JSONL 日志
-            with open(SIGNALS_LOG, "a", encoding="utf-8") as f:
-                f.write(json.dumps(signal, ensure_ascii=False) + "\n")
+            # 追加到 JSONL 日志（P1-3：带轮转，防无限增长；写入失败仍上抛可见）
+            from lib.infra.append_log import append_jsonl
+            append_jsonl(SIGNALS_LOG, signal)
 
     # 打印结果
     print(f"\n{'='*60}")
