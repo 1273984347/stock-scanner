@@ -92,13 +92,35 @@ def test_tencent_request_uses_date_range_when_as_of(monkeypatch):
     assert "qfq" in seen["url"], "回测必须显式取前复权"
 
 
-def test_tencent_host_is_not_the_waf_blocked_one():
-    """回归：web.ifzq.gtimg.cn 的 fqkline 会返回 501 JS 挑战页（2026-11-19 实测）。
+def test_tencent_hosts_rotate_and_are_registered():
+    """回归（ADR-0032）：两台腾讯主机在同日交替被 WAF 拦截，不能写死其中一台。"""
+    assert set(kw.TENCENT_KLINE_HOSTS) == {"web.ifzq.gtimg.cn", "ifzq.gtimg.cn"}
+    from lib.data import host_health as hh
+    for key in kw.TENCENT_KLINE_HOST_KEYS.values():
+        assert isinstance(getattr(hh, key), str)
 
-    同路径换到 ifzq.gtimg.cn 即 200；用错主机会让整个回测栈在无报错的情况下空转。
-    """
-    assert "ifzq.gtimg.cn" in kw.TENCENT_KLINE_URL
-    assert "web.ifzq.gtimg.cn" not in kw.TENCENT_KLINE_URL
+
+def test_tencent_rotation_falls_back_to_second_host(monkeypatch):
+    """第一台返回无效报文时，必须继续尝试第二台，而不是整源判死。"""
+    seen = []
+
+    def fake_get(url, **kwargs):
+        seen.append(url)
+        return "challenge-page" if "web.ifzq" in url else TENCENT_PAYLOAD
+
+    monkeypatch.setattr(kw, "_http_get", fake_get)
+    df = kw.get_tencent_kline("600519", days=10)
+    assert len(df) == 2, "第二台主机有效数据未被采用"
+    assert len(seen) == 2, f"应在两台主机间轮换，实际 {seen}"
+
+
+def test_tencent_rotation_exhausts_both_hosts(monkeypatch):
+    """两台都失败才返回空帧（由多源栈继续降级，而不是抛异常）。"""
+    calls = []
+    monkeypatch.setattr(kw, "_http_get",
+                        lambda url, **k: calls.append(url) or "challenge-page")
+    df = kw.get_tencent_kline("600519", days=10)
+    assert df.empty and len(calls) == 2
 
 
 def test_index_sym_disambiguates_stock_vs_index():

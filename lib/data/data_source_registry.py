@@ -135,11 +135,10 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
                 get_sina_kline, code, days=days, as_of_date=as_of_date)
         if source == "tencent_kline":
             from lib.data.data_kline_web import get_tencent_kline
-            from lib.data.host_health import HOST_TENCENT_KLINE, call_with_health
+            # host 健康在 data_kline_web 内按两台主机分别计数（ADR-0032）
             return _call_source_with_timeout(
-                breaker, call_with_health, HOST_TENCENT_KLINE,
-                get_tencent_kline, code, days=days, adjust="qfq",
-                as_of_date=as_of_date)
+                breaker, get_tencent_kline, code, days=days,
+                adjust="qfq", as_of_date=as_of_date)
         if source == "tdx_local_qfq":
             from lib.data.data_tdx import _fetch_qfq_local_file
             return _fetch_qfq_local_file(code, days, "daily", as_of_date)

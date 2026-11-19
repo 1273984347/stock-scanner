@@ -31,9 +31,14 @@ logger = logging.getLogger(__name__)
 
 SINA_KLINE_URL = ("https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/"
                   "CN_MarketData.getKLineData")
-# 主机名必须是 ifzq.gtimg.cn：web.ifzq.gtimg.cn 的 fqkline 路径会被腾讯 WAF
-# 拦截并返回 501 JS 挑战页（2026-11-19 实测；同路径换主机即 200）。
-TENCENT_KLINE_URL = "https://ifzq.gtimg.cn/appstock/app/fqkline/get"
+# 两台腾讯主机在同日的实测中**交替**被 WAF 拦（501 JS 挑战页）：
+# 23:05 web.ifzq 被拦、ifzq 正常；23:10 反过来。只写死其中一台就是追着外部状态跑。
+# 正确做法：两台都登记、逐台尝试、各按 host_health 独立计数。
+TENCENT_KLINE_HOSTS = ("web.ifzq.gtimg.cn", "ifzq.gtimg.cn")
+TENCENT_KLINE_HOST_KEYS = {
+    "web.ifzq.gtimg.cn": "HOST_TENCENT_KLINE_WEB",
+    "ifzq.gtimg.cn": "HOST_TENCENT_KLINE",
+}
 
 SINA_MAX_BARS = 2000      # 实测 datalen=2000 可返 2000 根（2018-08 至今）
 TENCENT_MAX_BARS = 500    # 实测 500 根可返 500 根；再大无必要
@@ -183,13 +188,28 @@ def get_tencent_kline(code: str, days: int = 250, adjust: str = "qfq",
         param = f"{sym},day,{start_dt:%Y-%m-%d},{end},{count},{fq}"
     else:
         param = f"{sym},day,,,{count},{fq}"
-    url = f"{TENCENT_KLINE_URL}?param={param}"
-    try:
-        payload = _http_get(url)
-    except Exception as e:
-        logger.warning(f"[tencent_kline] 请求失败 {code}: {e}")
-        return _empty()
-    return _slice(parse_tencent_kline(payload, sym, fq), days, as_of_date)
+    from lib.data.host_health import call_with_health
+
+    last_error = None
+    for host in TENCENT_KLINE_HOSTS:
+        key_name = TENCENT_KLINE_HOST_KEYS[host]
+        from lib.data import host_health as _hh
+        key = getattr(_hh, key_name)
+        url = f"https://{host}/appstock/app/fqkline/get?param={param}"
+        try:
+            payload = call_with_health(key, _http_get, url)
+        except Exception as e:
+            last_error = e
+            continue
+        # host 已开断时 call_with_health 返回空 DataFrame，不是字符串
+        if not isinstance(payload, str) or not payload:
+            continue
+        df = parse_tencent_kline(payload, sym, fq)
+        if not df.empty:
+            return _slice(df, days, as_of_date)
+
+    logger.warning(f"[tencent_kline] 两台主机均无有效数据 {code}: {last_error}")
+    return _empty()
 
 
 # ========== 指数（显式入口，避免 000001 个股/指数歧义） ==========

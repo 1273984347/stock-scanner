@@ -267,6 +267,11 @@ python scripts/host_health_probe.py
 python scripts/kline_coverage_probe.py --strict
 ```
 
+> **取证执行纪律**：L1（pytest 全量）与各门禁脚本**必须串行**执行。2026-11-19 曾在 L1 后台运行时并发跑 L2/L3/L7/L8，
+> 两者共享 `cache/` 与 ML 模型缓存，导致 `test_clean_cache_falls_back_to_mtime_when_atime_unavailable`
+> 与 `test_gate_reports_no_drift_twice` 偶发假红；串行复跑即全绿（1578/12）。
+> 「单跑绿、并发红」不是代码缺陷，也不许据此改基线或改判据。
+
 | 判据 | 通过标准 |
 |---|---|
 | L1 | 0 failed；用例数变化须能逐条解释（新增/改名/删除） |
