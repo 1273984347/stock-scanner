@@ -182,6 +182,49 @@ def batch_quick_score(rows: List[pd.Series], max_workers: int = 10,
     return results
 
 
+def _attach_quick_scores(result: pd.DataFrame, codes: list, row_map: dict,
+                         batch_flows: dict, batch_news: dict) -> pd.DataFrame:
+    """按**代码**把批量评分写回候选帧，缺失与失败都给确定值（P-103）。
+
+    旧实现把 ``rt_rows``（只含有实时行情的代码）与 ``scores``（遍历全部候选代码）
+    按位置对齐：没有行情的 *ST / 停牌股取到 ``None`` → `综合评分 = NaN`，
+    NaN 参与排序会破坏 Top-N 顺序且不报错。这里统一：
+
+    * 无实时行情 → ``综合评分=0.0``、``评分状态=无实时行情``（信号保留，排序沉底）；
+    * 有行情但评分异常/非有限数 → ``0.0``、``评分状态=评分失败``；
+    * 正常 → 原分数与 rating。
+    """
+    scored_codes = [c for c in codes if row_map.get(c) is not None]
+    scored_set = set(scored_codes)
+    rt_rows = [pd.Series({"代码": c, **row_map[c]}) for c in scored_codes]
+    score_results = batch_quick_score(
+        rt_rows, batch_flows=batch_flows, batch_news=batch_news)
+
+    statuses, scores = [], []
+    for c in codes:
+        if c not in scored_set:
+            statuses.append("无实时行情")
+            scores.append(0.0)
+            continue
+        item = score_results.get(c) or {}
+        value = item.get("score")
+        try:
+            valid = value is not None and np.isfinite(float(value))
+        except (TypeError, ValueError):
+            valid = False
+        if valid:
+            statuses.append(str(item.get("rating", "ok")))
+            scores.append(float(value))
+        else:
+            statuses.append("评分失败")
+            scores.append(0.0)
+
+    out = result.copy()
+    out["评分状态"] = statuses
+    out["综合评分"] = scores
+    return out
+
+
 # ========== 四维评分 ==========
 
 def _compute_base_scores(row: pd.Series, code: str, tech_return_short: float,
@@ -332,13 +375,9 @@ def get_zt_candidates(config: SystemConfig, as_of_date: Optional[str] = None) ->
             batch_flows = _batch_fund_flow(codes)
             batch_news = _batch_get_news_signals(codes)
             # 并行批量评分 (N+1 fix from wip, 2026-06-09)
-            rt_rows = [pd.Series({"代码": code, **row_map[code]})
-                       for code in codes if row_map.get(code) is not None]
-            score_results = batch_quick_score(
-                rt_rows, batch_flows=batch_flows, batch_news=batch_news
-            )
-            scores = [score_results.get(code, {}).get("score") for code in codes]
-            result["综合评分"] = scores
+            # P-103：按代码写回，不用「两份不同成员列表按位置对齐」
+            result = _attach_quick_scores(result, codes, row_map,
+                                          batch_flows, batch_news)
         return result
     except Exception as e:
         logger.error(f"涨停板策略出错: {e}")
@@ -616,13 +655,9 @@ def get_lhb_candidates(config: SystemConfig, as_of_date: Optional[str] = None) -
             batch_flows = _batch_fund_flow(codes)
             batch_news = _batch_get_news_signals(codes)
             # 并行批量评分 (N+1 fix from wip, 2026-06-09)
-            rt_rows = [pd.Series({"代码": code, **row_map[code]})
-                       for code in codes if row_map.get(code) is not None]
-            score_results = batch_quick_score(
-                rt_rows, batch_flows=batch_flows, batch_news=batch_news
-            )
-            scores = [score_results.get(code, {}).get("score") for code in codes]
-            result["综合评分"] = scores
+            # P-103：按代码写回，不用「两份不同成员列表按位置对齐」
+            result = _attach_quick_scores(result, codes, row_map,
+                                          batch_flows, batch_news)
         result["策略"] = "龙虎榜"
         result["entry_timing"] = "次日开盘"
         result["signal_date"] = _safe_signal_date()

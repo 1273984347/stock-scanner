@@ -56,6 +56,11 @@ DEFAULT_OUT = ROOT / "docs" / "refactor" / "dual-run-baseline.json"
 # ---- 内置硬约束 -------------------------------------------------------
 PIN_AS_OF_DATE = "2026-05-30"
 PIN_DATA_SOURCES = ["tdx_local_qfq", "tdx_local"]
+# P-89/G2 复发（2026-11-19）：pipeline.get_index_hist 从生产缓存
+# cache/index/000001/30.parquet 读上证 MA20，真实扫描刷新缓存后 L3 漂移
+# （当天两次 3648.3976 -> 3644.3770 -> 3644.3773）。改为固定种子的合成指数，
+# 彻底不读生产缓存；代价是基线需重取一次（见 ADR-0031）。
+
 PIN_SEED = 42
 TOLERANCE = 1e-9
 
@@ -371,6 +376,13 @@ def _inject_shared_data(codes):
     # 固定为 0.0 与之逐字段等价，且不再受任何运行时状态影响。
     fixed_sentiment = 0.0
 
+    def fake_index_hist(code, days=30, **kwargs):
+        """固定种子的合成指数：形态合理（回测基准仍有涨跌），且完全不读生产缓存。
+
+        不要用常数序列——那会让 benchmark.total_return 恒为 0，破坏 backtest 链路。
+        """
+        return synth_ohlcv(code, n=max(30, int(days or 30)))
+
     fixed_fund_flow = {"main_net_ratio": 0.06, "net_inflow_5d": 1.2e8}
     fixed_news = {
         "major_positive": False,
@@ -388,6 +400,10 @@ def _inject_shared_data(codes):
         (data_layer, "get_market_sentiment", lambda *a, **k: fixed_sentiment),
         (strategies, "get_market_sentiment", lambda *a, **k: fixed_sentiment),
         (pipeline, "get_market_sentiment", lambda *a, **k: fixed_sentiment),
+        # G2：指数日线同样两处都 pin（定义方 data_layer + 使用方 pipeline），
+        # 否则 pipeline:662 仍会读生产 index 缓存 => L3 随真实扫描刷新而假红。
+        (data_layer, "get_index_hist", fake_index_hist),
+        (pipeline, "get_index_hist", fake_index_hist),
     ):
         if hasattr(mod, name):
             saved_pins.append((mod, name, getattr(mod, name)))
