@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**104 个编号（P-01～P-104）**，分九类；其中 100 条有独立正文条目，
+> **规模**：**105 个编号（P-01～P-105）**，分九类；其中 101 条有独立正文条目，
 > P-62～P-65 仅见于下方「一句话索引」（既有状态，append-only 不补写）。
 > **本行是当前编号数的唯一真源**：其它文档一律引用本行，不硬编码数字；
 > 文末「文档状态」里的历史「共 N 条」是当时的取证记录，按 append-only 保留。
@@ -1849,6 +1849,10 @@ A/B 的 off / on 两次回测结果恒等。这是 P-56 / P-59 空判据的另�
 | 每次运行都「自动归一化」权重 | P-102 |
 | 候选股综合评分出现 NaN | P-103 |
 | 每只股票都报「找不到 gpcw 文件」 | P-104 |
+| 策略日志报 NameError 但扫描仍 exit 0 | P-105 |
+| 修完 bug 后整个扫描从 2 分钟变成 10 分钟超时 | P-106 |
+| 单次打分 13.8s，profile 里同一指数接口拉两次 | P-107 |
+| 策略日志报 NameError 但扫描仍 exit 0 | P-105 |
 | 门禁说「全绿」，但 /ws、中间件根本没被扫描 | P-90 |
 | 按函数名尾字分类，把「全目录遍历+压缩」判成轻量 IO | P-90 |
 | 想给新端点加 offload，却被「消费者集合必须等于迁移集合」卡住 | P-91 |
@@ -2595,3 +2599,89 @@ TDX 本地目录早在 ADR-0017 就已删除，财务适配器却对**每只候�
 **推广**：和 P-99/P-103 同族——**判定放错层级**会同时制造噪音和错口径。
 凡是「某源在这个环境必然不可用」，都应在源选择层短路一次，
 不要在每个标的的调用里重试+告警。
+
+
+### P-105 · 策略层 `except → log → empty` 让 NameError 静默少一个策略
+
+**现象**：真实扫描 exit 0、23 只候选，但日志里有一条
+`[ERROR] 量价突破策略出错: name 'date' is not defined`——该策略本轮产出 0 候选，
+却没有任何门禁判红。
+
+**根因**：P1-3 给 `get_volume_breakout_candidates` 加 `as_of_date` 参数时，
+`ScoreCard.score(..., as_of_date=date)` 的调用点没跟着改。`date` 未定义，
+一进入打分分支就抛 NameError，被函数末尾的
+`except Exception: logger.error(...); return pd.DataFrame()` 吞掉。
+
+**修法**：`as_of_date=as_of_date`（全仓只此一处，grep 确认）。
+
+**判据**：`tests/test_strategy_nameerror_guard.py` 2 例——
+静态守卫「全仓不得再有 `as_of_date=date`」+ 行为判据「量价突破分支必须走到
+打分卡且 as_of_date 原样透传」。
+
+**推广**：`except → 记日志 → 返回空` 是**静默降级**，不是错误处理。
+只要被测分支没被 L1 覆盖，这类缺陷就能在全绿状态下长期存活。
+对策：① 策略函数的每条主分支都要有「能走到关键调用点」的行为判据；
+② 真跑日志里任何 `[ERROR]` 都必须逐条解释，不能因为 exit 0 就放过。
+
+
+### P-105 · 策略层 `except → log → empty` 让 NameError 静默少一个策略
+
+**现象**：真实扫描 exit 0、23 只候选，但日志里有
+`[ERROR] 量价突破策略出错: name 'date' is not defined`——该策略本轮产出 0 候选，
+门禁没红。
+
+**根因**：P1-3 给 `get_volume_breakout_candidates` 加 `as_of_date` 参数时，
+调用点仍写 `ScoreCard.score(..., as_of_date=date)`；`date` 未定义，
+一进打分分支就抛 NameError，被函数末尾的 `except Exception: logger.error(...);
+return pd.DataFrame()` 吞掉。全仓仅此一处。
+
+**修法**：`as_of_date=as_of_date`；判据 `tests/test_strategy_nameerror_guard.py`
+2 例（静态守卫 + 行为判据「分支必须走到打分卡且参数透传」）。
+
+**推广**：`except → 记日志 → 返回空` 是静默降级，不是错误处理。
+只要 L1 没覆盖该分支，缺陷就能在全绿状态下长期存活。
+真跑日志里任何 `[ERROR]` 都要逐条解释，不能因为 exit 0 就放过。
+
+### P-106 · 修好分支后才暴露的无超时第三方 socket 调用
+
+**现象**：修完 P-105 后，真实扫描从 1m46s 变成 **10 分钟超时（exit 124）**。
+之前不是"快"，是量价突破策略在打分前就崩了，根本没走到慢调用。
+
+**根因**：`faulthandler.dump_traceback_later` 抓到卡点：
+`ScoreCard.score → layer2_sector_strength → _get_industry →
+baostock.query_stock_industry → socketutil.send_msg`。baostock 的 socket 无超时，
+行业表 24h TTL 缓存第一次刷新挂起时，主流程无限等。
+
+**修法**：
+
+* `_fetch_baostock_industry_map()`：daemon 工作线程 + `join(timeout=8s)`，
+  超时抛 `TimeoutError`，主线程一定返回；
+* `_get_industry()` 捕获失败 → 行业中性（空缓存）+ 失败重试 TTL 1800s。
+  初版设 60s，日志空档显示单次扫描内仍重试 5 次、多耗约 4 分钟——
+  **失败重试间隔必须大于单轮任务耗时**，否则"降级"本身变成新的性能问题；
+* 判据 `tests/test_industry_fetch_bound.py` 3 例（有界返回 / 失败降级且负缓存 / 正常解析）。
+
+**测试坑**：conftest 把 `lib.data.data_layer.time.sleep` 全局替换成 no-op
+（`time` 是标准库模块本身），用 `time.sleep(3)` 模拟慢调用会失效——
+改用 `threading.Event().wait(3)`。
+
+**推广**：任何第三方 socket 调用都必须有界；「修好一个分支后性能突然变差」
+往往说明那个分支以前根本没执行过。先用 faulthandler 抓栈，别猜。
+
+
+### P-107 · 同一慢接口被多处调用，先 profile 再优化
+
+**现象**：P-106 修完后扫描不再超时，但量价突破阶段仍耗 208s；
+单次 `ScoreCard.score` 实测 **13.77s**。
+
+**根因**：cProfile 显示其中 6.2s 花在 `akshare.stock_zh_index_daily`
+（`MarketFilter._compute_l1` 与 `_get_market_return` 各拉一次，每次 ~3.1s）。
+同一份沪深300 日线在一轮任务里内容不变，却被重复网络拉取。
+
+**修法**：`_get_hs300_frame()` 带 10 分钟 TTL 缓存原始帧，两处调用方共用；
+`as_of_date` 截断仍由调用方各自执行——缓存原始帧不会引入前视偏差。
+判据 `tests/test_hs300_frame_cache.py` 2 例（只拉一次 / 截断语义不变）。
+
+**推广**：性能问题先 profile（`cProfile` 按 cumtime 排序、`faulthandler` 抓挂起点），
+不要凭直觉优化。缓存数据帧时务必确认「可变参数的处理发生在缓存之后」，
+否则会把防前视机制一起缓存掉。

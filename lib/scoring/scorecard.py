@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 import logging
 import threading
+import time
 
 from config import LAYER_WEIGHTS
 logger = logging.getLogger(__name__)
@@ -54,9 +55,8 @@ class MarketFilter:
         - 修复: as_of_date 截断 idx['date'] <= as_of_date
         - akshare 不支持历史快照接口, 只能在 DataFrame 层做截断
         """
-        import akshare as ak
-        idx = ak.stock_zh_index_daily(symbol="sh000300")
-        if idx.empty:
+        idx = _get_hs300_frame()
+        if idx is None or idx.empty:
             return 0.5
         # P0-11 修复: as_of_date 截断
         if as_of_date is not None and "date" in idx.columns:
@@ -308,6 +308,69 @@ _industry_cache_time = None
 _industry_cache_lock = threading.Lock()
 INDUSTRY_CACHE_TTL = 3600 * 24  # 24小时 TTL
 
+# P-106：baostock 的 socket 无超时，query_stock_industry 曾让整轮扫描卡死 10 分钟。
+# P-107：沪深300 日线被 L1 与市场收益两处重复拉取（实测单次 3.1s）。
+# 同一份原始帧缓存 10 分钟，as_of_date 的截断仍由各调用方自己做，不影响防前视。
+HS300_FRAME_TTL_S = 600.0
+_hs300_frame = None
+_hs300_frame_time = 0.0
+
+
+def _get_hs300_frame():
+    """带 TTL 的沪深300 原始日线（调用方负责按 as_of_date 截断）。"""
+    global _hs300_frame, _hs300_frame_time
+    now = time.monotonic()
+    if _hs300_frame is not None and now - _hs300_frame_time < HS300_FRAME_TTL_S:
+        return _hs300_frame
+    import akshare as ak
+    idx = ak.stock_zh_index_daily(symbol="sh000300")
+    if idx is not None and not idx.empty:
+        _hs300_frame = idx
+        _hs300_frame_time = now
+    return idx
+
+
+INDUSTRY_FETCH_TIMEOUT_S = 8.0
+# 失败重试间隔要大于单轮扫描耗时（实测 ~6 分钟），否则同一轮里会反复
+# 打已经挂掉的 baostock 接口：5 次 × 8s 超时 + 调度 = 多耗 ~4 分钟。
+# 30 分钟内按行业中性处理（显式降级），新进程启动时才会再试一次。
+INDUSTRY_FAILURE_RETRY_S = 1800.0
+
+
+def _fetch_baostock_industry_map(timeout_s: float = INDUSTRY_FETCH_TIMEOUT_S) -> dict:
+    """有界获取行业表。超时即抛 TimeoutError，由调用方走显式降级。
+
+    用 daemon 工作线程 + join(timeout) 包住无超时的第三方 socket 调用：
+    主线程一定能返回；残留在后台的线程会在进程结束时被回收。
+    """
+    box: dict = {}
+
+    def _worker():
+        try:
+            import baostock as bs
+            lg = bs.login()
+            if getattr(lg, "error_code", None) != "0":
+                box["error"] = RuntimeError(getattr(lg, "error_msg", "login failed"))
+                return
+            rs = bs.query_stock_industry()
+            rows = []
+            while getattr(rs, "error_code", None) == "0" and rs.next():
+                rows.append(rs.get_row_data())
+            bs.logout()
+            box["map"] = {r[1]: r[3] for r in rows if len(r) > 3}
+        except Exception as e:
+            box["error"] = e
+
+    th = threading.Thread(target=_worker, daemon=True, name="industry-fetch")
+    th.start()
+    th.join(timeout_s)
+    if th.is_alive():
+        raise TimeoutError(f"baostock 行业表查询超过 {timeout_s}s")
+    if "error" in box:
+        raise box["error"]
+    return box.get("map", {})
+
+
 def refresh_industry_cache():
     """强制刷新行业缓存（供外部调用）"""
     global _industry_cache, _industry_cache_time
@@ -324,16 +387,16 @@ def _get_industry(code: str) -> str:
     now = time.time()
     with _industry_cache_lock:
         if _industry_cache is None or (_industry_cache_time is not None and now - _industry_cache_time > INDUSTRY_CACHE_TTL):
-            import baostock as bs
-            lg = bs.login()
-            rs = bs.query_stock_industry()
-            data = []
-            while (rs.error_code == "0") and rs.next():
-                data.append(rs.get_row_data())
-            bs.logout()
-            _industry_cache = {row[1]: row[3] for row in data}  # code -> industry
-            _industry_cache_time = now
-            logger.debug(f"行业缓存已刷新，条目数: {len(_industry_cache)}")
+            try:
+                _industry_cache = _fetch_baostock_industry_map()  # code -> industry
+            except Exception as e:
+                # 显式降级：行业中性 + 短 TTL 重试，不让 30 只候选股各自卡一次
+                logger.warning(f"行业缓存刷新失败，暂时按行业中性处理: {e}")
+                _industry_cache = {}
+                _industry_cache_time = now - INDUSTRY_CACHE_TTL + INDUSTRY_FAILURE_RETRY_S
+            else:
+                _industry_cache_time = now
+                logger.debug(f"行业缓存已刷新，条目数: {len(_industry_cache)}")
     # 转换代码格式
     if code.startswith(("sh", "sz", "bj")):
         pass
@@ -401,9 +464,8 @@ def _get_market_return(days: int = 20, as_of_date: Optional[str] = None) -> floa
     P0-11 修复 (2026-06-08): as_of_date 截断防止回测前视偏差
     """
     try:
-        import akshare as ak
-        idx = ak.stock_zh_index_daily(symbol="sh000300")
-        if idx.empty:
+        idx = _get_hs300_frame()
+        if idx is None or idx.empty:
             return None
         # P0-11 修复: as_of_date 截断
         if as_of_date is not None and "date" in idx.columns:
