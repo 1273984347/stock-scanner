@@ -134,7 +134,7 @@ class FactorConfig:
 
     # Alpha 合成权重（等权，避免数据窥探）
     # 之前基于历史 IC 分配权重，属于样本内优化。改为等权。
-    factor_weights: Dict[str, float] = field(default_factory=lambda: {
+    factor_weights: Dict[str, float] = field(default_factory=lambda: _sum_one({
         "volume_ratio": 0.10,
         "momentum_5": 0.10,
         "momentum_20": 0.10,
@@ -145,17 +145,17 @@ class FactorConfig:
         "adx": 0.10,
         "williams_r": 0.10,
         "cci": 0.10,
-    })
+    }))
 
     # 多策略权重（等权，避免数据窥探）
-    strategy_weights: Dict[str, float] = field(default_factory=lambda: {
+    strategy_weights: Dict[str, float] = field(default_factory=lambda: _sum_one({
         "trend": 0.167,
         "mean_reversion": 0.167,
         "momentum": 0.167,
         "volatility": 0.167,
         "stat_arb": 0.167,
         "trend_breakout": 0.167,
-    })
+    }))
 
     # IC 加权因子权重（等权，避免数据窥探）
     # 之前基于历史 IC 分配权重（volume_ratio=0.22 等）属于样本内优化，
@@ -373,13 +373,28 @@ class SystemConfig:
     cache: CacheConfig = field(default_factory=CacheConfig)
 
 
+def _sum_one(weights: Dict[str, float]) -> Dict[str, float]:
+    """声明即归一：让权重表定义处就满足「和为 1.0」。
+
+    背景（坑表 P-102）：``strategy_weights`` 六个 0.167 = 1.002，conservative 的
+    ``factor_weights`` 声明和仅 0.40 —— 全靠 ``get_config`` / ``weighted_signal_combination``
+    在运行期反复归一化。那是**补丁**：声明仍然是错的，警告每次扫描都刷屏，
+    且外部直接读 PRESETS 的代码拿到的是未归一值。这里在定义处修正，
+    运行期兜底保留，仅用于 JSON 热覆盖等外部输入。
+    """
+    total = sum(weights.values())
+    if total <= 0:
+        return dict(weights)
+    return {k: v / total for k, v in weights.items()}
+
+
 # 预设策略模板
 PRESETS = {
     "balanced": SystemConfig(),
 
     "aggressive": SystemConfig(
         factor=FactorConfig(
-            factor_weights={
+            factor_weights=_sum_one({
                 "momentum_5": 0.25,
                 "momentum_10": 0.20,
                 "momentum_20": 0.15,
@@ -390,7 +405,7 @@ PRESETS = {
                 "rsi_14": 0.10,
                 "turnover_avg": 0.10,
                 "max_drawdown": 0.00,
-            }
+            })
         ),
         scan=ScanConfig(
             min_zt_days=1,
@@ -405,7 +420,7 @@ PRESETS = {
 
     "conservative": SystemConfig(
         factor=FactorConfig(
-            factor_weights={
+            factor_weights=_sum_one({
                 "momentum_5": 0.05,
                 "momentum_10": 0.10,
                 "momentum_20": 0.15,
@@ -416,7 +431,7 @@ PRESETS = {
                 "rsi_14": 0.05,
                 "turnover_avg": 0.00,
                 "max_drawdown": -0.10,
-            }
+            })
         ),
         scan=ScanConfig(
             min_zt_days=3,
