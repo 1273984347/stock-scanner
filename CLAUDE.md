@@ -42,7 +42,7 @@
 stock-scanner/
 ├── api.py                 # FastAPI 装配层（仅 include_router；端点见 routers/）
 ├── routers/               # 域路由包（common.py + 17 域模块）
-├── config.py              # 全局配置 (策略/风控/LLM/ML/组合)
+├── config/                # 全局配置包 (C11 拆包：_env/_types/_presets/_runtime/_constants；5+ 消费方门面契约)
 ├── dashboard.py           # Streamlit Dashboard
 ├── factors.py             # 因子库 (技术指标/市场体制/宏观门控)
 ├── notifier.py            # 飞书推送
@@ -373,7 +373,7 @@ curl http://localhost:8000/api/scan
 
 | 文件 | 说明 |
 |:-----|:-----|
-| `config.py` | 全局配置 (策略/风控/LLM/ML；env 单一真相源 + 调用时 accessor) |
+| `config/` | 全局配置包 (C11 拆包：_env .env 解析 / _types 10 dataclass / _presets 三模板 / _runtime get_config+JSON 热更新 / _constants；env 单一真相源 + 调用时 accessor；公共面契约见 docs/refactor/contracts/config-public-surface.json v2) |
 | `docs/refactor/MIGRATION-GUIDE.md` | 迁移指南：RF-01 全部破坏点（BC-01~08b）before/after + 回滚方式 |
 | `reporter/scan_notify.py` | 盘后选股信号飞书推送/控制台输出（原 notifier.py，P7-2 平迁） |
 | `scanner.py` | 选股策略入口 |
@@ -495,7 +495,7 @@ export TDX_DATA_PATH="D:/TDX/vipdoc"
 
 ## 维护提示
 
-- `config.py` 是全局配置核心，修改前确认影响范围
+- `config/` 是全局配置核心（C11 拆包：域文件 _env/_types/_presets/_runtime/_constants），修改前确认影响范围；公共面变更必须同步契约 v2
 - `lib/strategy/pipeline.py` 是策略编排核心，修改后运行回测验证
 - 数据源适配器在 `lib/data_*.py`，新增数据源时参考现有模式
 - ML 模型存储在 `cache/models/`，更新后重新验证 Walk-forward

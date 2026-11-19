@@ -32,7 +32,8 @@ def test_c_env_value_parser_handles_quotes_and_inline_comments():
 
 def test_c_env_keys_are_whitelisted():
     """空 key / 非法字符不得进入 os.environ（旧实现会抛 ValueError 让 import 崩掉）。"""
-    src = (ROOT / "config.py").read_text(encoding="utf-8")
+    # C11 拆包：.env 解析下沉到 config/_env.py（意图不变，路径随拆包更新）
+    src = (ROOT / "config" / "_env.py").read_text(encoding="utf-8")
     assert "_ENV_KEY_RE" in src
     assert r"^[A-Z_][A-Z0-9_]*$" in src
     assert "setdefault(_k, _parse_env_value(_v))" in src

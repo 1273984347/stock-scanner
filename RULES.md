@@ -19,7 +19,7 @@ stock-scanner/
 ├── api.py                # FastAPI 装配层（仅 app 定义 + 17 个 include_router；契约见 routers/）
 ├── routers/              # 域路由包：common.py 聚合 import/状态/helper，17 个域模块按 ROUTERS 归属
 ├── run.py / run_v2.py    # CLI 入口
-├── config.py             # 全局配置（策略/风控/LLM/ML）
+├── config/               # 全局配置包（C11 拆包：_env/_types/_presets/_runtime/_constants；门面契约=公共面逐名保真，见 tests/test_config_package.py）
 ├── scanner.py            # 选股策略入口
 ├── factors.py            # 因子库
 ├── lib/                  # 业务库，按职责分 8 个子包（见 1.3）
