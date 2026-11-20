@@ -164,19 +164,43 @@ def score_technical(return_10d: float = 0, return_20d: float = 0) -> float:
     return max(0, min(10, score))
 
 
-def comprehensive_score(fundamental: float, capital_flow: float,
+def comprehensive_score(fundamental: float, capital_flow: Optional[float],
                         news: float, technical: float) -> Dict:
     """综合评分
+
+    Args:
+        capital_flow: 资金面分；\u0060None\u0060 表示**该维数据缺失**（上游取不到）。
+            此时该维从加权中**剔除**，其余三维按原权重比例归一。
+            P0（2026-11-20）：缺失曾被伪装成 0 分进入加权，等价于「假中性 1.0 分」，
+            与真实中性(2.0)/真实强流出(0.0) 不可区分。
 
     Returns:
         {"score": float, "rating": str, "breakdown": dict}
         score: 0-10 加权总分
         rating: 强烈买入/买入/持有/谨慎/回避
+        breakdown: 四维分项；缺失维为 \u0060None\u0060（与 0 分可区分）
     """
-    weighted = (fundamental * WEIGHTS_4D["fundamental"]
-                + capital_flow * WEIGHTS_4D["capital_flow"]
-                + news * WEIGHTS_4D["news"]
-                + technical * WEIGHTS_4D["technical"])
+    dims = (
+        ("fundamental", fundamental, WEIGHTS_4D["fundamental"]),
+        ("capital_flow", capital_flow, WEIGHTS_4D["capital_flow"]),
+        ("news", news, WEIGHTS_4D["news"]),
+        ("technical", technical, WEIGHTS_4D["technical"]),
+    )
+    if all(v is not None for _name, v, _w in dims):
+        # 四维齐全：与改前**逐字节同式**。
+        # ⚠️ 不可改写成 sum(...)/sum(weights)：权重和的浮点累加是 0.9999999999999999
+        #    （0.35+0.35+0.20+0.10），除以它会把 8*0.35+8*0.35+8*0.20+8*0.10
+        #    从 7.999999999999999 变成 8.0 ⇒ 评级在阈值边界翻转
+        #    （tests/features/test_scoring_contract.py 冻结了该既有行为）。
+        weighted = (fundamental * WEIGHTS_4D["fundamental"]
+                    + capital_flow * WEIGHTS_4D["capital_flow"]
+                    + news * WEIGHTS_4D["news"]
+                    + technical * WEIGHTS_4D["technical"])
+    else:
+        # 缺失维：剔除该维，其余三维按原权重比例归一
+        present = [(v, w) for _name, v, w in dims if v is not None]
+        total_weight = sum(w for _v, w in present)
+        weighted = sum(v * w for v, w in present) / total_weight if total_weight else 0.0
 
     if weighted >= SCORE_4D["rating_strong_buy"]:
         rating = "强烈买入"
@@ -193,10 +217,10 @@ def comprehensive_score(fundamental: float, capital_flow: float,
         "score": round(weighted, 2),
         "rating": rating,
         "breakdown": {
-            "fundamental": round(fundamental, 2),
-            "capital_flow": round(capital_flow, 2),
-            "news": round(news, 2),
-            "technical": round(technical, 2),
+            "fundamental": round(fundamental, 2) if fundamental is not None else None,
+            "capital_flow": round(capital_flow, 2) if capital_flow is not None else None,
+            "news": round(news, 2) if news is not None else None,
+            "technical": round(technical, 2) if technical is not None else None,
         },
         "weights": dict(WEIGHTS_4D),
     }

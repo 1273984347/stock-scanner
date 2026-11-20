@@ -212,14 +212,17 @@ def compute_4d_dimensions(code: str, factors: Dict,
     )
 
     # 资金流评分（3层fallback：东方财富→腾讯估算→akshare）
-    cap_score = 0.0
+    # P0（2026-11-20）：缺失显式化 —— 取不到时 cap_score = None（评分层剔除该维），
+    # 不再用 0.0 冒充「中性」参与四维加权。
+    cap_score = None
     try:
         from lib.data.data_layer import get_stock_fund_flow
         ff = get_stock_fund_flow(code)
-        cap_score = score_capital_flow(
-            main_net_ratio=ff.get("main_net_ratio", 0),
-            net_inflow_5d=ff.get("net_inflow_5d", 0),
-        )
+        if ff.get("main_net_ratio") is not None:
+            cap_score = score_capital_flow(
+                main_net_ratio=ff.get("main_net_ratio", 0),
+                net_inflow_5d=ff.get("net_inflow_5d", 0),
+            )
     except Exception as e:
         logger.debug(f"[steps] 资金流评分失败 [{code}]: {e}")
 

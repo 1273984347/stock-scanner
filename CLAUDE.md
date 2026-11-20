@@ -1,6 +1,6 @@
 # CLAUDE.md — Stock Scanner (个人量化选股系统)
 
-> 最后更新：2026-11-20 | 本次更新：架构评审 P0 批次 C1-C4 落地（交易日历链 / offload 默认值翻转 all（audit 锁+WAL 前置，L8/L9/L10 全绿）/ 新浪快失败+westock 三层复活=有效源 2→3 / 推送心跳哨兵+scan_notify 重试+pre-push 兜底）；L1 基线 1631 passed / 12 skipped / 2 failed（均归因为既有顺序污染）；坑表至 P-112
+> 最后更新：2026-11-20 | 本次更新：**资金流 P0 修复**（代码归一 6 位 + 缺失显式化 + 评分层剔除缺失维并归一权重；坑表 P-114）；L1 基线 1713 passed / 12 skipped / 5 failed（5 failed 经 stash 同口径对照实验证实为 **HEAD 既有**，非本批引入）；L0–L10 全 PASS；坑表规模见 `docs/refactor/pitfalls.md` 头部「规模」行（唯一真源）｜上次更新：架构评审 P0 批次 C1-C4 落地（交易日历链 / offload 默认值翻转 all（audit 锁+WAL 前置，L8/L9/L10 全绿）/ 新浪快失败+westock 三层复活=有效源 2→3 / 推送心跳哨兵+scan_notify 重试+pre-push 兜底）
 
 ## 工作流
 
@@ -171,6 +171,14 @@ uvicorn api:app --reload --port 8000
 真源 = `lib/data/data_source_registry.py`（ADR-0017/0027/0032）。8 个既有注册源
 2026-11 实测多数不可用，有效源 = 新浪/腾讯/westock 三条。自动降级 + 源级
 CircuitBreaker + host 级健康（`GET /api/system/host-health`）。
+
+**资金流缺失语义（2026-11-20 P0 / 坑表 P-114）**：代码归一单一真源 =
+`lib/data/market_utils.normalize_code()`（6 位纯数字）；数据层缺失**显式化**——
+`FUND_FLOW_MISSING`（`main_net_ratio=None`）标记 + `FundFlowUnavailableError` 抛错，
+**不再用全零冒充**（实测全零会以 1.0 分「假中性」进入四维加权，与真实中性/强流出不可区分）；
+评分层对缺失维**剔除并归一其余三维权重**（`breakdown.capital_flow=None` 可与 0 分区分）。
+注意：2026-11-20 实测同花顺即时资金流接口资金流列几乎全为 NaN，批量层实为失效，
+逐股源为主要路径 —— 属源可用性问题，与本条缺失语义修复是两件事。
 
 ### 环境变量
 
@@ -378,7 +386,8 @@ curl http://localhost:8000/api/scan
 | `reporter/scan_notify.py` | 盘后选股信号飞书推送/控制台输出（原 notifier.py，P7-2 平迁） |
 | `scanner.py` | 选股策略入口 |
 | `lib/strategy/pipeline.py` | 策略编排核心 |
-| `lib/data/data_layer.py` | 多源数据层（`get_realtime_quotes` 只做委托，见 ADR-0024） |
+| `lib/data/market_utils.py` | **代码归一单一真源** `normalize_code()`（去 sh/sz/bj 前缀 + `zfill(6)`）+ 市场检测；资金流批量层 / 数据源落盘键 / 实时行情共用同一口径（2026-11-20 资金流 P0 / 坑表 P-114） |
+| `lib/data/data_layer.py` | 多源数据层（`get_realtime_quotes` 只做委托，见 ADR-0024）；**资金流缺失显式化**：`FUND_FLOW_MISSING` 标记 + `FundFlowUnavailableError` 抛错，不再用全零冒充缺失（坑表 P-114） |
 | `lib/data/data_realtime.py` | **实时行情唯一实现**：sina 全市场 → 腾讯批量 → pytdx 样本；单位归一（股/元）+ 6 位代码 + 降级校验（ADR-0024） |
 | `lib/data/data_kline_web.py` | **网页 K 线源**（ADR-0027）：新浪不复权（覆盖北交所/指数）、腾讯 qfq（回测主力）；腾讯 rows 为 日期/开/收/高/低/量 且 volume 是手（判据已钉） |
 | `lib/data/host_health.py` | **host 级健康状态机**（3 次 / 300s / 半开）：东财按 host 部分可用，禁止按源一票否决（ADR-0025） |

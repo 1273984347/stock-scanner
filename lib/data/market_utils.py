@@ -44,6 +44,29 @@ SZ_PREFIXES = ("0", "2", "3")
 # 其他（1x 债券、纯字母等）→ unknown，调用方走 fallback
 
 
+def normalize_code(raw) -> str:
+    """股票代码归一为 6 位纯数字（去 sh/sz/bj 前缀 + 补前导零）。
+
+    **单一真源**：数据源落盘键（\u0060data_source_registry._store_key\u0060）、资金流
+    批量层、实时行情共用本口径，避免各处各写一套造成 key 对不上。
+
+    P0（2026-11-20）：资金流市场批量层的 code 列前导零在解析阶段即丢失
+    （实测缓存 key 为 '1' / '10' / '858' …），而查询侧用 6 位代码 ⇒
+    深市 000/002、创业板 300、北交所 4/8/92 批量层 100% MISSING，
+    直接落默认 0 ⇒ 资金面维以「假零值」参与四维加权。
+
+    Args:
+        raw: 任意形态代码（int / '858' / '000858' / 'sz000858'）
+
+    Returns:
+        6 位纯数字字符串；非数字输入原样返回（不臆造代码）。
+    """
+    c = str(raw).strip().lower()
+    if len(c) == 8 and c[:2] in ("sh", "sz", "bj"):
+        c = c[2:]
+    return c.zfill(6) if c.isdigit() else c
+
+
 def detect_market(code: str) -> str:
     """根据股票代码判断市场。
 

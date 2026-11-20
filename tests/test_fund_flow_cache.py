@@ -168,10 +168,11 @@ def test_breaker_trips_then_fail_fast(monkeypatch):
     """
     calls = _install_source_down_fakes(monkeypatch)
 
-    results = [data_layer.get_stock_fund_flow(f"60000{i}") for i in range(6)]
-
-    # 返回值形状与降级语义不变：全零默认值
-    assert all(r == {"main_net_ratio": 0, "net_inflow_5d": 0} for r in results)
+    # P0（2026-11-20）：失败语义变更 —— 缺失显式抛错，不再返回全零默认值。
+    # （返回全零会让缺失以「假中性 1.0 分」进入四维加权，与真实中性/强流出不可区分。）
+    for i in range(6):
+        with pytest.raises(FundFlowUnavailableError):
+            data_layer.get_stock_fund_flow(f"60000{i}")
     # fetch 恰好 3 次（阈值），第 4-6 次由熔断 fail-fast 兜底
     assert calls["n"] == 3, f"熔断后应停止 fetch，实际 fetch {calls['n']} 次"
     assert data_layer._FUND_FLOW_BREAKER.state == "open"
@@ -192,19 +193,19 @@ def test_breaker_success_resets_failure_count(monkeypatch):
     monkeypatch.setattr(data_layer, "_load_cache", lambda key, max_age_hours=2: pd.DataFrame())
     monkeypatch.setattr(data_layer, "_save_cache", lambda key, df: None)
 
-    # 2 次失败（零默认值）+ 1 次成功
-    r1 = data_layer.get_stock_fund_flow("600001")
-    r2 = data_layer.get_stock_fund_flow("600002")
+    # 2 次失败（显式缺失）+ 1 次成功
+    with pytest.raises(FundFlowUnavailableError):
+        data_layer.get_stock_fund_flow("600001")
+    with pytest.raises(FundFlowUnavailableError):
+        data_layer.get_stock_fund_flow("600002")
     r3 = data_layer.get_stock_fund_flow("600003")
-    assert r1 == {"main_net_ratio": 0, "net_inflow_5d": 0}
     assert r3 == {"main_net_ratio": 0.05, "net_inflow_5d": 2.0e7}
     assert data_layer._FUND_FLOW_BREAKER.state == "closed"
 
     # 计数已归零：再失败 2 次不应熔断，第 3 次才开
-    data_layer.get_stock_fund_flow("600004")
-    data_layer.get_stock_fund_flow("600005")
-    assert data_layer._FUND_FLOW_BREAKER.state == "closed"
-    data_layer.get_stock_fund_flow("600006")
+    for code in ("600004", "600005", "600006"):
+        with pytest.raises(FundFlowUnavailableError):
+            data_layer.get_stock_fund_flow(code)
     assert data_layer._FUND_FLOW_BREAKER.state == "open"
     assert calls["n"] == 6  # 2 + 1 + 3，熔断后无再 fetch
 
@@ -214,19 +215,22 @@ def test_breaker_half_open_probes_after_recovery(monkeypatch):
     calls = _install_source_down_fakes(monkeypatch)
 
     for _ in range(3):
-        data_layer.get_stock_fund_flow("600007")
+        with pytest.raises(FundFlowUnavailableError):
+            data_layer.get_stock_fund_flow("600007")
     assert data_layer._FUND_FLOW_BREAKER.state == "open"
 
     # 模拟 recovery_timeout（300s）过期
     breaker = data_layer._FUND_FLOW_BREAKER
     breaker._last_failure_time = time.time() - (breaker.recovery_timeout + 1)
 
-    data_layer.get_stock_fund_flow("600008")
+    with pytest.raises(FundFlowUnavailableError):
+        data_layer.get_stock_fund_flow("600008")
     assert calls["n"] == 4, "半开期应放行一次真实探测"
     # 探测仍失败 → 重开
     assert data_layer._FUND_FLOW_BREAKER.state == "open"
     # 后续继续 fail-fast
-    data_layer.get_stock_fund_flow("600009")
+    with pytest.raises(FundFlowUnavailableError):
+        data_layer.get_stock_fund_flow("600009")
     assert calls["n"] == 4
 
 
@@ -395,7 +399,11 @@ def test_batch_fund_flow_shares_market_cache(monkeypatch):
 
     assert market_calls["n"] == 1, "两条路径共享一次批量拉取"
     assert r1["000001"]["net_inflow_5d"] == 3.0e7
-    assert r1["999999"] == {"main_net_ratio": 0, "net_inflow_5d": 0}, "不在榜股票保持零默认值"
+    # P0（2026-11-20）：不在榜且逐股也取不到 ⇒ 显式缺失标记，不再用全零冒充
+    assert r1["999999"] is not None, "不在榜股票必须以显式缺失标记出现"
+    assert r1["999999"].get("main_net_ratio") is None, (
+        f"缺失不得用全零冒充，实际 {r1['999999']}"
+    )
     assert r2["net_inflow_5d"] == 1.0e7
 
 

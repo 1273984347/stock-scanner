@@ -32,7 +32,8 @@ from lib.data.data_layer import (get_stock_hist_multi_source, get_realtime_quote
                              get_market_sentiment, _get_financial_data,
                              _retry_api_call, _safe_float, _load_cache,
                              _batch_fund_flow, _batch_get_news_signals,
-                             get_index_hist)
+                             get_index_hist, FundFlowUnavailableError)
+from lib.data.market_utils import normalize_code
 from factors import calc_rsi as compute_rsi
 
 logger = logging.getLogger(__name__)
@@ -175,7 +176,7 @@ def batch_quick_score(rows: List[pd.Series], max_workers: int = 10,
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
             executor.submit(quick_score, row,
-                           fund_flow=batch_flows.get(str(row.get("代码", ""))),
+                           fund_flow=batch_flows.get(normalize_code(row.get("代码", ""))),
                            news_sig=batch_news.get(str(row.get("代码", "")))): str(row.get("代码", ""))
             for row in rows if row.get("代码") is not None
         }
@@ -261,8 +262,20 @@ def _compute_base_scores(row: pd.Series, code: str, tech_return_short: float,
     vol_ratio = _safe_float(row.get("量比"))
     turnover = _safe_float(row.get("换手率")) / 100.0
     amount = _safe_float(row.get("成交额"))
-    ff = fund_flow if fund_flow is not None else get_stock_fund_flow(code)
-    cap = score_capital_flow(
+    # P0（2026-11-20）：资金流缺失显式化 —— 不再让「全零 dict」冒充中性分。
+    #   fund_flow is None          → 未预取，逐股取（失败即缺失）
+    #   main_net_ratio is None     → 已知缺失（FUND_FLOW_MISSING）
+    #   cap = None                 → 评分层剔除该维、其余三维权重归一
+    if fund_flow is not None:
+        ff = fund_flow
+    else:
+        try:
+            ff = get_stock_fund_flow(code)
+        except FundFlowUnavailableError:
+            ff = None
+    if ff is not None and ff.get("main_net_ratio") is None:
+        ff = None
+    cap = None if ff is None else score_capital_flow(
         main_net_ratio=ff["main_net_ratio"],
         net_inflow_5d=ff["net_inflow_5d"],
         northbound_increase=(vol_ratio > 1.3),

@@ -12,6 +12,7 @@ from typing import Dict, Optional
 from datetime import datetime, timedelta
 
 from lib.data.cache import CircuitBreaker, CircuitOpenError
+from lib.data.market_utils import normalize_code
 
 logger = logging.getLogger(__name__)
 
@@ -382,11 +383,13 @@ def _get_stock_hist_multi_source_online(
 
 
 def _store_key(code: str) -> str:
-    """统一落盘键：纯 6 位数字（去掉 sh/sz/bj 前缀）。"""
-    c = str(code).strip().lower()
-    if len(c) == 8 and c[:2] in ("sh", "sz", "bj"):
-        c = c[2:]
-    return c.zfill(6) if c.isdigit() else c
+    """统一落盘键：纯 6 位数字（去掉 sh/sz/bj 前缀）。
+
+    口径单一真源 = \u0060lib.data.market_utils.normalize_code\u0060。
+    P0（2026-11-20）：资金流批量层与本键口径曾漂移（'858' vs '000858'），
+    导致 0 开头代码批量层 100% MISSING ⇒ 缺失被伪装成全零参与四维加权。
+    """
+    return normalize_code(code)
 
 
 def _merge_write(dataset: str, key: str, df: pd.DataFrame, keep_rows: int = 1500) -> None:

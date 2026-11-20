@@ -28,7 +28,7 @@ from lib.data.data_source_registry import (
     get_circuit_breaker_status,
 )
 from lib.data.news_signal import get_news_signals
-from lib.data.market_utils import detect_market
+from lib.data.market_utils import detect_market, normalize_code
 
 logger = logging.getLogger(__name__)
 
@@ -260,6 +260,13 @@ class FundFlowUnavailableError(Exception):
     """资金流全部数据源获取失败（东财/腾讯估算 + akshare 兜底均异常）。"""
 
 
+#: 显式缺失标记 —— 区别于「真实零值」（停牌/零流，main_net_ratio == 0 是有效数据）。
+#: P0（2026-11-20）：缺失曾被伪装成全零 dict（main_net_ratio=0），实测会以
+#: \u0060score_capital_flow(0, 0) == 1.0\u0060 的「假中性分」参与四维加权（L2 权重 35%），
+#: 与真实中性(2.0)/真实强流出(0.0) 不可区分。本标记让缺失在数据层与评分层都显式。
+FUND_FLOW_MISSING = {"main_net_ratio": None, "net_inflow_5d": None}
+
+
 # ADR-0018（2026-11-14）：资金流「市场批量」层——同花顺即时全市场（~5.2k 只，1 call ~12s）。
 # 全局 3/sec 限流器是当初 5+ 分钟瓶颈的放大器：双缓存治了「重复取数」，但 4d 评分路径
 # 的首次逐股取数仍要 300 股 × 3/sec 排队（≥100s）。市场批量 1 call 覆盖全市场，
@@ -280,6 +287,12 @@ def _parse_market_fund_flow(df: pd.DataFrame) -> Dict[str, dict]:
 
     与 _batch_fund_flow 的列兼容口径一致（「股票代码」/「净额」/「成交额」）；
     空帧 / 缺关键列返回空 dict（调用方降级）。
+
+    P0（2026-11-20）：**不再把 NaN 填 0**。实测上游接口此刻返回 5216 行，
+    但「净额」「成交额」等资金流列几乎全为 NaN（仅 4 条非零）—— 旧的
+    fillna(0) 会产出 5209 条「假零值」冒充有效数据，评分层拿到
+    main_net_ratio=0 → score_capital_flow 得 1.0 分（假中性）。
+    净额全缺失的股票视为**该股资金流缺失**，不进结果，由调用方显式化。
     """
     if df is None or df.empty:
         return {}
@@ -288,28 +301,38 @@ def _parse_market_fund_flow(df: pd.DataFrame) -> Dict[str, dict]:
         return {}
     net_col = next((c for c in df.columns if "净额" in str(c)), None)
     amount_col = next((c for c in df.columns if "成交额" in str(c)), None)
-    work = df[[code_col, net_col, amount_col]].copy() if (net_col and amount_col) else df[[code_col]].copy()
-    work[code_col] = work[code_col].astype(str)
-    if net_col and amount_col:
-        work[net_col] = pd.to_numeric(work[net_col], errors="coerce").fillna(0)
-        work[amount_col] = pd.to_numeric(work[amount_col], errors="coerce").fillna(0)
-        grouped = work.groupby(code_col, as_index=False).agg({net_col: "sum", amount_col: "sum"})
-        return {
-            str(c): {
-                "main_net_ratio": (n / a) if a and a > 0 else 0,
-                "net_inflow_5d": n,
-            }
-            for c, n, a in zip(grouped[code_col], grouped[net_col], grouped[amount_col])
+    if net_col is None:
+        return {}
+    cols = [code_col, net_col] + ([amount_col] if amount_col else [])
+    work = df[cols].copy()
+    work[code_col] = work[code_col].map(normalize_code)
+    # ⚠ 不 fillna(0)：NaN = 上游没给数据（缺失），与真实 0 必须区分
+    work[net_col] = pd.to_numeric(work[net_col], errors="coerce")
+    if amount_col:
+        work[amount_col] = pd.to_numeric(work[amount_col], errors="coerce")
+    # 「该股有净额数据」标记：全 NaN 的组 pandas sum 会跳过得 0.0（又变假零值），
+    # 必须用这个标记把它们摘出来。
+    work["_has_net"] = work[net_col].notna().astype(int)
+    agg: Dict[str, str] = {net_col: "sum", "_has_net": "max"}
+    if amount_col:
+        agg[amount_col] = "sum"
+    grouped = work.groupby(code_col, as_index=False).agg(agg)
+
+    nets = grouped[net_col].tolist()
+    amts = (grouped[amount_col].tolist() if amount_col
+            else [0.0] * len(grouped))
+    out: Dict[str, dict] = {}
+    for c, has, n, a in zip(grouped[code_col].tolist(),
+                            grouped["_has_net"].tolist(), nets, amts):
+        if not has:
+            continue          # 净额全缺失 ⇒ 该股资金流缺失（不产出假零值）
+        nf = 0.0 if pd.isna(n) else float(n)
+        af = 0.0 if pd.isna(a) else float(a)
+        out[str(c)] = {
+            "main_net_ratio": (nf / af) if af > 0 else 0,
+            "net_inflow_5d": nf,
         }
-    # 只有净额列（无成交额）：ratio 记 0，净额仍有效
-    if net_col:
-        work[net_col] = pd.to_numeric(work[net_col], errors="coerce").fillna(0)
-        grouped = work.groupby(code_col, as_index=False).agg({net_col: "sum"})
-        return {
-            str(c): {"main_net_ratio": 0, "net_inflow_5d": n}
-            for c, n in zip(grouped[code_col], grouped[net_col])
-        }
-    return {}
+    return out
 
 
 def _fetch_market_fund_flow() -> Dict[str, dict]:
@@ -332,7 +355,11 @@ def _get_market_fund_flow() -> Dict[str, dict]:
     """
     disk = _load_cache("fundflow/_market", max_age_hours=CACHE_TTL.get("fund_flow", 1))
     if not disk.empty:
-        return _market_df_to_map(disk)
+        cached_map = _market_df_to_map(disk)
+        if cached_map:
+            return cached_map
+        # 存量脏缓存（全是假零值）⇒ 视为不可用，继续走重新拉取
+        logger.warning("[data_layer] 资金流批量缓存无可用条目（全零脏表），重新拉取")
     with _fundflow_market_lock:
         global _fundflow_market_unavailable_until
         if time.time() < _fundflow_market_unavailable_until:
@@ -340,7 +367,9 @@ def _get_market_fund_flow() -> Dict[str, dict]:
         # double-check：等锁期间另一线程可能已完成拉取并落盘
         disk = _load_cache("fundflow/_market", max_age_hours=CACHE_TTL.get("fund_flow", 1))
         if not disk.empty:
-            return _market_df_to_map(disk)
+            cached_map = _market_df_to_map(disk)
+            if cached_map:
+                return cached_map
         market = _fetch_market_fund_flow()
         if market:
             try:
@@ -358,11 +387,22 @@ def _get_market_fund_flow() -> Dict[str, dict]:
 
 
 def _market_df_to_map(disk: pd.DataFrame) -> Dict[str, dict]:
-    return {
-        str(r["code"]): {"main_net_ratio": float(r["main_net_ratio"] or 0),
-                         "net_inflow_5d": float(r["net_inflow_5d"] or 0)}
-        for _, r in disk.iterrows()
-    }
+    """磁盘缓存 → {6 位 code: {...}}；**跳过全零条目**。
+
+    P0（2026-11-20）：存量脏缓存里是 5209 条「假零值」（上游 NaN 被 fillna(0)
+    写下的），不得继续冒充有效数据。全零条目在此被剔除，交由逐股路径负责。
+    """
+    out: Dict[str, dict] = {}
+    for _, r in disk.iterrows():
+        ratio = pd.to_numeric(r.get("main_net_ratio"), errors="coerce")
+        net = pd.to_numeric(r.get("net_inflow_5d"), errors="coerce")
+        ratio = 0.0 if pd.isna(ratio) else float(ratio)
+        net = 0.0 if pd.isna(net) else float(net)
+        if not (ratio or net):
+            continue          # 全零 ⇒ 不可信（真实零流由逐股路径负责）
+        out[normalize_code(r["code"])] = {"main_net_ratio": ratio,
+                                          "net_inflow_5d": net}
+    return out
 
 
 def _to_float(v) -> Optional[float]:
@@ -901,8 +941,9 @@ def get_stock_fund_flow(code: str) -> dict:
 
     Returns:
         dict with keys: main_net_ratio, net_inflow_5d
-        全源失败 / 熔断开启时返回全零默认值（降级语义与「所有源失败」一致），
-        本函数不向上抛异常。
+        P0（2026-11-20）：**全源失败 / 熔断开启时显式抛 FundFlowUnavailableError**
+        （不再返回全零默认值）。返回全零会让缺失以「假中性 1.0 分」进入四维加权，
+        与真实中性/强流出不可区分。真实零值（停牌/零流）仍正常返回零 dict。
 
     性能说明：扫描时 5 个策略 + ML 富集循环会对同一只股票重复调用本函数，
     而原函数无任何缓存，导致被全局 3/sec 限流放大成 5+ 分钟瓶颈。
@@ -914,6 +955,9 @@ def get_stock_fund_flow(code: str) -> dict:
     3 次尝试的成本。真实零值（停牌/零流）与全源失败由异常路径区分，
     前者不计失败、不触发熔断。
     """
+    # 入口归一：全链路统一 6 位（P0 2026-11-20）——调用方可能给 int / 'sz000858'
+    code = normalize_code(code)
+
     # 0) 项目内本地数据仓（ADR-0033）：离线只读；在线且新鲜则直接复用
     from lib.data import local_store
     if local_store.enabled():
@@ -957,12 +1001,18 @@ def get_stock_fund_flow(code: str) -> dict:
     #    不再逐股重试；到期后半开探测一次，成功闭合、失败重开。
     try:
         result = _FUND_FLOW_BREAKER.call(_fetch_fund_flow, code)
-    except CircuitOpenError:
-        logger.debug("[data_layer] 资金流熔断中，返回零默认值（不写缓存）")
-        return {"main_net_ratio": 0, "net_inflow_5d": 0}
-    except FundFlowUnavailableError as e:
-        logger.debug(f"[data_layer] 资金流全源失败 {code}: {e}")
-        return {"main_net_ratio": 0, "net_inflow_5d": 0}
+    except CircuitOpenError as e:
+        # P0（2026-11-20）：熔断 = 上游不可用 ⇒ 数据缺失，显式抛错而非返回全零。
+        # 性能语义不变（熔断开启后不再 fetch），仅失败表达从「假中性」改为「显式缺失」。
+        logger.debug(f"[data_layer] 资金流熔断中，数据不可用 {code}")
+        raise FundFlowUnavailableError(
+            f"fund_flow circuit open for {code} (upstream unavailable)"
+        ) from e
+    except FundFlowUnavailableError:
+        # P0（2026-11-20）：全源失败 = 数据缺失，显式抛错（不再静默返回全零）。
+        # 「真实零值」在 _fetch_fund_flow 内正常返回，不走本分支 —— 两者由此区分。
+        logger.debug(f"[data_layer] 资金流全源失败 {code}：数据不可用")
+        raise
 
     # 仅缓存成功取数（含 legitimately 为零的股票），不缓存「全部源失败」的默认值，
     # 以免掩盖瞬时故障、阻断后续重试。
@@ -1025,15 +1075,22 @@ def _batch_fund_flow(codes: list) -> dict:
 
     Returns:
         {code: {"main_net_ratio": float, "net_inflow_5d": float}, ...}
-        未命中的 code 保持默认值 {"main_net_ratio": 0, "net_inflow_5d": 0}。
+        key 统一为 6 位代码。批量未命中时逐股回退；仍取不到 ⇒ 该 code 的值为
+        \u0060FUND_FLOW_MISSING\u0060（main_net_ratio 为 None），**不再用全零冒充**。
     """
-    result = {c: {"main_net_ratio": 0, "net_inflow_5d": 0} for c in codes}
+    result = {}
     market = _get_market_fund_flow()
-    if not market:
-        return result
-    for code in codes:
+    for raw_code in codes:
+        code = normalize_code(raw_code)
+        # 批量层命中（口径统一 6 位后，0 开头代码不再 MISSING）
         if code in market:
             result[code] = market[code]
+            continue
+        # 批量未命中（停牌/新股/不在榜）→ 逐股回退；仍失败即显式缺失（不伪装全零）
+        try:
+            result[code] = get_stock_fund_flow(code)
+        except FundFlowUnavailableError:
+            result[code] = dict(FUND_FLOW_MISSING)
     return result
 
 
