@@ -1,6 +1,6 @@
 # scripts/bootstrap_schedules.ps1 — 注册无人值守调度任务（评审 P0-4，2026-11-20）
 #
-# 背景：架构评审实测 `schtasks /query` 401 个任务 grep 零命中——CLAUDE.md:443、
+# 背景：架构评审实测 `schtasks /query` 401 个任务 grep 零命中——README.md（TDX 数据更新·定时任务）、
 # docs/PAPER_TRADING_GUIDE.md:46-53、task-scheduler-setup.md 三处文档声称的
 # 计划任务**一台都没注册**，晨报 / paper 日报 / TDX 更新全部静默停摆（P0-3 场景 1）。
 # 本脚本把三个每日任务一次性落到 Windows 任务计划（幂等：已存在先删再注册）。

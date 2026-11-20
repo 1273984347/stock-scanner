@@ -8,7 +8,7 @@
 - walk_forward: Walk-forward 验证（backtest.core.run_walk_forward）
 - stress: 压力测试（backtest.stress.run_stress_test）
 
-⚠️ **调用方规约（RF-01 RULES.md §1）**：所有外部代码**只经由此模块**调用回测，
+⚠️ **调用方规约（AGENTS.md §2.1 RB1–RB5）**：所有外部代码**只经由此模块**调用回测，
 不要直接 import backtest.core / backtest.engine / backtest.full / backtest.rebalance。
 这样「回测口径」只有一处定义，改动可被回测对拍基线（scripts/backtest_baseline.py）捕获。
 
