@@ -4,18 +4,28 @@
     python scripts/data_sync.py --report
     python scripts/data_sync.py --datasets kline,index,snapshot,events --universe top50 --days 250
     python scripts/data_sync.py --datasets financial,fundflow --universe top20
+    python scripts/data_sync.py --datasets kline --universe all --workers 4 --resume
 
 设计：
 - 只做「取数 → 写本地仓」，不做分析与选股；
-- 每只标的失败不影响其它标的，最后汇总成功/失败；
-- 单标的请求间隔 `--sleep`（默认 0.05s），避免把公共网关打到限流。
+- 每只标的失败不影响其它标的，最后汇总成功/失败/跳过；
+- 单标的请求间隔 `--sleep`（默认 0.05s），避免把公共网关打到限流；
+- `--workers >1` 用线程池并发（2026-11-20 实测 4 并发/16 只零失败，全市场约 50min）；
+- `--resume` 断点续跑：进度落 cache/data_sync_progress.json（gitignored），
+  按当天日期隔离，中断后重跑跳过已成功标的——这是全市场能跑完的关键。
 """
 import argparse
+import json
+import os
 import pathlib
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+_ROOT = pathlib.Path(__file__).resolve().parent.parent
+_PROGRESS = _ROOT / "cache" / "data_sync_progress.json"
 
 
 def _universe(kind: str, limit: int):
@@ -37,21 +47,94 @@ def _universe(kind: str, limit: int):
     return codes[:50]
 
 
-def sync_kline(codes, days, sleep):
-    from lib.data.data_source_registry import get_stock_hist_multi_source
+# ---------------------------------------------------------------- 断点续跑
+def _progress_path(dataset: str = "kline") -> pathlib.Path:
+    """kline 沿用旧文件名（兼容已有进度）；其它数据集按名隔离。"""
+    if dataset == "kline":
+        return _PROGRESS
+    return _PROGRESS.with_name(f"data_sync_progress_{dataset}.json")
+
+
+def _load_progress(today: str, dataset: str = "kline") -> set:
+    try:
+        d = json.loads(_progress_path(dataset).read_text(encoding="utf-8"))
+        if d.get("date") == today:
+            return set(d.get("done", []))
+    except (ValueError, OSError):
+        pass
+    return set()
+
+
+def _save_progress(today: str, done: set, dataset: str = "kline") -> None:
+    path = _progress_path(dataset)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps({"date": today, "done": sorted(done)}), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def sync_kline(codes, days, sleep, workers=1, resume=False, source="auto"):
+    """返回 (ok, fail, skipped)；resume 时跳过当天进度文件中已完成的标的。
+
+    source="auto" 走多源栈且自动写本地仓；指定单源（如腾讯被 WAF 拦时用 westock）
+    时取数层不写仓（use_local=False），这里显式补写回 kline（前复权口径）。
+    """
+    from datetime import date
+    from lib.data import local_store
+    from lib.data.data_source_registry import get_stock_hist_multi_source, _store_key
+
+    today = date.today().isoformat()
+    done = _load_progress(today) if resume else set()
+    todo = [c for c in codes if c not in done]
+    skipped = len(codes) - len(todo)
     ok = fail = 0
-    for i, code in enumerate(codes, 1):
-        try:
-            df = get_stock_hist_multi_source(code, days=days, prefer_adjusted=True)
-            ok += 0 if df.empty else 1
-            fail += 1 if df.empty else 0
-        except Exception:
+
+    def pull(code):
+        for _ in range(2):  # 单只最多重试 1 次
+            try:
+                df = get_stock_hist_multi_source(code, days=days, prefer_adjusted=True,
+                                                 source=source)
+                if not df.empty:
+                    if source != "auto":
+                        local_store.write_frame("kline", _store_key(code), df)
+                    return True
+            except Exception:
+                pass
+            if sleep:
+                time.sleep(sleep)
+        return False
+
+    def record(code, success):
+        nonlocal ok, fail
+        if success:
+            ok += 1
+            if resume:
+                done.add(code)
+        else:
             fail += 1
-        if sleep:
-            time.sleep(sleep)
-        if i % 20 == 0:
-            print(f"  kline {i}/{len(codes)} ok={ok} fail={fail}", flush=True)
-    return ok, fail
+
+    if skipped:
+        print(f"  kline 断点续跑：跳过已完成 {skipped}，待处理 {len(todo)}", flush=True)
+
+    if workers <= 1:
+        for i, code in enumerate(todo, 1):
+            record(code, pull(code))
+            if resume and i % 50 == 0:
+                _save_progress(today, done)
+            if i % 20 == 0:
+                print(f"  kline {i}/{len(todo)} ok={ok} fail={fail}", flush=True)
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futs = {ex.submit(pull, c): c for c in todo}
+            for i, fut in enumerate(as_completed(futs), 1):
+                record(futs[fut], fut.result())
+                if resume and i % 50 == 0:
+                    _save_progress(today, done)
+                if i % 20 == 0:
+                    print(f"  kline {i}/{len(todo)} ok={ok} fail={fail}", flush=True)
+    if resume:
+        _save_progress(today, done)
+    return ok, fail, skipped
 
 
 def sync_index(codes, days, sleep):
@@ -82,31 +165,48 @@ def sync_events(sleep):
     return ok, fail
 
 
-def sync_financial(codes, sleep):
-    from lib.scoring.data_tdx_fin_adapter import get_stock_fundamentals
+def _sync_json_dataset(dataset, codes, sleep, resume, fetch, success):
+    """financial/fundflow 共用的断点同步骨架：取数层内部已写仓，这里只判成功+记进度。"""
+    from datetime import date
+    today = date.today().isoformat()
+    done = _load_progress(today, dataset) if resume else set()
+    todo = [c for c in codes if c not in done]
+    skipped = len(codes) - len(todo)
     ok = fail = 0
-    for i, code in enumerate(codes, 1):
-        if get_stock_fundamentals(code) is None:
-            fail += 1
-        else:
+    if skipped:
+        print(f"  {dataset} 断点续跑：跳过已完成 {skipped}，待处理 {len(todo)}", flush=True)
+    for i, code in enumerate(todo, 1):
+        try:
+            good = success(fetch(code))
+        except Exception:
+            good = False  # 单只失败不影响其它标的（fundflow 会抛 FundFlowUnavailableError）
+        if good:
             ok += 1
+            if resume:
+                done.add(code)
+        else:
+            fail += 1
         time.sleep(sleep)
+        if resume and i % 50 == 0:
+            _save_progress(today, done, dataset)
         if i % 20 == 0:
-            print(f"  financial {i}/{len(codes)} ok={ok} fail={fail}", flush=True)
-    return ok, fail
+            print(f"  {dataset} {i}/{len(todo)} ok={ok} fail={fail}", flush=True)
+    if resume:
+        _save_progress(today, done, dataset)
+    return ok, fail, skipped
 
 
-def sync_fundflow(codes, sleep):
+def sync_financial(codes, sleep, resume=False):
+    from lib.scoring.data_tdx_fin_adapter import get_stock_fundamentals
+    return _sync_json_dataset("financial", codes, sleep, resume,
+                              get_stock_fundamentals, lambda r: r is not None)
+
+
+def sync_fundflow(codes, sleep, resume=False):
     from lib.data.data_layer import get_stock_fund_flow
-    ok = fail = 0
-    for code in codes:
-        r = get_stock_fund_flow(code)
-        if r and (r.get("main_net_ratio") or r.get("net_inflow_5d")):
-            ok += 1
-        else:
-            fail += 1
-        time.sleep(sleep)
-    return ok, fail
+    return _sync_json_dataset(
+        "fundflow", codes, sleep, resume, get_stock_fund_flow,
+        lambda r: bool(r and (r.get("main_net_ratio") or r.get("net_inflow_5d"))))
 
 
 def main() -> int:
@@ -117,6 +217,9 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0, help="all 模式下的上限")
     ap.add_argument("--days", type=int, default=250)
     ap.add_argument("--sleep", type=float, default=0.05)
+    ap.add_argument("--workers", type=int, default=1, help="kline 并发数（>1 走线程池）")
+    ap.add_argument("--source", default="auto", help="kline 取数源：auto(默认多源栈) 或单源如 westock")
+    ap.add_argument("--resume", action="store_true", help="断点续跑（进度落 cache/，按当天隔离）")
     ap.add_argument("--report", action="store_true", help="只打印本地仓覆盖，不取数")
     args = ap.parse_args()
 
@@ -133,13 +236,17 @@ def main() -> int:
 
     sets = [s.strip() for s in args.datasets.split(",") if s.strip()]
     codes = _universe(args.universe, args.limit)
-    print(f"目标数据集: {sets} | universe={args.universe} ({len(codes)} 只) | days={args.days}")
+    print(f"目标数据集: {sets} | universe={args.universe} ({len(codes)} 只) | days={args.days} "
+          f"| workers={args.workers} | source={args.source} | resume={args.resume}", flush=True)
 
-    total_ok = total_fail = 0
+    total_ok = total_fail = total_skip = 0
     for ds in sets:
         t = time.time()
+        skip = 0
         if ds == "kline":
-            ok, fail = sync_kline(codes, args.days, args.sleep)
+            ok, fail, skip = sync_kline(codes, args.days, args.sleep, args.workers,
+                                        args.resume, args.source)
+            total_skip += skip
         elif ds == "index":
             ok, fail = sync_index(["000300", "000001", "399001"], args.days, args.sleep)
         elif ds == "snapshot":
@@ -147,16 +254,19 @@ def main() -> int:
         elif ds == "events":
             ok, fail = sync_events(args.sleep)
         elif ds == "financial":
-            ok, fail = sync_financial(codes, args.sleep)
+            ok, fail, skip = sync_financial(codes, args.sleep, args.resume)
+            total_skip += skip
         elif ds == "fundflow":
-            ok, fail = sync_fundflow(codes, args.sleep)
+            ok, fail, skip = sync_fundflow(codes, args.sleep, args.resume)
+            total_skip += skip
         else:
             print(f"未知数据集: {ds}")
             continue
         total_ok += ok; total_fail += fail
-        print(f"[{ds}] ok={ok} fail={fail} {time.time()-t:.1f}s")
+        print(f"[{ds}] ok={ok} fail={fail} skip={skip} {time.time()-t:.1f}s", flush=True)
 
-    print("\n本地仓覆盖：")
+    print(f"\n合计 ok={total_ok} fail={total_fail} skip={total_skip}")
+    print("本地仓覆盖：")
     for ds, info in local_store.coverage().items():
         print(f"  {ds:12s} files={info['files']:5d} rows={info['rows']:8d}")
     return 0 if total_fail == 0 else 1
