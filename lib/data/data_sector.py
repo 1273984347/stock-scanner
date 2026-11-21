@@ -151,6 +151,48 @@ def enrich_sector_data(board_stats: pd.DataFrame) -> pd.DataFrame:
     return board_stats
 
 
+def fetch_industry_mapping(sleep: float = 0.05) -> Dict[str, List[str]]:
+    """全市场「个股 → 行业板块名」映射（新浪行业分类，走新浪 host 非 push2）。
+
+    用于 blocks 本地仓落地（ADR-0033）：TDX 目录删除后 infoharbor_block.dat 不再存在，
+    新浪行业分类成为个股板块归属的在线来源。单板块失败不影响其它板块。
+
+    Returns:
+        {6 位代码: [行业名, ...]}；每只票通常属 1 个行业。
+    """
+    import time
+    try:
+        import akshare as ak
+        boards = ak.stock_sector_spot(indicator="行业")
+    except Exception as e:
+        logger.warning(f"[sector] 行业板块列表获取失败: {e}")
+        return {}
+    if boards is None or boards.empty or "label" not in boards.columns:
+        return {}
+
+    mapping: Dict[str, List[str]] = {}
+    for _, row in boards.iterrows():
+        label, name = row.get("label"), row.get("板块")
+        if not label or not name:
+            continue
+        try:
+            detail = ak.stock_sector_detail(sector=str(label))
+            if detail is None or detail.empty or "code" not in detail.columns:
+                continue
+            for raw in detail["code"].astype(str):
+                code = raw.strip().zfill(6)
+                if not code.isdigit() or len(code) != 6:
+                    continue
+                mapping.setdefault(code, [])
+                if name not in mapping[code]:
+                    mapping[code].append(str(name))
+        except Exception as e:
+            logger.debug(f"[sector] 板块 {name}({label}) 成分股获取失败: {e}")
+        if sleep:
+            time.sleep(sleep)
+    return mapping
+
+
 if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")

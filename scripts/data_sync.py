@@ -165,6 +165,28 @@ def sync_events(sleep):
     return ok, fail
 
 
+def sync_blocks(sleep):
+    """新浪行业分类 → 全市场「个股→行业」映射落 blocks 仓（ADR-0033）。
+
+    与其它数据集不同：板块映射只能整批拉取（84 个板块 → 成分股反建），无法逐只取，
+    因此不走断点骨架——一次成功即整批写仓，失败则不写（保持上次完整快照）。
+    """
+    from lib.data import local_store
+    from lib.data.data_sector import fetch_industry_mapping
+
+    t = time.time()
+    mapping = fetch_industry_mapping(sleep=sleep)
+    if not mapping:
+        print("  blocks 拉取失败/为空，未写仓", flush=True)
+        return 0, 1, 0
+    ok = 0
+    for code, names in mapping.items():
+        if local_store.write_json("blocks", code, names):
+            ok += 1  # write_json 内部逐只 touch manifest
+    print(f"  blocks 落盘 {ok} 只 / {len(mapping)} 映射 {time.time()-t:.1f}s", flush=True)
+    return ok, 0, 0
+
+
 def _sync_json_dataset(dataset, codes, sleep, resume, fetch, success):
     """financial/fundflow 共用的断点同步骨架：取数层内部已写仓，这里只判成功+记进度。"""
     from datetime import date
@@ -212,7 +234,7 @@ def sync_fundflow(codes, sleep, resume=False):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--datasets", default="kline,index,snapshot,events",
-                    help="逗号分隔：kline,index,snapshot,events,financial,fundflow")
+                    help="逗号分隔：kline,index,snapshot,events,financial,fundflow,blocks")
     ap.add_argument("--universe", default="top50", help="top50/top300/all/codes=600519,000001")
     ap.add_argument("--limit", type=int, default=0, help="all 模式下的上限")
     ap.add_argument("--days", type=int, default=250)
@@ -259,6 +281,8 @@ def main() -> int:
         elif ds == "fundflow":
             ok, fail, skip = sync_fundflow(codes, args.sleep, args.resume)
             total_skip += skip
+        elif ds == "blocks":
+            ok, fail, skip = sync_blocks(args.sleep)
         else:
             print(f"未知数据集: {ds}")
             continue

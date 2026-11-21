@@ -147,6 +147,42 @@ def get_em_financial(code: str) -> Optional[Dict]:
     }
 
 
+def get_em_financial_full(code: str) -> Optional[Dict]:
+    """东财完整财务数据 → 标准形态（profitability/solvency/growth），ADR-0035。
+
+    与 get_em_financial（7 字段扁平 dict，L5 基线依赖）并存，不改其契约。
+    原始字段取自 emweb ZYZBAjaxNew 最新一期：ROEJQ/ZZCJLL/XSJLL/XSMLL 为百分数（/100）。
+
+    Returns:
+        {"profitability": {...}, "solvency": {...}, "growth": {...}, "_source": "eastmoney_full"}
+        全部关键字段为空时返回 None（不产出空壳 dict）。
+    """
+    r = _fetch_em_financial(code)
+    if r is None:
+        return None
+
+    def pct(key):
+        v = _to_float(r.get(key))
+        return v / 100.0 if v is not None else None
+
+    profitability = {
+        "ROE": pct("ROEJQ"), "ROA": pct("ZZCJLL"),
+        "net_margin": pct("XSJLL"), "gross_margin": pct("XSMLL"),
+        "operating_margin": pct("YSZKYYSR"), "ebitda_margin": None,
+    }
+    solvency = {"debt_to_asset": pct("ZCFZL"), "debt_to_equity": None,
+                "equity_multiplier": None, "interest_coverage": None}
+    growth = {"revenue_growth": pct("TOTALOPERATEREVETZ"),
+              "net_income_growth": pct("PARENTNETPROFITTZ")}
+    # 无有效指标 → 视为无数据，不产出空壳
+    if not any(v is not None for v in profitability.values()) and \
+            not any(v is not None for v in solvency.values()) and \
+            not any(v is not None for v in growth.values()):
+        return None
+    return {"profitability": profitability, "solvency": solvency,
+            "growth": growth, "_source": "eastmoney_full"}
+
+
 if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")

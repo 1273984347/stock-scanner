@@ -1333,7 +1333,16 @@ def _load_block_mapping():
 
 
 def get_stock_blocks(code: str) -> List[str]:
-    """获取股票所属板块列表"""
+    """获取股票所属板块列表（本地仓优先，ADR-0033；TDX 文件为兼容回退）。
+
+    blocks 仓在 data/store/blocks/{code}.json，由 scripts/data_sync.py --datasets blocks 落地。
+    TDX 目录删除后 infoharbor_block.dat 为空，本地仓成为板块归属主来源。
+    """
+    from lib.data import local_store
+    if local_store.enabled():
+        stored = local_store.read_json("blocks", code)
+        if stored is not None and (local_store.offline() or local_store.is_fresh("blocks", code)):
+            return stored if isinstance(stored, list) else []
     _load_block_mapping()
     return _stock_to_blocks_cache.get(code, [])
 

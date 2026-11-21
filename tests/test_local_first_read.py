@@ -21,7 +21,9 @@ def _enabled_store(tmp_path, monkeypatch):
     yield
 
 
-def _hist(last="2026-11-19", n=80):
+def _hist(last=None, n=80):
+    # 动态取最近交易日：写死日期会随真实时间推进被判「过期」，触发在线调用而假红。
+    last = last or ls.last_trading_day()
     dates = pd.bdate_range(end=last, periods=n)
     return pd.DataFrame({
         "date": dates, "open": 10.0, "high": 11.0, "low": 9.0,
@@ -42,8 +44,10 @@ def test_fresh_local_hit_skips_network(monkeypatch):
 
 
 def test_stale_local_falls_back_and_writes_back(monkeypatch):
-    ls.write_frame("kline_raw", "600519", _hist(last="2026-11-14"))
-    fresh = _hist(last="2026-11-19", n=100)
+    fresh_day = ls.last_trading_day()
+    stale_day = pd.bdate_range(end=fresh_day, periods=6)[0].date()  # 早 5 个工作日 ⇒ 过期
+    ls.write_frame("kline_raw", "600519", _hist(last=stale_day))
+    fresh = _hist(last=fresh_day, n=100)
     calls = []
 
     def online(*a, **k):
@@ -56,7 +60,7 @@ def test_stale_local_falls_back_and_writes_back(monkeypatch):
     # 在线实现返回多少就返回多少（不改既有语义），但必须已回填
     assert len(out) == 100 and calls == [1]
     stored = ls.read_frame("kline_raw", "600519")
-    assert pd.to_datetime(stored["date"]).max().date().isoformat() == "2026-11-19"
+    assert pd.to_datetime(stored["date"]).max().date() == fresh_day
 
 
 def test_adjusted_and_raw_are_separate_datasets(monkeypatch):

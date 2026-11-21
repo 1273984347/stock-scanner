@@ -486,7 +486,20 @@ def get_stock_fundamentals(code: str, period: Optional[str] = None) -> Optional[
         bs_result["_source"] = "baostock"
         cache.set(code, bs_result)
         local_store.write_json("financial", code, bs_result)
-    return bs_result
+        return bs_result
+
+    # 4. 东财一等兜底源（ADR-0035）：TDX(删) + baostock(可能拉黑) 都失败时接管。
+    #    用新增的 get_em_financial_full（完整标准形态），不改 get_em_financial 的 7 字段契约。
+    try:
+        from lib.data.data_eastmoney_fin import get_em_financial_full as _em_full
+        em_result = _em_full(code)
+        if em_result is not None:
+            cache.set(code, em_result)
+            local_store.write_json("financial", code, em_result)
+            return em_result
+    except Exception as e:
+        logger.debug(f"[tdx_fin_adapter] 东财完整财务兜底失败 [{code}]: {e}")
+    return None
 
 
 if __name__ == "__main__":
