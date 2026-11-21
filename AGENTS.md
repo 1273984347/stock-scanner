@@ -232,7 +232,7 @@ python scripts/blocking_io_check.py --selftest
 # L9 offload 开关对拍（Phase 6 第 2 批起；迁移 AST 等价 + off/on 响应 + 线程池自证）
 # 覆盖 37 个迁移：3 回测（523b353）+ 第 4 批 5（77bc366）+ 第 5 批 5（6d0e434）
 #   + 第 6 批 6（497550f）+ 第 7 批 18（c9b4d6f）
-# RF-02/ADR-0015 + 批次 A/ADR-0020 演化：37 中 34 严格冻结逐字等价 + 3 有意分歧
+# RF-02/ADR-0015 + 批次 A/ADR-0020 演化：37 中 32 严格冻结逐字等价 + 5 有意分歧
 #   （notifications / strategy_recommend / export_config），均因迁移完成后的有意行为修复
 #   豁免逐字等价，仅校验接线完整性；行为正确性分别由
 #   tests/features/test_rf02_bad_endpoints.py 与 tests/features/test_batch_a_security.py 覆盖。
@@ -273,7 +273,7 @@ python scripts/kline_coverage_probe.py --strict
 | L6 | 已退役（P7-3 收口后 flag 删除，off/on 恒等 = 空判据）；数值口径由 L5 锁定 |
 | L7 | `[PASS] route ownership: 69 endpoints / 17 routers / N frontend paths`；路径数由 `capture_frontend_paths()` 从 `static/` 源码重算，不在文档硬编码；鉴权依赖数不得减少、契约 diff = 0 |
 | L8 | `[PASS] blocking-io: 69 endpoints / N blocking calls / 44 offloaded; extended 6 paths / 11 blocking frozen`。端点发现分两个互不干扰的集合：`endpoints`（HTTP `/api/`，成员+数量与 L7 对齐）与 `extended_endpoints`（`/ws`、非 `/api/` 路由、`@app.middleware` 中间件，独立冻结）。两者各自 blocking 只准降 / offloaded 只准升 / `other` 逐字段冻结 / 成员+数量双校验；`--selftest` 6 类注入回归 + 3 条 Tier B 语义断言全绿；Tier B 按**符号组合语义**分类 |
-| L9 | `[PASS] offload switch: 34 endpoints migration-AST-equivalent + 3 intentionally diverged`；37 个迁移固定 commit 源码 AST 逐语句等价；off/on 整份响应字段顺序一致；线程池 off=0 / on=1 且工作线程与主线程不同；消费者登记与实际调用点双向对齐 |
+| L9 | `[PASS] offload switch: 32 endpoints migration-AST-equivalent + 5 intentionally diverged`；37 个迁移固定 commit 源码 AST 逐语句等价；off/on 整份响应字段顺序一致；线程池 off=0 / on=1 且工作线程与主线程不同；消费者登记与实际调用点双向对齐 |
 | L10 | `[PASS] concurrency: 37 endpoints x 20 concurrent x 3 rounds`；P95 按**批次发起**计时、`on <= off × 1.10`（不得放宽阈值）、37/37 改善；前端路径「L7 扫描器重算 vs 登记清单」成员+数量双校验；Tier B 登记 0 未分类、新增阻塞符号未登记即判红 |
 | 文档结构 | `[PASS] doc structure: 5 files / 0 dangling ref / 0 duplicated block`（见 §7 D7） |
 
@@ -394,6 +394,9 @@ python scripts/kline_coverage_probe.py --strict
 
 > 2026-11-20 实测同花顺即时资金流接口资金流列几乎全为 NaN，批量层实为失效，
 > 逐股源为主要路径 —— 属**源可用性问题**，与本条缺失语义修复是两件事。
+> 2026-11-21 复测**上游已恢复**（5216/5216 净额非空），批量层重新承重；缺失
+> 显式化语义保留作防线，盘中复核钩子见 TODO 复盘补记（P-99 家族：瞬时状态
+> 不写永久结论）。
 
 ### 6.3 环境变量禁区
 

@@ -115,6 +115,16 @@ class StrategyFailureTracker:
     def get_failure_count(self, strategy_name: str) -> int:
         return self._failures.get(strategy_name, 0)
 
+    def reset(self):
+        """清空全部失效计数。
+
+        测试隔离 / 取证 pin 用：单例的失效计数在同一 pytest 进程内跨用例
+        累积（persist=False 不读盘 ⇒ 重启才会清零），连续 3 次空结果后
+        run_all_strategies 会 should_skip 该策略，后续任何 scan 链都会
+        少掉被降频的策略（P-119）。调用方：tests/conftest.py autouse fixture。
+        """
+        self._failures = {}
+
     def save(self):
         # P0 修复（2026-06-05）：save 此前被 _persist 闸住，默认不写盘，导致
         # test_persistence 失败。_persist 仅控制 init 时是否自动 _load 即可。

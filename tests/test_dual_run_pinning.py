@@ -33,10 +33,37 @@ def test_index_hist_pinned_at_both_definition_and_usage():
         "必须用固定种子合成序列；常数序列会让回测基准收益恒为 0"
 
 
-def test_pinned_index_differs_from_live_and_restores():
-    """行为判据：pin 期间指数值与生产缓存不同，退出后原函数恢复。"""
+def test_pinned_index_differs_from_live_and_restores(monkeypatch):
+    """行为判据：pin 期间指数值与 live 数据不同，退出后原函数恢复。
+
+    live 侧不读任何生产状态（P-89 纪律）：ADR-0033 本地仓收官把
+    get_index_hist 改为「本地仓 → 在线」，旧 cache/ 兜底已删除；
+    pytest 默认 QUANT_LOCAL_STORE=off + 禁网 ⇒ live 侧原本必然空帧
+    （KeyError: 'close'，2026-11-21 定因）。改为在**在线边界**
+    data_layer._get_index_hist_online 注入固定 ~3600 帧——只换数据
+    来源，断言不变。
+    """
     gate = _load_gate()
+    import numpy as np
+    import pandas as pd
+
+    import lib.data.data_layer as data_layer
     import lib.strategy.pipeline as pipeline
+
+    rng = np.random.RandomState(4242)
+    close = 3600.0 + np.cumsum(rng.randn(30) * 5.0)
+    live_frame = pd.DataFrame({
+        "date": pd.bdate_range("2025-05-01", periods=30),
+        "open": close - rng.rand(30) * 3.0,
+        "high": close + rng.rand(30) * 5.0,
+        "low": close - rng.rand(30) * 5.0,
+        "close": close,
+        "volume": rng.randint(1_000_000, 9_000_000, 30).astype("int64"),
+    })
+    monkeypatch.setattr(
+        data_layer, "_get_index_hist_online",
+        lambda code, days=180: live_frame.copy(),
+    )
 
     original = pipeline.get_index_hist
     # get_index_hist 的 pin 在 _inject_shared_data 里（不是 pinned_environment，

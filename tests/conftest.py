@@ -275,6 +275,30 @@ def _reset_host_health_between_tests():
 
 
 @pytest.fixture(autouse=True)
+def _reset_strategy_failure_tracker_between_tests(tmp_path, monkeypatch):
+    """策略降频跟踪器按用例清零 + 落盘路径重定向到 tmp（P-119，2026-11-21）。
+
+    `_failure_tracker` 是 pipeline 模块级单例（persist=False，不读盘 ⇒ 重启
+    才清零），失效计数在同一 pytest 进程内**跨用例累积**；连续 3 次空结果后
+    run_all_strategies 会 should_skip 该策略 ⇒ 之后任何 scan 链都会少掉被
+    降频的策略。2026-11-21 实测：test_gate_reports_no_drift_twice 全量红、
+    单跑绿，污染需三组文件凑满阈值 3 —— 与 `_reset_host_health_between_tests`
+    同源纪律（P-100）：进程级单例不得把状态泄漏给下一个用例。
+
+    save() 无条件写 cache/strategy_failures.json（P2-5 残留：路径按
+    `__file__` 拼接、不经过 data_layer.CACHE_DIR，缓存目录重定向罩不到它）
+    ⇒ 一并重定向到 tmp，测试永不写生产缓存（P-80 纪律补全）。
+    """
+    import lib.strategy.pipeline as _pipeline_mod
+    tracker = _pipeline_mod._failure_tracker
+    monkeypatch.setattr(
+        tracker, "_path", tmp_path / "cache" / "strategy_failures.json")
+    tracker.reset()
+    yield
+    tracker.reset()
+
+
+@pytest.fixture(autouse=True)
 def _block_westock_subprocess(monkeypatch):
     """P-113（2026-11-20）：westock 复活后，multi-source 链每次取数起真 ``npx``
     子进程——下面的进程内禁网**挡不住子进程**（包缓存命中后仍 ~1-2s/次 × 80 次
@@ -284,6 +308,30 @@ def _block_westock_subprocess(monkeypatch):
     try:
         import lib.data.data_westock as _westock
         monkeypatch.setattr(_westock, "_run_westock", lambda args, timeout=30: "")
+    except ImportError:
+        pass
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _stub_background_scan_thread(monkeypatch):
+    """P-119 后半（2026-11-21）：GET /api/scan 无缓存时 spawn 的后台扫描线程
+    不得在测试进程里真跑。
+
+    线程体 ``routers.common._run_scan_background`` 调真实 ``run_all_strategies``
+    （禁网 → 全部策略「无候选股」→ ``record_failure``），而 ``_failure_tracker``
+    是**跨线程共享**的模块级单例：后台线程常与后续用例并发落地失效计数
+    （实测 test_api 触发 3 个 preset 各 +1 → 连续失效 3 次），把在其后运行的
+    任何 scan 链（含 L3 双跑对拍的 scan 链）的策略静默降频 —— 时序竞态，
+    表现为「全量红、单跑绿、组合靠运气」。与 ``_block_westock_subprocess``
+    同模式：patch **使用方** ``routers.scan`` 的线程体绑定（scan.py:26，
+    from .common import * 的星号导入）；端点契约不变——仍 spawn 线程并
+    立即返回 ``scanning: True``（test_api 仅断言 status != 400）。
+    """
+    try:
+        import routers.scan as _scan_router
+        monkeypatch.setattr(
+            _scan_router, "_run_scan_background", lambda preset: None)
     except ImportError:
         pass
     yield

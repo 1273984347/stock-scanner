@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**118 个编号（P-01～P-118）**，分九类；其中 114 条有独立正文条目，
+> **规模**：**120 个编号（P-01～P-120）**，分九类；其中 116 条有独立正文条目，
 > P-62～P-65 仅见于下方「一句话索引」（既有状态，append-only 不补写）。
 > **本行是当前编号数的唯一真源**：其它文档一律引用本行，不硬编码数字；
 > 文末「文档状态」里的历史「共 N 条」是当时的取证记录，按 append-only 保留。
@@ -1914,6 +1914,8 @@ A/B 的 off / on 两次回测结果恒等。这是 P-56 / P-59 空判据的另�
 | `app.include_router` 后顶层是 `_IncludedRouter`（无 `.routes`），门禁遍历直接丢端点 | P-64 |
 | 顶层模块 `api.py` 用 `from .routers...` 相对 import 必崩 `no known parent package` | P-65 |
 | portalocker 的 acquire() 重试循环只覆盖「加锁 syscall」不覆盖「打开 .lock 文件」，Windows 多进程抢开同一 .lock 间歇 PermissionError 逃出重试 → 误判「拿不到锁」 | P-66 |
+| 测试全量红、单跑绿，红/绿还随文件组合与时序变化 | P-119 |
+| 判据测试「昨天绿今天红」，代码和上游都没改 | P-120 |
 
 ---
 
@@ -3051,3 +3053,69 @@ batch_b 门只 patch `run_full_backtest`，不依赖补丁。回归守卫：
 不可还原的猴补丁焊死在别的模块上——除非有显式还原机制，禁止在模块顶层写
 跨模块赋值；②排查此类问题用 `func.__globals__ is module.__dict__` **身份探针**，
 GC 数模块对象会把人误导向「双实例」假说（本坑实测走了弯路）。
+
+---
+
+## 十、复盘批次追加（2026-11-21）
+
+### P-119 · 后台扫描线程 × 进程级单例：失效计数跨用例/跨线程污染，scan 链策略被静默降频
+
+**现象**：`test_gate_reports_no_drift_twice`（L3 gate 行为判据）全量红、单跑绿，
+且红/绿随文件组合与时序变化——二分实测 `{a 段全 11 文件}+gate` 红，而
+`{a1..a9}+gate`、`{api}+gate`、`{api}+{attribution}+gate` 全绿。gate 漂移路径全部在
+scan 链：部分策略结果 DataFrame → `None`、`expected_vol` 漂移、策略暴露计数 10→6。
+
+**根因**（两层叠加）：
+① `pipeline._failure_tracker` 是模块级单例（`persist=False` 不读盘 ⇒ 重启才清零），
+失效计数在同一 pytest 进程内**跨用例累积**，`should_skip` 阈值 3 ⇒ 先跑的用例
+凑满 3 次「无候选股」，其后任何 scan 链（含 gate 的 capture_scan）都会静默少掉
+被降频的策略（P-100 同族复发）。
+② 污染的**源頭**是 `GET /api/scan` 无缓存时 spawn 的 daemon 线程
+（`routers/scan.py:26` → `routers.common._run_scan_background`）：test_api 对 3 个
+preset 各调一次，线程与后续用例**并发**跑真实 `run_all_strategies`（禁网 → 全空 →
+`record_failure`），跨线程写进共享单例——conftest 的用例间 reset 管不住
+「测试运行中途落地的跨线程写入」，时序竞态 ⇒ 组合红绿看运气。
+附带发现：`save()` 无条件写生产 `cache/strategy_failures.json`（路径按 `__file__`
+拼接，conftest 的 `CACHE_DIR` 重定向罩不到）——P2-5 曾在 test_scan_deadline
+局部换 fresh 实例规避，未收口默认机制（P-23 预言应验）。
+
+**修法**：conftest 两个 autouse fixture，按 westock/host_health 既有范式：
+① `_reset_strategy_failure_tracker_between_tests`——用例间 `tracker.reset()`
+（pipeline.StrategyFailureTracker 新增 reset()）+ 把单例 `_path` 重定向到 tmp
+（测试永不写生产缓存，P-80 纪律补全）；
+② `_stub_background_scan_thread`——patch **使用方** `routers.scan` 的
+`_run_scan_background` 绑定为 no-op（I4：星号导入绑定在使用方命名空间），
+端点契约不变（仍 spawn + 立即返回 `scanning: True`，test_api 只断言 != 400）。
+
+**推广**：①凡「线程体调用共享可变单例」的端点，测试里必须桩线程体而非放任真跑
+——单例的用例间 reset 管不住并发写入；②进程级单例的用例间清零要做成
+**conftest 默认机制**（P-23），逐测试局部换实例（test_scan_deadline 的做法）
+迟早漏掉下一个调用方；③单例的持久化路径若绕过 `CACHE_DIR`，缓存目录隔离
+fixture 就失效——新单例登记时必须同时进 conftest 重定向清单。
+**自动化路径**：① 机器判据 = conftest autouse fixture（本条即判据）+
+`test_gate_reports_no_drift_twice` 作金丝雀（复发即漂移判红）。
+
+### P-120 · 判据测试的 live 侧依赖生产兜底路径：重构删掉兜底 = 判据静默失效
+
+**现象**：`test_pinned_index_differs_from_live_and_restores`（P-89 的复发判据）
+2026-11-20 隔离复跑绿、2026-11-21 隔离也红——代码未动、上游未动。
+失败点 `live["close"]` KeyError，pandas 空帧上取列。
+
+**根因**：该判据的 live 侧直接调恢复后的 `pipeline.get_index_hist`，在测试环境
+（`QUANT_LOCAL_STORE=off` + 默认禁网）下**唯一数据来源是 `cache/index/` 兜底**。
+ADR-0033 本地仓收官重写 `get_index_hist` 为「本地仓 → 在线」、删除旧 cache 兜底
+后，测试环境 live 侧既无本地仓（off）也无网络（禁）⇒ 恒空帧。
+11-20 的「隔离绿」只是当时 cache 文件尚在——P-89 的判据测试自己踩了 P-89
+（取证链路依赖运行时状态）。台账 11-20 的两个归因（上游帧形状漂移 / 顺序污染）
+均不成立，真机制 = 兜底路径被重构移除。
+
+**修法**：live 侧在**在线边界** `data_layer._get_index_hist_online` 注入固定
+~3600 合成帧（monkeypatch 定义方模块属性；不碰 pipeline 使用方绑定，
+恢复断言 `is original` 保持有效）。断言一行未动（G3），只换数据来源。
+
+**推广**：①判据测试的每个取数点要回答「在测试环境下（禁网 + 本地仓 off）
+数据从哪来」——答不出来 = 迟早假红；②重构取数链时，grep 依赖方不能只看
+生产调用方，**测试里的判据也是调用方**（本坑 = ADR-0033 重构的直接回归）；
+③「昨天绿今天红且两边代码都没动」先查**环境状态**（缓存文件 TTL、本地仓、
+数据源健康），再查代码——与 P-89/P-92 同族。
+**自动化路径**：① 机器判据 = 本判据自身（在线边界注入后确定性，复发即红）。
