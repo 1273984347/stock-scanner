@@ -345,11 +345,11 @@ python scripts/kline_coverage_probe.py --strict
 
 | 条件 | 必须执行 |
 |:-----|:---------|
-| 工作开始前 | `/reflection-retriever` 查经验（代码/CPU 密集型项目） |
+| 工作开始前 | 查自动记忆索引 + `pitfalls.md` 一句话索引按症状查（代码/CPU 密集型项目） |
 | 数据源修改 | 测试多数据源降级 |
 | 策略逻辑修改 | 回测验证 + Walk-forward |
 | Bug 调试 >10min | `/experience-capture` |
-| P0/P1 Bug | `/fix-verify-loop` |
+| P0/P1 Bug | `/systematic-debugging`（诊断）+ `/verification-before-completion`（收口自证） |
 | 新增 API 端点 | 过 API 安全 Checklist（输入校验→认证→鉴权→错误消息→资源限制） |
 
 ### 5.3 常见错误
@@ -449,7 +449,12 @@ uvicorn api:app --host 127.0.0.1 --port 8000
    踩坑记录的价值在于保留了当时的错误判据
 4. 若该坑的「预防」应改变 AI 的下一次行为 ⇒ **同时上提到本文件**（禁区/约定），
    并在该坑的「推广」段标注「已上提至 AGENTS.md §X」
-5. 工具链类经验同时沉淀到 Agent 记忆
+5. **每个新坑必须在「推广」段标注自动化路径（三选一，缺一不收口）**：① 机器判据
+   （进 `tests/` 或某把尺子）② 上提本文件 ③ 显式写「无法自动化」+ 一句触发场景。
+   依据（2026-11-21 复盘）：复发坑全部发生在「判据未机器化 / 未覆盖新入口」的窗口
+   （P-56 族×4 / P-68 族×4 / P-53×3 / P-99×3）；某域一旦机器化并覆盖全入口即停止
+   复发（G1–G5 pin 漂移、P-66 文件锁）。流程入口：`/experience-capture` Skill
+6. 工具链类经验同时沉淀到 Agent 记忆
 
 ---
 
