@@ -488,6 +488,7 @@ uvicorn api:app --host 127.0.0.1 --port 8000
 | `reporter/heartbeat.py` | **推送心跳哨兵**：末条成功推送 + 交易日历判定失联 |
 | `scanner.py` | 选股策略入口 |
 | `scripts/data_sync.py` | **本地仓同步/对账命令**（ADR-0033/C15）：kline 与 kline_raw 分仓同步（T7-g）+ fundflow 批量优先 + `--verify [--fix-manifest]` manifest 账实对账 |
+| `scripts/offline_drill.py` | **断网演练判据**（C16）：QUANT_OFFLINE=1 + socket 全阻断下跑回测+扫描，验证本地仓端到端自给自足（与在线口径对照） |
 | `scripts/scoring_baseline.py` | 第 5 把尺子：评分对拍基线（9 入口 × 285 样本）。**`--check` 的 diff 只打印前 30 条**，排查须自行导出全量 |
 | `scripts/route_ownership_check.py` | 第 7 把尺子：17 域 / 69 端点归属 + 鉴权/async + 契约五重校验 |
 | `scripts/blocking_io_check.py` | 第 8 把尺子 / L8 门禁（`--check` / `--selftest` / `--recapture`） |
