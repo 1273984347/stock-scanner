@@ -12,7 +12,7 @@ from typing import Dict, Optional
 from datetime import datetime, timedelta
 
 from lib.data.cache import CircuitBreaker, CircuitOpenError
-from lib.data.market_utils import normalize_code
+from lib.data.market_utils import normalize_code, volume_unit_scale
 
 logger = logging.getLogger(__name__)
 
@@ -199,11 +199,14 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
             for c in ["open", "close", "high", "low", "volume"]:
                 if c in df.columns:
                     df[c] = pd.to_numeric(df[c], errors="coerce")
-            # 成交量单位 = 手（2026-11-20 实测 sh600519：westock 42692 vs 新浪
-            # 4269153 股，比值恰 100.0，收盘价逐日一致）——与腾讯同口径 ×100 归一到股。
+            # 成交量单位**按板块**（P-122，ADR-0036 D1）：westock 与腾讯同一规则——
+            # 沪主板/创业板报文=手（2026-11-20 实测 sh600519：westock 42692 vs 新浪
+            # 4269153 股，比值恰 100.0，收盘价逐日一致）；科创板 688/689 已是股
+            # （2026-11-21 实测 688001 原始=10276186 与 Wind 同值）。一刀切 ×100
+            # 曾让 610 只科创板 volume 虚增 100 倍且不报错，禁改回无条件分支。
             # 顺带发现：westock 默认 fq=qfq，修活后是第三条独立协议源（评审 P0-2 冗余目标）
             if "volume" in df.columns:
-                df["volume"] = df["volume"] * 100.0
+                df["volume"] = df["volume"] * volume_unit_scale(code)
             return df
         if source == "tushare":
             from lib.data.data_tushare import get_daily, _to_ts_code

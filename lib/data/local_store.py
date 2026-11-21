@@ -205,10 +205,48 @@ def rebuild_manifest(dry_run: bool = False) -> dict:
 
 # ---------------------------------------------------------------- 读写
 
+# parquet 数据集 schema 白名单（P-124，ADR-0036 D3）：登记数据集的列集必须 ∈ 白名单，
+# 白名单外拒写——多路写同一仓的横向契约（单位/排序/列集）收口在写入层，不靠调用方自觉。
+# 未登记的数据集（snapshot/events 等）暂不校验，新源接入（T7-e）登记一个收敛一个。
+PARQUET_SCHEMA_WHITELIST = {
+    "kline": (
+        ("date", "open", "high", "low", "close", "volume"),
+        ("date", "open", "close", "high", "low", "volume", "amount", "exchange"),
+        ("date", "open", "close", "high", "low", "volume", "amount", "pct_chg", "turnover"),
+    ),
+    "kline_raw": (
+        ("date", "open", "high", "low", "close", "volume"),
+        ("date", "open", "close", "high", "low", "volume", "amount", "exchange"),
+        ("date", "open", "close", "high", "low", "volume", "amount", "pct_chg", "turnover"),
+    ),
+    "index": (
+        ("date", "open", "high", "low", "close", "volume"),
+    ),
+}
+
+
 def write_frame(dataset: str, key: str, df: pd.DataFrame) -> bool:
-    """原子写入一个 DataFrame；空帧不落盘。"""
+    """原子写入一个 DataFrame；空帧不落盘。
+
+    写入收口（P-123/P-124，ADR-0036）：带 date 列的帧统一升序后落盘
+    （``read_frame``/``tail()`` 的「末行=最新」语义由此成立）；登记了 schema
+    白名单的数据集列集白名单外拒写（返回 False，不落盘）。
+    """
     if not enabled() or df is None or getattr(df, "empty", True):
         return False
+    allowed = PARQUET_SCHEMA_WHITELIST.get(dataset)
+    if allowed is not None:
+        cols = tuple(map(str, df.columns))
+        if cols not in allowed:
+            logger.warning(
+                f"[local_store] schema 白名单外拒写 {dataset}/{key}: "
+                f"{len(cols)} 列 {list(cols)[:6]}…")
+            return False
+    if "date" in df.columns:
+        try:
+            df = df.sort_values("date").reset_index(drop=True)
+        except (TypeError, ValueError) as e:
+            logger.warning(f"[local_store] date 列排序失败，按原序落盘 {dataset}/{key}: {e}")
     p = _path(dataset, key, ".parquet")
     with _LOCK:
         new_file = not p.exists()

@@ -41,6 +41,33 @@ def test_frame_roundtrip_and_manifest():
     assert json.loads(ls.MANIFEST_PATH.read_text(encoding="utf-8"))["schema_version"] == 1
 
 
+def test_write_frame_sorts_by_date():
+    """P-123 收口（ADR-0036 D2）：降序帧落仓即转升序，tail() 语义由此成立。"""
+    desc = _df().iloc[::-1].reset_index(drop=True)
+    assert ls.write_frame("kline", "600519", desc)
+    out = ls.read_frame("kline", "600519")
+    assert list(out["date"]) == list(pd.to_datetime(["2026-11-18", "2026-11-19"]))
+
+
+def test_write_frame_rejects_schema_outside_whitelist():
+    """P-124 收口（ADR-0036 D3）：白名单外列集拒写，厂商原始帧不得直落仓。"""
+    bad = pd.DataFrame({
+        "stock_code": ["600519"], "trade_time": pd.to_datetime(["2026-11-19"]),
+        "date": pd.to_datetime(["2026-11-19"]), "open": [10.0], "close": [10.5],
+        "high": [11.0], "low": [9.0], "volume": [1e6], "amount": [1.05e7],
+        "change_pct": [0.5], "change": [0.05], "turnover_ratio": [1.0],
+        "pre_close": [10.45],
+    })
+    assert ls.write_frame("kline", "600519", bad) is False
+    assert ls.read_frame("kline", "600519").empty
+
+
+def test_write_frame_unregistered_dataset_not_blocked():
+    """未登记数据集（snapshot）不校验白名单——登记一个收敛一个（ADR-0036 D3）。"""
+    snap = pd.DataFrame({"code": ["600519"], "price": [10.5]})
+    assert ls.write_frame("snapshot", "2026-11-21", snap)
+
+
 def test_empty_frame_never_written():
     assert ls.write_frame("kline", "000001", pd.DataFrame()) is False
     assert ls.read_frame("kline", "000001").empty

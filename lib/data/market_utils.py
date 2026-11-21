@@ -101,6 +101,27 @@ def detect_market(code: str) -> str:
     return "unknown"
 
 
+def volume_unit_scale(code_or_sym: str) -> float:
+    """腾讯系 / westock 报文 volume 单位的板块规则（P-122，ADR-0036 D1）。
+
+    沪主板/创业板报文 volume=手（×100 归一到股）；**科创板（688/689 开头）
+    报文已是股**。2026-11-21 Wind 对照 + 原始报文实测：腾讯 sh688001 与
+    westock 688001 原始值均为 10276186（=股，与 Wind 同值），而
+    sh600519/sh600519(westock)=67229/42692（=手）——两家同一板块规则，
+    一刀切 ×100 曾让 610 只科创板 volume 虚增 100 倍且不报错。
+
+    Args:
+        code_or_sym: 6 位代码或带前缀代码（如 ``688001`` / ``sh688001``）
+
+    Returns:
+        乘数：科创板 1.0，其余 100.0
+    """
+    c = str(code_or_sym).strip().lower()
+    if c[:2] in ("sh", "sz", "bj"):
+        c = c[2:]
+    return 1.0 if c.startswith(("688", "689")) else 100.0
+
+
 def get_tdx_path(code: str, prefer_qfq: bool = True) -> Optional[Path]:
     """返回 TDX .day 文件路径。
 

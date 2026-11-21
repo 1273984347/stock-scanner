@@ -52,6 +52,28 @@ def test_tencent_parse_converts_lot_to_shares():
     assert df.iloc[-1]["low"] == pytest.approx(1431.70)
 
 
+TENCENT_PAYLOAD_688 = ('{"code":0,"msg":"","data":{"sh688001":{"qfqday":['
+                       '["2026-11-17","33.370","33.770","34.500","32.580","8722449.000"],'
+                       '["2026-11-18","33.600","33.300","34.190","32.900","6493272.000"]'
+                       ']}}}')
+
+
+def test_tencent_star_market_volume_already_in_shares():
+    """P-122（ADR-0036 D1）：科创板（688/689）腾讯报文 volume 已是股，×100 是单位错。
+
+    2026-11-21 Wind 对照实锤：sh688001 报文 10276186 与 Wind 股数同值，
+    sh600519=67229=Wind 股数÷100——同一接口单位按板块不同，一刀切 ×100
+    曾让 610 只科创板 kline volume 虚增 100 倍且不报错。
+    """
+    df = kw.parse_tencent_kline(TENCENT_PAYLOAD_688, "sh688001", "qfq")
+    assert df.iloc[-1]["volume"] == pytest.approx(6493272), "科创板报文已是股，不得 ×100"
+    assert kw._tencent_volume_scale("sh688001") == 1.0
+    assert kw._tencent_volume_scale("sh689009") == 1.0
+    assert kw._tencent_volume_scale("sh600519") == 100.0
+    assert kw._tencent_volume_scale("sz300750") == 100.0
+    assert kw._tencent_volume_scale("bj830799") == 100.0
+
+
 def test_parse_garbage_returns_empty():
     assert kw.parse_sina_kline("not json").empty
     assert kw.parse_tencent_kline("{}", "sh600519").empty

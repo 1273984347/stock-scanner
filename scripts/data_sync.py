@@ -4,6 +4,7 @@
     python scripts/data_sync.py --report
     python scripts/data_sync.py --verify                # manifest 账实对账（不取数）
     python scripts/data_sync.py --verify --fix-manifest # 对账并按盘上真值重建 manifest
+    python scripts/data_sync.py --content               # 内容判据（P-122/123/124，不取数）
     python scripts/data_sync.py --datasets kline,index,snapshot,events --universe top50 --days 250
     python scripts/data_sync.py --datasets financial,fundflow --universe top20
     python scripts/data_sync.py --datasets kline --universe all --workers 4 --resume
@@ -199,6 +200,107 @@ def sync_blocks(sleep):
     return ok, 0, 0
 
 
+# ---------------------------------------------------------------- 内容判据（P-122/123/124）
+
+# schema 白名单单一真源 = lib.data.local_store.PARQUET_SCHEMA_WHITELIST
+# （ADR-0036：判据与写仓契约共用一份，禁止两处漂移）。
+# 升序判据覆盖的数据集（P-123）：date 必须单调不减
+CONTENT_SORTED_DATASETS = ("kline", "kline_raw", "index")
+# volume 交叉校验（P-122）：前复权不改成交量 ⇒ 同日 kline/kline_raw 比值应 ≈1，
+# 超出带宽即单位错（×100 实测命中 610 只科创板）
+VOLUME_RATIO_BAND = (0.2, 5.0)
+
+
+def check_content(root=None, max_examples: int = 20) -> int:
+    """--content：本地仓三项内容判据（只读盘，不取数）。
+
+    1) 升序判据（P-123）：kline/kline_raw/index 每个文件 date 单调不减；
+    2) schema 白名单（P-124）：parquet 列集必须 ∈ PARQUET_SCHEMA_WHITELIST；
+    3) volume 交叉校验（P-122）：kline/kline_raw 同日 volume 比值 ∈ VOLUME_RATIO_BAND
+       （前复权不改成交量，×100 单位错在此判红）。
+
+    返回 0 = 全绿；1 = 任一判据有违例。2026-11-21 首跑预期判红（存量
+    610 只 ×100 / 2825 只降序 / 17 只厂商帧，待 ADR-0036 修复后转绿）。
+    """
+    import pandas as pd
+    from lib.data import local_store
+
+    root = pathlib.Path(root) if root is not None else local_store.STORE_ROOT
+    sort_viol = []    # (dataset, code, 顺序形态)
+    schema_viol = []  # (dataset, code, 列集描述)
+    frames = {}       # dataset -> {code: DataFrame(date 已 normalize, 升序)}
+
+    for ds in CONTENT_SORTED_DATASETS:
+        d = root / ds
+        if not d.is_dir():
+            print(f"  [warn] {ds}: 目录不存在，跳过")
+            continue
+        for fn in sorted(os.listdir(d)):
+            if not fn.endswith(".parquet"):
+                continue
+            code = fn[:-len(".parquet")]
+            try:
+                df = pd.read_parquet(d / fn)
+            except Exception as e:
+                schema_viol.append((ds, code, f"不可读: {type(e).__name__}"))
+                continue
+            cols = tuple(map(str, df.columns))
+            if cols not in local_store.PARQUET_SCHEMA_WHITELIST.get(ds, ()):
+                schema_viol.append((ds, code, f"{len(cols)}列 {list(cols)[:6]}…"))
+                continue
+            if "date" not in df.columns:
+                continue
+            dates = pd.to_datetime(df["date"], errors="coerce").dt.normalize()
+            diffs = dates.diff().dropna()
+            if len(diffs) and (diffs < pd.Timedelta(0)).any():
+                order = "desc" if (diffs <= pd.Timedelta(0)).all() else "mixed"
+                sort_viol.append((ds, code, order))
+            keep = [c for c in ("date", "volume") if c in df.columns]
+            frames.setdefault(ds, {})[code] = (
+                df[keep].assign(date=dates)
+                .dropna(subset=["date"]).sort_values("date"))
+
+    ratio_viol = []  # (code, date, kline_volume, raw_volume, ratio)
+    n_pairs = 0
+    kl = frames.get("kline") or {}
+    kr = frames.get("kline_raw") or {}
+    lo, hi = VOLUME_RATIO_BAND
+    for code in sorted(set(kl) & set(kr)):
+        a, b = kl[code], kr[code]
+        if a.empty or b.empty:
+            continue
+        common = set(a["date"]) & set(b["date"])
+        if not common:
+            continue
+        d = max(common)
+        va_s = a.loc[a["date"] == d, "volume"]
+        vb_s = b.loc[b["date"] == d, "volume"]
+        if va_s.empty or vb_s.empty:
+            continue
+        va, vb = float(va_s.iloc[-1]), float(vb_s.iloc[-1])
+        if vb <= 0:
+            continue
+        n_pairs += 1
+        r = va / vb
+        if not (lo <= r <= hi):
+            ratio_viol.append((code, str(d)[:10], va, vb, round(r, 3)))
+
+    print("== 本地仓内容判据（--content）==")
+    print(f"[{'FAIL' if sort_viol else 'PASS'}] 升序判据（P-123）: 违例 {len(sort_viol)}"
+          + (f"  例: {sort_viol[:max_examples]}" if sort_viol else ""))
+    print(f"[{'FAIL' if schema_viol else 'PASS'}] schema 白名单（P-124）: 违例 {len(schema_viol)}"
+          + (f"  例: {schema_viol[:max_examples]}" if schema_viol else ""))
+    print(f"[{'FAIL' if ratio_viol else 'PASS'}] volume 交叉（P-122）: 比对 {n_pairs} 对, "
+          f"违例 {len(ratio_viol)}"
+          + (f"  例: {ratio_viol[:max_examples]}" if ratio_viol else ""))
+    total = len(sort_viol) + len(schema_viol) + len(ratio_viol)
+    if total == 0:
+        print("[PASS] content: 三项判据全绿")
+        return 0
+    print(f"[FAIL] content: 共 {total} 条违例（P-122/123/124 存量，修复路径见 ADR-0036）")
+    return 1
+
+
 def _sync_json_dataset(dataset, codes, sleep, resume, fetch, success):
     """financial/fundflow 共用的断点同步骨架：取数层内部已写仓，这里只判成功+记进度。"""
     from datetime import date
@@ -290,6 +392,9 @@ def main() -> int:
     ap.add_argument("--report", action="store_true", help="只打印本地仓覆盖，不取数")
     ap.add_argument("--verify", action="store_true",
                     help="manifest 账实对账（不取数）：manifest 记账 vs 盘上真值")
+    ap.add_argument("--content", action="store_true",
+                    help="内容判据（不取数）：date 升序 / schema 白名单 / volume 交叉校验"
+                         "（P-122/123/124，修复路径见 ADR-0036）")
     ap.add_argument("--fix-manifest", action="store_true",
                     help="配合 --verify：按盘上真值重建 manifest（保留 updated_at/last_key）")
     args = ap.parse_args()
@@ -331,6 +436,9 @@ def main() -> int:
             print("[OK] manifest 已按盘上真值重建")
             return 0
         return 1
+
+    if args.content:
+        return check_content(local_store.STORE_ROOT)
 
     sets = [s.strip() for s in args.datasets.split(",") if s.strip()]
     codes = _universe(args.universe, args.limit)

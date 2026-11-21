@@ -85,6 +85,25 @@ def test_baostock_volume_passthrough_not_scaled(monkeypatch):
     assert float(df["volume"].iloc[0]) == pytest.approx(4269153.0)
 
 
+def test_westock_volume_board_aware_scaling(monkeypatch):
+    """P-122（ADR-0036 D1）：westock 报文单位与腾讯同规则——主板=手 ×100，
+    科创板 688/689 已是股 ×1（2026-11-21 实测 688001 原始=10276186 与 Wind 同值，
+    一刀切 ×100 曾让 610 只科创板 volume 虚增 100 倍）。"""
+    import lib.data.data_westock as dw
+
+    reset_circuit_breakers()
+    monkeypatch.setattr(dw, "get_kline", lambda *a, **k: _ohlcv(42692.0))
+    df = _fetch_from_source("600519", 30, "westock")
+    assert not df.empty
+    assert float(df["volume"].iloc[0]) == pytest.approx(4269200.0)  # 手 → 股
+
+    reset_circuit_breakers()
+    monkeypatch.setattr(dw, "get_kline", lambda *a, **k: _ohlcv(10276186.0))
+    df = _fetch_from_source("688001", 30, "westock")
+    assert not df.empty
+    assert float(df["volume"].iloc[0]) == pytest.approx(10276186.0)  # 科创板已是股
+
+
 def test_normalize_columns_never_scales_volume():
     """设计守卫：共享归一层只改列名不改数值（双乘防线，见 westock/tushare 注释）。"""
     raw = pd.DataFrame([{

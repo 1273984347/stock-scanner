@@ -166,6 +166,16 @@ def get_sina_kline(code: str, days: int = 250,
 
 # ========== 腾讯（支持前复权，北交所覆盖差） ==========
 
+def _tencent_volume_scale(sym: str) -> float:
+    """腾讯 fqkline volume 单位按板块归一（P-122，ADR-0036 D1）。
+
+    单一真源 = ``market_utils.volume_unit_scale``（板块规则与 westock 共用）；
+    指数（000xxx/399xxx）实测为手，×100 不变。
+    """
+    from lib.data.market_utils import volume_unit_scale
+    return volume_unit_scale(sym)
+
+
 def parse_tencent_kline(payload: str, sym: str,
                         adjust: str = "qfq") -> pd.DataFrame:
     """解析腾讯 `fqkline/get`（rows 顺序：日期/开/收/高/低/量，量单位=手）。"""
@@ -184,7 +194,7 @@ def parse_tencent_kline(payload: str, sym: str,
         if len(vals) < 6:
             continue
         ordered.append([vals[0], vals[1], vals[3], vals[4], vals[2], vals[5]])
-    return _as_frame(ordered, volume_scale=100.0)
+    return _as_frame(ordered, volume_scale=_tencent_volume_scale(sym))
 
 
 def get_tencent_kline(code: str, days: int = 250, adjust: str = "qfq",
