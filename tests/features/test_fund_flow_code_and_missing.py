@@ -350,3 +350,34 @@ def test_get_market_fund_flow_refetches_when_cached_table_all_zero(monkeypatch):
 
     assert calls["n"] == 1, "脏缓存必须触发一次重新拉取"
     assert out.get("600519", {}).get("net_inflow_5d") == 1.2e8
+
+
+def test_parse_market_fund_flow_handles_cn_unit_strings():
+    """P-121（2026-11-21）：THS 净额/成交额是中文单位数字串（"1.11亿"/"-9225.10万"），
+    pd.to_numeric 会整体 coerce 成 NaN——11-20 的「净额几乎全 NaN」由此伪装成
+    上游失效。解析层必须先还原中文单位，再按 P-114 缺失语义处理（"--" 仍不进结果）。
+    """
+    df = pd.DataFrame({
+        "股票代码": ["600519", "000001", "300001"],
+        "净额": ["1.11亿", "-9225.10万", "--"],
+        "成交额": ["8.52亿", "5.03亿", ""],
+    })
+    m = data_layer._parse_market_fund_flow(df)
+    assert set(m) == {"600519", "000001"}, "'--'/空串 = 真实缺失，不产出假零值"
+    assert m["600519"]["net_inflow_5d"] == pytest.approx(1.11e8)
+    assert m["600519"]["main_net_ratio"] == pytest.approx(1.11e8 / 8.52e8)
+    assert m["000001"]["net_inflow_5d"] == pytest.approx(-9225.10 * 1e4)
+    assert m["000001"]["main_net_ratio"] == pytest.approx(
+        -9225.10e4 / 5.03e8)
+
+
+def test_cn_number_to_float_accepts_plain_numbers():
+    """纯数字/千分位输入兼容（上游格式切换不炸）。"""
+    f = data_layer._cn_number_to_float
+    assert f(123.0) == 123.0
+    assert f("1,234.5") == 1234.5
+    assert f("2.3亿") == pytest.approx(2.3e8)
+    assert f("-546.54万") == -546.54e4
+    import math
+    assert math.isnan(f("--"))
+    assert math.isnan(f(None))

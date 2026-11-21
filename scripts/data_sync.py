@@ -2,9 +2,12 @@
 
 用法：
     python scripts/data_sync.py --report
+    python scripts/data_sync.py --verify                # manifest 账实对账（不取数）
+    python scripts/data_sync.py --verify --fix-manifest # 对账并按盘上真值重建 manifest
     python scripts/data_sync.py --datasets kline,index,snapshot,events --universe top50 --days 250
     python scripts/data_sync.py --datasets financial,fundflow --universe top20
     python scripts/data_sync.py --datasets kline --universe all --workers 4 --resume
+    python scripts/data_sync.py --datasets kline_raw --universe all --workers 4 --resume
 
 设计：
 - 只做「取数 → 写本地仓」，不做分析与选股；
@@ -13,6 +16,8 @@
 - `--workers >1` 用线程池并发（2026-11-20 实测 4 并发/16 只零失败，全市场约 50min）；
 - `--resume` 断点续跑：进度落 cache/data_sync_progress.json（gitignored），
   按当天日期隔离，中断后重跑跳过已成功标的——这是全市场能跑完的关键。
+- kline（前复权，回测栈）与 kline_raw（不复权，默认栈/扫描）分仓同步（T7-g），
+  两者口径绝不混写。
 """
 import argparse
 import json
@@ -73,18 +78,22 @@ def _save_progress(today: str, done: set, dataset: str = "kline") -> None:
     os.replace(tmp, path)
 
 
-def sync_kline(codes, days, sleep, workers=1, resume=False, source="auto"):
+def sync_kline(codes, days, sleep, workers=1, resume=False, source="auto",
+               dataset="kline"):
     """返回 (ok, fail, skipped)；resume 时跳过当天进度文件中已完成的标的。
 
+    dataset="kline"（前复权，回测栈）或 "kline_raw"（不复权，默认栈/扫描）——
+    复权口径由 prefer_adjusted 传给取数层，registry 按口径自动写对应仓（C15）。
     source="auto" 走多源栈且自动写本地仓；指定单源（如腾讯被 WAF 拦时用 westock）
-    时取数层不写仓（use_local=False），这里显式补写回 kline（前复权口径）。
+    时取数层不写仓（use_local=False），这里显式补写回对应数据集。
     """
     from datetime import date
     from lib.data import local_store
     from lib.data.data_source_registry import get_stock_hist_multi_source, _store_key
 
+    prefer_adjusted = (dataset == "kline")
     today = date.today().isoformat()
-    done = _load_progress(today) if resume else set()
+    done = _load_progress(today, dataset) if resume else set()
     todo = [c for c in codes if c not in done]
     skipped = len(codes) - len(todo)
     ok = fail = 0
@@ -92,11 +101,12 @@ def sync_kline(codes, days, sleep, workers=1, resume=False, source="auto"):
     def pull(code):
         for _ in range(2):  # 单只最多重试 1 次
             try:
-                df = get_stock_hist_multi_source(code, days=days, prefer_adjusted=True,
+                df = get_stock_hist_multi_source(code, days=days,
+                                                 prefer_adjusted=prefer_adjusted,
                                                  source=source)
                 if not df.empty:
                     if source != "auto":
-                        local_store.write_frame("kline", _store_key(code), df)
+                        local_store.write_frame(dataset, _store_key(code), df)
                     return True
             except Exception:
                 pass
@@ -114,26 +124,28 @@ def sync_kline(codes, days, sleep, workers=1, resume=False, source="auto"):
             fail += 1
 
     if skipped:
-        print(f"  kline 断点续跑：跳过已完成 {skipped}，待处理 {len(todo)}", flush=True)
+        print(f"  {dataset} 断点续跑：跳过已完成 {skipped}，待处理 {len(todo)}",
+              flush=True)
 
     if workers <= 1:
         for i, code in enumerate(todo, 1):
             record(code, pull(code))
             if resume and i % 50 == 0:
-                _save_progress(today, done)
+                _save_progress(today, done, dataset)
             if i % 20 == 0:
-                print(f"  kline {i}/{len(todo)} ok={ok} fail={fail}", flush=True)
+                print(f"  {dataset} {i}/{len(todo)} ok={ok} fail={fail}", flush=True)
     else:
         with ThreadPoolExecutor(max_workers=workers) as ex:
             futs = {ex.submit(pull, c): c for c in todo}
             for i, fut in enumerate(as_completed(futs), 1):
                 record(futs[fut], fut.result())
                 if resume and i % 50 == 0:
-                    _save_progress(today, done)
+                    _save_progress(today, done, dataset)
                 if i % 20 == 0:
-                    print(f"  kline {i}/{len(todo)} ok={ok} fail={fail}", flush=True)
+                    print(f"  {dataset} {i}/{len(todo)} ok={ok} fail={fail}",
+                          flush=True)
     if resume:
-        _save_progress(today, done)
+        _save_progress(today, done, dataset)
     return ok, fail, skipped
 
 
@@ -224,25 +236,62 @@ def sync_financial(codes, sleep, resume=False):
                               get_stock_fundamentals, lambda r: r is not None)
 
 
-def sync_fundflow(codes, sleep, resume=False):
+def sync_fundflow(codes, sleep, resume=False, use_batch=True):
+    """全市场资金流：批量层优先（ADR-0018 1 call → 逐码落仓），缺口逐股兜底。
+
+    批量层命中的码直接写仓（与 seed 包同格式 {main_net_ratio, net_inflow_5d}），
+    未命中的码（停牌/新股/批量失败）走逐股断点骨架。成功判据放宽为
+    ``main_net_ratio is not None``——真实零值也算成功（原判据把合法零值
+    误计为 fail，P-114 缺失语义下 None 才是缺失）。
+    """
+    from lib.data import local_store
     from lib.data.data_layer import get_stock_fund_flow
-    return _sync_json_dataset(
-        "fundflow", codes, sleep, resume, get_stock_fund_flow,
-        lambda r: bool(r and (r.get("main_net_ratio") or r.get("net_inflow_5d"))))
+
+    batch_ok = 0
+    todo = list(codes)
+    if use_batch:
+        try:
+            from lib.data.data_layer import _get_market_fund_flow
+            market = _get_market_fund_flow()
+        except Exception as e:
+            print(f"  fundflow 批量层不可用，整场走逐股: {type(e).__name__}", flush=True)
+            market = {}
+        if market:
+            for code in codes:
+                row = market.get(code)
+                if row is None:
+                    continue
+                if local_store.write_json(
+                        "fundflow", code,
+                        {"main_net_ratio": row["main_net_ratio"],
+                         "net_inflow_5d": row["net_inflow_5d"]}):
+                    batch_ok += 1
+            todo = [c for c in codes if c not in market]
+            print(f"  fundflow 批量层落仓 {batch_ok}/{len(codes)}，"
+                  f"缺口 {len(todo)} 只走逐股", flush=True)
+
+    ok, fail, skipped = _sync_json_dataset(
+        "fundflow", todo, sleep, resume, get_stock_fund_flow,
+        lambda r: r is not None and r.get("main_net_ratio") is not None)
+    return batch_ok + ok, fail, skipped
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--datasets", default="kline,index,snapshot,events",
-                    help="逗号分隔：kline,index,snapshot,events,financial,fundflow,blocks")
+                    help="逗号分隔：kline,kline_raw,index,snapshot,events,financial,fundflow,blocks")
     ap.add_argument("--universe", default="top50", help="top50/top300/all/codes=600519,000001")
     ap.add_argument("--limit", type=int, default=0, help="all 模式下的上限")
     ap.add_argument("--days", type=int, default=250)
     ap.add_argument("--sleep", type=float, default=0.05)
-    ap.add_argument("--workers", type=int, default=1, help="kline 并发数（>1 走线程池）")
+    ap.add_argument("--workers", type=int, default=1, help="kline/kline_raw 并发数（>1 走线程池）")
     ap.add_argument("--source", default="auto", help="kline 取数源：auto(默认多源栈) 或单源如 westock")
     ap.add_argument("--resume", action="store_true", help="断点续跑（进度落 cache/，按当天隔离）")
     ap.add_argument("--report", action="store_true", help="只打印本地仓覆盖，不取数")
+    ap.add_argument("--verify", action="store_true",
+                    help="manifest 账实对账（不取数）：manifest 记账 vs 盘上真值")
+    ap.add_argument("--fix-manifest", action="store_true",
+                    help="配合 --verify：按盘上真值重建 manifest（保留 updated_at/last_key）")
     args = ap.parse_args()
 
     from lib.data import local_store
@@ -256,6 +305,33 @@ def main() -> int:
             print(f"{ds:12s} files={info['files']:5d} rows={info['rows']:8d} updated={info['updated_at']}")
         return 0
 
+    if args.verify:
+        truth = local_store.rebuild_manifest(dry_run=True)
+        # 账侧必须读 manifest 原始 json（coverage().files 从盘上现算，漂移不可见）
+        raw = json.loads(local_store.MANIFEST_PATH.read_text(encoding="utf-8"))
+        acc_all = raw.get("datasets", {})
+        drift = 0
+        print(f"{'dataset':12s} {'账(files/rows)':>18s} {'实(files/rows)':>18s} 结论")
+        for ds in sorted(set(acc_all) | set(truth)):
+            acc = acc_all.get(ds) or {}
+            real = truth.get(ds) or {}
+            a = (acc.get("files", 0), acc.get("rows", 0))
+            r = (real.get("files", 0), real.get("rows", 0))
+            same = a == r
+            drift += 0 if same else 1
+            print(f"{ds:12s} {f'{a[0]}/{a[1]}':>18s} {f'{r[0]}/{r[1]}':>18s} "
+                  f"{'OK' if same else 'DRIFT'}")
+        if drift == 0:
+            print("[PASS] manifest 账实一致")
+            return 0
+        print(f"[FAIL] {drift} 个数据集账实不符" +
+              ("（--fix-manifest 重建）" if not args.fix_manifest else ""))
+        if args.fix_manifest:
+            local_store.rebuild_manifest()
+            print("[OK] manifest 已按盘上真值重建")
+            return 0
+        return 1
+
     sets = [s.strip() for s in args.datasets.split(",") if s.strip()]
     codes = _universe(args.universe, args.limit)
     print(f"目标数据集: {sets} | universe={args.universe} ({len(codes)} 只) | days={args.days} "
@@ -268,6 +344,10 @@ def main() -> int:
         if ds == "kline":
             ok, fail, skip = sync_kline(codes, args.days, args.sleep, args.workers,
                                         args.resume, args.source)
+            total_skip += skip
+        elif ds == "kline_raw":
+            ok, fail, skip = sync_kline(codes, args.days, args.sleep, args.workers,
+                                        args.resume, args.source, dataset="kline_raw")
             total_skip += skip
         elif ds == "index":
             ok, fail = sync_index(["000300", "000001", "399001"], args.days, args.sleep)

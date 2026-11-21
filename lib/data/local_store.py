@@ -90,12 +90,32 @@ def _write_manifest(manifest: dict) -> None:
     os.replace(tmp, MANIFEST_PATH)
 
 
-def _touch(dataset: str, rows: int, key: str) -> None:
+def _parquet_rows(p: Path) -> int:
+    """读单个 parquet 的行数（元数据级，不加载列数据）。"""
+    try:
+        from pyarrow import parquet as _pq
+        return int(_pq.ParquetFile(str(p)).metadata.num_rows)
+    except Exception:
+        try:
+            return len(pd.read_parquet(p))
+        except Exception:
+            return 0
+
+
+def _touch(dataset: str, rows_delta: int, key: str, new_file: bool = True) -> None:
+    """记账（C15，2026-11-21）：
+    * files 语义 = 「现存文件数」——重写已有文件不再 +1（原实现无条件 +1，
+      files 变成累计写次数 ⇒ 与盘上真值漂移，C12 卫生项）；
+    * rows 记 **delta**——调用方传入「本次写引起的行数变化」（新增 = 全量，
+      重写 = 新行数 − 旧行数；json 文件恒为 1 行 ⇒ 重写 delta = 0）。
+      原实现的「重写也整段累加」让同日重写的数据集 rows 翻倍
+      （实测 snapshot 22316 vs 11158）。"""
     with _LOCK:
         m = _read_manifest()
         ds = m["datasets"].setdefault(dataset, {"files": 0, "rows": 0})
-        ds["files"] = ds.get("files", 0) + 1
-        ds["rows"] = ds.get("rows", 0) + int(rows)
+        if new_file:
+            ds["files"] = ds.get("files", 0) + 1
+        ds["rows"] = max(0, ds.get("rows", 0) + int(rows_delta))
         ds["updated_at"] = datetime.now().isoformat(timespec="seconds")
         ds["last_key"] = str(key)
         m["updated_at"] = ds["updated_at"]
@@ -119,6 +139,70 @@ def coverage() -> dict:
     return out
 
 
+def _disk_truth() -> dict:
+    """按盘上真值统计各数据集（files=现存文件数，rows=parquet 行数合计 / json 记 1）。
+
+    对账真源（C15，2026-11-21）：manifest 的 files/rows 是写路径的累计记账，
+    与盘上清单会漂移（seed unpack 直写不入账、重写双计）；本函数即对账基准。
+    """
+    truth: dict = {}
+    if not STORE_ROOT.exists():
+        return truth
+    for folder in sorted(STORE_ROOT.iterdir()):
+        if not folder.is_dir():
+            continue
+        files = [p for p in folder.rglob("*")
+                 if p.is_file() and not p.name.endswith(".tmp")]
+        if not files:
+            continue
+        rows = 0
+        for p in files:
+            if p.suffix == ".parquet":
+                try:
+                    from pyarrow import parquet as _pq
+                    rows += _pq.ParquetFile(str(p)).metadata.num_rows
+                except Exception:
+                    try:
+                        rows += len(pd.read_parquet(p))
+                    except Exception:
+                        logger.warning(f"[local_store] 对账读行数失败: {p}")
+            else:
+                rows += 1
+        truth[folder.name] = {"files": len(files), "rows": rows}
+    return truth
+
+
+def rebuild_manifest(dry_run: bool = False) -> dict:
+    """按盘上真值重建 manifest（返回 {dataset: {files, rows}}）。
+
+    保留既有 updated_at / last_key（freshness 语义不因对账重置——
+    financial/fundflow/blocks 的 is_fresh 按 manifest updated_at 判 90 天窗口）；
+    盘上有而 manifest 没有的数据集按 now() 记 updated_at。
+    dry_run=True 只返回建议值，不写盘（--verify 用）。
+    """
+    truth = _disk_truth()
+    if dry_run:
+        return truth
+    with _LOCK:
+        m = _read_manifest()
+        old = m.get("datasets", {})
+        datasets = {}
+        for ds, t in truth.items():
+            prev = old.get(ds, {})
+            datasets[ds] = {
+                "files": t["files"],
+                "rows": t["rows"],
+                "updated_at": prev.get("updated_at")
+                or datetime.now().isoformat(timespec="seconds"),
+                "last_key": prev.get("last_key"),
+            }
+        m["datasets"] = datasets
+        m["schema_version"] = SCHEMA_VERSION
+        m["updated_at"] = datetime.now().isoformat(timespec="seconds")
+        _write_manifest(m)
+        return datasets
+
+
 # ---------------------------------------------------------------- 读写
 
 def write_frame(dataset: str, key: str, df: pd.DataFrame) -> bool:
@@ -127,11 +211,13 @@ def write_frame(dataset: str, key: str, df: pd.DataFrame) -> bool:
         return False
     p = _path(dataset, key, ".parquet")
     with _LOCK:
+        new_file = not p.exists()
+        old_rows = 0 if new_file else _parquet_rows(p)
         _ensure_dir(p)
         tmp = p.with_suffix(".parquet.tmp")
         df.to_parquet(tmp, index=False)
         os.replace(tmp, p)
-    _touch(dataset, len(df), key)
+    _touch(dataset, len(df) - old_rows, key, new_file=new_file)
     return True
 
 
@@ -154,11 +240,12 @@ def write_json(dataset: str, key: str, obj: Any) -> bool:
         return False
     p = _path(dataset, key, ".json")
     with _LOCK:
+        new_file = not p.exists()
         _ensure_dir(p)
         tmp = p.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(obj, ensure_ascii=False, default=str), encoding="utf-8")
         os.replace(tmp, p)
-    _touch(dataset, 1, key)
+    _touch(dataset, 1 if new_file else 0, key, new_file=new_file)
     return True
 
 

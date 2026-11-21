@@ -140,6 +140,8 @@ def cmd_unpack(args) -> int:
                 f.write(src.read())
             written += 1
     print(f"[unpack] written={written} skipped={skipped} | 目标 {target_root}")
+    print("[unpack] 提示：解包直写不入 manifest 账，建议跑 "
+          "`python scripts/data_sync.py --verify --fix-manifest` 对齐账实（C15）")
     return 0
 
 

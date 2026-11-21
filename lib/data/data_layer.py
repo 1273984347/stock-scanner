@@ -282,6 +282,33 @@ _fundflow_market_unavailable_until = 0.0
 _fundflow_market_lock = threading.Lock()
 
 
+_CN_NUM_UNITS = {"亿": 1e8, "万": 1e4}
+
+
+def _cn_number_to_float(v) -> float:
+    """中文单位数字串 → float（"1.11亿"→1.11e8，"-9225.10万"→-9.22510e7）。
+
+    P-121（2026-11-21）：同花顺净额/成交额列是**人读格式字符串**，pd.to_numeric
+    会把它们整体 coerce 成 NaN——11-20 的「净额几乎全 NaN」由此伪装成上游失效
+    （P-117 教训的变体：NaN 是我们自己制造的，不是上游缺数）。无法解析的值
+    返回 NaN（真实缺失语义不变）。
+    """
+    if pd.isna(v):
+        return float("nan")
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip().replace(",", "").replace(" ", "")
+    if not s or s in ("-", "--"):
+        return float("nan")
+    try:
+        for unit, mult in _CN_NUM_UNITS.items():
+            if s.endswith(unit):
+                return float(s[:-1]) * mult
+        return float(s)
+    except (ValueError, TypeError):
+        return float("nan")
+
+
 def _parse_market_fund_flow(df: pd.DataFrame) -> Dict[str, dict]:
     """解析同花顺全市场资金流帧 → {code: {"main_net_ratio", "net_inflow_5d"}}。
 
@@ -293,6 +320,10 @@ def _parse_market_fund_flow(df: pd.DataFrame) -> Dict[str, dict]:
     fillna(0) 会产出 5209 条「假零值」冒充有效数据，评分层拿到
     main_net_ratio=0 → score_capital_flow 得 1.0 分（假中性）。
     净额全缺失的股票视为**该股资金流缺失**，不进结果，由调用方显式化。
+
+    P-121（2026-11-21）修正：上述「几乎全 NaN」的主因是**中文单位数字串**
+    （"1.11亿"/"-9225.10万"）被 to_numeric 整体 coerce 成 NaN——先用
+    _cn_number_to_float 还原数值，之后仍解析不了的才按缺失处理。
     """
     if df is None or df.empty:
         return {}
@@ -307,9 +338,9 @@ def _parse_market_fund_flow(df: pd.DataFrame) -> Dict[str, dict]:
     work = df[cols].copy()
     work[code_col] = work[code_col].map(normalize_code)
     # ⚠ 不 fillna(0)：NaN = 上游没给数据（缺失），与真实 0 必须区分
-    work[net_col] = pd.to_numeric(work[net_col], errors="coerce")
+    work[net_col] = work[net_col].map(_cn_number_to_float)
     if amount_col:
-        work[amount_col] = pd.to_numeric(work[amount_col], errors="coerce")
+        work[amount_col] = work[amount_col].map(_cn_number_to_float)
     # 「该股有净额数据」标记：全 NaN 的组 pandas sum 会跳过得 0.0（又变假零值），
     # 必须用这个标记把它们摘出来。
     work["_has_net"] = work[net_col].notna().astype(int)

@@ -393,10 +393,12 @@ python scripts/kline_coverage_probe.py --strict
 （`breakdown.capital_flow=None` 可与 0 分区分）。
 
 > 2026-11-20 实测同花顺即时资金流接口资金流列几乎全为 NaN，批量层实为失效，
-> 逐股源为主要路径 —— 属**源可用性问题**，与本条缺失语义修复是两件事。
-> 2026-11-21 复测**上游已恢复**（5216/5216 净额非空），批量层重新承重；缺失
-> 显式化语义保留作防线，盘中复核钩子见 TODO 复盘补记（P-99 家族：瞬时状态
-> 不写永久结论）。
+> 逐股源为主要路径 —— 当时归因**源可用性问题**。
+> **P-121（2026-11-21 二次修正）**：真根因 = THS 净额/成交额是**中文单位数字串**
+> （"1.11亿"/"-9225.10万"），被 `pd.to_numeric` 整体 coerce 成 NaN——缺失是解析器
+> 制造的假象，原始帧 0 NaN（坑表 P-121）。解析层已加 `_cn_number_to_float`；
+> 逐股源为主要路径的旧口径作废。另：THS 周六晚间清算时段返回「--」占位，
+> 可用性分钟级抖动——批量层失败语义照旧（缺失显式化 + 300s 标记）。
 
 ### 6.3 环境变量禁区
 
@@ -485,6 +487,7 @@ uvicorn api:app --host 127.0.0.1 --port 8000
 | `reporter/scan_notify.py` | 盘后选股信号飞书推送/控制台输出（原 notifier.py） |
 | `reporter/heartbeat.py` | **推送心跳哨兵**：末条成功推送 + 交易日历判定失联 |
 | `scanner.py` | 选股策略入口 |
+| `scripts/data_sync.py` | **本地仓同步/对账命令**（ADR-0033/C15）：kline 与 kline_raw 分仓同步（T7-g）+ fundflow 批量优先 + `--verify [--fix-manifest]` manifest 账实对账 |
 | `scripts/scoring_baseline.py` | 第 5 把尺子：评分对拍基线（9 入口 × 285 样本）。**`--check` 的 diff 只打印前 30 条**，排查须自行导出全量 |
 | `scripts/route_ownership_check.py` | 第 7 把尺子：17 域 / 69 端点归属 + 鉴权/async + 契约五重校验 |
 | `scripts/blocking_io_check.py` | 第 8 把尺子 / L8 门禁（`--check` / `--selftest` / `--recapture`） |
