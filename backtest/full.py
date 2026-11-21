@@ -61,16 +61,13 @@ def _get_index_local(code: str, days: int = 500) -> pd.DataFrame:
     return _get_stock_local(code, days)
 
 
-# 覆盖 get_stock_hist 为本地版本（避免网络回退）
-import lib.data.data_layer as _dl
-def _patched_get_stock(code, days=500):
-    df = _get_stock_local(code, days)
-    if not df.empty:
-        return df
-    return pd.DataFrame()
-
-# 指数用原始接口（000300有网络数据，不影响速度）
-_dl.get_stock_hist = _patched_get_stock
+# P-118（2026-11-21，批次 C13）：模块级全局猴补丁已删除。
+# 旧实现 `_dl.get_stock_hist = _patched_get_stock` 在 import 期永久替换
+# data_layer.get_stock_hist 为本地 TDX 版——backtest/__init__ 导入 full 即触发，
+# 任何 import backtest 的进程（API/CLI/测试）全局数据断供；ADR-0017 删除本地
+# TDX 后补丁函数恒返回空帧，危害从「避免网络回退」变成「get_stock_hist 全局
+# 返回空且永不还原」。full.py 自身数据路径走 get_stock_hist_multi_source，
+# 不依赖该补丁（grep 证实零内部调用点）。
 
 # 导入
 from lib.data.data_layer import get_index_hist

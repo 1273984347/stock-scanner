@@ -2,7 +2,7 @@
 
 > **来源**：2026-11-07 RF-01 分阶段重构（Phase 0 → Phase 3）的真实执行过程。
 > **范围**：只收录**本项目实际踩到过**的坑，每条都带可复算证据；不含"可能会踩"的泛泛而谈。
-> **规模**：**117 个编号（P-01～P-117）**，分九类；其中 113 条有独立正文条目，
+> **规模**：**118 个编号（P-01～P-118）**，分九类；其中 114 条有独立正文条目，
 > P-62～P-65 仅见于下方「一句话索引」（既有状态，append-only 不补写）。
 > **本行是当前编号数的唯一真源**：其它文档一律引用本行，不硬编码数字；
 > 文末「文档状态」里的历史「共 N 条」是当时的取证记录，按 append-only 保留。
@@ -3024,3 +3024,30 @@ L2 契约不变 ⇒ 加法修复不改口径。
 ① 判断「某源能不能满足需求」必须看**原始 API 返回**，不是项目内的裁剪/适配函数；
 ② 「加法修复」（新增 full 函数 + 扩展兜底）比「改既有契约」安全——L5/L2 零漂移可证；
 ③ 外部源状态会变（baostock 拉黑→恢复），基于「当下不可用」写下「永久不改」的结论要留复核钩子。
+
+
+### P-118 · backtest/full.py 模块级全局猴补丁：import 期永久替换 data_layer.get_stock_hist
+
+**现象**：批次 C12 新判据（patch `data_layer.get_stock_hist_multi_source` 后调
+`get_stock_hist`）在 `tests/test_ab_testing.py` 先跑的任何全量序下恒拿到空帧。
+探针实测污染态 `data_layer.get_stock_hist.__globals__ is not data_layer.__dict__`
+——初步误判为「双模块实例」（import 期 GC 探针证明模块对象仅 1 个），真正机制是
+**函数对象在 import 期被顶替**：顶替函数的 globals 归属 `backtest/full.py` 自己的命名空间。
+
+**根因**：`backtest/full.py` 模块级执行 `_dl.get_stock_hist = _patched_get_stock`
+（注释自称「覆盖为本地版本（避免网络回退）」）。触发链 =
+`backtest/__init__.py:30 from backtest.full import run_full_backtest` → 任何
+`import backtest.*`（API 路由 / CLI / ab_testing 链）即触发，**永不还原**。
+ADR-0017 删除本地 TDX 后，补丁函数读不存在的 `D:/TDX/vipdoc` → 恒返回空帧 →
+全局 `get_stock_hist` 数据断供。
+
+**修法**：删除模块级猴补丁三件套。grep 证实 full.py 自身数据路径走
+`get_stock_hist_multi_source`（:288/:363），对被替换符号零内部调用点；
+batch_b 门只 patch `run_full_backtest`，不依赖补丁。回归守卫：
+`tests/test_c12_leftovers.py::_double_data_layer_dict` 断言
+`get_stock_hist.__globals__ is data_layer.__dict__`（复发即判红）。
+
+**推广**：①模块级「其他模块.属性 = ...」= import 期全局副作用，等效于把一个
+不可还原的猴补丁焊死在别的模块上——除非有显式还原机制，禁止在模块顶层写
+跨模块赋值；②排查此类问题用 `func.__globals__ is module.__dict__` **身份探针**，
+GC 数模块对象会把人误导向「双实例」假说（本坑实测走了弯路）。

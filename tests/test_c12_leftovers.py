@@ -113,18 +113,15 @@ def _valid_df(days: int = 30) -> pd.DataFrame:
 
 
 def _double_data_layer_dict():
-    """P-118 候选（根因待查）：个别前置测试执行后，data_layer.get_stock_hist
-    的 __globals__ 与 data_layer.__dict__ 分裂为两个字典（实测 ab_testing 等
-    前置批次必现；import 期 GC 探针证明只有 1 个模块对象）——此时对模块属性的
-    monkeypatch 会落在 get_stock_hist 读不到的字典上。判据在干净导入序下验证。"""
+    """P-118 回归守卫：get_stock_hist 的 globals 必须仍是 data_layer 自身字典
+    （backtest/full.py 的模块级全局猴补丁已于 C13 删除——若复发此断言判红）。"""
     import lib.data.data_layer as _dl
     return _dl.get_stock_hist.__globals__ is not _dl.__dict__
 
 
 def test_hist_cache_hit_valid_frame_no_refetch(monkeypatch):
     """合规缓存帧 → 直接返回，多源取数零调用（不因校验引入重取）。"""
-    if _double_data_layer_dict():
-        pytest.skip("P-118 候选：双字典实例污染态（根因待查，见 TODO）——判据在干净序下验证")
+    assert not _double_data_layer_dict(), "P-118 回归：模块级全局猴补丁复发"
     data_layer._save_cache("hist/C12VALID/30", _valid_df())
     import os as _os
     calls = []
@@ -144,8 +141,7 @@ def test_hist_cache_hit_valid_frame_no_refetch(monkeypatch):
 
 def test_hist_cache_invalid_frame_triggers_refetch(monkeypatch):
     """P2-4 核心：缺 close 列的坏帧 → 视为 miss 重取（重取成功覆盖写盘）。"""
-    if _double_data_layer_dict():
-        pytest.skip("P-118 候选：双字典实例污染态（根因待查，见 TODO）——判据在干净序下验证")
+    assert not _double_data_layer_dict(), "P-118 回归：模块级全局猴补丁复发"
     bad = _valid_df().drop(columns=["close"])
     data_layer._save_cache("hist/C12BAD/30", bad)
     monkeypatch.setitem(data_layer.get_stock_hist.__globals__,
