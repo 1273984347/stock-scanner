@@ -111,3 +111,35 @@ def test_sync_fundflow_batch_first_and_zero_is_success(isolated_store, monkeypat
     assert isolated_store.read_json("fundflow", "000001") == {
         "main_net_ratio": 0.0, "net_inflow_5d": 0.0}
     assert isolated_store.read_json("fundflow", "300750") is None
+
+
+# ---- Δ7（2026-11-22，增量评审）：snapshot 保留期轮转 ----
+
+def test_prune_snapshots_keeps_latest_n(isolated_store):
+    """按文件名日期升序保留最新 30 份；manifest 记账随重建回到盘上真值。"""
+    import json as _json
+    import pandas as pd
+
+    sync = _load_sync()
+    d = isolated_store.STORE_ROOT / "snapshot"
+    d.mkdir(parents=True, exist_ok=True)
+    for ts in pd.date_range("2026-09-01", periods=35):
+        (d / f"{ts.date().isoformat()}.parquet").write_bytes(b"")
+
+    removed = sync.prune_snapshots(isolated_store.STORE_ROOT, keep=30)
+
+    assert removed == 5
+    left = sorted(p.name for p in d.glob("*.parquet"))
+    assert len(left) == 30 and left[0] == "2026-09-06.parquet", "最老的 5 份被删"
+    acc = _json.loads(isolated_store.MANIFEST_PATH.read_text(encoding="utf-8"))
+    assert acc["datasets"]["snapshot"]["files"] == 30, "重建后 files = 盘上真值"
+
+
+def test_prune_snapshots_ignores_non_date_files(isolated_store):
+    """非日期命名的文件不动（轮转只认 YYYY-MM-DD 键）。"""
+    sync = _load_sync()
+    d = isolated_store.STORE_ROOT / "snapshot"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "junk.parquet").write_bytes(b"")
+    assert sync.prune_snapshots(isolated_store.STORE_ROOT, keep=1) == 0
+    assert (d / "junk.parquet").exists()

@@ -189,3 +189,17 @@ def calendar_health() -> dict:
                 if _last_refresh_fail_monotonic else 0.0
             ),
         }
+
+
+def preheat() -> dict:
+    """预刷日历缓存（调度任务用，C16 挂账收口，2026-11-22）：无条件强制刷一次。
+
+    新进程首刷可能瞬态失败（15s 超时 → 300s 冷却，C16 断网演练实测）；
+    bootstrap 的 StoreDataSync 链在同步/晨报前先调一次，把瞬态失败隔离在
+    低价值任务里（失败不抛——返回 calendar_health() 留痕到任务日志，后续
+    is_trading_day 走既有降级链并 warning）。
+    """
+    with _lock:
+        _load_from_disk()
+        _refresh_locked()
+    return calendar_health()

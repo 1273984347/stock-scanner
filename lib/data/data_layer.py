@@ -1002,7 +1002,11 @@ def get_stock_fund_flow(code: str) -> dict:
         if stored is not None and (local_store.offline() or local_store.is_fresh("fundflow", code)):
             return stored
         if local_store.offline():
-            return {"main_net_ratio": 0, "net_inflow_5d": 0}
+            # N8（2026-11-22，增量评审）：离线缺失不再返回全零假中性——对齐 P-114
+            # 「不再用全零冒充」（0 值会以 1.0 分假中性进入四维加权，与真实中性
+            # 不可区分）。消费端 strategies.py:274 已显式捕获本异常（资金流维剔除）。
+            raise FundFlowUnavailableError(
+                f"fund_flow offline: 本地仓缺失 {code}（QUANT_OFFLINE=1 且无缓存）")
 
     # 1) 进程内缓存（同进程内重复调用直接命中，O(1)）
     with _fundflow_cache_lock:
@@ -1056,7 +1060,13 @@ def get_stock_fund_flow(code: str) -> dict:
     if result.get("main_net_ratio", 0) != 0 or result.get("net_inflow_5d", 0) != 0:
         with _fundflow_cache_lock:
             _fundflow_cache[code] = result
-        local_store.write_json("fundflow", code, result)
+        # Δ4（2026-11-22）：落仓失败（跨进程锁竞争/磁盘满）不得污染本次成功取数
+        # ——旧实现裸抛会被策略层计为策略失败（failure_tracker 误伤放大），而
+        # 进程缓存 :1057 已先行命中兜底，同进程重取不再走这里。
+        try:
+            local_store.write_json("fundflow", code, result)
+        except Exception as e:
+            logger.warning(f"[data_layer] fundflow 落仓失败 {code}: {e}")
         try:
             _save_cache(f"fundflow/{code}", pd.DataFrame([result]))
         except Exception:

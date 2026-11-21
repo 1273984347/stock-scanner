@@ -148,6 +148,10 @@ def send_feishu_message(results: dict, preset: str = "balanced",
       本管线断流 6 个月的根因之一是**无任何日志**。
     文本构造与发送路径仍与本模块 ``send_alert_message`` 独立（两条管线勿合并）。
     """
+    # N5（2026-11-22）：复合输入自带 scan_deadline 截断标记——先取标记再解包
+    # （run.py 自本批起直接传复合 scan_result；裸映射调用方兼容不变）。
+    deadline = results.get("scan_deadline") if isinstance(results, dict) else None
+    results = unwrap_scan_results(results)
     if not results:
         logger.info("无结果，跳过推送")
         return True
@@ -159,7 +163,7 @@ def send_feishu_message(results: dict, preset: str = "balanced",
         from reporter.feishu_pusher import log_push_result
         log_push_result("scan_notify", False, "获取 token 失败")
         return False
-    content = build_message_content(results, preset)
+    content = _deadline_warning(deadline) + build_message_content(results, preset)
     body = {
         "receive_id": FEISHU_RECEIVE_ID,
         "msg_type": "text",
@@ -252,7 +256,26 @@ def unwrap_scan_results(scan_result):
     return {}
 
 
+def _deadline_warning(deadline) -> str:
+    """N5（2026-11-22，增量评审）：扫描 deadline 截断的告警段。
+
+    pipeline 只在发生过相位跳过时打 ``scan_deadline`` 标记（P1-1，正常路径零新增键）
+    ——此前该标记全仓零消费，**截断的扫描以完整姿态推送**，无人值守下不可分辨。
+    无标记 = 空串（正常路径推送文本零变化，L2 基线无漂移）。
+    """
+    if not deadline:
+        return ""
+    skipped = ", ".join(str(s) for s in (deadline.get("skipped") or [])) or "未知"
+    return (f"【扫描截断告警】deadline 预算 {deadline.get('budget_s')}s 耗尽，"
+            f"跳过相位: {skipped}——本报告候选不完整，请勿直接作为决策依据。\n\n")
+
+
 def print_results(results: dict, preset: str = "balanced"):
+    # N5（2026-11-22）：复合输入自带 scan_deadline 截断标记——先取标记再解包。
+    deadline = results.get("scan_deadline") if isinstance(results, dict) else None
+    results = unwrap_scan_results(results)
+    if deadline:
+        print(_deadline_warning(deadline).rstrip())
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     config = get_config(preset)
     sentiment = get_market_sentiment()

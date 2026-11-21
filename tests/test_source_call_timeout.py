@@ -116,12 +116,16 @@ def test_timeout_accumulates_like_failures(monkeypatch, fast_timeout):
 
 
 def test_multi_source_loop_falls_through_hang_to_next_source(monkeypatch, fast_timeout):
-    """多源循环：baostock 挂起 → 超时裁剪 → 自动切下一源（akshare mock 成功）。"""
+    """多源循环：baostock 挂起 → 超时裁剪 → 自动切下一源（tencent mock 成功）。
+
+    2026-11-22 Δ5 规约变更（P-125/T7-e 口径能力过滤）：raw 栈遍历剔除
+    raw-incapable 源——akshare 分支固定 qfq，不再出现在 raw 语义栈中，
+    后继源改用 raw-capable 的 tencent（mock 定义方）。断言不变。
+    """
     monkeypatch.setattr(lib.data.data_baostock, "get_kline", _hanging_kline)
-    monkeypatch.setattr(registry, "DATA_SOURCE_PRIORITY", ["baostock", "akshare"])
-    import akshare as ak
-    monkeypatch.setattr(ak, "stock_zh_a_hist",
-                        lambda **kwargs: _valid_hist_frame())
+    monkeypatch.setattr(registry, "DATA_SOURCE_PRIORITY", ["baostock", "tencent_kline"])
+    monkeypatch.setattr("lib.data.data_kline_web.get_tencent_kline",
+                        lambda *a, **k: _valid_hist_frame())
 
     df = registry.get_stock_hist_multi_source("000001", days=30, source="auto")
 

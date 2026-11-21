@@ -143,14 +143,18 @@ def main():
     # 运行策略
     # P-79：pipeline.run_all_strategies 返回复合 scan_result，print_results/推送
     # 只消费裸 {策略名: DataFrame} 映射（2026-05-30 起直接传复合 dict，有候选即崩）。
-    results = unwrap_scan_results(run_all_strategies(args.preset))
+    # N5（2026-11-22）：改为把复合 scan_result 直传 scan_notify（内部自解包）——
+    # scan_deadline 截断标记由此送达推送链（此前在 unwrap 处丢失 = 截断扫描
+    # 以完整姿态推送，增量评审 N5）。
+    scan_result = run_all_strategies(args.preset)
+    results = unwrap_scan_results(scan_result)
 
     if not results:
         logger.info("所有策略均无候选股")
         sys.exit(0)
 
     # 控制台打印
-    print_results(results, args.preset)
+    print_results(scan_result, args.preset)
 
     # 飞书推送
     push_ok = True
@@ -159,7 +163,7 @@ def main():
             logger.warning("FEISHU_RECEIVE_ID 未配置，跳过推送")
         else:
             # P1-5/P0-4（2026-11-20）：接住返回值——推送失败（重试后）不可静默
-            push_ok = send_feishu_message(results, args.preset)
+            push_ok = send_feishu_message(scan_result, args.preset)
             if not push_ok:
                 logger.error("盘后选股推送失败（已重试 3 次），详见 cache/reports/push_log.json")
 
@@ -969,9 +973,10 @@ def run_rebalance_mode(preset: str, no_push: bool, allow_non_trading: bool = Fal
         logger.warning("请手动评估后决定是否重启（scheduler.reset()）")
         return
 
-    # 执行调仓扫描（P-79：同主扫描流程，复合 scan_result 需解包出裸 results 映射）
+    # 执行调仓扫描（P-79：同主扫描流程；N5：复合直传，截断标记达推送链）
     logger.info(f"执行月频调仓扫描 - {today}")
-    results = unwrap_scan_results(run_all_strategies(preset))
+    scan_result = run_all_strategies(preset)
+    results = unwrap_scan_results(scan_result)
 
     if not results:
         logger.info("调仓扫描: 无候选股")
@@ -979,14 +984,14 @@ def run_rebalance_mode(preset: str, no_push: bool, allow_non_trading: bool = Fal
         return
 
     # 输出结果
-    print_results(results, preset)
+    print_results(scan_result, preset)
 
     # 飞书推送
     if not no_push:
         # P1-5/P0-4：接住返回值。调仓模式不设非零退出码——mark_rebalanced 必须执行
         # （退出会让次日重复调仓），失败可见性由 push_log + 心跳哨兵兜底
         try:
-            rebalance_push_ok = send_feishu_message(results, preset)
+            rebalance_push_ok = send_feishu_message(scan_result, preset)
             if not rebalance_push_ok:
                 logger.error("调仓扫描推送失败（已重试 3 次），详见 cache/reports/push_log.json")
         except Exception as e:

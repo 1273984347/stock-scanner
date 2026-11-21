@@ -167,6 +167,37 @@ def sync_snapshot(sleep):
     return (1, 0) if df is not None and not df.empty else (0, 1)
 
 
+def prune_snapshots(root=None, keep: int = 30) -> int:
+    """snapshot 保留期轮转（Δ7，2026-11-22）：按文件名日期升序保留最新 ``keep`` 份。
+
+    snapshot 键 = YYYY-MM-DD（字典序 = 时间序），非日期命名的文件不动；
+    有删除时重建 manifest（files 记账回到盘上真值，--verify 不漂移）。
+    返回删除的文件数。
+    """
+    import re
+    from lib.data import local_store
+
+    r = pathlib.Path(root) if root is not None else local_store.STORE_ROOT
+    d = r / "snapshot"
+    if not d.is_dir():
+        return 0
+    files = sorted(p for p in d.glob("*.parquet")
+                   if re.fullmatch(r"\d{4}-\d{2}-\d{2}\.parquet", p.name))
+    removed = 0
+    if len(files) > keep:
+        for p in files[:-keep]:
+            try:
+                p.unlink()
+                removed += 1
+            except OSError as e:
+                print(f"  [warn] snapshot 清理失败 {p.name}: {e}", flush=True)
+    if removed:
+        local_store.rebuild_manifest()
+        print(f"  snapshot 轮转：删除 {removed} 份，保留 {len(files) - removed} 份",
+              flush=True)
+    return removed
+
+
 def sync_events(sleep):
     from config import get_config
     import lib.strategy.strategies as st
@@ -209,18 +240,28 @@ CONTENT_SORTED_DATASETS = ("kline", "kline_raw", "index")
 # volume 交叉校验（P-122）：前复权不改成交量 ⇒ 同日 kline/kline_raw 比值应 ≈1，
 # 超出带宽即单位错（×100 实测命中 610 只科创板）
 VOLUME_RATIO_BAND = (0.2, 5.0)
+# 复权口径交叉校验（Δ5/N4，2026-11-22）：比值恒定 = 两仓内容相同 = raw 仓被
+# 前复权帧污染（或该股窗口内无除权事件——**个别恒定无法逐码判定**，只在
+# 大面积恒定时判红：污染是源栈级的，中招是批量的）。
+# 阈值标定（2026-11-22，ADR-0036 修复后 + Wind 对照的干净仓）：5507 对中
+# 2007 只（36.5%）比值恒定 = 无除权合法态基线（000002/000006 三方实测
+# 腾讯 raw==qfq==存 raw）；55% = 基线 + ~19pt 余量，可捕获 ≥千只级的
+# 回落污染事件（腾讯曾在 250 日窗含除权的标的上必产生阶梯差值）。
+ADJ_CHECK_MIN_COMMON = 100
+ADJ_MASS_FAIL_RATIO = 0.55
 
 
 def check_content(root=None, max_examples: int = 20) -> int:
-    """--content：本地仓三项内容判据（只读盘，不取数）。
+    """--content：本地仓四项内容判据（只读盘，不取数）。
 
     1) 升序判据（P-123）：kline/kline_raw/index 每个文件 date 单调不减；
     2) schema 白名单（P-124）：parquet 列集必须 ∈ PARQUET_SCHEMA_WHITELIST；
     3) volume 交叉校验（P-122）：kline/kline_raw 同日 volume 比值 ∈ VOLUME_RATIO_BAND
-       （前复权不改成交量，×100 单位错在此判红）。
+       （前复权不改成交量，×100 单位错在此判红）；
+    4) 复权口径交叉校验（Δ5）：kline/kline_raw 同日 close 比值全程恒定的标的
+       超过阈值判红（比值恒定 ⇒ 两仓内容相同 = raw 被前复权帧污染的批量特征）。
 
-    返回 0 = 全绿；1 = 任一判据有违例。2026-11-21 首跑预期判红（存量
-    610 只 ×100 / 2825 只降序 / 17 只厂商帧，待 ADR-0036 修复后转绿）。
+    返回 0 = 全绿；1 = 任一判据有违例。
     """
     import pandas as pd
     from lib.data import local_store
@@ -255,7 +296,7 @@ def check_content(root=None, max_examples: int = 20) -> int:
             if len(diffs) and (diffs < pd.Timedelta(0)).any():
                 order = "desc" if (diffs <= pd.Timedelta(0)).all() else "mixed"
                 sort_viol.append((ds, code, order))
-            keep = [c for c in ("date", "volume") if c in df.columns]
+            keep = [c for c in ("date", "volume", "close") if c in df.columns]
             frames.setdefault(ds, {})[code] = (
                 df[keep].assign(date=dates)
                 .dropna(subset=["date"]).sort_values("date"))
@@ -285,6 +326,28 @@ def check_content(root=None, max_examples: int = 20) -> int:
         if not (lo <= r <= hi):
             ratio_viol.append((code, str(d)[:10], va, vb, round(r, 3)))
 
+    # 4) 复权口径交叉（Δ5/N4）：close 比值恒定的标的数 > max(5, 30%×比对数) 判红。
+    adj_suspicious = []
+    n_adj = 0
+    for code in sorted(set(kl) & set(kr)):
+        a, b = kl[code], kr[code]
+        if a.empty or b.empty or "close" not in a.columns or "close" not in b.columns:
+            continue
+        m = a[["date", "close"]].merge(b[["date", "close"]], on="date",
+                                       suffixes=("_k", "_r"))
+        m = m[m["close_r"] > 0]
+        if len(m) < ADJ_CHECK_MIN_COMMON:
+            continue
+        n_adj += 1
+        ratio = m["close_k"] / m["close_r"]
+        mean = float(ratio.mean())
+        if mean <= 0:
+            continue
+        if float(ratio.std()) / mean < 1e-6:  # 比值全程恒定 ⇒ 两仓内容相同
+            adj_suspicious.append(code)
+    adj_fail = n_adj > 0 and len(adj_suspicious) > max(
+        5, int(n_adj * ADJ_MASS_FAIL_RATIO))
+
     print("== 本地仓内容判据（--content）==")
     print(f"[{'FAIL' if sort_viol else 'PASS'}] 升序判据（P-123）: 违例 {len(sort_viol)}"
           + (f"  例: {sort_viol[:max_examples]}" if sort_viol else ""))
@@ -293,11 +356,16 @@ def check_content(root=None, max_examples: int = 20) -> int:
     print(f"[{'FAIL' if ratio_viol else 'PASS'}] volume 交叉（P-122）: 比对 {n_pairs} 对, "
           f"违例 {len(ratio_viol)}"
           + (f"  例: {ratio_viol[:max_examples]}" if ratio_viol else ""))
-    total = len(sort_viol) + len(schema_viol) + len(ratio_viol)
+    print(f"[{'FAIL' if adj_fail else 'PASS'}] 复权口径交叉（Δ5）: 比对 {n_adj} 对, "
+          f"比值恒定 {len(adj_suspicious)}"
+          f"（阈值 >max(5, {int(ADJ_MASS_FAIL_RATIO * 100)}%) 判红；个别恒定属无除权合法态）"
+          + (f"  例: {adj_suspicious[:max_examples]}" if adj_suspicious else ""))
+    total = len(sort_viol) + len(schema_viol) + len(ratio_viol) + (1 if adj_fail else 0)
     if total == 0:
-        print("[PASS] content: 三项判据全绿")
+        print("[PASS] content: 四项判据全绿")
         return 0
-    print(f"[FAIL] content: 共 {total} 条违例（P-122/123/124 存量，修复路径见 ADR-0036）")
+    print(f"[FAIL] content: 共 {total} 条违例（P-122/123/124 存量修复路径见 ADR-0036；"
+          f"Δ5 口径污染修复 = raw 栈 capability 过滤）")
     return 1
 
 
@@ -397,6 +465,8 @@ def main() -> int:
                          "（P-122/123/124，修复路径见 ADR-0036）")
     ap.add_argument("--fix-manifest", action="store_true",
                     help="配合 --verify：按盘上真值重建 manifest（保留 updated_at/last_key）")
+    ap.add_argument("--skip-non-trading", action="store_true",
+                    help="非交易日直接退出 0（交易日历单源判定；调度链用，手动同步不加）")
     args = ap.parse_args()
 
     from lib.data import local_store
@@ -440,6 +510,26 @@ def main() -> int:
     if args.content:
         return check_content(local_store.STORE_ROOT)
 
+    # 会话单飞（Δ4，2026-11-22）：防双实例同跑互踩进度文件与 manifest。
+    # 锁文件放 cache/（gitignored，不进备份与对账面）；进程退出自动释放 OS 锁。
+    import atexit
+    from lib.infra.file_lock import acquire_session_lock, release_session_lock
+
+    _sync_lock_fd = acquire_session_lock(_ROOT / "cache" / "data_sync.lock")
+    if _sync_lock_fd is None:
+        print("[data_sync] 已有同步实例在跑（cache/data_sync.lock 被占用），退出")
+        return 3
+    atexit.register(release_session_lock, _sync_lock_fd)
+
+    # 交易日门（Δ2，2026-11-22）：调度链加 --skip-non-trading——非交易日零网络
+    # 零写仓（kline 首日刷新无新行，白跑 ~100min 流量）。手动同步不带本参数。
+    if args.skip_non_trading:
+        from datetime import date as _date
+        from lib.data.trade_calendar import is_trading_day
+        if not is_trading_day(_date.today()):
+            print("[data_sync] 非交易日（交易日历），跳过同步")
+            return 0
+
     sets = [s.strip() for s in args.datasets.split(",") if s.strip()]
     codes = _universe(args.universe, args.limit)
     print(f"目标数据集: {sets} | universe={args.universe} ({len(codes)} 只) | days={args.days} "
@@ -461,6 +551,7 @@ def main() -> int:
             ok, fail = sync_index(["000300", "000001", "399001"], args.days, args.sleep)
         elif ds == "snapshot":
             ok, fail = sync_snapshot(args.sleep)
+            prune_snapshots()  # Δ7：保留 30 份，删除后重建 manifest 账
         elif ds == "events":
             ok, fail = sync_events(args.sleep)
         elif ds == "financial":

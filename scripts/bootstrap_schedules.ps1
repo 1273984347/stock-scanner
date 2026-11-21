@@ -1,9 +1,12 @@
-# scripts/bootstrap_schedules.ps1 — 注册无人值守调度任务（评审 P0-4，2026-11-20）
+# scripts/bootstrap_schedules.ps1 — 注册无人值守调度任务（评审 P0-4，2026-11-20；
+#                                     增量评审 Δ1/Δ2 补数据仓两任务，2026-11-22）
 #
 # 背景：架构评审实测 `schtasks /query` 401 个任务 grep 零命中——README.md（TDX 数据更新·定时任务）、
 # docs/PAPER_TRADING_GUIDE.md:46-53、task-scheduler-setup.md 三处文档声称的
 # 计划任务**一台都没注册**，晨报 / paper 日报 / TDX 更新全部静默停摆（P0-3 场景 1）。
-# 本脚本把三个每日任务一次性落到 Windows 任务计划（幂等：已存在先删再注册）。
+# 2026-11-22 增量评审（docs/audit/architecture-review-delta-2026-11-22.md）补齐：
+# StoreDataSync（本地仓每日保鲜链 Δ2）+ StoreBackup（data/store 滚动快照 Δ1）。
+# 本脚本把五个任务一次性落到 Windows 任务计划（幂等：已存在先删再注册）。
 #
 # 执行（本脚本入库后**不自动运行**——注册计划任务属机器状态变更，由用户自行执行）：
 #   powershell -ExecutionPolicy Bypass -File scripts\bootstrap_schedules.ps1
@@ -11,7 +14,8 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\bootstrap_schedules.ps1 -Remove
 #
 # 失败可见性：stdout/stderr 重定向到 logs\scheduled\<name>.log；任务本身是否按时跑
-# 由推送心跳哨兵兜底（reporter/heartbeat.py 读 push_log + 交易日历，晨报自检）。
+# 由推送心跳哨兵兜底（reporter/heartbeat.py 读 push_log + 交易日历，晨报自检），
+# 本地仓新鲜度由晨报陈旧告警段兜底（local_store.staleness_report，Δ2）。
 
 param([switch]$Remove)
 
@@ -31,22 +35,25 @@ function Remove-TaskIfExists([string]$name) {
     }
 }
 
-function Register-DailyTask([string]$name, [string]$time, [string]$exe, [string]$argStr) {
+function Register-DailyTask([string]$name, [string]$time, [string]$exe, [string]$argStr,
+                            [int]$LimitHours = 2) {
     Remove-TaskIfExists $name
     $action = New-ScheduledTaskAction -Execute $exe -Argument $argStr -WorkingDirectory $root
     $trigger = New-ScheduledTaskTrigger -Weekly `
         -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At $time
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
-        -ExecutionTimeLimit (New-TimeSpan -Hours 2) -MultipleInstances IgnoreNew
+        -ExecutionTimeLimit (New-TimeSpan -Hours $LimitHours) -MultipleInstances IgnoreNew
     # S4U：不存密码、未登录也可跑；对外 HTTP（飞书）不受影响，仅 Windows 域内网络凭据受限
     $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType S4U -RunLevel Limited
     Register-ScheduledTask -TaskPath $taskPath -TaskName $name `
         -Action $action -Trigger $trigger -Settings $settings -Principal $principal | Out-Null
-    Write-Host "registered: $taskPath$name @ $time (weekdays)"
+    Write-Host "registered: $taskPath$name @ $time (weekdays, limit ${LimitHours}h)"
 }
 
 if ($Remove) {
-    foreach ($n in @("MorningReport", "PaperDaily", "TdxUpdate")) { Remove-TaskIfExists $n }
+    foreach ($n in @("MorningReport", "PaperDaily", "TdxUpdate", "StoreDataSync", "StoreBackup")) {
+        Remove-TaskIfExists $n
+    }
     Write-Host "all StockScanner tasks removed."
     exit 0
 }
@@ -63,10 +70,25 @@ Register-DailyTask "PaperDaily" "16:00" "cmd.exe" "/c `"`"$bat`" >> `"$log`" 2>&
 
 # 3) TDX 数据更新——直接调 python（update_tdx_data.bat 以 pause 结尾，不能无人值守）
 #    更新完成顺手链式执行日志清理（P1-3 零星项：paper_daily/scheduled 追加日志 30 天保留，C12）
+#    ⚠️ 增量评审 N6（2026-11-22）：ADR-0017 删本地 TDX 后本任务疑为死源下载
+#    （tdx 源仅双栈尾部兜底）；是否保留由用户确认后决定，暂按原样注册。
 $py = Join-Path $root "scripts\update_tdx_data.py"
 $cleanup = Join-Path $root "scripts\cleanup_logs.py"
 $log = Join-Path $logDir "tdx_update.log"
 Register-DailyTask "TdxUpdate" "18:30" $python "`"$py`" >> `"$log`" 2>&1 && `"$python`" `"$cleanup`" >> `"$log`" 2>&1"
+
+# 4) 本地仓每日保鲜链（Δ2，2026-11-22）：日历预热 → data_sync 全域同步 → --content。
+#    全市场 kline+kline_raw @4workers 实测 ~100min（ADR-0036），时限放宽到 3h；
+#    日志由 daily_store_sync.ps1 内部追加（logs\scheduled\store_sync.log）。
+$syncScript = Join-Path $root "scripts\daily_store_sync.ps1"
+Register-DailyTask "StoreDataSync" "19:00" "powershell" `
+    "-ExecutionPolicy Bypass -File `"$syncScript`"" -LimitHours 3
+
+# 5) 本地仓滚动快照（Δ1，2026-11-22）：robocopy /E → backups\store_current（无 /PURGE）
+$backupScript = Join-Path $root "scripts\backup_store.ps1"
+$log = Join-Path $logDir "store_backup.log"
+Register-DailyTask "StoreBackup" "21:30" "cmd.exe" `
+    "/c `"powershell -ExecutionPolicy Bypass -File `"$backupScript`" >> `"$log`" 2>&1`""
 
 Write-Host ""
 Write-Host "验证：Get-ScheduledTask -TaskPath '\StockScanner\'"

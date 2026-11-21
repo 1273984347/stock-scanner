@@ -117,3 +117,53 @@ def test_missing_dataset_dir_is_skipped_not_fatal(tmp_path):
     root = tmp_path / "store"
     _write_parquet(root, "kline", "600519", _good_frame())
     assert _load_sync().check_content(root) == 0
+
+
+# ---- Δ5 第 4 判据：复权口径交叉（2026-11-22）----
+
+def _good_frame_n(n=150, close=10.5):
+    """n 日标准帧（判据 4 需要 ≥ADJ_CHECK_MIN_COMMON 个公共日期）。"""
+    dates = pd.date_range("2026-06-01", periods=n)
+    return pd.DataFrame({
+        "date": dates, "open": close, "high": close + 1, "low": close - 1,
+        "close": close, "volume": [1000.0 + i for i in range(n)],
+    })
+
+
+def test_adj_criterion_ignores_short_windows(tmp_path):
+    """公共日期 < ADJ_CHECK_MIN_COMMON 时不判比值恒定——既有 5 日夹具形态。"""
+    root = tmp_path / "store"
+    _write_parquet(root, "kline", "600519", _good_frame())      # 5 日，同 close
+    _write_parquet(root, "kline_raw", "600519", _good_frame())
+    assert _load_sync().check_content(root) == 0
+
+
+def test_adj_criterion_tolerates_few_constant_codes(tmp_path):
+    """个别比值恒定 = 窗口内无除权事件（合法态）：3 只 ≤ max(5, 30%) 不判红。"""
+    root = tmp_path / "store"
+    for code in ("600001", "600002", "600003"):
+        _write_parquet(root, "kline", code, _good_frame_n())
+        _write_parquet(root, "kline_raw", code, _good_frame_n())
+    assert _load_sync().check_content(root) == 0
+
+
+def test_adj_criterion_detects_mass_pollution(tmp_path):
+    """批量比值恒定 = raw 仓被前复权帧污染（源栈级中招是批量的）→ 判红。"""
+    root = tmp_path / "store"
+    for code in ("600001", "600002", "600003", "600004", "600005", "600006"):
+        _write_parquet(root, "kline", code, _good_frame_n())
+        _write_parquet(root, "kline_raw", code, _good_frame_n())  # 两仓内容相同
+    assert _load_sync().check_content(root) == 1
+
+
+def test_adj_criterion_passes_stepwise_ratio(tmp_path):
+    """真前复权 vs 真不复权：close 比值随除权事件阶梯变化 → 不判红。"""
+    root = tmp_path / "store"
+    n = 150
+    dates = pd.date_range("2026-06-01", periods=n)
+    raw = _good_frame_n()
+    qfq = raw.copy()
+    qfq["close"] = [10.5 if i < n // 2 else 9.5 for i in range(n)]  # 一次除权阶梯
+    _write_parquet(root, "kline", "600519", qfq)
+    _write_parquet(root, "kline_raw", "600519", raw)
+    assert _load_sync().check_content(root) == 0

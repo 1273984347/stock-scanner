@@ -201,3 +201,20 @@ def test_cleanup_logs_thread_safety_is_trivially_true(tmp_path):
     for t in threads:
         t.join()
     assert errs == [] and not target.exists()
+
+
+def test_cleanup_logs_prunes_expired_backup_zips(tmp_path):
+    """Δ7（2026-11-22，增量评审）：backups/*.zip 按 30 天保留——API 备份端点
+    产物此前无限累积。"""
+    old = tmp_path / "backups" / "backup_2026-10-01.zip"
+    new = tmp_path / "backups" / "backup_2026-11-20.zip"
+    for f in (old, new):
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("x", encoding="utf-8")
+    stale = time.time() - 31 * 86400
+    __import__("os").utime(old, (stale, stale))
+
+    removed = cleanup_logs.cleanup(tmp_path, retention_days=30)
+
+    assert str(old.relative_to(tmp_path)) in removed
+    assert not old.exists() and new.exists(), "30 天内的 zip 不得误删"

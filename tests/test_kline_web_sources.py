@@ -202,7 +202,7 @@ def test_bj_routing_tries_web_sources_before_local_tdx(monkeypatch):
     """旧实现把北交所硬编码到 tdx_local（目录已删）= 直接判死。"""
     calls = []
 
-    def fake_fetch(code, days, source, as_of_date=None):
+    def fake_fetch(code, days, source, as_of_date=None, prefer_adjusted=False):
         calls.append(source)
         if source == "sina_kline":
             return pd.DataFrame({

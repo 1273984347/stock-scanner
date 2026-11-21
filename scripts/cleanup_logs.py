@@ -8,6 +8,9 @@
 其它任何文件不受影响。可独立运行，也被 bootstrap_schedules.ps1 的
 TdxUpdate 任务链式调用（更新完成顺手清日志）。
 
+Δ7（2026-11-22）：增 ``backups/*.zip``（API 备份端点产物按 30 天保留——
+此前无限累积，增量评审 Δ7）。
+
 用法：``python scripts/cleanup_logs.py [--days 30] [--dry-run]``
 """
 import argparse
@@ -16,8 +19,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RETENTION_DAYS = 30
-# 相对仓库根的 glob 模式（只收追加型日志，不动 JSONL/DB 等有 rotation 的资产）
-PATTERNS = ("logs/paper_daily_*.log", "logs/scheduled/*.log")
+# 相对仓库根的 glob 模式（追加型日志 + 备份 zip；不动 JSONL/DB 等有 rotation 的资产）
+PATTERNS = ("logs/paper_daily_*.log", "logs/scheduled/*.log", "backups/*.zip")
 
 
 def cleanup(root: Path = ROOT, retention_days: int = RETENTION_DAYS,

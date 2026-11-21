@@ -33,11 +33,14 @@ import json
 import logging
 import os
 import threading
+import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
+
+from lib.infra.file_lock import cross_process_lock
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +74,12 @@ def _ensure_dir(p: Path) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
 
 
+def _manifest_lock_path() -> Path:
+    """manifest 跨进程互斥锁文件（Δ4，2026-11-22）——调用时取值，
+    随 STORE_ROOT monkeypatch 落 tmp（坑表 P-80 测试隔离纪律）。"""
+    return STORE_ROOT / ".manifest.lock"
+
+
 # ---------------------------------------------------------------- manifest
 
 def _read_manifest() -> dict:
@@ -85,9 +94,19 @@ def _read_manifest() -> dict:
 
 def _write_manifest(manifest: dict) -> None:
     _ensure_dir(MANIFEST_PATH)
-    tmp = MANIFEST_PATH.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, MANIFEST_PATH)
+    # Δ4：tmp 名带 pid+uuid——固定名会被另一进程同窗覆盖（os.replace 消费掉
+    # 对方刚写好的 tmp）。调用方（_touch/rebuild_manifest）已持跨进程锁。
+    tmp = MANIFEST_PATH.with_name(
+        f"{MANIFEST_PATH.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
+    try:
+        tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, MANIFEST_PATH)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 def _parquet_rows(p: Path) -> int:
@@ -110,17 +129,21 @@ def _touch(dataset: str, rows_delta: int, key: str, new_file: bool = True) -> No
       重写 = 新行数 − 旧行数；json 文件恒为 1 行 ⇒ 重写 delta = 0）。
       原实现的「重写也整段累加」让同日重写的数据集 rows 翻倍
       （实测 snapshot 22316 vs 11158）。"""
-    with _LOCK:
-        m = _read_manifest()
-        ds = m["datasets"].setdefault(dataset, {"files": 0, "rows": 0})
-        if new_file:
-            ds["files"] = ds.get("files", 0) + 1
-        ds["rows"] = max(0, ds.get("rows", 0) + int(rows_delta))
-        ds["updated_at"] = datetime.now().isoformat(timespec="seconds")
-        ds["last_key"] = str(key)
-        m["updated_at"] = ds["updated_at"]
-        m["schema_version"] = SCHEMA_VERSION
-        _write_manifest(m)
+    # Δ4（2026-11-22）：RMW 全程持跨进程锁——manifest 整文件读改写此前只有
+    # 线程锁，API 进程与 data_sync 并发写时 last-writer-wins 丢更新（账实漂移）。
+    # 跨进程锁在外层、线程锁在内层，全仓顺序一致防死锁。
+    with cross_process_lock(_manifest_lock_path()):
+        with _LOCK:
+            m = _read_manifest()
+            ds = m["datasets"].setdefault(dataset, {"files": 0, "rows": 0})
+            if new_file:
+                ds["files"] = ds.get("files", 0) + 1
+            ds["rows"] = max(0, ds.get("rows", 0) + int(rows_delta))
+            ds["updated_at"] = datetime.now().isoformat(timespec="seconds")
+            ds["last_key"] = str(key)
+            m["updated_at"] = ds["updated_at"]
+            m["schema_version"] = SCHEMA_VERSION
+            _write_manifest(m)
 
 
 def coverage() -> dict:
@@ -183,24 +206,26 @@ def rebuild_manifest(dry_run: bool = False) -> dict:
     truth = _disk_truth()
     if dry_run:
         return truth
-    with _LOCK:
-        m = _read_manifest()
-        old = m.get("datasets", {})
-        datasets = {}
-        for ds, t in truth.items():
-            prev = old.get(ds, {})
-            datasets[ds] = {
-                "files": t["files"],
-                "rows": t["rows"],
-                "updated_at": prev.get("updated_at")
-                or datetime.now().isoformat(timespec="seconds"),
-                "last_key": prev.get("last_key"),
-            }
-        m["datasets"] = datasets
-        m["schema_version"] = SCHEMA_VERSION
-        m["updated_at"] = datetime.now().isoformat(timespec="seconds")
-        _write_manifest(m)
-        return datasets
+    # Δ4：重建也是 manifest RMW，与 _touch 同一把跨进程锁。
+    with cross_process_lock(_manifest_lock_path()):
+        with _LOCK:
+            m = _read_manifest()
+            old = m.get("datasets", {})
+            datasets = {}
+            for ds, t in truth.items():
+                prev = old.get(ds, {})
+                datasets[ds] = {
+                    "files": t["files"],
+                    "rows": t["rows"],
+                    "updated_at": prev.get("updated_at")
+                    or datetime.now().isoformat(timespec="seconds"),
+                    "last_key": prev.get("last_key"),
+                }
+            m["datasets"] = datasets
+            m["schema_version"] = SCHEMA_VERSION
+            m["updated_at"] = datetime.now().isoformat(timespec="seconds")
+            _write_manifest(m)
+            return datasets
 
 
 # ---------------------------------------------------------------- 读写
@@ -252,9 +277,18 @@ def write_frame(dataset: str, key: str, df: pd.DataFrame) -> bool:
         new_file = not p.exists()
         old_rows = 0 if new_file else _parquet_rows(p)
         _ensure_dir(p)
-        tmp = p.with_suffix(".parquet.tmp")
-        df.to_parquet(tmp, index=False)
-        os.replace(tmp, p)
+        # Δ4：tmp 名带 pid+uuid——两进程同写一个 key 时固定 tmp 名互相覆盖。
+        # with_name 保留 .parquet 段，末尾 .tmp 仍被 _disk_truth 排除。
+        tmp = p.with_name(f"{p.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
+        try:
+            df.to_parquet(tmp, index=False)
+            os.replace(tmp, p)
+        finally:
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
     _touch(dataset, len(df) - old_rows, key, new_file=new_file)
     return True
 
@@ -280,9 +314,16 @@ def write_json(dataset: str, key: str, obj: Any) -> bool:
     with _LOCK:
         new_file = not p.exists()
         _ensure_dir(p)
-        tmp = p.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(obj, ensure_ascii=False, default=str), encoding="utf-8")
-        os.replace(tmp, p)
+        tmp = p.with_name(f"{p.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
+        try:
+            tmp.write_text(json.dumps(obj, ensure_ascii=False, default=str), encoding="utf-8")
+            os.replace(tmp, p)
+        finally:
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
     _touch(dataset, 1 if new_file else 0, key, new_file=new_file)
     return True
 
@@ -344,3 +385,42 @@ def is_fresh(dataset: str, key: str, now: Optional[datetime] = None) -> bool:
         except ValueError:
             return False
     return False
+
+
+def staleness_report(now: Optional[datetime] = None,
+                     max_age_days: int = 3) -> list:
+    """整仓新鲜度告警面（Δ2，2026-11-22）：晨报消费，只读记账，不触发任何取数。
+
+    口径 = manifest.updated_at（该数据集最后一次**成功写仓**的时间）距今超过
+    ``max_age_days`` 即 stale——衡量「同步管道是否在跑」这一运营问题；单文件
+    行情日期的新鲜度由读路径 :func:`is_fresh` 按个股处理，两者互补。
+
+    返回 ``[(dataset, status, detail)]``，status ∈ ok / stale / empty / disabled；
+    消费方（reporter/scheduler 晨报）对非 ok 项前置告警段。
+    """
+    if not enabled():
+        return [("local_store", "disabled", "QUANT_LOCAL_STORE=off")]
+    now = now or datetime.now()
+    out = []
+    datasets = _read_manifest().get("datasets", {})
+    for ds in ("kline", "kline_raw", "index", "snapshot", "events",
+               "fundflow", "financial", "blocks"):
+        info = datasets.get(ds) or {}
+        files = int(info.get("files") or 0)
+        if files == 0:
+            out.append((ds, "empty", "仓内无文件（未同步过）"))
+            continue
+        ts = info.get("updated_at")
+        if not ts:
+            out.append((ds, "stale", "无记账时间"))
+            continue
+        try:
+            age = now - datetime.fromisoformat(ts)
+        except ValueError:
+            out.append((ds, "stale", f"记账时间不可解析: {ts}"))
+            continue
+        if age > timedelta(days=max_age_days):
+            out.append((ds, "stale", f"{age.days} 天未同步（末次 {ts}）"))
+        else:
+            out.append((ds, "ok", f"files={files} updated={ts}"))
+    return out

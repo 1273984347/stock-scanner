@@ -56,7 +56,9 @@ def test_akshare_volume_scaled_from_lots(monkeypatch):
         "成交额": 6192210000, "换手率": 0.34, "涨跌幅": 1.24,
     }])
     monkeypatch.setattr(akshare, "stock_zh_a_hist", lambda *a, **k: raw.copy())
-    df = _fetch_from_source("600519", 30, "akshare")
+    # 2026-11-22 Δ5 规约变更（P-125/T7-e）：akshare 声明为 qfq-only 能力
+    # （分支固定 adjust="qfq"），raw 语义被能力守卫拒绝——本测试走 qfq 意图。
+    df = _fetch_from_source("600519", 30, "akshare", prefer_adjusted=True)
     assert not df.empty
     assert float(df["volume"].iloc[0]) == pytest.approx(4269200.0)
 

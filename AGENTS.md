@@ -152,9 +152,9 @@ infra  ←  data  ←  scoring  ←  strategy
 | T7-b | **部署形态默认单 worker**：启动期 `lib/infra/worker_guard.py` 同时探测命令行 `--workers` 与三个环境变量（命令行优先），>1 默认 fail-fast；确需多 worker 必须显式 `ALLOW_MULTI_WORKER=1`，由 `lib/infra/process_leader.py` 提供跨进程单飞（文件锁选主 + 原子快照 + 扫描槽租约），零 Redis。禁止以「广播去重」为名掩盖状态外置需求 | 实测 `--workers 2` 不写环境变量，只读环境变量会被一行命令绕过（P0 漏洞已修）；单客户端重复推送**不会**发生（连接按进程隔离），真问题是构造 ×N 与缓存分片。判据 `test_worker_guard.py` / `test_process_leader.py` / `test_multiprocess_integration.py`，坑表 P-95/P-97，ADR-0022 |
 | T7-c | **导出字段统一过 `_csv_safe()`**：CSV/openpyxl 的字符串字段以 `= + - @` / 制表 / 回车开头时前置单引号；Excel 另行强制 `cell.data_type='s'`。数值字段不得包成文本 | P2-10：公式/DDE 注入。冻结迁移体因此偏离的，走 `MIGRATION_DIVERGENCES` 显式登记 + 行为判据，不许直接放宽逐字等价（ADR-0021，坑表 P-96） |
 | T7-g | **数据必须项目内落地**：K 线/指数/快照/事件/财务/资金流先读 `data/store/`，在线源只作刷新与回填；不复权与前复权**分仓**，不得混存。取证链路与测试必须 `QUANT_LOCAL_STORE=off` | 2026-11-20 用户令「所有数据项目内都要有，不能只用在线数据源」；`cache/` 是 TTL 缓存、过期即删，不能当数据。判据 `tests/test_local_store.py` + `tests/test_local_first_read.py`，ADR-0033 |
-| T7-h | **本地仓写入收口**：`local_store.write_frame` 统一 `sort_values("date")` 后落盘 + schema 白名单（`PARQUET_SCHEMA_WHITELIST`，白名单外**拒写**）；腾讯 qfq volume 单位**按板块**（688/689 报文已是股 scale=1，其余=手 ×100）——多路写同一仓的横向契约（单位/排序/列集）收口在写入层，不靠调用方自觉；新源接入必须先登记列集与单位契约。判据：`python scripts/data_sync.py --content` | P-122/123/124（2026-11-21 Wind 第三方对照发现）：610 只科创板 kline volume 曾虚增 100 倍、2825 只文件日期降序、17 只厂商原始帧直落仓，全部不报错；C16 断网演练 PASS 证不了数值正确，第三方对照才能。ADR-0036 |
+| T7-h | **本地仓写入收口**：`local_store.write_frame` 统一 `sort_values("date")` 后落盘 + schema 白名单（`PARQUET_SCHEMA_WHITELIST`，白名单外**拒写**）；腾讯 qfq volume 单位**按板块**（688/689 报文已是股 scale=1，其余=手 ×100）——多路写同一仓的横向契约（单位/排序/列集）收口在写入层，不靠调用方自觉；新源接入必须先登记列集与单位契约。**跨进程写收口**（Δ4，2026-11-22）：manifest RMW 经 `lib/infra/file_lock.py` 跨进程锁（勿用 process_leader 排他 leader 语义）、tmp 名带 pid+uuid、`data_sync` 会话单飞（cache/data_sync.lock）。判据：`python scripts/data_sync.py --content`（四判据）+ `tests/test_local_store_crossprocess.py`（双进程账实一致） | P-122/123/124（2026-11-21 Wind 第三方对照发现）：610 只科创板 kline volume 曾虚增 100 倍、2825 只文件日期降序、17 只厂商原始帧直落仓，全部不报错；C16 断网演练 PASS 证不了数值正确，第三方对照才能。ADR-0036 |
 | T7-f | **跨模块候选列表统一 `list[dict]`**：`ml_ranking["data"]` 与 `top10` 必须同形，禁止把 DataFrame 放进 `scan_result` 再做布尔判断或 JSON 序列化；无候选时统一 `None` | 2026-11-19 数据恢复后首次真跑崩在 `if ml_ranking.get("data")`（DataFrame 布尔判断抛 ValueError），三个消费方全按 list 写，只有 ML 分支被数据激活才暴露（P-101）。判据 `tests/test_ml_ranking_contract.py`、ADR-0028 |
-| T7-e | **K 线源栈分两套，不复权源不得进回测栈**：默认栈 `sina_kline → tencent_kline → …`（覆盖含北交所/指数），回测栈 `tencent_kline → …`（唯一前复权）。新增 K 线源必须同时登记两个栈（或显式声明只进其一），并过 `scripts/kline_coverage_probe.py --strict` 的 6 标的日期判据。腾讯报文 rows 顺序是 日期/开/**收**/高/低/量，必须按契约转换；volume 单位**按板块**：沪主板/创业板=手（×100）、科创板 688/689=股（×1），经 `_tencent_volume_scale` 归一（2026-11-21 修正：「volume 是手」的一刀切契约被 Wind 对照证伪，P-122） | 2026-11-19 实测 8 个既有源全 0（baostock 黑名单 / push2his 不可达 / tushare 无权限 / 缺 Node / TDX 已删），而新浪/腾讯网关都通——「源栈全 0」不等于「没有数据」（P-99 第三次复发）。不复权价进回测会在除权日造假跳空且不报错。判据 `tests/test_kline_web_sources.py`、ADR-0027/0036 |
+| T7-e | **K 线源栈分两套，不复权源不得进回测栈**：默认栈 `sina_kline → tencent_kline → …`（覆盖含北交所/指数），回测栈 `tencent_kline → …`（唯一前复权）。新增 K 线源必须同时登记两个栈（或显式声明只进其一），并过 `scripts/kline_coverage_probe.py --strict` 的 6 标的日期判据。**复权口径按能力表过滤**（Δ5/P-125，2026-11-22）：`SOURCE_ADJUST_CAPABILITY` + `_stack_for()`——栈遍历前剔除不具备该口径能力的源（qfq 栈无 raw-only 源、raw 栈无 qfq-only 源），双口径源按意图传参（tencent raw=`adjust=""`、westock raw=`fq="bfq"`，G3 实测 500 日跨除权窗），显式 source 组合在 `_fetch_from_source` 入口守卫。腾讯报文 rows 顺序是 日期/开/**收**/高/低/量，必须按契约转换；volume 单位**按板块**：沪主板/创业板=手（×100）、科创板 688/689=股（×1），经 `_tencent_volume_scale` 归一（2026-11-21 修正：「volume 是手」的一刀切契约被 Wind 对照证伪，P-122） | 2026-11-19 实测 8 个既有源全 0（baostock 黑名单 / push2his 不可达 / tushare 无权限 / 缺 Node / TDX 已删），而新浪/腾讯网关都通——「源栈全 0」不等于「没有数据」（P-99 第三次复发）。不复权价进回测会在除权日造假跳空且不报错；**两轮评审 + 三把全绿判据都没抓到口径洞**（P-125）。判据 `tests/test_raw_stack_adjust.py`、`tests/test_kline_web_sources.py`、ADR-0027/0036 |
 | T7-d | **实时行情只允许一份实现**：编排/解析/单位归一/降级校验都在 `lib/data/data_realtime.py`；`data_layer.get_realtime_quotes` 只做委托，`data_api` 只做门面。**单位统一「股 / 元」**（腾讯手×100、万元×10000），**代码统一 6 位 + `市场` 列**；降级快照（<4000 行 / 缺列）逐条告警且**不写缓存**。数据源健康按 **host** 计数（`lib/data/host_health.py`，3 次 / 300s / 半开），禁止按「东财源」一票否决——`push2` 死时 `push2ex` 必须仍可用。**push2his/push2ex 在调用边界用 `call_with_health` / `guarded` 接入**（不注入 akshare）：异常必须原样抛出、`functools.wraps` 保留 `__module__`（限流分桶）；运维查看 `GET /api/system/host-health`（需鉴权，只读内存） | 三份腾讯解析 + 四套同名实时函数，其中 `data_ashare` 版只跑前 100 只；单位不归一让资金流 `vol_ratio` 差 100 倍、分支静默失效；代码带前缀让 `run.py`/`steps.py` 的精确匹配静默落空。判据 `test_realtime_snapshot_contract.py` / `test_host_health.py`，坑表 P-99，ADR-0024/0025。排查 host 用 `python scripts/host_health_probe.py` |
 
 > **阶段边界**：**Phase 6 ✅ 收官（2026-11-12）**——L0–L10 全绿、Tier B 96 条 / 0 未分类、
@@ -444,6 +444,7 @@ uvicorn api:app --host 127.0.0.1 --port 8000
 |---|---|
 | 一批改动 | **合并为一批、只跑一轮 CI** —— 拆分提交会让 CI 轮数成倍增加 |
 | 文档类改动 | 追加 `[skip ci]`，不触发流水线 |
+| **`[skip ci]` 纪律**（Δ6，2026-11-22） | 仅文档类与破坏性/目录级改动可追加；feat/fix 等**代码类提交不得**加（增量评审实测上轮区间 21/25 泛化；CI 恢复 push 触发前由 pre-push hook 兜底回归门） |
 | 提交前 | `git status` 确认工作树无意外文件；用显式 pathspec |
 | 推送后 | 确认本地 HEAD == `origin/master` |
 
@@ -488,7 +489,8 @@ uvicorn api:app --host 127.0.0.1 --port 8000
 | `reporter/scan_notify.py` | 盘后选股信号飞书推送/控制台输出（原 notifier.py） |
 | `reporter/heartbeat.py` | **推送心跳哨兵**：末条成功推送 + 交易日历判定失联 |
 | `scanner.py` | 选股策略入口 |
-| `scripts/data_sync.py` | **本地仓同步/对账命令**（ADR-0033/C15）：kline 与 kline_raw 分仓同步（T7-g）+ fundflow 批量优先 + `--verify [--fix-manifest]` manifest 账实对账 + `--content` 内容判据（date 升序/schema 白名单/volume 交叉校验，T7-h） |
+| `scripts/data_sync.py` | **本地仓同步/对账命令**（ADR-0033/C15）：kline 与 kline_raw 分仓同步（T7-g）+ fundflow 批量优先 + `--verify [--fix-manifest]` manifest 账实对账 + `--content` 内容判据（date 升序/schema 白名单/volume 交叉校验，T7-h）+ 复权口径交叉（Δ5，阈值标定见 `ADJ_MASS_FAIL_RATIO`）；`--skip-non-trading` 交易日门 + 会话单飞（Δ2/Δ4，调度链用） |
+| `lib/infra/file_lock.py` | **跨进程文件锁**（Δ4）：写边界互斥 + 会话单飞两把语义——manifest RMW/data_sync 单飞收口；**勿用 process_leader**（排他 leader 语义与单 worker 前提冲突） |
 | `scripts/offline_drill.py` | **断网演练判据**（C16）：QUANT_OFFLINE=1 + socket 全阻断下跑回测+扫描，验证本地仓端到端自给自足（与在线口径对照） |
 | `scripts/scoring_baseline.py` | 第 5 把尺子：评分对拍基线（9 入口 × 285 样本）。**`--check` 的 diff 只打印前 30 条**，排查须自行导出全量 |
 | `scripts/route_ownership_check.py` | 第 7 把尺子：17 域 / 69 端点归属 + 鉴权/async + 契约五重校验 |
@@ -504,6 +506,7 @@ uvicorn api:app --host 127.0.0.1 --port 8000
 | `docs/plans/2026-11-07-refactor-plan.md` | RF-01 分阶段重构计划（§七 为逐批执行记录/验收/复盘） |
 | `docs/audit/security-performance-review-2026-11-14.md` | 全仓安全/性能审查：2 条 P0 + 12 条 P1 + 15 条 P2 |
 | `docs/audit/architecture-review-2026-11-20.md` | 全仓架构评审：P0×4 + P1/P2 + 扩展性上限 |
+| `docs/audit/architecture-review-delta-2026-11-22.md` | 增量架构评审（43513e4→cc70ab1）：数据仓新域 + 上轮整改守恒复核，P1×5 + P2×6，经对抗复核 |
 | `docs/adr/` | 架构决策记录（0001–0036，编号连续，破坏点均有对应 ADR） |
 | `tests/features/test_batch_a_security.py` / `test_batch_b_gates.py` / `test_batch_c_hardening.py` | 批次 A/B/C 的机器判据（22 / 25 / 13 例） |
 | `tests/features/test_scoring_contract.py` | 评分契约 AST 守卫 + 阈值边界冻结 |

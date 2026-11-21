@@ -273,3 +273,30 @@ def test_run_main_wires_rebalance_gate_bypass():
     import run as run_module
 
     assert "allow_non_trading=args.allow_non_trading_day" in inspect.getsource(run_module.main)
+
+
+# ---- C16 挂账收口 / Δ2（2026-11-22）：preheat 预刷判据 ----
+
+def test_preheat_refreshes_and_persists(monkeypatch):
+    """preheat 无条件刷一次并落盘（调度链把瞬态首刷失败隔离在低价值任务里）。"""
+    from datetime import date as _date
+    days = {_date(2026, 1, d) for d in range(5, 20)} | {_date(2027, 1, 4)}
+    monkeypatch.setattr(trade_calendar, "_fetch_trade_days", lambda: days)
+
+    health = trade_calendar.preheat()
+
+    assert health["cached_days"] == len(days)
+    assert health["max_date"] == "2027-01-04"
+    assert _cache_path().exists(), "preheat 必须把缓存落盘"
+
+
+def test_preheat_failure_returns_health_without_raise(monkeypatch):
+    """刷取失败不抛——返回 health 留痕（后续 is_trading_day 走既有降级链）。"""
+
+    def boom():
+        raise RuntimeError("transient network")
+
+    monkeypatch.setattr(trade_calendar, "_fetch_trade_days", boom)
+    health = trade_calendar.preheat()
+    assert health["cached_days"] == 0
+    assert health["refresh_cooldown_until_monotonic"] > 0, "失败必须进入冷却"

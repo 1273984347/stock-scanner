@@ -34,6 +34,37 @@ DATA_SOURCE_PRIORITY_ADJUSTED = ["tencent_kline", "baostock", "akshare", "tdx",
 # 北交所专用：本地 TDX 已删，改由网页网关承担（新浪覆盖 92xxxx，腾讯仅 1 根作兜底）
 BJ_SOURCE_PRIORITY = ["sina_kline", "tencent_kline", "tdx_local"]
 
+# 源 × 复权口径能力表（增量评审 Δ5/N2，2026-11-22）：栈遍历按能力过滤。
+# 此前三个同根因的洞（写仓零口径校验，ADR-0036 挂账只点名了 westock 一个）：
+# - tencent 在 raw 栈被无条件 adjust="qfq"（2026-11-19 引入）⇒ 新浪失败回落时
+#   前复权价写进 kline_raw 仓；
+# - westock 在 raw 栈不带 fq（默认 qfq）⇒ 同上；
+# - ADJUSTED 栈里排着只会返不复权的 baostock/akshare ⇒ 腾讯失败时 raw 价写进
+#   kline 仓；raw 栈尾部排着 qfq-only 的 tdx_local_qfq ⇒ 反向污染。
+# G3 实测（2026-11-22，600519 跨 4 次除权 500 日窗）：tencent adjust="" 返真
+# 不复权（1527.79 vs qfq 1424.33，阶梯差值与除权事件一一对应）；westock
+# fq="bfq" 同（与腾讯 raw 逐值对齐）。过滤语义 = 宁缺毋假（T7-g：缺失显式化
+# 优于假数据，同 P-114 资金流语义）。
+SOURCE_ADJUST_CAPABILITY = {
+    "sina_kline":    {"raw": True,  "qfq": False},
+    "tencent_kline": {"raw": True,  "qfq": True},   # raw 走 adjust=""（fqkline day 节点同构）
+    "baostock":      {"raw": True,  "qfq": False},
+    "tdx":           {"raw": True,  "qfq": False},
+    "adata":         {"raw": True,  "qfq": False},
+    "westock":       {"raw": True,  "qfq": True},   # raw 走 fq="bfq"
+    "tushare":       {"raw": True,  "qfq": False},
+    "akshare":       {"raw": False, "qfq": True},   # 分支固定 adjust="qfq"（东财 push2his）
+    "tdx_local_qfq": {"raw": False, "qfq": True},
+    "tdx_local":     {"raw": True,  "qfq": False},
+}
+
+
+def _stack_for(prefer_adjusted: bool) -> list:
+    """按复权口径能力过滤源栈：incapable 的源直接跳过（不试、不写、不污染）。"""
+    base = DATA_SOURCE_PRIORITY_ADJUSTED if prefer_adjusted else DATA_SOURCE_PRIORITY
+    key = "qfq" if prefer_adjusted else "raw"
+    return [s for s in base if SOURCE_ADJUST_CAPABILITY.get(s, {}).get(key)]
+
 
 def _is_bj_stock(code: str) -> bool:
     """判断是否为北交所股票（43/83/87/88/92）——单一口径走 market_utils。
@@ -125,7 +156,8 @@ _CIRCUIT_BREAKERS: Dict[str, CircuitBreaker] = {
 }
 
 
-def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[str] = None) -> pd.DataFrame:
+def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[str] = None,
+                       prefer_adjusted: bool = False) -> pd.DataFrame:
     """从指定数据源获取数据
 
     P0-10 修复 (2026-06-08, lib-incremental-audit §2.1):
@@ -134,11 +166,16 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
     - 修复: as_of_date 透传到 tushare/akshare 端点 (其他数据源行为待补)
     - 不传 as_of_date 时仍走 datetime.now()（实时模式，行为不变）
 
+    Δ5（2026-11-22）：新增 prefer_adjusted 口径意图——tencent/westock 双口径源
+    按意图传参（raw: adjust=""/fq="bfq"，qfq: adjust="qfq"/fq="qfq"）；
+    能力表不具备该口径的源直接拒绝（防显式 source 组合误用污染仓）。
+
     Args:
         code: 股票代码
         days: 历史天数
         source: 数据源名称
         as_of_date: 时间截断 (YYYY-MM-DD)。回测必传。
+        prefer_adjusted: 复权口径意图（True=前复权走 kline 仓，False=不复权走 kline_raw 仓）
 
     Returns:
         DataFrame with columns: date/open/high/low/close/volume
@@ -146,6 +183,16 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
     breaker = _CIRCUIT_BREAKERS.get(source)
     if breaker is None:
         logger.warning(f"未知数据源: {source}")
+        return pd.DataFrame()
+
+    # Δ5：能力守卫——显式 source 组合（如 --source baostock --datasets kline）
+    # 在取数前拒绝，宁缺毋假。
+    cap = SOURCE_ADJUST_CAPABILITY.get(source, {})
+    need = "qfq" if prefer_adjusted else "raw"
+    if cap and not cap.get(need):
+        logger.warning(
+            f"[{source}] 不具备 {'前复权(qfq)' if prefer_adjusted else '不复权(raw)'} "
+            f"口径能力，拒绝取数（防口径污染，Δ5）")
         return pd.DataFrame()
 
     # P0-10: 透传 as_of_date 端点
@@ -167,9 +214,11 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
         if source == "tencent_kline":
             from lib.data.data_kline_web import get_tencent_kline
             # host 健康在 data_kline_web 内按两台主机分别计数（ADR-0032）
+            # Δ5（2026-11-22）：raw 栈传 adjust=""——此前无条件 qfq，新浪失败
+            # 回落时前复权价写进 kline_raw 仓（G3 实测空 fq 返真不复权）。
             return _call_source_with_timeout(
                 breaker, get_tencent_kline, code, days=days,
-                adjust="qfq", as_of_date=as_of_date)
+                adjust="qfq" if prefer_adjusted else "", as_of_date=as_of_date)
         if source == "tdx_local_qfq":
             from lib.data.data_tdx import _fetch_qfq_local_file
             return _fetch_qfq_local_file(code, days, "daily", as_of_date)
@@ -187,8 +236,11 @@ def _fetch_from_source(code: str, days: int, source: str, as_of_date: Optional[s
             return _call_source_with_timeout(breaker, adata_kline, code, days=days, as_of_date=as_of_date)
         if source == "westock":
             from lib.data.data_westock import get_kline as westock_kline
-            df = _call_source_with_timeout(breaker, westock_kline, code, period="day", limit=min(days, 2000),
-                                       as_of_date=as_of_date)
+            # Δ5（2026-11-22）：raw 栈显式 fq="bfq"（不复权）——默认 qfq，ADR-0036
+            # 挂账的污染洞（评审处方误写 fq=""，CLI 文档口径 bfq=不复权，G3 实测对齐腾讯 raw）。
+            df = _call_source_with_timeout(
+                breaker, westock_kline, code, period="day", limit=min(days, 2000),
+                fq="qfq" if prefer_adjusted else "bfq", as_of_date=as_of_date)
             if df.empty:
                 return pd.DataFrame()
             # P-112：CLI 1.0.4 实测英文表头（date/open/**last**/high/low/volume/...），
@@ -349,7 +401,8 @@ def _get_stock_hist_multi_source_online(
         DataFrame with columns: date/open/high/low/close/volume
     """
     if source != "auto":
-        df = _fetch_from_source(code, days, source, as_of_date=as_of_date)
+        df = _fetch_from_source(code, days, source, as_of_date=as_of_date,
+                                prefer_adjusted=prefer_adjusted)
         df = _normalize_columns(df)
         if not _validate_dataframe(df):
             return pd.DataFrame()
@@ -359,8 +412,11 @@ def _get_stock_hist_multi_source_online(
     # ADR-0027 起本地 TDX 已删，网页网关是主力；旧实现硬编码 tdx_local 等于直接判死。
     if _is_bj_stock(code):
         bj_errors = []
-        for src in BJ_SOURCE_PRIORITY:
-            df = _fetch_from_source(code, days, src, as_of_date=as_of_date)
+        for src in _stack_for(False):  # 北交所走 kline_raw（不复权口径）
+            if src not in BJ_SOURCE_PRIORITY:
+                continue
+            df = _fetch_from_source(code, days, src, as_of_date=as_of_date,
+                                    prefer_adjusted=False)
             if not df.empty:
                 df = _normalize_columns(df)
                 if _validate_dataframe(df):
@@ -371,10 +427,12 @@ def _get_stock_hist_multi_source_online(
             code, bj_errors + ["北交所：本地 TDX 已删且网页网关未取到"])
 
     errors = []
-    # 选择数据源优先级：prefer_adjusted=True 时前复权数据源优先
-    priority = DATA_SOURCE_PRIORITY_ADJUSTED if prefer_adjusted else DATA_SOURCE_PRIORITY
+    # 选择数据源优先级：按口径意图选栈并过滤能力（Δ5）——qfq 栈剔除 raw-only
+    # 源（baostock/akshare 等），raw 栈剔除 qfq-only 源（tdx_local_qfq）。
+    priority = _stack_for(prefer_adjusted)
     for src in priority:
-        df = _fetch_from_source(code, days, src, as_of_date=as_of_date)
+        df = _fetch_from_source(code, days, src, as_of_date=as_of_date,
+                                prefer_adjusted=prefer_adjusted)
         if not df.empty:
             df = _normalize_columns(df)
             if _validate_dataframe(df):

@@ -181,3 +181,56 @@ def test_pipeline_monitor_alerts_wired_to_alert_path():
     assert "push_text(" in body
     assert "send_feishu_message" not in body
     assert "from reporter" not in body
+
+
+# ---- N5（2026-11-22，增量评审）：scan_deadline 截断标记送达推送链 ----
+
+def _capture_feishu(monkeypatch):
+    captured = {}
+
+    class _Resp:
+        def json(self):
+            return {"code": 0}
+
+    def _post(*a, **k):
+        captured["body"] = k.get("json")
+        return _Resp()
+
+    monkeypatch.setattr(scan_notify, "FEISHU_RECEIVE_ID", "ou_test")
+    monkeypatch.setattr(scan_notify, "get_tenant_token", lambda: "tok")
+    monkeypatch.setattr(scan_notify.requests, "post", _post)
+    return captured
+
+
+def test_deadline_marker_reaches_push_content(monkeypatch):
+    """复合 scan_result 自带 scan_deadline → 推送文本前置截断告警。
+
+    此前标记全仓零消费（增量评审 N5）：被 deadline 截断的扫描以完整姿态推送。
+    run.py 自本批起直传复合 scan_result，scan_notify 内部自解包。
+    """
+    captured = _capture_feishu(monkeypatch)
+    composite = {
+        "results": {"策略A": _two_candidate_df()},
+        "scan_deadline": {"budget_s": 480, "skipped": ["组合优化", "ML富集"]},
+    }
+    assert scan_notify.send_feishu_message(composite, "balanced") is True
+    text = json.loads(captured["body"]["content"])["text"]
+    assert "扫描截断告警" in text
+    assert "组合优化" in text and "ML富集" in text
+
+
+def test_no_deadline_marker_push_text_unchanged(monkeypatch):
+    """正常路径（无标记）推送文本零新增段（L2/L9 基线无漂移）。"""
+    captured = _capture_feishu(monkeypatch)
+    assert scan_notify.send_feishu_message(
+        {"results": {"策略A": _two_candidate_df()}}, "balanced") is True
+    text = json.loads(captured["body"]["content"])["text"]
+    assert "扫描截断告警" not in text
+
+
+def test_print_results_wires_deadline_warning():
+    """控制台路径接线守卫：print_results 必须消费 scan_deadline 标记。"""
+    import inspect
+    src = inspect.getsource(scan_notify.print_results)
+    assert "scan_deadline" in src
+    assert "_deadline_warning" in src

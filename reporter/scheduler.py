@@ -54,6 +54,19 @@ def send_morning_report() -> bool:
         text = (f"【推送心跳告警】{hb['reason']}\n"
                 f"若连续多日出现本告警，请检查调度任务与网络。\n\n") + text
 
+    # 本地仓陈旧告警（增量评审 Δ2，2026-11-22）：data/store 是断网生存底座，
+    # 整仓陈旧此前无任何运行时信号（/api/health 只看 cache）——晨报作为每日
+    # 固定触点机器主动看，陈旧 ≥3 天的数据集前置告警段。
+    try:
+        from lib.data.local_store import staleness_report
+        bad = [r for r in staleness_report() if r[1] != "ok"]
+        if bad:
+            lines = [f"【本地仓陈旧告警】{len(bad)} 个数据集异常（StoreDataSync 任务是否在跑？）"]
+            lines += [f"- {ds}: {st} {det}" for ds, st, det in bad]
+            text = "\n".join(lines) + "\n\n" + text
+    except Exception as e:  # 告警面故障不得炸晨报
+        logger.warning("本地仓新鲜度检查失败: %s", e)
+
     ok = feishu_pusher.push_morning_report(text, chart_paths)
     if not ok:
         print("[FALLBACK]", text)
