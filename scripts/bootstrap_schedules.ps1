@@ -5,8 +5,10 @@
 # docs/PAPER_TRADING_GUIDE.md:46-53、task-scheduler-setup.md 三处文档声称的
 # 计划任务**一台都没注册**，晨报 / paper 日报 / TDX 更新全部静默停摆（P0-3 场景 1）。
 # 2026-11-22 增量评审（docs/audit/architecture-review-delta-2026-11-22.md）补齐：
-# StoreDataSync（本地仓每日保鲜链 Δ2）+ StoreBackup（data/store 滚动快照 Δ1）。
-# 本脚本把五个任务一次性落到 Windows 任务计划（幂等：已存在先删再注册）。
+# StoreDataSync（本地仓每日保鲜链 Δ2）+ StoreBackup（data/store 滚动快照 Δ1）；
+# 同日 N6（用户确认 TDX 下载无用）：TdxUpdate 任务摘除——update_tdx_data.py 脚本
+# 本身保留（ADR-0017 口径：有 TDX 环境可用），日志清理链迁入 StoreDataSync。
+# 本脚本把四个任务一次性落到 Windows 任务计划（幂等：已存在先删再注册）。
 #
 # 执行（本脚本入库后**不自动运行**——注册计划任务属机器状态变更，由用户自行执行）：
 #   powershell -ExecutionPolicy Bypass -File scripts\bootstrap_schedules.ps1
@@ -68,23 +70,15 @@ $bat = Join-Path $root "scripts\paper_daily.bat"
 $log = Join-Path $logDir "paper_daily.log"
 Register-DailyTask "PaperDaily" "16:00" "cmd.exe" "/c `"`"$bat`" >> `"$log`" 2>&1`""
 
-# 3) TDX 数据更新——直接调 python（update_tdx_data.bat 以 pause 结尾，不能无人值守）
-#    更新完成顺手链式执行日志清理（P1-3 零星项：paper_daily/scheduled 追加日志 30 天保留，C12）
-#    ⚠️ 增量评审 N6（2026-11-22）：ADR-0017 删本地 TDX 后本任务疑为死源下载
-#    （tdx 源仅双栈尾部兜底）；是否保留由用户确认后决定，暂按原样注册。
-$py = Join-Path $root "scripts\update_tdx_data.py"
-$cleanup = Join-Path $root "scripts\cleanup_logs.py"
-$log = Join-Path $logDir "tdx_update.log"
-Register-DailyTask "TdxUpdate" "18:30" $python "`"$py`" >> `"$log`" 2>&1 && `"$python`" `"$cleanup`" >> `"$log`" 2>&1"
-
-# 4) 本地仓每日保鲜链（Δ2，2026-11-22）：日历预热 → data_sync 全域同步 → --content。
+# 3) 本地仓每日保鲜链（Δ2，2026-11-22）：日历预热 → data_sync 全域同步 → --content
+#    → 日志/备份 zip 保留期清理（原 TdxUpdate 链式职责迁入，N6 摘除后补偿）。
 #    全市场 kline+kline_raw @4workers 实测 ~100min（ADR-0036），时限放宽到 3h；
 #    日志由 daily_store_sync.ps1 内部追加（logs\scheduled\store_sync.log）。
 $syncScript = Join-Path $root "scripts\daily_store_sync.ps1"
 Register-DailyTask "StoreDataSync" "19:00" "powershell" `
     "-ExecutionPolicy Bypass -File `"$syncScript`"" -LimitHours 3
 
-# 5) 本地仓滚动快照（Δ1，2026-11-22）：robocopy /E → backups\store_current（无 /PURGE）
+# 4) 本地仓滚动快照（Δ1，2026-11-22）：robocopy /E → backups\store_current（无 /PURGE）
 $backupScript = Join-Path $root "scripts\backup_store.ps1"
 $log = Join-Path $logDir "store_backup.log"
 Register-DailyTask "StoreBackup" "21:30" "cmd.exe" `

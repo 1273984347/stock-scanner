@@ -39,6 +39,11 @@ Log "data_sync exit=$syncExit"
 & $py (Join-Path $root "scripts\data_sync.py") --content >> $log 2>&1
 $contentExit = $LASTEXITCODE
 Log "--content exit=$contentExit"
+
+# 4) 日志/备份 zip 保留期清理（30 天）——原 TdxUpdate 任务的链式职责，
+#    N6 摘除后迁入本链（P1-3 零星项 C12 + 增量评审 Δ7）
+& $py (Join-Path $root "scripts\cleanup_logs.py") >> $log 2>&1
+Log "cleanup_logs exit=$LASTEXITCODE"
 Log "=== store sync chain end ==="
 
 if ($syncExit -ne 0 -or $contentExit -ne 0) { exit 1 }
