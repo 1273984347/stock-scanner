@@ -625,7 +625,13 @@ def get_stock_hist(code: str, days: int = 180) -> pd.DataFrame:
     cache_key = f"hist/{code}/{days}"
     cached = _load_cache(cache_key, max_age_hours=get_config().cache.hist_max_age_hours)
     if not cached.empty:
-        return cached
+        # P2-4（2026-11-20，批次 C12）：命中侧轻量校验（列集完整性）——降级源写出的
+        # 坏帧此前可钉满 24h TTL；不合规帧视为 miss 走重取（重取成功即覆盖写盘）
+        missing = [c for c in ("date", "open", "high", "low", "close", "volume")
+                   if c not in cached.columns]
+        if not missing:
+            return cached
+        logger.warning(f"[cache] 缓存帧缺列 {missing}，视为 miss 重取: {cache_key}")
 
     try:
         df = get_stock_hist_multi_source(code, days=days, source="auto")

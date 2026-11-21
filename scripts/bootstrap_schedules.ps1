@@ -62,9 +62,11 @@ $log = Join-Path $logDir "paper_daily.log"
 Register-DailyTask "PaperDaily" "16:00" "cmd.exe" "/c `"`"$bat`" >> `"$log`" 2>&1`""
 
 # 3) TDX 数据更新——直接调 python（update_tdx_data.bat 以 pause 结尾，不能无人值守）
+#    更新完成顺手链式执行日志清理（P1-3 零星项：paper_daily/scheduled 追加日志 30 天保留，C12）
 $py = Join-Path $root "scripts\update_tdx_data.py"
+$cleanup = Join-Path $root "scripts\cleanup_logs.py"
 $log = Join-Path $logDir "tdx_update.log"
-Register-DailyTask "TdxUpdate" "18:30" $python "`"$py`" >> `"$log`" 2>&1"
+Register-DailyTask "TdxUpdate" "18:30" $python "`"$py`" >> `"$log`" 2>&1 && `"$python`" `"$cleanup`" >> `"$log`" 2>&1"
 
 Write-Host ""
 Write-Host "验证：Get-ScheduledTask -TaskPath '\StockScanner\'"

@@ -39,8 +39,13 @@ HOST_SINA_QUOTE = "hq.sinajs.cn"
 HOST_SINA_MARKET = "vip.stock.finance.sina.com.cn"
 HOST_SINA_KLINE = "money.finance.sina.com.cn"
 
+# P2-6（2026-11-20，批次 C12）：half_open 探测名额单飞——冷却到期只放行**一个**
+# 并发探测（旧实现所有并发调用者都放行）；挂死探测按 _PROBE_TIMEOUT_S 有界释放。
 DEFAULT_FAILURE_THRESHOLD = 3
 DEFAULT_COOLDOWN_S = 300.0
+# 半开探测名额的最长持有时间：源调用超时 30s（ADR-0019）× 2 余量。挂死探测
+# 超时后释放名额允许重新探测，防止 host 因一次挂死永久不可用。
+PROBE_SLOT_TIMEOUT_S = 60.0
 
 
 class HostHealth:
@@ -54,6 +59,9 @@ class HostHealth:
         self._clock = clock
         self._lock = threading.Lock()
         self._states: Dict[str, dict] = {}
+        # 探测名额（host -> probe_started monotonic）；独立于 _states，
+        # snapshot()/运维端点的响应形状零变化（P2-6）
+        self._probe_slots: Dict[str, float] = {}
 
     def _state(self, host: str) -> dict:
         return self._states.setdefault(host, {
@@ -62,7 +70,7 @@ class HostHealth:
         })
 
     def is_available(self, host: str) -> bool:
-        """是否允许向该 host 发请求（冷却到期后放行一次半开探测）。"""
+        """是否允许向该 host 发请求（冷却到期后放行**一个**半开探测名额，P2-6）。"""
         with self._lock:
             st = self._state(host)
             if st["state"] == "closed":
@@ -70,9 +78,23 @@ class HostHealth:
             if st["state"] == "open" and self._clock() - st["opened_at"] >= self.cooldown_s:
                 st["state"] = "half_open"
                 st["last_change"] = self._clock()
+                self._probe_slots[host] = self._clock()  # 占用探测名额
                 logger.info(f"[host_health] {host} 冷却到期 → 半开探测")
                 return True
-            return st["state"] == "half_open"
+            if st["state"] == "half_open":
+                started = self._probe_slots.get(host)
+                if started is None:
+                    # 名额缺失（异常路径兜底）：重新授予
+                    self._probe_slots[host] = self._clock()
+                    return True
+                if self._clock() - started > PROBE_SLOT_TIMEOUT_S:
+                    # 挂死探测有界释放：允许重新探测，防 host 永久不可用
+                    logger.warning(
+                        f"[host_health] {host} 半开探测名额超时释放（{PROBE_SLOT_TIMEOUT_S:.0f}s）")
+                    self._probe_slots[host] = self._clock()
+                    return True
+                return False  # 名额已被占用：并发调用跳过本 host
+            return False
 
     def note_success(self, host: str) -> None:
         with self._lock:
@@ -81,6 +103,7 @@ class HostHealth:
                 logger.info(f"[host_health] {host} 恢复正常，闭合熔断")
             st.update(state="closed", failures=0, opened_at=0.0,
                       last_error="", last_change=self._clock())
+            self._probe_slots.pop(host, None)  # P2-6：探测结束释放名额
 
     def note_failure(self, host: str, error: Optional[BaseException] = None) -> None:
         with self._lock:
@@ -96,6 +119,7 @@ class HostHealth:
                         f"{self.cooldown_s:.0f}s（last_error={st['last_error']}）")
                 st["state"] = "open"
                 st["opened_at"] = self._clock()
+                self._probe_slots.pop(host, None)  # P2-6：重开释放探测名额
 
     def snapshot(self) -> Dict[str, dict]:
         """当前各 host 状态（运维/端点用，不含锁对象）。"""
@@ -105,6 +129,7 @@ class HostHealth:
     def reset(self) -> None:
         with self._lock:
             self._states.clear()
+            self._probe_slots.clear()  # P2-6：探测名额一并清零（P-100 纪律）
 
 
 # 进程级单例（与 data_layer 的进程内缓存同寿命；跨进程不共享——
