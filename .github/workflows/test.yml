@@ -1,14 +1,9 @@
 name: Test
 
 on:
-  # ⚠️ Actions 额度已耗尽（2026-11-07）：暂时**只保留手动触发**，
-  #    避免每次 push 都产生一个"跑不起来的红色 run"（不耗分钟但刺眼）。
-  # 额度恢复后：把下面两行加回来即可恢复自动门禁（matrix 表达式会自动
-  # 只跑 3.12；需要全矩阵时手动触发 workflow_dispatch）。
-  #   push:
-  #   pull_request:
-  workflow_dispatch:   # 手动触发 = 跑完整矩阵（3 OS x 3 Python，约 117 Linux-分钟）
-
+  # 公开仓：标准 runner 免费，恢复 push/PR 自动门禁（默认 3.12 × 3 OS）。
+  # 需要 Python 3.10/3.11 兼容性验证时手动 workflow_dispatch 跑完整矩阵。
+  push:/n  pull_request:/n  workflow_dispatch:/n
 jobs:
   test:
     runs-on: ${{ matrix.os }}
@@ -41,7 +36,7 @@ jobs:
         env:
           # 跳过 api 模块 import 期的 akshare 行情预取，保证门禁零网络副作用
           SKIP_HS300_PREFETCH: '1'
-        run: python scripts/contract_snapshot.py --check
+        run: python scripts/gates/contract_snapshot.py --check
       - name: Run tests (with coverage baseline)
         # 只在 3.12 上带覆盖率跑：覆盖率高才能给出可比的基线，
         # 且**替换**普通测试步骤（不额外再跑一遍，避免 CI 时间翻倍）
@@ -55,14 +50,14 @@ jobs:
         # 按平台与自己的历史基线比对（分支覆盖在三平台本就不同，
         # 单一阈值硬卡必然误判）。该平台尚无基线时只报告不阻断。
         if: matrix.python-version == '3.12'
-        run: python scripts/coverage_baseline.py --check --coverage-file coverage.json
+        run: python scripts/gates/coverage_baseline.py --check --coverage-file coverage.json
       - name: Dual-run diff (行为漂移门禁)
         # 同一份注入数据下比对 3 条链路的**实际结果**（比契约快照更深：
         # 契约快照只看路径+schema，这里看数值与字段内容）。
         # 基线来自 docs/refactor/dual-run-baseline.json（由旧实现 --capture 生成），
         # Phase N 改动后本步骤即判定"行为是否改变"。
         if: matrix.python-version == '3.12'
-        run: python scripts/dual_run_diff.py --check --out docs/refactor/dual-run-baseline.json
+        run: python scripts/gates/dual_run_diff.py --check --out docs/refactor/dual-run-baseline.json
       - name: Backtest baseline (回测口径漂移门禁)
         # 回测数值是**策略决策依据**（RF-01 风险登记 R6：错一位可能误导后续所有优化）。
         # 本门禁比对 4 条链路的输出：
@@ -72,7 +67,7 @@ jobs:
         #   engine_multi_signal_entry —— 同上（多信号口径）
         # 全部用**确定性合成数据**（zlib.crc32 种子），跨环境可复现。
         if: matrix.python-version == '3.12'
-        run: python scripts/backtest_baseline.py --check --out docs/refactor/backtest-baseline.json
+        run: python scripts/gates/backtest_baseline.py --check --out docs/refactor/backtest-baseline.json
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4

@@ -29,6 +29,10 @@ def _parse_env_value(raw: str) -> str:
     return v.rstrip()
 
 
+# 循环变量占位：.env 不存在时下面的循环不执行，但 config/__init__ 会导入这些名字。
+# 不占位会让"无 .env 的新克隆/CI"在 import config 时直接 ImportError。
+_line = _k = _v = ""
+
 # 自动加载 .env 文件（模块级执行——config 被 import 时 env 即就位）
 _env_file = Path(__file__).resolve().parent.parent / ".env"
 if _env_file.exists():

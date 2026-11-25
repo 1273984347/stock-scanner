@@ -324,7 +324,4 @@ python scripts/update_tdx_data.py --list         # 列出所有包
 | [AGENTS.md](AGENTS.md) | AI 必须怎么行动（硬约束 / 门禁 / 提交纪律） |
 | [RULES.md](RULES.md) | 哪里和全局不一样（例外登记） |
 | [docs/refactor/pitfalls.md](docs/refactor/pitfalls.md) | 为什么会踩坑（现象→根因→出坑→预防） |
-| [TODO.md](TODO.md) | 要做什么、做到哪了 |
-| [docs/adr/](docs/adr/) | 架构决策记录（0001–0022） |
-| [docs/plans/2026-11-07-refactor-plan.md](docs/plans/2026-11-07-refactor-plan.md) | 重构阶段计划与逐批记录 |
 | [docs/refactor/README.md](docs/refactor/README.md) | 度量尺子口径与自证记录 |
