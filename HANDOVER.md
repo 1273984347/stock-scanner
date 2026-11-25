@@ -1,7 +1,7 @@
 # HANDOVER
 
 > 接手顺序：本文件 → `AGENTS.md`（AI 行为真源）→ `TODOS.md`（任务台账）。
-> 最近更新：2026-11-26 02:12。
+> 最近更新：2026-11-26 02:26。
 
 ## 当前状态
 
@@ -13,8 +13,8 @@
 - 不在公开仓：内部 `docs/plans|research|archive|audit`、`.claude/`、`.superpowers/`、
   `data/` 导出与本地备份
 - CI：GitHub Actions，`push` / `pull_request` / `workflow_dispatch`，三平台 × Python 3.12；
-  重建后基线 run `45668417667` 全绿；本批 docs 推送后需复跑确认
-- 本地工作区：`D:/stock-scanner`，`master` 领先 `origin/master` 1 个提交（docs 待推）
+  本批提交 run `45673551198` 三平台全绿
+- 本地工作区：`D:/stock-scanner`，`master` 与 `origin/master` 同步
 
 ## 关键约定
 
