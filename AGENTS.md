@@ -447,6 +447,7 @@ uvicorn api:app --host 127.0.0.1 --port 8000
 | **`[skip ci]` 纪律**（Δ6，2026-11-22） | 仅文档类与破坏性/目录级改动可追加；feat/fix 等**代码类提交不得**加（增量评审实测上轮区间 21/25 泛化；CI 恢复 push 触发前由 pre-push hook 兜底回归门） |
 | 提交前 | `git status` 确认工作树无意外文件；用显式 pathspec |
 | 推送后 | 确认本地 HEAD == `origin/master` |
+| **想用空提交触发一次 CI** | **禁** —— `paths-ignore` 会把零文件变更判为「全部命中」而**静默跳过**（push 成功、无 run、无报错）；需触发请改一个不参与判据的非 `.md` 文件（如 `.gitignore` 注释），或用 `workflow_dispatch`（⚠ 本仓展开 9 job，额度约 3 倍）。见 pitfalls P-143 |
 
 ### 7.2 遇到坑怎么办
 
