@@ -6,8 +6,8 @@ Phase 6 承诺「只改调度方式，不改可观测结果」。本工具把这
   1. **迁移等价**：每条迁移记录改造前源码（固定 commit）中 `try:` 块语句序列，
      与现文件 `_compute_*` 同步函数体逐语句 `ast.dump` 对比。任何「顺手优化」都会
      立刻判红（ADR-0003 D5）。每条迁移自带 `source_rel` + `pre_commit`，
-     提交之后仍可复算（backtest 固定 523b353；第 4 批 77bc366；第 5 批 6d0e434；
-     第 6 批 497550f；第 7 批 c9b4d6f）。
+     提交之后仍可复算（backtest 固定 385e449；第 4 批 ac427bc；第 5 批 89fff9d；
+     第 6 批 3ef41c7；第 7 批 f00a903）。
      **有意分歧豁免**：RF-02 D1/D2 对 `notifications` / `strategy_recommend` 两个迁移的
      `_compute_*` 体做了**有意 bug 修复**（ADR-0015），已记入 `MIGRATION_DIVERGENCES`；
      门禁对它们仅做「接线完整性」校验（`_compute_*` 函数存在），豁免逐字等价比对。
@@ -87,86 +87,86 @@ Migration = namedtuple("Migration",
 
 MIGRATIONS = (
     Migration("backtest", "POST /api/backtest", "run_backtest", "_compute_factor_backtest",
-              "routers/backtest.py", "523b353"),
+              "routers/backtest.py", "385e449"),
     Migration("backtest_compare", "POST /api/backtest/compare", "compare_strategies", "_compute_compare",
-              "routers/backtest.py", "523b353"),
+              "routers/backtest.py", "385e449"),
     Migration("walkforward", "POST /api/walkforward", "run_walkforward", "_compute_walkforward",
-              "routers/backtest.py", "523b353"),
-    # Phase 6 第 4 批 Tier A 候选 Top5（基线 commit 77bc366 = batch4 起点，均未 offload）
+              "routers/backtest.py", "385e449"),
+    # Phase 6 第 4 批 Tier A 候选 Top5（基线 commit ac427bc = batch4 起点，均未 offload）
     Migration("factor_eval", "GET /api/factor-eval", "factor_evaluation", "_compute_factor_evaluation",
-              "routers/factor.py", "77bc366"),
+              "routers/factor.py", "ac427bc"),
     Migration("factor_scatter", "GET /api/factor-scatter", "factor_scatter", "_compute_factor_scatter",
-              "routers/factor.py", "77bc366"),
+              "routers/factor.py", "ac427bc"),
     Migration("kline", "GET /api/kline/{code}", "kline_data", "_compute_kline",
-              "routers/market.py", "77bc366"),
+              "routers/market.py", "ac427bc"),
     Migration("risk", "GET /api/risk", "risk_assessment", "_compute_risk",
-              "routers/risk.py", "77bc366"),
+              "routers/risk.py", "ac427bc"),
     Migration("export_config", "GET /api/export/config", "export_config", "_compute_export_config",
-              "routers/export.py", "77bc366"),
-    # Phase 6 第 5 批 Tier A 候选（基线 commit 6d0e434 = batch5 起点，均未 offload；
+              "routers/export.py", "ac427bc"),
+    # Phase 6 第 5 批 Tier A 候选（基线 commit 89fff9d = batch5 起点，均未 offload；
     # /api/dashboard try 体含 await，无法逐字搬进同步函数，不在本批）
     Migration("factor_contribution", "GET /api/factor-contribution", "factor_contribution",
-              "_compute_factor_contribution", "routers/factor.py", "6d0e434"),
+              "_compute_factor_contribution", "routers/factor.py", "89fff9d"),
     Migration("market", "GET /api/market", "market_overview", "_compute_market",
-              "routers/market.py", "6d0e434", 2, "full"),
+              "routers/market.py", "89fff9d", 2, "full"),
     Migration("positions", "GET /api/positions", "positions", "_compute_positions",
-              "routers/portfolio.py", "6d0e434"),
+              "routers/portfolio.py", "89fff9d"),
     Migration("risk_exposure", "GET /api/risk-exposure", "risk_exposure", "_compute_risk_exposure",
-              "routers/risk.py", "6d0e434"),
+              "routers/risk.py", "89fff9d"),
     Migration("stock", "GET /api/stock/{code}", "stock_detail", "_compute_stock_detail",
-              "routers/stock.py", "6d0e434", 1, "full"),
-    # Phase 6 第 6 批 Tier A 候选（基线 commit 497550f = batch6 起点，均未 offload；
+              "routers/stock.py", "89fff9d", 1, "full"),
+    # Phase 6 第 6 批 Tier A 候选（基线 commit 3ef41c7 = batch6 起点，均未 offload；
     # /api/dashboard try 体含 await，不在本批）
     Migration("signals", "GET /api/signals", "signal_accuracy", "_compute_signal_accuracy",
-              "routers/signals_audit.py", "497550f"),
+              "routers/signals_audit.py", "3ef41c7"),
     Migration("exposures", "GET /api/exposures", "factor_exposures", "_compute_factor_exposures",
-              "routers/risk.py", "497550f"),
+              "routers/risk.py", "3ef41c7"),
     Migration("position", "GET /api/position/{code}", "position_detail", "_compute_position_detail",
-              "routers/portfolio.py", "497550f"),
+              "routers/portfolio.py", "3ef41c7"),
     Migration("regime_history", "GET /api/regime-history", "regime_history", "_compute_regime_history",
-              "routers/market.py", "497550f"),
+              "routers/market.py", "3ef41c7"),
     Migration("score", "GET /api/score/{code}", "stock_score", "_compute_stock_score",
-              "routers/scoring.py", "497550f"),
+              "routers/scoring.py", "3ef41c7"),
     Migration("sector_flow", "GET /api/sector-flow", "sector_flow", "_compute_sector_flow",
-              "routers/market.py", "497550f"),
-    # Phase 6 第 7 批 Tier A 候选 1 阻塞调用端点（基线 commit c9b4d6f = batch7 起点，
+              "routers/market.py", "3ef41c7"),
+    # Phase 6 第 7 批 Tier A 候选 1 阻塞调用端点（基线 commit f00a903 = batch7 起点，
     # 均未 offload）；/api/dashboard 转 RF-02（ADR-0013），不在本批
     Migration("attribution", "GET /api/attribution", "return_attribution",
-              "_compute_return_attribution", "routers/analysis.py", "c9b4d6f"),
+              "_compute_return_attribution", "routers/analysis.py", "f00a903"),
     Migration("audit", "GET /api/audit", "audit_history",
-              "_compute_audit_history", "routers/signals_audit.py", "c9b4d6f"),
+              "_compute_audit_history", "routers/signals_audit.py", "f00a903"),
     Migration("audit_detail", "GET /api/audit/{scan_id}", "audit_detail",
-              "_compute_audit_detail", "routers/signals_audit.py", "c9b4d6f"),
+              "_compute_audit_detail", "routers/signals_audit.py", "f00a903"),
     Migration("export_trades", "GET /api/export/trades", "export_trades",
-              "_compute_export_trades", "routers/export.py", "c9b4d6f"),
+              "_compute_export_trades", "routers/export.py", "f00a903"),
     Migration("export_trades_excel", "GET /api/export/trades/excel", "export_trades_excel",
-              "_compute_export_trades_excel", "routers/export.py", "c9b4d6f"),
+              "_compute_export_trades_excel", "routers/export.py", "f00a903"),
     Migration("export_pdf", "POST /api/export/pdf", "export_pdf",
-              "_compute_export_pdf", "routers/export.py", "c9b4d6f"),
+              "_compute_export_pdf", "routers/export.py", "f00a903"),
     Migration("factor_ic_history", "GET /api/factor-ic-history", "factor_ic_history",
-              "_compute_factor_ic_history", "routers/factor.py", "c9b4d6f"),
+              "_compute_factor_ic_history", "routers/factor.py", "f00a903"),
     Migration("factor_weights", "GET /api/factor-weights", "factor_weights",
-              "_compute_factor_weights", "routers/factor.py", "c9b4d6f"),
+              "_compute_factor_weights", "routers/factor.py", "f00a903"),
     Migration("notifications", "GET /api/notifications", "get_notifications",
-              "_compute_notifications", "routers/notifications.py", "c9b4d6f"),
+              "_compute_notifications", "routers/notifications.py", "f00a903"),
     Migration("notification_stats", "GET /api/notifications/stats", "get_notification_stats",
-              "_compute_notification_stats", "routers/notifications.py", "c9b4d6f"),
+              "_compute_notification_stats", "routers/notifications.py", "f00a903"),
     Migration("position_distribution", "GET /api/position-distribution", "position_distribution",
-              "_compute_position_distribution", "routers/portfolio.py", "c9b4d6f"),
+              "_compute_position_distribution", "routers/portfolio.py", "f00a903"),
     Migration("risk_correlation", "GET /api/risk/correlation", "risk_correlation",
-              "_compute_risk_correlation", "routers/risk.py", "c9b4d6f"),
+              "_compute_risk_correlation", "routers/risk.py", "f00a903"),
     Migration("sector_heatmap", "GET /api/sector-heatmap", "sector_heatmap",
-              "_compute_sector_heatmap", "routers/market.py", "c9b4d6f"),
+              "_compute_sector_heatmap", "routers/market.py", "f00a903"),
     Migration("signals_accuracy_trend", "GET /api/signals/accuracy-trend", "signals_accuracy_trend",
-              "_compute_signals_accuracy_trend", "routers/signals_audit.py", "c9b4d6f"),
+              "_compute_signals_accuracy_trend", "routers/signals_audit.py", "f00a903"),
     Migration("strategy_ranking", "GET /api/strategy/ranking", "strategy_ranking",
-              "_compute_strategy_ranking", "routers/strategy.py", "c9b4d6f"),
+              "_compute_strategy_ranking", "routers/strategy.py", "f00a903"),
     Migration("strategy_recommend", "GET /api/strategy/recommend", "strategy_recommend",
-              "_compute_strategy_recommend", "routers/strategy.py", "c9b4d6f"),
+              "_compute_strategy_recommend", "routers/strategy.py", "f00a903"),
     Migration("trade_history", "GET /api/trade-history", "trade_history",
-              "_compute_trade_history", "routers/market.py", "c9b4d6f"),
+              "_compute_trade_history", "routers/market.py", "f00a903"),
     Migration("ab_test", "POST /api/ab-test/run", "ab_test_run",
-              "_compute_ab_test_run", "routers/strategy.py", "c9b4d6f", 1),
+              "_compute_ab_test_run", "routers/strategy.py", "f00a903", 1),
 )
 
 # RF-02 (ADR-0015 D1/D2) **有意分歧**：以下两个迁移的 `_compute_*` 体在 offload 之后被做了
@@ -520,7 +520,7 @@ def _install_mocks(stack: ExitStack):
     """确定性注入：不触网、不跑真回测/真风控、不写缓存。"""
     thread_id_box: list[int] = []
 
-    # ---- backtest（3 个，基线 523b353）----
+    # ---- backtest（3 个，基线 385e449）----
     def fake_unified_run(self, **kwargs):
         thread_id_box.append(threading.get_ident())
         return types.SimpleNamespace(raw=FIXED_RAW)

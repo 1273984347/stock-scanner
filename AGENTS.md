@@ -231,8 +231,8 @@ python scripts/gates/blocking_io_check.py --check
 python scripts/gates/blocking_io_check.py --selftest
 
 # L9 offload 开关对拍（Phase 6 第 2 批起；迁移 AST 等价 + off/on 响应 + 线程池自证）
-# 覆盖 37 个迁移：3 回测（523b353）+ 第 4 批 5（77bc366）+ 第 5 批 5（6d0e434）
-#   + 第 6 批 6（497550f）+ 第 7 批 18（c9b4d6f）
+# 覆盖 37 个迁移：3 回测（385e449）+ 第 4 批 5（ac427bc）+ 第 5 批 5（89fff9d）
+#   + 第 6 批 6（3ef41c7）+ 第 7 批 18（f00a903）
 # RF-02/ADR-0015 + 批次 A/ADR-0020 演化：37 中 32 严格冻结逐字等价 + 5 有意分歧
 #   （notifications / strategy_recommend / export_config），均因迁移完成后的有意行为修复
 #   豁免逐字等价，仅校验接线完整性；行为正确性分别由

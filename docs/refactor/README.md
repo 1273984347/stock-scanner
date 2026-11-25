@@ -15,8 +15,8 @@
 > ⑦ **端点归属基线**（17 域 × 68 端点 + 鉴权/async 冻结 + 前端 36 条路径，Phase 5 拆分前后必比）
 > ⑧ **阻塞 IO 基线**（Phase 6：68 端点 × 阻塞符号计数 + helper 调用链展开 + `other` 逐字段冻结；
 >    blocking 只准降 / offloaded 只准升，`--selftest` 自证判红；`--recapture` 按 G4 字段级取证重建）
-> ⑨ **offload 开关对拍**（Phase 6 第 2 批 + 第 4 批：8 端点迁移 —— 3 回测端点（基线 commit `523b353`）
->    + 第 4 批 5 端点（基线 commit `77bc366`）—— 固定 commit 源码 AST 逐语句等价 + off/on 整份响应
+> ⑨ **offload 开关对拍**（Phase 6 第 2 批 + 第 4 批：8 端点迁移 —— 3 回测端点（基线 commit `385e449`）
+>    + 第 4 批 5 端点（基线 commit `ac427bc`）—— 固定 commit 源码 AST 逐语句等价 + off/on 整份响应
 >    逐字段比对 + 真实线程池调用数 off=0/on=1 + 消费者登记双向对齐）
 > ⑩ **并发压测与 Tier B 留痕**（Phase 6 第 3 批 + 第 4 批：20 并发 P95 按批次发起计时、
 >    36 条前端路径契约冻结；188 个阻塞调用逐条登记理由，重计算端点不得伪装成轻量 IO）
@@ -81,7 +81,7 @@
 | `contracts/blocking-io-baseline.json` | **第 8 把尺子**：68 端点 × 阻塞符号计数基线（含 helper 展开的调用链、`other` 冻结清单、计划原阈值对照） | `python scripts/blocking_io_check.py --capture` |
 | `scripts/blocking_io_check.py` | **L8 门禁**：`--check` 校验 blocking 单调下降 / offloaded 单调上升 / other 冻结 / 端点集合与 L7 一致 / async 冻结；`--selftest` 自证判红 | `python scripts/blocking_io_check.py --check` |
 | `contracts/blocking-io-recapture-evidence.json` | L8 基线**历次重建**的字段级取证（mode / 允许端点 / 前后读数 / 其余端点是否逐字段一致），历史数组不覆盖 | `--recapture` 自动追加 |
-| `scripts/offload_switch_diff.py` | **L9 门禁**：37 端点迁移（3 回测 `523b353` + 第 4 批 5 `77bc366` + 第 5 批 5 `6d0e434` + 第 6 批 6 `497550f` + 第 7 批 18 `c9b4d6f`；锚点按 `lead_strip + body_mode`：try 体 / 无 try 剥快守卫 / try 体剥前导 await 语句）源码 AST 逐语句等价 + off/on 响应 diff（含 Streaming body+headers）+ 线程池调用自证 + 消费者登记双向对齐 | `python scripts/offload_switch_diff.py --check` |
+| `scripts/offload_switch_diff.py` | **L9 门禁**：37 端点迁移（3 回测 `385e449` + 第 4 批 5 `ac427bc` + 第 5 批 5 `89fff9d` + 第 6 批 6 `3ef41c7` + 第 7 批 18 `f00a903`；锚点按 `lead_strip + body_mode`：try 体 / 无 try 剥快守卫 / try 体剥前导 await 语句）源码 AST 逐语句等价 + off/on 响应 diff（含 Streaming body+headers）+ 线程池调用自证 + 消费者登记双向对齐 | `python scripts/offload_switch_diff.py --check` |
 | `../adr/0006-phase6-blocking-io-criteria.md` | 第 6 次判据修正：绝对阈值「≤1」→ 单调下降 + 分层退出判据 | 人工维护 |
 | `../adr/0007-phase6-offload-and-locks.md` | 第 2 批决策：灰度入口 / Tier A 切换 / 共享状态加锁 / L9 / 分层重建基线 | 人工维护 |
 | `contracts/blocking-io-tier-b.json` | Tier B 逐条留痕：96 条 (端点, callee) 理由登记 + **1 个 Tier A 候选端点**显式遗留（201→168→142→125→96 / 35→30→25→19→1，第 7 批 offload 18 端点后；dashboard 转 RF-02）；0 未分类 | `python scripts/blocking_io_check.py --tier-b` |

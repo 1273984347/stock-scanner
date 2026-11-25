@@ -1973,7 +1973,7 @@ helper 展开额外捕获 95 次调用（19 端点）。计划「≤1」判据�
 L2 72 routes / L3 3 链路 / L4 全链路 / L5 9 入口 285 样本 / L6 3 分支 9 响应 0 差异 /
 L7 68 端点 17 router 36 前端路径 / L8 242 blocking + selftest 5 场景全绿。
 2026-11-11 **Phase 6 第 2 批**：`FEATURE_ASYNC_OFFLOAD`（默认 off）+ `lib/infra/async_offload.py`
-唯一入口；3 个 Tier A 回测端点 offload（固定 commit `523b353` AST 逐语句等价）；
+唯一入口；3 个 Tier A 回测端点 offload（固定 commit `385e449` AST 逐语句等价）；
 `_scan_tasks` / `_perf_metrics` 收口到带锁 API（AST 守卫防回退）；新增第 9 把尺子 L9；
 L8 基线两次按 G4 重建并留历史证据（blocking 242→228、offloaded 1→4）。
 新增 P-68 / P-69；决策见 `docs/adr/0007-phase6-offload-and-locks.md`。
