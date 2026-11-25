@@ -40,7 +40,7 @@ def test_file_lock_mutual_exclusion_across_processes(tmp_path):
     assert flag.is_set()  # 互斥的严格判据在下面 _count_lock_winners
 
 
-def _count_lock_winners(shared_dir, name: str, ready) -> None:
+def _count_lock_winners(shared_dir, name: str, ready, release) -> None:
     """每个进程用独立 fd 抢锁，抢到则往共享计数文件写一次。"""
     pl.SHARED_DIR = shared_dir
     with pl.try_file_lock(name) as got:
@@ -50,14 +50,16 @@ def _count_lock_winners(shared_dir, name: str, ready) -> None:
                 f.write("w\n")
                 f.flush()
             ready.set()  # 通知主进程「已有人拿到锁」
-            time.sleep(2.0)  # 持锁期，其余 7 个进程应全部被挡住（spawn 慢，留足窗口）
+            # 持锁等待主进程放行：不用固定 sleep，避免慢机器上持锁期先结束
+            release.wait(timeout=30)
 
 
 def test_only_one_winner_at_a_time(tmp_path):
     """互斥硬判据：8 进程同时抢，持锁期内写文件次数恒为 1。"""
     ready = multiprocessing.Event()
+    release = multiprocessing.Event()
     procs = [multiprocessing.Process(target=_count_lock_winners,
-                                     args=(tmp_path, "race.lock", ready))
+                                     args=(tmp_path, "race.lock", ready, release))
              for _ in range(8)]
     for p in procs:
         p.start()
@@ -66,6 +68,7 @@ def test_only_one_winner_at_a_time(tmp_path):
     winners_path = tmp_path / "winners.txt"
     winners = winners_path.read_text(encoding="utf-8")
     assert winners.count("w") == 1, f"expected exactly one lock winner, got {winners!r}"
+    release.set()
     for p in procs:
         p.join(timeout=10)
     assert all(p.exitcode == 0 for p in procs)

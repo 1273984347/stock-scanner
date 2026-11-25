@@ -21,6 +21,9 @@ jobs:
         python-version: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["3.10","3.11","3.12"]' || '["3.12"]') }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 门禁用 git show <历史 SHA> 复算迁移等价性；默认 depth=1 会让历史不可读
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}

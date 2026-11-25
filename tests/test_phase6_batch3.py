@@ -51,9 +51,10 @@ def test_no_backtest_cache_feature_was_sneaked_in():
 
 
 def test_cache_scope_decision_is_recorded_in_project():
-    assert (ROOT / "docs" / "adr" / "0008-phase6-cache-scope.md").exists()
-    plan = (ROOT / "docs" / "plans" / "2026-11-07-refactor-plan.md").read_text(encoding="utf-8")
-    assert "范围裁剪，不做" in plan and "ADR-0008" in plan
+    adr = ROOT / "docs" / "adr" / "0008-phase6-cache-scope.md"
+    assert adr.exists()
+    text = adr.read_text(encoding="utf-8")
+    assert "不新增回测端点 TTL 缓存" in text and "范围正式裁剪" in text
 
 
 # ---------------------------------------------------------------- 3b 压测口径
