@@ -95,7 +95,7 @@ A股个人量化选股工具 + REST API 服务（Python 3.12 / FastAPI / pandas 
 | 想违反某条全局规约 | **RULES.md** §1 例外登记（先查是否已有例外） |
 | 排查「为什么会这样」 | **docs/refactor/pitfalls.md**（按症状查） |
 | 装依赖、跑服务、知道项目是什么 | **README.md** |
-| 排期、看还差什么 | **TODO.md** |
+| 排期、看还差什么 | **TODOS.md** |
 | 了解重构全貌 | **docs/plans/2026-11-07-refactor-plan.md** |
 
 > 最后更新：2026-11-20｜本次更新：**文档分层重构**（新增 `AGENTS.md` 作为 AI 行为唯一真源；

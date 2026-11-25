@@ -1,0 +1,39 @@
+# HANDOVER
+
+> 接手顺序：本文件 → `AGENTS.md`（AI 行为真源）→ `TODOS.md`（任务台账）。
+> 最近更新：2026-11-26 02:12。
+
+## 当前状态
+
+- 仓库：<https://github.com/1273984347/stock-scanner>（**PUBLIC**，默认分支 `master`）
+- 公开范围：代码、`tests/`、CI、`README.md`、`AGENTS.md`、`CLAUDE.md`、`RULES.md`、
+  治理文件（`LICENSE` / `SECURITY.md` / `CHANGELOG.md` / `ROADMAP.md` /
+  `CODE_OF_CONDUCT.md` / `CONTRIBUTING.md` / `TODOS.md` / `HANDOVER.md`）、
+  `docs/refactor/`、`docs/adr/0008-phase6-cache-scope.md`
+- 不在公开仓：内部 `docs/plans|research|archive|audit`、`.claude/`、`.superpowers/`、
+  `data/` 导出与本地备份
+- CI：GitHub Actions，`push` / `pull_request` / `workflow_dispatch`，三平台 × Python 3.12；
+  重建后基线 run `45668417667` 全绿；本批 docs 推送后需复跑确认
+- 本地工作区：`D:/stock-scanner`，`master` 领先 `origin/master` 1 个提交（docs 待推）
+
+## 关键约定
+
+- 门禁统一走 `scripts/gates/*.py`；`scripts/*.py` 旧路径为兼容硬链接，发版周期后移除
+- 提交前跑 L0–L10；`pre-push` 会跑全量测试，红灯不得用 `--no-verify` 绕过
+- `.env` 未跟踪；仓库禁止提交密钥（gitleaks pre-commit）
+- 任务台账是 `TODOS.md`，不要再新建 `TODO.md`
+- 公开仓标准 runner 免费；不要为了省额度关掉 `push` / `pull_request` 触发
+
+## 下一步
+
+1. 推送本批 docs 提交，确认 CI 三平台绿
+2. 按 `TODOS.md` 推进 westock 六类命令真实网络回归
+3. 公开仓 CI 首周观察；失败按根因修，不压基线
+
+## 最近变更（摘要）
+
+- 2026-11-26：westock 六类命令 WIP 提交（`051eb31`）；`TODO.md` 归档进 `TODOS.md` 后删除；
+  补齐治理文件；`.env` 清理 `FEISHU_*`
+- 2026-11-26：仓库删除重建为干净公开仓；旧历史对象不可达；CI 三平台硬化并全绿；
+  飞书应用已删除
+- 2026-11-25：12 个门禁 `ROOT` 改为标记法自锚定；`scripts/gates/` 纳入版本控制

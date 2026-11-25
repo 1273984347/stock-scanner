@@ -15,7 +15,7 @@
    `docs/refactor/pitfalls.md`（按症状查）。
 2. **提交前必跑 §4 的 L0–L10 分层门禁，不可跳级**；门禁与 pytest **必须串行**。
 3. **动手前先登记**：改动属新批次时按 §5 的 Task 流程建任务；跨会话接手先看
-   `TODO.md` 与 `docs/refactor/contracts/` 的最新读数。
+   `TODOS.md` 与 `docs/refactor/contracts/` 的最新读数。
 
 ---
 
@@ -435,7 +435,7 @@ uvicorn api:app --host 127.0.0.1 --port 8000
 | C3 | **提交信息用中文**，格式 `<type>(<scope>): <说明>`，破坏性/目录级改动追加 `[skip ci]` | |
 | C4 | **新增独立文档必须挂三处索引**：① 同目录 README 的目录内容表 ② 主计划文档对应章节 ③ **本文件 §8 关键文件索引**（CLAUDE.md 关键文件表已并入此处） | 只建文件不挂索引 = 没人找得到 |
 | C5 | **`.env` 禁止 commit**；内容哈希写进版本化文件会触发 gitleaks（需精确 regex allowlist） | pitfalls P-44 |
-| C6 | **删除已完成的功能模块须同步 `TODO.md`**（`[x]` → `[~]` 并注明移除日期与原因） | 避免台账与代码脱节 |
+| C6 | **删除已完成的功能模块须同步 `TODOS.md`**（`[x]` → `[~]` 并注明移除日期与原因） | 避免台账与代码脱节 |
 | D7 | **文档分层单一真源**：每类内容只在一个文件完整定义，其它位置只做链接/导入。AI 行为约束 ⇒ `AGENTS.md`（本文件）；例外机制 ⇒ `RULES.md`；人读入口 ⇒ `README.md`；经验 ⇒ `docs/refactor/pitfalls.md`。**禁止把同一段规约复制到两个文件** —— 复制即漂移。机器判据：`python scripts/gates/doc_structure_check.py --check` | 两份副本必然漂移；用户会分不清哪条规则在生效 |
 
 ### 7.1 Git 提交节奏
