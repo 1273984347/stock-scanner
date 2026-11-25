@@ -3,7 +3,10 @@ name: Test
 on:
   # 公开仓：标准 runner 免费，恢复 push/PR 自动门禁（默认 3.12 × 3 OS）。
   # 需要 Python 3.10/3.11 兼容性验证时手动 workflow_dispatch 跑完整矩阵。
-  push:/n  pull_request:/n  workflow_dispatch:/n
+  push:
+  pull_request:
+  workflow_dispatch:
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
