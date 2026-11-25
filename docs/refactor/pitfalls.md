@@ -3629,3 +3629,27 @@ AGENTS.md / CLAUDE.md / RULES.md / README.md / docs/refactor/pitfalls.md`）；�
 门禁命令 + S6/S9（S9 按 ADR-0014 D2 标记退役）/§2.2 路由门禁/D7 判据均切到 `scripts/gates/`。
 旧路径 `scripts/*.py` 作为同 inode 硬链接保留一个发版周期，期满后 `git rm` 旧名即可
 （只删硬链接名，新路径文件仍在）。
+
+---
+
+### P-142 · 公开仓库：force-push 清不掉旧对象，events API 会把旧 SHA 暴露给所有人
+
+**场景**（2026-11-26）：为让仓库公开且只显示可公开内容，用 filter-repo 重写历史
+（替换密钥、剔除内部文档）后 force-push；refs 侧 gitleaks 0 leaks、新克隆验证通过，
+随后把仓库转为 public。
+
+**症状**：公开后匿名 API 仍能按旧 SHA 取到重写前的提交（含已剔除的密钥）；
+仓库 events API 直接列出改写前的旧 tip SHA，等于公开了取旧历史的入口。
+
+**根因**：force-push 只移动 ref，GitHub 仍保留不可达对象并支持按 SHA 读取；
+历史里的敏感值不会因 ref 移动而消失。
+
+**修法**：公开前不要在**原仓**上重写后强推；改为「删除原仓 → 新建空仓 → 推干净历史」，
+从对象库层面不留旧提交。新仓首推后立即显式设默认分支——首个被推的分支会成为默认，
+陈旧 feature 分支可能把旧树暴露成首页。
+
+**判据**：① 匿名 `GET /repos/<owner>/<repo>/commits/<old_sha>` 必须 404/422；
+② events API 不含改写前 SHA；③ 新克隆 gitleaks 0 leaks 且默认分支树 == 预期快照。
+
+**推广**：任何"改写历史后公开"的需求，先问「旧对象会不会被按 SHA 拉走」；
+能新建仓就不要在原仓强推。密钥一旦进过公开可达的对象库，按已泄露处理（轮换/废弃）。
