@@ -118,10 +118,10 @@ infra  ←  data  ←  scoring  ←  strategy
 | S3 | `ScoringResult.raw` 必须是旧实现返回值的**同一对象引用** | 与 RB4 同构，是对拍取证的基准 |
 | S4 | 四维总分唯一真源 = `scorer.comprehensive_score`（`PRIMARY_4D_SOURCE`）；评委团 / Agent / 机会分是**各自量纲的附加维度，不混算** | 计划 §三 Phase 4 第 4 点 |
 | S5 | 权重定义只允许在 `lib/scoring/scoring_weights.py`；外部配置源必须在 `list_weight_sources()` 登记 | 消除「权重散落」的根因，而非只搬两个常量 |
-| S6 | `FEATURE_UNIFIED_SCORING` **默认 off**；每切一个消费者前必须跑 `python scripts/scoring_baseline.py --check` | 开关是唯一回滚手段；阶段 B 逐消费者灰度 |
+| S6 | `FEATURE_UNIFIED_SCORING` **默认 off**；每切一个消费者前必须跑 `python scripts/gates/scoring_baseline.py --check` | 开关是唯一回滚手段；阶段 B 逐消费者灰度 |
 | S7 | 评分数值变化 > 1e-9 一律走 ADR + 迁移指南 | §3.3 B1 在评分域的具体化 |
 | S8 | **评分路径判定只允许在 `lib/scoring/scoring_gateway.py`**；消费者不得读评分开关环境变量 / 调网关内部函数（P7-3 收口后 flag 已删，出现即回退），统一调 `score_4d(...)` | 判定散落 N 份就无法回答「哪几个消费者切了」；`tests/features/test_scoring_switch.py` 用 AST 守卫 |
-| S9 | 每切一个消费者，必须跑 `python scripts/scoring_switch_diff.py --check`，且**自证 on 侧真的经过了内核**（内核调用数 off=0 / on>0） | 两侧都走旧实现时 diff 也恒为 0 ⇒ 空判据（坑表 P-56） |
+| S9 | 评分开关对拍（`scoring_switch_diff`）已随 P7-3 收口退役（ADR-0014 D2，脚本删除）；评分数值口径由 S6 的 `scoring_baseline` 持续锁定。若未来再引入评分双路径，须按 P-56 重建对拍尺子并自证 on 侧真过内核 | 收口后不存在 off/on 两侧，全等对拍恒 0 = 空判据（坑表 P-56） |
 | S10 | 切「自行算维度分的消费者」时，把维度提取**原样抽成纯函数**，消费者只调网关；**禁止把策略层函数注册成评分适配器** | 保持「适配器 = 评分实现」边界与 9 入口不变；抽取期间任何「顺手优化」都会改口径（ADR-0003 D5） |
 | S11 | **纯透传消费者不加评分分支**：自身无评分调用点的端点登记进 `PASSTHROUGH_CONSUMERS`，改为纳入契约冻结验证（P7-3 收口后 L6 已退役）；禁止为清单打勾硬塞 `if` | `/api/score/{code}` 是三层纯透传，下游已接入 ⇒ 加分支零收益且破坏 S8（坑表 P-58） |
 | S12 | 端点分类登记：`GRAY`（P7-3 收口后已全部走内核，类目保留于迁移指南）/ `PASSTHROUGH` / `INDIRECT` / `OUT_OF_SCOPE`（后三类互斥守卫仍在）。域外端点与缓存聚合端点**不做**端点实跑取证（缓存命中让 diff 恒 0 = 空判据），改为 AST 边界守卫 + L2 契约快照 | 坑表 P-59 / ADR-0003 D7 / ADR-0014；判据必须能区分「真的没变」和「压根没跑到」 |
@@ -130,7 +130,7 @@ infra  ←  data  ←  scoring  ←  strategy
 > 3 个灰度消费者 + 1 个透传 + 1 个间接 + 1 个域外端点全部登记并取证。
 > **Phase 5 第 2 批已完成（拆 `api.py` 单体）**：`api.py` 从 3087 行收窄到约 200 行装配层，
 > 68 端点按 17 域落 `routers/`；决策见 `docs/adr/0005-phase5-api-split.md`。
-> **拆 `api.py` 后改动 `routers/` 仍必须跑 `python scripts/route_ownership_check.py --check`**；
+> **拆 `api.py` 后改动 `routers/` 仍必须跑 `python scripts/gates/route_ownership_check.py --check`**；
 > 鉴权依赖数不得减少，三条免鉴权端点（`POST /api/errors`、`GET /api/health`、
 > `GET /api/scan/status`）不得新增。
 
@@ -209,26 +209,26 @@ python -m compileall -q lib scripts tests reporter backtest
 python -m pytest tests/ -q --tb=line -p no:warnings -o log_cli=false
 
 # L2 契约快照（API 对外契约漂移门禁）
-python scripts/contract_snapshot.py --check
+python scripts/gates/contract_snapshot.py --check
 
 # L3 双跑对拍（3 条链路逐字段比对，容差 1e-9）
-python scripts/dual_run_diff.py --check --out docs/refactor/dual-run-baseline.json
+python scripts/gates/dual_run_diff.py --check --out docs/refactor/dual-run-baseline.json
 
 # L4 回测口径基线（5 条链路：3 份 check_entry 判定序列 + 3 个引擎指标 + 统一入口 6 mode）
-python scripts/backtest_baseline.py --check --out docs/refactor/backtest-baseline.json
+python scripts/gates/backtest_baseline.py --check --out docs/refactor/backtest-baseline.json
 
 # L5 评分对拍基线（9 个评分入口 × 285 样本，旧实现 vs 统一内核）
-python scripts/scoring_baseline.py --check --out docs/refactor/scoring-baseline.json
+python scripts/gates/scoring_baseline.py --check --out docs/refactor/scoring-baseline.json
 
 # L6 评分开关对拍 —— P7-3（ADR-0014）已退役：flag 删除后 off/on 恒等 = P-54 空判据；
 #    评分数值口径由 L5 继续锁定，历史取证见 docs/refactor/scoring-baseline.json 与 ADR-0014
 
 # L7 端点归属表 + 契约基线（Phase 5 起；拆分前后必跑）
-python scripts/route_ownership_check.py --check
+python scripts/gates/route_ownership_check.py --check
 
 # L8 阻塞 IO 基线（Phase 6 起；blocking 只准降 / other 冻结 / 尺子自证判红）
-python scripts/blocking_io_check.py --check
-python scripts/blocking_io_check.py --selftest
+python scripts/gates/blocking_io_check.py --check
+python scripts/gates/blocking_io_check.py --selftest
 
 # L9 offload 开关对拍（Phase 6 第 2 批起；迁移 AST 等价 + off/on 响应 + 线程池自证）
 # 覆盖 37 个迁移：3 回测（523b353）+ 第 4 批 5（77bc366）+ 第 5 批 5（6d0e434）
@@ -238,14 +238,14 @@ python scripts/blocking_io_check.py --selftest
 #   豁免逐字等价，仅校验接线完整性；行为正确性分别由
 #   tests/features/test_rf02_bad_endpoints.py 与 tests/features/test_batch_a_security.py 覆盖。
 #   分歧项新增时必须同步：清单 + ADR + 行为契约测试，不得只把端点从检查里摘掉。
-python scripts/offload_switch_diff.py --check
+python scripts/gates/offload_switch_diff.py --check
 
 # L10 并发压测 + Tier B 留痕（Phase 6 第 3 批起）
-python scripts/concurrency_probe.py --check
-# Tier B 清单由 python scripts/blocking_io_check.py --tier-b 生成，--check 内自动校验
+python scripts/gates/concurrency_probe.py --check
+# Tier B 清单由 python scripts/gates/blocking_io_check.py --tier-b 生成，--check 内自动校验
 
 # 文档结构自检（本次文档分层重构新增；见 §7 D7）
-python scripts/doc_structure_check.py --check
+python scripts/gates/doc_structure_check.py --check
 
 # 数据源 host 级诊断（非门禁）：东财按 host 部分可用，别用「东财能不能通」下结论
 # --strict 仅在「要求全部 host 可用」的部署环境使用（本机 push2 长期不可用）
@@ -436,7 +436,7 @@ uvicorn api:app --host 127.0.0.1 --port 8000
 | C4 | **新增独立文档必须挂三处索引**：① 同目录 README 的目录内容表 ② 主计划文档对应章节 ③ **本文件 §8 关键文件索引**（CLAUDE.md 关键文件表已并入此处） | 只建文件不挂索引 = 没人找得到 |
 | C5 | **`.env` 禁止 commit**；内容哈希写进版本化文件会触发 gitleaks（需精确 regex allowlist） | pitfalls P-44 |
 | C6 | **删除已完成的功能模块须同步 `TODO.md`**（`[x]` → `[~]` 并注明移除日期与原因） | 避免台账与代码脱节 |
-| D7 | **文档分层单一真源**：每类内容只在一个文件完整定义，其它位置只做链接/导入。AI 行为约束 ⇒ `AGENTS.md`（本文件）；例外机制 ⇒ `RULES.md`；人读入口 ⇒ `README.md`；经验 ⇒ `docs/refactor/pitfalls.md`。**禁止把同一段规约复制到两个文件** —— 复制即漂移。机器判据：`python scripts/doc_structure_check.py --check` | 两份副本必然漂移；用户会分不清哪条规则在生效 |
+| D7 | **文档分层单一真源**：每类内容只在一个文件完整定义，其它位置只做链接/导入。AI 行为约束 ⇒ `AGENTS.md`（本文件）；例外机制 ⇒ `RULES.md`；人读入口 ⇒ `README.md`；经验 ⇒ `docs/refactor/pitfalls.md`。**禁止把同一段规约复制到两个文件** —— 复制即漂移。机器判据：`python scripts/gates/doc_structure_check.py --check` | 两份副本必然漂移；用户会分不清哪条规则在生效 |
 
 ### 7.1 Git 提交节奏
 

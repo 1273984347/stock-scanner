@@ -48,7 +48,16 @@ for _s in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError, OSError):
         pass
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+def _resolve_repo_root(start):
+    """自锚定仓库根：向上找同时含 AGENTS.md 与 lib/ 的目录，脚本可任意移动。"""
+    for cand in (start, *start.parents):
+        if (cand / "AGENTS.md").is_file() and (cand / "lib").is_dir():
+            return cand
+    raise SystemExit(f"[gate] 无法定位仓库根: 从 {start} 向上未找到 AGENTS.md + lib/")
+
+
+ROOT = _resolve_repo_root(pathlib.Path(__file__).resolve().parent)
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 

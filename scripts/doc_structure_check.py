@@ -28,7 +28,16 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+
+def _resolve_repo_root(start):
+    """自锚定仓库根：向上找同时含 AGENTS.md 与 lib/ 的目录，脚本可任意移动。"""
+    for cand in (start, *start.parents):
+        if (cand / "AGENTS.md").is_file() and (cand / "lib").is_dir():
+            return cand
+    raise SystemExit(f"[gate] 无法定位仓库根: 从 {start} 向上未找到 AGENTS.md + lib/")
+
+
+ROOT = _resolve_repo_root(Path(__file__).resolve().parent)
 
 #: 五个核心文件 + 各自**专属**锚点（缺一个即判红：内容被删空或职责错位）
 FILES: dict[str, tuple[str, ...]] = {
