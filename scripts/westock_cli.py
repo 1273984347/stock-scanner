@@ -121,14 +121,14 @@ def cmd_capital_flow(args: argparse.Namespace) -> None:
 
 
 def cmd_lhb(args: argparse.Namespace) -> None:
-    """龙虎榜 — 上游 --date 直接透传"""
-    df = ws.get_lhb(date=args.end_date)
+    """龙虎榜 — code 必填（npm CLI lhb 不带股票码直接报错），--date 透传"""
+    df = ws.get_lhb(args.code, date=args.end_date)
     _print_df(df, args.fmt)
 
 
 def cmd_hot(args: argparse.Namespace) -> None:
-    """热门股票 — 上游无日期，post-filter"""
-    df = ws.get_hot()
+    """热搜榜 — Go CLI hot <kind>，上游无日期，post-filter"""
+    df = ws.get_hot(kind=args.kind, limit=args.limit)
     if args.end_date and not df.empty:
         df = _filter_end_date(df, args.end_date)
     _print_df(df, args.fmt)
@@ -186,14 +186,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_capital_flow)
 
     # lhb
-    p = sub.add_parser("lhb", parents=[fmt_parent], help="龙虎榜 (上游 --date 透传)")
+    p = sub.add_parser("lhb", parents=[fmt_parent], help="个股龙虎榜 (code 必填, --date 透传)")
     p.set_defaults(fmt="markdown")
+    p.add_argument("code", help="股票代码 (如 600519) — npm CLI 必填")
     p.add_argument("--end-date", help="日期 YYYY-MM-DD")
     p.set_defaults(func=cmd_lhb)
 
     # hot
-    p = sub.add_parser("hot", parents=[fmt_parent], help="热门股票 (post-filter)")
+    p = sub.add_parser("hot", parents=[fmt_parent], help="热搜榜 (Go CLI hot <kind>, post-filter)")
     p.set_defaults(fmt="markdown")
+    p.add_argument("--kind", default="stock", choices=["stock", "news", "board", "etf"],
+                   help="热搜类型 (默认 stock)")
+    p.add_argument("--limit", type=int, default=50)
     p.add_argument("--end-date", help="截止日期 YYYY-MM-DD")
     p.set_defaults(func=cmd_hot)
 

@@ -93,17 +93,19 @@ curl -X POST http://localhost:8000/api/scan \
 
 ## 目录结构
 
+> 本仓为公开快照：仅含代码、测试、CI 与治理/技术文档；本地数据目录（`data/exports`、
+> `backups` 等）与内部计划文档不随仓发布。
+
 ```
 stock-scanner/
-├── api.py                # FastAPI 装配层（仅 include_router；端点见 routers/）
+├── 入口脚本（根目录业务入口，D5 例外：均为可直接运行的业务命令）
+│   ├── api.py / run.py / run_v2.py     # FastAPI 装配 + CLI 入口
+│   ├── scanner.py / factors.py        # 选股策略 / 因子库
+│   ├── dashboard.py                   # Streamlit 策略看板
+│   ├── paper_trading.py               # 模拟盘（scan/status）
+│   └── trading_journal.py             # 交易日志全生命周期
 ├── routers/              # 域路由包（common.py + 17 域模块）
-├── run.py / run_v2.py    # CLI 入口
 ├── config/               # 全局配置包（_env/_types/_presets/_runtime/_constants）
-├── factors.py            # 因子库（技术指标/市场体制/宏观门控）
-├── scanner.py            # 选股策略入口
-├── paper_trading.py      # 纸带交易
-├── trading_journal.py    # 交易日志
-├── backtest/             # 回测引擎（unified.py = 唯一对外入口，6 mode）
 ├── lib/                  # 核心业务模块，按职责分 8 个子包
 │   ├── data/             # 数据层：多源获取/缓存/限流/协议规范化
 │   ├── scoring/          # 评分体系：多维打分/因子/评委团/估值
@@ -113,13 +115,20 @@ stock-scanner/
 │   ├── ml/               # 机器学习：训练/推理/数据管道/监控
 │   ├── monitoring/       # 监控告警：异常检测/告警/日志/体制
 │   └── infra/            # 横切层：认证/通用工具/LLM 工具/共享状态
+├── backtest/             # 回测引擎（unified.py = 唯一对外入口，6 mode）
 ├── reporter/             # 报告生成与推送（scan_notify.py / heartbeat.py）
-├── scripts/              # 工具脚本（扫描/回测图表/IC 回填/TDX 更新/门禁尺子）
+├── scripts/              # 工具脚本（数据拉取/扫描/回测图表/门禁尺子）
+│   ├── bulk_paths.py     # 全市场数据目录路径唯一真源（P-139）
+│   └── fetch_* / integrate_* / audit_* / check_*  # 数据拉取与质检
 ├── tests/                # 测试套件
 ├── static/               # 前端 Dashboard（HTML/JS/CSS）
+├── hooks/                # git 钩子（gitleaks 预检）
+├── data/
+│   ├── store/            # 项目内数据仓（ADR-0033，数据 gitignored，只留 manifest）
+│   └── exports/bulk/     # 全市场拉取产物（本地数据，不随仓发布）
 ├── docs/                 # 文档（refactor/ = 度量基线与踩坑集；adr/ = 决策记录）
-├── data/store/           # 项目内数据仓（ADR-0033）
-├── cache/                # 运行时缓存与状态（gitignored）
+├── backups/store_current/# data/store 的独立备份（207MB，非 bulk 数据）
+├── cache/ / logs/ / dist/ / snapshots/ / backtest_results/  # 运行时与构建产物（gitignored）
 ├── AGENTS.md             # AI 行为唯一真源（硬约束 / 门禁 / 验收）
 ├── RULES.md              # 例外与偏离登记
 └── .env                  # 敏感配置（禁止 commit）
