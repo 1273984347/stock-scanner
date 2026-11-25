@@ -42,3 +42,9 @@ tests/test_zz_host_isolation_probe.py
 # 本地数据仓（ADR-0033）：数据文件不入库，只提交 manifest 记录覆盖
 data/store/*
 !data/store/manifest.json
+
+# CI 路径过滤口径（.github/workflows/test.yml 的 paths-ignore）：
+#   纯 .md / 根目录 LICENSE 提交不触发 CI —— 与 AGENTS.md §7.1 的 [skip ci] 纪律同向，机制化替代；
+#   docs/refactor/*.json 门禁判据基线**不**忽略 —— 基线更新必须触发 CI 验证，否则漂移不可见。
+#   实测：零文件变更的空提交在路径过滤下同样不触发 CI（空提交 1adcc51 未产生任何运行），
+#   故「用空提交触发一次 CI」这种验证手段在启用 paths-ignore 后不可用。
