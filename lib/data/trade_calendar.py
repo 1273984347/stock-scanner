@@ -39,7 +39,7 @@ _lock = threading.Lock()
 # 进程级单例（坑表 P-100 纪律：测试经 reset_for_tests() 按用例清零）。
 _trade_days: Optional[Set[date]] = None
 _max_day: Optional[date] = None
-_last_refresh_fail_monotonic: float = 0.0
+_last_refresh_fail_monotonic: float = float("-inf")  # 哨兵：从未失败（monotonic 在 Linux 是开机秒数，0.0 会被误判冷却中）
 
 
 def reset_for_tests() -> None:
@@ -47,7 +47,7 @@ def reset_for_tests() -> None:
     global _trade_days, _max_day, _last_refresh_fail_monotonic
     _trade_days = None
     _max_day = None
-    _last_refresh_fail_monotonic = 0.0
+    _last_refresh_fail_monotonic = float("-inf")
 
 
 def _cache_file() -> Path:
@@ -185,8 +185,7 @@ def calendar_health() -> dict:
             "max_date": _max_day.isoformat() if _max_day else None,
             "cache_file": str(_cache_file()),
             "refresh_cooldown_until_monotonic": (
-                _last_refresh_fail_monotonic + _REFRESH_RETRY_INTERVAL_S
-                if _last_refresh_fail_monotonic else 0.0
+                max(0.0, _last_refresh_fail_monotonic + _REFRESH_RETRY_INTERVAL_S)
             ),
         }
 
