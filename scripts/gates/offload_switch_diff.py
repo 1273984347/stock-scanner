@@ -218,10 +218,19 @@ FIXED_FACTOR_RESULT = {
 # ---------------------------------------------------------------- 1. 迁移等价
 
 def _old_source(rel: str, commit: str) -> str:
-    return subprocess.run(
+    """读取历史提交中的源码。
+
+    显式按 bytes 读取再 UTF-8 解码：Windows runner 的 locale 编码与 git 输出
+    不一致时，text=True 的隐式解码会给出非 str（实测 ast.parse TypeError）。
+    """
+    proc = subprocess.run(
         ["git", "show", f"{commit}:{rel}"],
-        cwd=ROOT, capture_output=True, text=True, timeout=30, check=True,
-    ).stdout
+        cwd=ROOT, capture_output=True, timeout=30,
+    )
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(
+            proc.returncode, proc.args, output=proc.stdout, stderr=proc.stderr)
+    return (proc.stdout or b"").decode("utf-8", errors="replace")
 
 
 def _find_fn(tree: ast.Module, name: str) -> ast.FunctionDef | ast.AsyncFunctionDef:
