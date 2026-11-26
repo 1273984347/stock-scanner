@@ -209,25 +209,74 @@ def sync_events(sleep):
     return ok, fail
 
 
+# blocks 覆盖率判据（P-146）：部分板块失败时**整批不写**，避免"成功多少写多少"
+# 把旧文件留在仓里、又让 manifest 显示"已最新"。
+# 分母 = max(上一版文件数, 最新快照标的数)；两者都取不到时用下限兜底
+# （全市场 A+B 股长期 >5,000，4,000 只用于拦截"只有几个板块成功"的灾难性情况）。
+BLOCKS_COVERAGE_MIN_RATIO = 0.98
+BLOCKS_EXPECTED_FLOOR = 4000
+
+
+def _blocks_expected_count() -> tuple[int, str]:
+    """blocks 本次刷新应覆盖的基数（P-146 覆盖率判据的分母）。"""
+    from lib.data import local_store
+    import pandas as pd
+
+    blocks_dir = local_store.STORE_ROOT / "blocks"
+    prev = sum(1 for _ in blocks_dir.glob("*.json")) if blocks_dir.exists() else 0
+    snap_dir = local_store.STORE_ROOT / "snapshot"
+    snaps = sorted(snap_dir.glob("*.parquet")) if snap_dir.exists() else []
+    snap_n = 0
+    if snaps:
+        try:
+            snap_n = len(pd.read_parquet(snaps[-1], columns=["代码"]))
+        except Exception as exc:  # noqa: BLE001 - 快照读数失败不应阻断覆盖率判据
+            print(f"  快照读数失败（分母退回文件数）: {exc}", flush=True)
+    expected = max(prev, snap_n)
+    if expected == 0:
+        return BLOCKS_EXPECTED_FLOOR, "floor"
+    return expected, f"prev={prev}/snapshot={snap_n}"
+
+
 def sync_blocks(sleep):
     """新浪行业分类 → 全市场「个股→行业」映射落 blocks 仓（ADR-0033）。
 
     与其它数据集不同：板块映射只能整批拉取（84 个板块 → 成分股反建），无法逐只取，
-    因此不走断点骨架——一次成功即整批写仓，失败则不写（保持上次完整快照）。
+    因此不走断点骨架。**写仓前必须过覆盖率判据**：部分板块失败导致映射明显偏少时整批不写，
+    保持上次完整快照并返回非 0（P-146）。
     """
     from lib.data import local_store
     from lib.data.data_sector import fetch_industry_mapping
 
     t = time.time()
-    mapping = fetch_industry_mapping(sleep=sleep)
+    res = fetch_industry_mapping(sleep=sleep)
+    mapping = res.mapping
     if not mapping:
-        print("  blocks 拉取失败/为空，未写仓", flush=True)
+        print(f"  blocks 拉取失败/为空，未写仓（失败板块 {len(res.failures)}/{res.sectors_total}）",
+              flush=True)
         return 0, 1, 0
+
+    expected, baseline = _blocks_expected_count()
+    ratio = len(mapping) / expected
+    if ratio < BLOCKS_COVERAGE_MIN_RATIO:
+        print(f"  blocks 覆盖不足：{len(mapping)}/{expected}（{ratio:.1%} < "
+              f"{BLOCKS_COVERAGE_MIN_RATIO:.0%}），整批不写；失败板块 "
+              f"{len(res.failures)}/{res.sectors_total}", flush=True)
+        for f in res.failures[:5]:
+            print(f"    失败板块 {f['name']}({f['label']}): {f['reason']}", flush=True)
+        print(f"  分母基线 {baseline}。若确认是标的池合法缩减，先用 "
+              f"scripts/audit_blocks_gap.py 核对并删除退市文件后再重跑。", flush=True)
+        return 0, 1, 0
+
     ok = 0
     for code, names in mapping.items():
         if local_store.write_json("blocks", code, names):
             ok += 1  # write_json 内部逐只 touch manifest
-    print(f"  blocks 落盘 {ok} 只 / {len(mapping)} 映射 {time.time()-t:.1f}s", flush=True)
+    print(f"  blocks 落盘 {ok} 只 / {len(mapping)} 映射（覆盖 {ratio:.1%} / {expected}，"
+          f"失败板块 {len(res.failures)}/{res.sectors_total}）{time.time()-t:.1f}s", flush=True)
+    if res.failures:
+        print(f"  ⚠️ 仍有 {len(res.failures)} 个板块失败，对应标的保留旧映射；"
+              f"覆盖率达标故本次不阻断", flush=True)
     return ok, 0, 0
 
 

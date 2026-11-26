@@ -9,6 +9,7 @@ Usage:
   from lib.data.data_sector import get_stock_sector, get_sector_stocks, enrich_sector_data
 """
 import logging
+from dataclasses import dataclass, field
 from typing import Optional, List, Dict
 
 import pandas as pd
@@ -151,14 +152,36 @@ def enrich_sector_data(board_stats: pd.DataFrame) -> pd.DataFrame:
     return board_stats
 
 
-def fetch_industry_mapping(sleep: float = 0.05) -> Dict[str, List[str]]:
+@dataclass(frozen=True)
+class IndustryMappingResult:
+    """行业映射拉取结果：映射 + 板块总数 + 失败清单（供调用方做覆盖率判据）。
+
+    `failures` 的每项为 {"label", "name", "reason"}；reason 取值：
+    - `error: ...`：接口抛异常
+    - `empty`：接口返回空表/缺 code 列（**最容易静默丢成员**的形态）
+    - `missing_label`：板块列表行缺 label/name
+    """
+
+    mapping: Dict[str, List[str]]
+    sectors_total: int
+    failures: List[Dict[str, str]] = field(default_factory=list)
+
+    @property
+    def ok_sectors(self) -> int:
+        return self.sectors_total - len(self.failures)
+
+
+def fetch_industry_mapping(sleep: float = 0.05) -> IndustryMappingResult:
     """全市场「个股 → 行业板块名」映射（新浪行业分类，走新浪 host 非 push2）。
 
     用于 blocks 本地仓落地（ADR-0033）：TDX 目录删除后 infoharbor_block.dat 不再存在，
-    新浪行业分类成为个股板块归属的在线来源。单板块失败不影响其它板块。
+    新浪行业分类成为个股板块归属的在线来源。单板块失败不影响其它板块，
+    但**必须把失败计数返回给调用方**——只返回部分映射而不报告，会让调用方
+    "成功多少写多少"，在仓里留下大量过期文件（坑表 P-146）。
 
     Returns:
-        {6 位代码: [行业名, ...]}；每只票通常属 1 个行业。
+        IndustryMappingResult：{6 位代码: [行业名, ...]} + 板块总数 + 失败清单。
+        每只票通常属 1 个行业。
     """
     import time
     try:
@@ -166,31 +189,46 @@ def fetch_industry_mapping(sleep: float = 0.05) -> Dict[str, List[str]]:
         boards = ak.stock_sector_spot(indicator="行业")
     except Exception as e:
         logger.warning(f"[sector] 行业板块列表获取失败: {e}")
-        return {}
+        return IndustryMappingResult({}, 0, [{"label": "", "name": "", "reason": f"board_list: {e}"[:160]}])
     if boards is None or boards.empty or "label" not in boards.columns:
-        return {}
+        return IndustryMappingResult({}, 0, [{"label": "", "name": "", "reason": "board_list empty"}])
 
     mapping: Dict[str, List[str]] = {}
+    failures: List[Dict[str, str]] = []
+    total = 0
     for _, row in boards.iterrows():
         label, name = row.get("label"), row.get("板块")
+        total += 1
         if not label or not name:
+            failures.append({"label": str(label or ""), "name": str(name or ""), "reason": "missing_label"})
             continue
         try:
             detail = ak.stock_sector_detail(sector=str(label))
-            if detail is None or detail.empty or "code" not in detail.columns:
-                continue
-            for raw in detail["code"].astype(str):
-                code = raw.strip().zfill(6)
-                if not code.isdigit() or len(code) != 6:
-                    continue
-                mapping.setdefault(code, [])
-                if name not in mapping[code]:
-                    mapping[code].append(str(name))
         except Exception as e:
+            failures.append({"label": str(label), "name": str(name), "reason": f"error: {e}"[:160]})
             logger.debug(f"[sector] 板块 {name}({label}) 成分股获取失败: {e}")
+            if sleep:
+                time.sleep(sleep)
+            continue
+        if detail is None or detail.empty or "code" not in detail.columns:
+            failures.append({"label": str(label), "name": str(name), "reason": "empty"})
+            if sleep:
+                time.sleep(sleep)
+            continue
+        for raw in detail["code"].astype(str):
+            code = raw.strip().zfill(6)
+            if not code.isdigit() or len(code) != 6:
+                continue
+            mapping.setdefault(code, [])
+            if name not in mapping[code]:
+                mapping[code].append(str(name))
         if sleep:
             time.sleep(sleep)
-    return mapping
+
+    if failures:
+        preview = ", ".join(f"{f['name']}({f['reason']})" for f in failures[:5])
+        logger.warning(f"[sector] 行业成分股 {len(failures)}/{total} 个板块失败: {preview}")
+    return IndustryMappingResult(mapping, total, failures)
 
 
 if __name__ == "__main__":
