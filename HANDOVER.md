@@ -26,7 +26,7 @@
 
 ## 下一步
 
-1. 定时 StoreDataSync（19:00 启动）释放会话锁后，按 `docs/data-freshness-gaps.md` 顺序刷新数据
+1. 财务后台任务结束后复核 manifest；fundflow 待定时链接束复核；north/south 最后重抓
 2. 保持公开仓 CI 全绿；新增提交继续走 push/PR 自动门禁
 2. 鉴权态回归已就绪：默认 CI 跑 fake CLI 解析路径；真实网络需
    `WESTOCK_GO_AUTH_TEST=1 python -m pytest tests/test_westock_six_categories.py -q`
@@ -34,6 +34,7 @@
 
 ## 最近变更（摘要）
 
+- 2026-11-26：blocks 已刷新（4,885 映射）；财务后台刷新中，与定时链数据集不相交
 - 2026-11-26：新增数据新鲜度/缺口清单；blocks+financial 刷新因定时同步持锁排队
 - 2026-11-26：`.gitignore` 忽略 `data/exports/`；鉴权态数据快照仅保留在本地
 - 2026-11-26：鉴权态命令回归落地（CI 确定性 + 真实网络 opt-in），Windows 编码夹具修正后 CI 全绿

@@ -22,7 +22,9 @@
 
 > 2026-11-26 19:10：`cache/data_sync.lock` 被每日 19:00 的 StoreDataSync 任务持有
 > （PID 38604；kline 进度 580/5580）。该任务已包含 fundflow，但不含 blocks/financial。
-> 为遵守单飞契约，不在并发窗口内强抢锁；下列任务排队等待任务释放后执行。
+> 处理：blocks/financial 与定时链的数据集**不相交**（定时链写 kline/kline_raw/index/
+> snapshot/events/fundflow），故走直调函数路径刷新，manifest RMW 仍受 file_lock 保护；
+> 不与定时链争抢同一数据集。north/south 继续排队，避免叠加网络负载。
 
 1. [ ] `blocks`：全市场行业分类整批拉取并写仓
 2. [ ] `financial`：全市场财务刷新（耗时最长，分批/断点）
