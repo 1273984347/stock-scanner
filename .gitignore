@@ -43,6 +43,9 @@ tests/test_zz_host_isolation_probe.py
 data/store/*
 !data/store/manifest.json
 
+# 全市场导出产物（体积大、含运行数据；确需入库时显式 git add -f）
+data/exports/
+
 # CI 路径过滤口径（.github/workflows/test.yml 的 paths-ignore）：
 #   纯 .md / 根目录 LICENSE 提交不触发 CI —— 与 AGENTS.md §7.1 的 [skip ci] 纪律同向，机制化替代；
 #   docs/refactor/*.json 门禁判据基线**不**忽略 —— 基线更新必须触发 CI 验证，否则漂移不可见。
