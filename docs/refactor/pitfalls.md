@@ -3650,6 +3650,15 @@ AGENTS.md / CLAUDE.md / RULES.md / README.md / docs/refactor/pitfalls.md`）；�
 **推广**：脚本定位仓库根不得依赖自身深度；用仓库标记文件自锚定，让"移动脚本"
 不再改变语义。凡是"路径由位置推导"的写法，都要问一句：目录重构后它指向哪。
 
+**复发（2026-11-26/27，批量取数脚本下沉）**：`restructure_project.ps1` 把取数/运维脚本分类进
+`scripts/{analysis,ops,data_ops,data_bulk}/` 并保留根级硬链接（49 个副本同 inode），**但没有同步改锚点**。
+实测 `scripts/data_bulk/bulk_paths.py` 的 `ROOT = parent.parent` 解析成 `scripts/`，
+`BULK` 指到 `scripts/data/exports/bulk`（错误路径），并已在该处误建 `_integrated/` 目录。
+判据：① 每个下沉脚本从新路径至少跑一次导入/`--help` 自检；② 复制到仓外运行应报
+`无法定位仓库根`；③ 禁止"移动文件但不改锚点"的重构提交。
+**推广升级**：P-141 的修法当时只落在 12 个门禁脚本上，没有变成全仓规约——这类"修一处没修一类"
+的整改，必须同时加机器判据（扫描下沉目录里的 `parent.parent` 锚点）才算收口。
+
 **路径收口（2026-11-25 同日）**：`scripts/gates/` 已纳入 git 跟踪；`AGENTS.md` §4 全部
 门禁命令 + S6/S9（S9 按 ADR-0014 D2 标记退役）/§2.2 路由门禁/D7 判据均切到 `scripts/gates/`。
 旧路径 `scripts/*.py` 作为同 inode 硬链接保留一个发版周期，期满后 `git rm` 旧名即可
