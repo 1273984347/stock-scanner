@@ -26,7 +26,7 @@
 
 ## 下一步
 
-1. north/south 重抓结束后重建 parquet；fundflow 359 只上游缺口与 blocks 750 只陈旧项待核
+1. fundflow 359 只上游缺口与 blocks 750 只陈旧项待核
 2. 保持公开仓 CI 全绿；新增提交继续走 push/PR 自动门禁
 2. 鉴权态回归已就绪：默认 CI 跑 fake CLI 解析路径；真实网络需
    `WESTOCK_GO_AUTH_TEST=1 python -m pytest tests/test_westock_six_categories.py -q`
@@ -34,6 +34,7 @@
 
 ## 最近变更（摘要）
 
+- 2026-11-26：north/south 强制重抓并重建完成；四类数据刷新闭环，剩余缺口登记在清单
 - 2026-11-26：blocks/financial/fundflow 已刷新；north/south 强制重抓进行中；缺口已登记
 - 2026-11-26：blocks 已刷新（4,885 映射）；财务后台刷新中，与定时链数据集不相交
 - 2026-11-26：新增数据新鲜度/缺口清单；blocks+financial 刷新因定时同步持锁排队

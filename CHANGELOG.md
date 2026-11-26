@@ -19,6 +19,8 @@
 
 ### Changed
 
+- 本地数据刷新：blocks / financial / fundflow / north-south；缺口与重建判据见 `docs/data-freshness-gaps.md`。
+
 - 公开仓重建为干净历史（2026-11-26）：旧对象不可达；公开范围收敛为代码、测试、CI、
   README/AGENTS/CLAUDE/RULES、`docs/refactor` 与 ADR-0008。
 - 门禁统一走 `scripts/gates/*.py`；`AGENTS.md` 命令同步切换。
@@ -40,6 +42,8 @@
 ## 2026-11-25
 
 ### Changed
+
+- 本地数据刷新：blocks / financial / fundflow / north-south；缺口与重建判据见 `docs/data-freshness-gaps.md`。
 
 - 12 个门禁脚本 `ROOT` 改为标记法自锚定，支持目录移动；`scripts/gates/` 纳入版本控制。
 

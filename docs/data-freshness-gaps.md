@@ -32,6 +32,12 @@
 4. [ ] `north / south`：通过 Go CLI 重抓北向/南下持仓并覆盖导出快照
 5. [ ] 复核 manifest 与文件 mtime，回写本清单
 
+## 重建判据（本次踩坑）
+
+- 从 `_logs/{kind}.jsonl` 重建 parquet 时：**行数必须等于 `_ok=true` 的记录数**，
+  不得按 `code` 去重（原表含多季度记录）；
+- 必须保留 `_code` / `_market` / `_ok` 元数据列，否则下游契约漂移。
+
 ## 本轮补救项
 
 - `fundflow`：359 只标的全部上游失败（`FundFlowUnavailableError`，东方财富 push2 连续失败后断开 300s），
