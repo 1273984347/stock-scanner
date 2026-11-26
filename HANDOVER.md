@@ -1,7 +1,7 @@
 # HANDOVER
 
 > 接手顺序：本文件 → `AGENTS.md`（AI 行为真源）→ `TODOS.md`（任务台账）。
-> 最近更新：2026-11-26 17:40。
+> 最近更新：2026-11-26 17:55。
 
 ## 当前状态
 
@@ -14,7 +14,8 @@
   `data/` 导出与本地备份
 - CI：GitHub Actions，`push` / `pull_request` / `workflow_dispatch`，三平台 × Python 3.12；
   本批提交 run `45673551198` 与记录提交 run `45675590410` 均三平台全绿；新回归待推
-- 本地工作区：`D:/stock-scanner`，`master` 与 `origin/master` 同步
+- 本地工作区：`D:/stock-scanner`，本地 `master` 领先远端 1 个提交 `739baa9`；
+  远端 HEAD `62b1899`；`git push origin master` 两次被 HTTPS 代理 502 阻断，待网络恢复重试
 
 ## 关键约定
 
@@ -26,7 +27,7 @@
 
 ## 下一步
 
-1. 推送本批未鉴权回归/日志脱敏修复，确认 CI 三平台绿
+1. 网络恢复后执行 `git push origin master`，确认 CI 三平台绿
 2. 鉴权态下再做 westock 六类命令真实网络回归（未鉴权路径已完成）
 3. 公开仓 CI 首周观察；失败按根因修，不压基线
 
