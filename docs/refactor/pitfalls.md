@@ -3779,6 +3779,13 @@ warning 日志；③ 新鲜度检查按**文件 mtime** 或 per-file 记录，�
 （部分映射零写入、98% 边界 979 拒/980 过、真实写仓、分母取 max、失败板块可见）；
 ④ 实跑 5,635/5,635、覆盖 100.0%、失败板块 0/84 不误报。
 
+**manifest 可见性（2026-11-27 同日）**：新增 `local_store.record_refresh(dataset, written, expected, ok)`：
+整批结束后写 `fresh_files` / `stale_files` 与 `refresh{ok, written, expected, coverage, attempted_at}`；
+失败尝试只记 `refresh.ok=false`，**不动 `updated_at` 与上次成功的 `fresh_files`**（不伪装成已更新）。
+`data_sync --report` 与结束汇总直接显示，实跑输出：
+`blocks files=5635 rows=5635 fresh=5635 stale=0 refresh=ok(100.0%)`。增量数据集不写这两个字段，
+避免"只写了今天增量"被误读成"大部分过期"。
+
 **复跑验证（2026-11-27）**：同一函数重跑 **5,635/5,635、fail=0、113s**，750 只全部补齐、stale=0
 ⇒ 11-26 的缺口是瞬时失败而非源缺失。与重跑前快照逐文件比对：5,290 一致 / 345 变化 / 0 新增 /
 0 消失 / 0 空值；变化集中在清掉伪二级标签（"金属制品、机械和设备修理业" 194→1、造纸股误挂

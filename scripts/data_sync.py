@@ -217,6 +217,21 @@ BLOCKS_COVERAGE_MIN_RATIO = 0.98
 BLOCKS_EXPECTED_FLOOR = 4000
 
 
+def _refresh_suffix(info: dict) -> str:
+    """覆盖率行的刷新后缀：只在有批次记录的整批数据集上显示（P-146）。
+
+    增量数据集（kline/financial 等）不写 fresh/stale，避免"只写了今天增量"被误读成"大部分过期"。
+    """
+    if info.get("fresh_files") is None:
+        return ""
+    rf = info.get("refresh") or {}
+    state = "ok" if rf.get("ok") else "FAILED"
+    cov = rf.get("coverage")
+    cov_s = f"{cov:.1%}" if isinstance(cov, (int, float)) else "-"
+    return (f" fresh={info['fresh_files']:5d} stale={info.get('stale_files') or 0:5d}"
+            f" refresh={state}({cov_s})")
+
+
 def _blocks_expected_count() -> tuple[int, str]:
     """blocks 本次刷新应覆盖的基数（P-146 覆盖率判据的分母）。"""
     from lib.data import local_store
@@ -251,12 +266,13 @@ def sync_blocks(sleep):
     t = time.time()
     res = fetch_industry_mapping(sleep=sleep)
     mapping = res.mapping
+    expected, baseline = _blocks_expected_count()
     if not mapping:
         print(f"  blocks 拉取失败/为空，未写仓（失败板块 {len(res.failures)}/{res.sectors_total}）",
               flush=True)
+        local_store.record_refresh("blocks", 0, expected, ok=False)
         return 0, 1, 0
 
-    expected, baseline = _blocks_expected_count()
     ratio = len(mapping) / expected
     if ratio < BLOCKS_COVERAGE_MIN_RATIO:
         print(f"  blocks 覆盖不足：{len(mapping)}/{expected}（{ratio:.1%} < "
@@ -266,12 +282,14 @@ def sync_blocks(sleep):
             print(f"    失败板块 {f['name']}({f['label']}): {f['reason']}", flush=True)
         print(f"  分母基线 {baseline}。若确认是标的池合法缩减，先用 "
               f"scripts/audit_blocks_gap.py 核对并删除退市文件后再重跑。", flush=True)
+        local_store.record_refresh("blocks", len(mapping), expected, ok=False)
         return 0, 1, 0
 
     ok = 0
     for code, names in mapping.items():
         if local_store.write_json("blocks", code, names):
             ok += 1  # write_json 内部逐只 touch manifest
+    local_store.record_refresh("blocks", ok, expected, ok=True)
     print(f"  blocks 落盘 {ok} 只 / {len(mapping)} 映射（覆盖 {ratio:.1%} / {expected}，"
           f"失败板块 {len(res.failures)}/{res.sectors_total}）{time.time()-t:.1f}s", flush=True)
     if res.failures:
@@ -526,7 +544,8 @@ def main() -> int:
             print("本地仓为空：data/store/")
             return 0
         for ds, info in cov.items():
-            print(f"{ds:12s} files={info['files']:5d} rows={info['rows']:8d} updated={info['updated_at']}")
+            print(f"{ds:12s} files={info['files']:5d} rows={info['rows']:8d} "
+                  f"updated={info['updated_at']}{_refresh_suffix(info)}")
         return 0
 
     if args.verify:
@@ -620,7 +639,7 @@ def main() -> int:
     print(f"\n合计 ok={total_ok} fail={total_fail} skip={total_skip}")
     print("本地仓覆盖：")
     for ds, info in local_store.coverage().items():
-        print(f"  {ds:12s} files={info['files']:5d} rows={info['rows']:8d}")
+        print(f"  {ds:12s} files={info['files']:5d} rows={info['rows']:8d}{_refresh_suffix(info)}")
     return 0 if total_fail == 0 else 1
 
 

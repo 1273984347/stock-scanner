@@ -158,3 +158,50 @@ def test_fetch_industry_mapping_board_list_failure(monkeypatch):
     assert res.mapping == {}
     assert res.sectors_total == 0
     assert len(res.failures) == 1 and res.failures[0]["reason"].startswith("board_list")
+
+
+# ---------- 6. manifest 一眼看新鲜度：fresh/stale + 批次结果 ----------
+def _manifest(isolated_store):
+    import json
+    return json.loads((isolated_store.STORE_ROOT / "manifest.json").read_text(encoding="utf-8"))
+
+
+def test_manifest_records_refresh_on_success(isolated_store, monkeypatch):
+    mod = _load_sync()
+    monkeypatch.setattr(mod, "_blocks_expected_count", lambda: (100, "test"))
+    _patch_mapping(monkeypatch, {f"{i:06d}": ["行业A"] for i in range(100)})
+    assert mod.sync_blocks(0) == (100, 0, 0)
+
+    ds = _manifest(isolated_store)["datasets"]["blocks"]
+    assert ds["fresh_files"] == 100
+    assert ds["stale_files"] == 0
+    assert ds["refresh"]["ok"] is True
+    assert ds["refresh"]["coverage"] == 1.0
+    assert ds["refresh"]["written"] == 100 and ds["refresh"]["expected"] == 100
+
+    cov = isolated_store.coverage()["blocks"]
+    assert cov["fresh_files"] == 100 and cov["stale_files"] == 0
+    assert cov["refresh"]["ok"] is True
+
+
+def test_rejected_attempt_recorded_without_touching_updated_at(isolated_store, monkeypatch):
+    mod = _load_sync()
+    monkeypatch.setattr(mod, "_blocks_expected_count", lambda: (100, "test"))
+    _patch_mapping(monkeypatch, {f"{i:06d}": ["行业A"] for i in range(100)})
+    assert mod.sync_blocks(0) == (100, 0, 0)
+
+    # 人为把 updated_at 改老，证明失败尝试不会碰它
+    import json
+    path = isolated_store.STORE_ROOT / "manifest.json"
+    m = json.loads(path.read_text(encoding="utf-8"))
+    m["datasets"]["blocks"]["updated_at"] = "2020-01-01T00:00:00"
+    path.write_text(json.dumps(m, ensure_ascii=False), encoding="utf-8")
+
+    _patch_mapping(monkeypatch, {f"{i:06d}": ["行业A"] for i in range(50)})
+    assert mod.sync_blocks(0) == (0, 1, 0)
+
+    ds = json.loads(path.read_text(encoding="utf-8"))["datasets"]["blocks"]
+    assert ds["refresh"]["ok"] is False
+    assert ds["refresh"]["coverage"] == 0.5
+    assert ds["updated_at"] == "2020-01-01T00:00:00", "失败尝试不得伪装成已更新"
+    assert ds["fresh_files"] == 100, "失败尝试不得覆盖上次成功的 fresh 读数"

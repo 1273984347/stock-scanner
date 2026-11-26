@@ -16,6 +16,9 @@
 
 ## 已完成（2026-11-27）
 
+- [x] **manifest 一眼看新鲜度**：新增 `record_refresh`，blocks 批次结束写
+      `fresh_files`/`stale_files`/`refresh{ok,coverage,attempted_at}`；失败尝试不改 `updated_at`；
+      `--report` 输出 `fresh=5635 stale=0 refresh=ok(100.0%)`。
 - [x] **blocks 覆盖率判据落地（P-146）**：`fetch_industry_mapping` 返回失败板块清单，
       `sync_blocks` 写前按 `max(上一版文件数, 快照标的数)` 校验，<98% 整批不写 + fail=1；
       `tests/test_blocks_coverage.py` 9 条判据；实跑 5,635/5,635、覆盖 100.0%。

@@ -11,6 +11,9 @@
   详见 `scripts/audit_blocks_gap.py` 与坑表 P-146。
 - 剩余缺口：**23 只新股**（如 688795 摩尔线程、688802 沐曦股份）快照有但新浪行业从未收录。
 - 已加覆盖率判据：`sync_blocks` 写仓前按 `max(上一版文件数, 快照标的数)` 校验，<98% 整批不写并退出非 0。
+- manifest 现在直接显示批次结果：`fresh_files` / `stale_files` / `refresh{ok, coverage, attempted_at}`；
+  `py scripts/data_sync.py --report` 可见 `fresh=5635 stale=0 refresh=ok(100.0%)`。
+  失败尝试只把 `refresh.ok` 置 false，不改 `updated_at`，避免把失败伪装成新数据。
 
 ## 按类别盘点
 

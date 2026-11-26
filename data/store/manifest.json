@@ -4,8 +4,18 @@
     "blocks": {
       "files": 5635,
       "rows": 5635,
-      "updated_at": "2026-11-27T03:40:10",
-      "last_key": "000833"
+      "updated_at": "2026-11-27T04:49:11",
+      "last_key": "000833",
+      "refresh": {
+        "mode": "full",
+        "ok": true,
+        "written": 5635,
+        "expected": 5635,
+        "coverage": 1.0,
+        "attempted_at": "2026-11-27T04:49:11"
+      },
+      "fresh_files": 5635,
+      "stale_files": 0
     },
     "events": {
       "files": 10,
@@ -46,9 +56,9 @@
     "snapshot": {
       "files": 8,
       "rows": 44407,
-      "updated_at": "2026-11-27T03:38:29",
+      "updated_at": "2026-11-27T04:47:45",
       "last_key": "2026-11-27"
     }
   },
-  "updated_at": "2026-11-27T03:40:10"
+  "updated_at": "2026-11-27T04:49:11"
 }

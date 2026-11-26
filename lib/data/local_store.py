@@ -158,8 +158,43 @@ def coverage() -> dict:
             "rows": info.get("rows", 0),
             "updated_at": info.get("updated_at"),
             "last_key": info.get("last_key"),
+            # 整批刷新结果（P-146）：fresh/stale 与批次覆盖率，一眼看"上次是否整批成功"
+            "fresh_files": info.get("fresh_files"),
+            "stale_files": info.get("stale_files"),
+            "refresh": info.get("refresh"),
         }
     return out
+
+
+def record_refresh(dataset: str, written: int, expected: int, ok: bool) -> None:
+    """记录一次**整批刷新**的结果（P-146）：manifest 一眼可见是否整批成功。
+
+    与 `_touch` 的分工：`_touch` 记单文件写入；本函数在整批结束后记批次结果。
+    - ok=True：更新 `files`（以盘上真值为准）/`fresh_files`/`stale_files`，
+      **不动 `updated_at`**（`_touch` 已写，避免用批次时间覆盖最后写入时间）。
+    - ok=False：只记 `refresh`（ok=False + coverage），**不动 `updated_at`/`fresh_files`**——
+      失败尝试不得把数据伪装成"刚更新"。
+    """
+    with cross_process_lock(_manifest_lock_path()):
+        with _LOCK:
+            m = _read_manifest()
+            ds = m["datasets"].setdefault(dataset, {"files": 0, "rows": 0})
+            folder = STORE_ROOT / dataset
+            disk = len(list(folder.glob("*"))) if folder.exists() else 0
+            ds["refresh"] = {
+                "mode": "full",
+                "ok": bool(ok),
+                "written": int(written),
+                "expected": int(expected),
+                "coverage": round(written / expected, 4) if expected else None,
+                "attempted_at": datetime.now().isoformat(timespec="seconds"),
+            }
+            if ok:
+                ds["files"] = disk
+                ds["fresh_files"] = int(written)
+                ds["stale_files"] = max(0, disk - int(written))
+            m["schema_version"] = SCHEMA_VERSION
+            _write_manifest(m)
 
 
 def _disk_truth() -> dict:
