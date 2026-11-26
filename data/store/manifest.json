@@ -4,8 +4,8 @@
     "blocks": {
       "files": 5635,
       "rows": 5635,
-      "updated_at": "2026-11-26T19:23:13",
-      "last_key": "000609"
+      "updated_at": "2026-11-27T03:40:10",
+      "last_key": "000833"
     },
     "events": {
       "files": 10,
@@ -44,11 +44,11 @@
       "last_key": "002717"
     },
     "snapshot": {
-      "files": 7,
-      "rows": 38827,
-      "updated_at": "2026-11-26T19:34:35",
-      "last_key": "2026-11-26"
+      "files": 8,
+      "rows": 44407,
+      "updated_at": "2026-11-27T03:38:29",
+      "last_key": "2026-11-27"
     }
   },
-  "updated_at": "2026-11-26T23:15:52"
+  "updated_at": "2026-11-27T03:40:10"
 }
