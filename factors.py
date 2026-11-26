@@ -561,6 +561,53 @@ def compute_ic_weighted_score(factors: Dict[str, float]) -> float:
     return float(weighted_sum / total_weight)
 
 
+# iFinD 风险因子评分归一常量（ADR-0037 迁移指南；权重上限 0.10）
+# ⚠️ 严格前瞻已证伪（ADR-0037 §决策2）：两窗口方向翻转，本组常量与 calc_ifind_risk_score
+# 仅在 use_ifind_risk_score=True 时可达，生产默认 False、不得启用。
+# 阈值来自 220 只扩样分位数，集中在此避免散落硬编码。
+RISK_SHARPE_P10 = -0.0921
+RISK_SHARPE_P90 = 0.0482
+RISK_MDD_P10 = 22.91
+RISK_MDD_P75 = 75.33
+RISK_SCORE_MAX_WEIGHT = 0.10
+RISK_SCORE_SHARPE_WEIGHT = 0.07  # Sharpe 优先（依据仅同期分组；前瞻已证伪，勿据此启用）
+RISK_SCORE_MDD_WEIGHT = 0.03     # 回撤辅助（单调性弱于 Sharpe）
+
+
+def calc_ifind_risk_score(risk: Dict) -> float | None:
+    """iFinD 风险因子 -> [-1, 1] 评分调整（Sharpe 优先、回撤辅助）。
+
+    缺失值不惩罚：Sharpe 缺失返回 None（调用方跳过该调整）；
+    回撤缺失时只用 Sharpe 部分并重新归一权重。极端值 clip 到 [0,1]。
+
+    Args:
+        risk: get_risk_factor 返回值（含 sharpe / max_drawdown_pct）
+    Returns:
+        float in [-1, 1] 或 None（无有效数据）
+    """
+    if not isinstance(risk, dict) or "error" in risk:
+        return None
+    sharpe = risk.get("sharpe")
+    mdd = risk.get("max_drawdown_pct")
+
+    def norm(value: float, low: float, high: float, higher_is_better: bool) -> float:
+        ratio = (value - low) / (high - low) if high != low else 0.0
+        ratio = max(0.0, min(1.0, ratio))
+        return ratio if higher_is_better else 1.0 - ratio
+
+    s_score = norm(sharpe, RISK_SHARPE_P10, RISK_SHARPE_P90, True) if sharpe is not None else None
+    m_score = norm(mdd, RISK_MDD_P10, RISK_MDD_P75, False) if mdd is not None else None
+    if s_score is None and m_score is None:
+        return None
+
+    # 缺失子项不计权、权重按比例重分配（不惩罚未披露）
+    parts = [(s_score, RISK_SCORE_SHARPE_WEIGHT), (m_score, RISK_SCORE_MDD_WEIGHT)]
+    valid = [(v, w) for v, w in parts if v is not None]
+    total_w = sum(w for _, w in valid)
+    weighted = sum(v * w for v, w in valid) / total_w  # [0,1]
+    return round(weighted * 2 - 1, 4)  # [0,1] -> [-1,1]
+
+
 def adjust_score_by_data_factors(base_score: float, data_factors: Dict) -> float:
     """基于 data_factors 调整综合评分
 
@@ -569,6 +616,7 @@ def adjust_score_by_data_factors(base_score: float, data_factors: Dict) -> float
     - 基金重仓 → +0.10（机构认可）
     - 低 PE → +0.10（估值合理）
     - 板块过多 → -0.10（过度分散，可能跟风）
+    - iFinD 风险评分 → [-0.10,+0.10]（仅当 use_ifind_risk_score 开启，默认关闭）
     """
     adj = 0.0
 
@@ -600,6 +648,13 @@ def adjust_score_by_data_factors(base_score: float, data_factors: Dict) -> float
         adj += 0.10
     elif sector_score < 30:
         adj -= 0.10
+
+    # iFinD 风险评分（Sharpe 优先）——默认关闭，显式开启才生效
+    # 开关标记由 _compute_all_signals_impl 注入，不对外暴露为因子
+    if data_factors.get("_ifind_risk_score_enabled", False):
+        risk_score = calc_ifind_risk_score(data_factors.get("ifind_risk", {}))
+        if risk_score is not None:
+            adj += risk_score * RISK_SCORE_MAX_WEIGHT
 
     return round(max(-1, min(1, base_score + adj)), 4)
 
@@ -1405,7 +1460,15 @@ def compute_all_signals(hist_df: pd.DataFrame, macro_score: float = 0,
             last_date = str(hist_df.index[-1])
         except Exception:
             last_date = str(len(hist_df))
-        cache_key = f"{code}_{len(hist_df)}_{last_date}_{fast_mode}"
+        # 缓存键必须包含影响 data_factors 的开关状态：
+        # 否则默认关闭态算出的结果会被显式开启 ESG/风险因子的调用命中，
+        # 导致新因子永远不生效（开关切换后仍返回旧对象）。
+        cfg_key = ""
+        if factor_config is not None:
+            cfg_key = "_".join(f"{name}={int(bool(getattr(factor_config, name, default)))}"
+                               for name, default in (("use_ifind_esg", False), ("use_ifind_risk", False),
+                                                     ("use_ifind_risk_score", False)))
+        cache_key = f"{code}_{len(hist_df)}_{last_date}_{fast_mode}_{cfg_key}"
         with _signals_cache_lock:
             if cache_key in _signals_cache:
                 return _signals_cache[cache_key]
@@ -1594,6 +1657,31 @@ def _compute_all_signals_impl(hist_df: pd.DataFrame, macro_score: float = 0,
             val = get_stock_valuation(code)
             if val:
                 data_factors["valuation"] = val
+
+        # iFinD ESG 因子（旁路暴露，不参与 ic_score）
+        # 默认关闭：付费接口 + 2 QPS 限流，显式开启才发起网络调用。
+        if _use('use_ifind_esg', default=False):
+            try:
+                from lib.data.data_ifind import get_esg_factor
+                esg_factor = get_esg_factor(code)
+                if "error" not in esg_factor:
+                    data_factors["ifind_esg"] = esg_factor
+            except Exception as exc:  # noqa: BLE001 - 外部源异常不影响主流程
+                logger.debug("iFinD ESG 因子不可用: %s", exc)
+
+        # iFinD 风险指标因子
+        if _use('use_ifind_risk', default=False):
+            try:
+                from lib.data.data_ifind import get_risk_factor
+                risk_factor = get_risk_factor(code)
+                if "error" not in risk_factor:
+                    data_factors["ifind_risk"] = risk_factor
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("iFinD 风险因子不可用: %s", exc)
+
+        # 风险评分开关标记：仅在风险数据可用时注入，默认关闭
+        if _use('use_ifind_risk_score', default=False) and "ifind_risk" in data_factors:
+            data_factors["_ifind_risk_score_enabled"] = True
 
         # 基金持仓因子
         if _use('use_fund_hold', default=True):

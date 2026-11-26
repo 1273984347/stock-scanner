@@ -41,6 +41,16 @@ class FactorConfig:
     use_fund_hold: bool = True
     use_dividend: bool = True
 
+    # iFinD 结构化因子（2026-11-26 新增）
+    # 默认关闭：付费接口 + 2 QPS 限流，且作为旁路因子暴露不参与 ic_score；
+    # 显式开启后才发起网络调用，避免批量扫描时意外消耗权益。
+    use_ifind_esg: bool = False
+    use_ifind_risk: bool = False
+    # 风险因子纳入 ic_score 的开关（ADR-0037 迁移指南）
+    # 默认关闭且不计划启用：严格前瞻两窗口方向翻转，已证伪（ADR-0037 §决策2）。
+    # 保留仅为可回滚的实验入口，生产路径不得置 True。
+    use_ifind_risk_score: bool = False
+
     # 注：原 momentum_periods/reversal_period/volatility_window 等参数字段已删除
     # 原因：factors.py 中硬编码了相同默认值，从未读取 config 字段
 
