@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "datasets": {
+    "blocks": {
+      "files": 5635,
+      "rows": 5635,
+      "updated_at": "2026-11-26T19:23:13",
+      "last_key": "000609"
+    },
+    "events": {
+      "files": 10,
+      "rows": 95,
+      "updated_at": "2026-11-26T17:32:55",
+      "last_key": "lhb/2026-11-26"
+    },
+    "financial": {
+      "files": 5580,
+      "rows": 5580,
+      "updated_at": "2026-11-26T19:24:21",
+      "last_key": "920067"
+    },
+    "fundflow": {
+      "files": 5222,
+      "rows": 5222,
+      "updated_at": "2026-11-26T19:31:29",
+      "last_key": "000820"
+    },
+    "index": {
+      "files": 3,
+      "rows": 880,
+      "updated_at": "2026-11-26T17:29:52",
+      "last_key": "000300"
+    },
+    "kline": {
+      "files": 5868,
+      "rows": 1464404,
+      "updated_at": "2026-11-26T23:15:52",
+      "last_key": "601127"
+    },
+    "kline_raw": {
+      "files": 5938,
+      "rows": 1485679,
+      "updated_at": "2026-11-26T22:36:57",
+      "last_key": "002717"
+    },
+    "snapshot": {
+      "files": 7,
+      "rows": 38827,
+      "updated_at": "2026-11-26T19:34:35",
+      "last_key": "2026-11-26"
+    }
+  },
+  "updated_at": "2026-11-26T23:15:52"
+}
