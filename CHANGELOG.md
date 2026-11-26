@@ -32,6 +32,7 @@
 - Windows CI 下 `git show` 历史源码改为显式 UTF-8 解码，修复 `ast.parse` TypeError。
 - Go CLI 未鉴权日志脱敏：`AUTH_REQUIRED` 一次性授权 URL（含 `code=`）不再写入日志；
   新增未鉴权全能力降级回归测试。
+- 鉴权态测试夹具改用 ASCII 输出，兼容 Windows runner 的 cp1252 stdout。
 - L9 迁移锚点同步为重写后的提交 SHA；CI 增加 `fetch-depth: 0` 读取历史。
 - 锁定 `akshare==1.18.60`（1.19 移除 `stock_zh_a_spot`）；补充 `pytest-asyncio`、`baostock`。
 - 进程锁测试改为 release event 控制持锁期，去掉固定 `sleep` 的时序依赖。
