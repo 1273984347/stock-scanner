@@ -61,6 +61,17 @@ def _resolve_go_cmd() -> List[str]:
 GO_CMD = _resolve_go_cmd()
 
 
+_AUTH_URL_RE = re.compile(r"AUTH_REQUIRED:\S+")
+_SECRET_PARAM_RE = re.compile(r"(?i)(code|token|key|secret)=[^&\s]+")
+
+
+def _sanitize_go_error(text: str) -> str:
+    """脱敏 CLI 错误：AUTH_REQUIRED 后面是一次性授权 URL（含 code=），不得进日志。"""
+    text = _AUTH_URL_RE.sub("AUTH_REQUIRED:<redacted>", text or "")
+    text = _SECRET_PARAM_RE.sub(r"\1=<redacted>", text)
+    return " ".join(text.split())[:200]
+
+
 def _run_go(args: List[str], timeout: int = 30) -> str:
     """执行 Go CLI 命令；未安装或未鉴权返回空串（记 warning 不抛错，保持降级语义）。"""
     if not GO_CMD:
@@ -71,7 +82,8 @@ def _run_go(args: List[str], timeout: int = 30) -> str:
             GO_CMD + args, capture_output=True, text=True, timeout=timeout, encoding="utf-8"
         )
         if result.returncode != 0:
-            logger.warning(f"WeStock Go 命令失败: {(result.stderr or result.stdout)[:200]}")
+            logger.warning("WeStock Go 命令失败: %s",
+                           _sanitize_go_error(result.stderr or result.stdout))
             return ""
         return result.stdout
     except subprocess.TimeoutExpired:

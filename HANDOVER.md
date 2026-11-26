@@ -1,7 +1,7 @@
 # HANDOVER
 
 > 接手顺序：本文件 → `AGENTS.md`（AI 行为真源）→ `TODOS.md`（任务台账）。
-> 最近更新：2026-11-26 02:26。
+> 最近更新：2026-11-26 17:40。
 
 ## 当前状态
 
@@ -13,7 +13,7 @@
 - 不在公开仓：内部 `docs/plans|research|archive|audit`、`.claude/`、`.superpowers/`、
   `data/` 导出与本地备份
 - CI：GitHub Actions，`push` / `pull_request` / `workflow_dispatch`，三平台 × Python 3.12；
-  本批提交 run `45673551198` 三平台全绿
+  本批提交 run `45673551198` 与记录提交 run `45675590410` 均三平台全绿；新回归待推
 - 本地工作区：`D:/stock-scanner`，`master` 与 `origin/master` 同步
 
 ## 关键约定
@@ -26,11 +26,13 @@
 
 ## 下一步
 
-1. 推送本批 docs 提交，确认 CI 三平台绿
-2. 按 `TODOS.md` 推进 westock 六类命令真实网络回归
+1. 推送本批未鉴权回归/日志脱敏修复，确认 CI 三平台绿
+2. 鉴权态下再做 westock 六类命令真实网络回归（未鉴权路径已完成）
 3. 公开仓 CI 首周观察；失败按根因修，不压基线
 
 ## 最近变更（摘要）
+
+- 2026-11-26：Go CLI 未鉴权真实回归完成；一次性授权 URL 从日志脱敏；SECURITY 增加报告模板
 
 - 2026-11-26：westock 六类命令 WIP 提交（`051eb31`）；`TODO.md` 归档进 `TODOS.md` 后删除；
   补齐治理文件；`.env` 清理 `FEISHU_*`

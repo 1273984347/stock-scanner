@@ -11,6 +11,7 @@
   `get_notice` / `get_sector_rank` / `get_index_constituent` / `get_macro` /
   `get_fund_north` / `get_fund_south` / `get_etf`，未安装或未鉴权时降级为空结果。
 - `tests/test_westock_six_categories.py`：命令 argv 链契约 + 降级路径测试。
+- `SECURITY.md`：漏洞报告模板（复制填写 + 脱敏要求）
 - 治理文件：`TODOS.md`、`HANDOVER.md`、`SECURITY.md`、`ROADMAP.md`、
   `CODE_OF_CONDUCT.md`、`CONTRIBUTING.md`、`LICENSE`（MIT）。
 
@@ -27,6 +28,8 @@
 - `trade_calendar` 冷却哨兵由 `0.0` 改为 `-inf`：Linux/macOS 的 `monotonic()` 是开机秒数，
   新机器前 300 秒会被误判为「冷却中」，导致交易日历永不刷新。
 - Windows CI 下 `git show` 历史源码改为显式 UTF-8 解码，修复 `ast.parse` TypeError。
+- Go CLI 未鉴权日志脱敏：`AUTH_REQUIRED` 一次性授权 URL（含 `code=`）不再写入日志；
+  新增未鉴权全能力降级回归测试。
 - L9 迁移锚点同步为重写后的提交 SHA；CI 增加 `fetch-depth: 0` 读取历史。
 - 锁定 `akshare==1.18.60`（1.19 移除 `stock_zh_a_spot`）；补充 `pytest-asyncio`、`baostock`。
 - 进程锁测试改为 release event 控制持锁期，去掉固定 `sleep` 的时序依赖。

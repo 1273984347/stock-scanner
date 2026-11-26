@@ -10,6 +10,7 @@
 2. 坏命令不回归（quote 不得再走 npm / hot 不得裸调用 / lhb 必带 code）
 3. Go CLI 未安装或返回空时降级为空 DataFrame/dict，不抛错（保生产链路）
 """
+import logging
 import os
 import sys
 
@@ -108,6 +109,57 @@ def test_go_cli_missing_degrades_to_empty(monkeypatch):
     assert ws.get_quote("600519") == {}
     assert ws.get_hot().empty
     assert ws.get_news("600519").empty
+
+
+class _LogHandler(logging.Handler):
+    """直挂 ws.logger 收集告警（conftest 把 lib logger 设为 propagate=0）。"""
+
+    def __init__(self):
+        super().__init__()
+        self.messages: list[str] = []
+
+    def emit(self, record):
+        self.messages.append(record.getMessage())
+
+
+def test_unauthenticated_go_cli_degrades_all_capabilities_and_redacts_auth_url(tmp_path, monkeypatch):
+    """真实未鉴权返回形态（rc=1 + AUTH_REQUIRED URL）：全部能力降级，且授权 URL 不进日志。"""
+    script = tmp_path / "fake_go_auth.py"
+    script.write_text(
+        "import sys\n"
+        "sys.stderr.write('AUTH_REQUIRED:https://gu.qq.com/resource/westockCliAuth/index.html"
+        "?code=SECRET123&channel=wbgeneral\\n')\n"
+        "sys.stderr.write('NEXT:westock auth fetch --wait 300\\n')\n"
+        "sys.exit(1)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ws, "GO_CMD", [sys.executable, str(script)])
+
+    handler = _LogHandler()
+    ws.logger.addHandler(handler)
+    try:
+        assert ws._run_go(["quote", "sh600519"]) == ""
+        assert ws.get_quote("600519") == {}
+        for result in (
+            ws.get_hot(),
+            ws.get_news("600519"),
+            ws.get_report("600519"),
+            ws.get_notice("600519"),
+            ws.get_sector_rank(),
+            ws.get_index_constituent("000001"),
+            ws.get_macro("CPI"),
+            ws.get_fund_north("600519"),
+            ws.get_fund_south("600519"),
+            ws.get_etf("510300"),
+        ):
+            assert result.empty
+    finally:
+        ws.logger.removeHandler(handler)
+
+    joined = "\n".join(handler.messages)
+    assert handler.messages
+    assert "AUTH_REQUIRED:<redacted>" in joined
+    assert "SECRET123" not in joined and "https://" not in joined
 
 
 def test_index_code_differs_from_stock_code():
