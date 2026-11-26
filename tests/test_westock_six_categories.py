@@ -167,7 +167,7 @@ def test_authenticated_go_cli_parses_wellformed_tables(tmp_path, monkeypatch):
     script = tmp_path / "fake_go_auth_ok.py"
     script.write_text(
         "import sys\n"
-        "table = '| code | name | price |\\n| --- | --- | --- |\\n| sh600519 | 贵州茅台 | 1469 |\\n'\n"
+        "table = '| code | name | price |\\n| --- | --- | --- |\\n| sh600519 | MAOTAI | 1469 |\\n'\n"
         "sys.stdout.write(table)\n",
         encoding="utf-8",
     )
