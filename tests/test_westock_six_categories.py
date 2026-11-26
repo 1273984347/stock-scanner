@@ -162,6 +162,63 @@ def test_unauthenticated_go_cli_degrades_all_capabilities_and_redacts_auth_url(t
     assert "SECRET123" not in joined and "https://" not in joined
 
 
+def test_authenticated_go_cli_parses_wellformed_tables(tmp_path, monkeypatch):
+    """鉴权态解析路径：CLI 返回 Markdown 表时，各能力必须解析出非空结果。"""
+    script = tmp_path / "fake_go_auth_ok.py"
+    script.write_text(
+        "import sys\n"
+        "table = '| code | name | price |\\n| --- | --- | --- |\\n| sh600519 | 贵州茅台 | 1469 |\\n'\n"
+        "sys.stdout.write(table)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ws, "GO_CMD", [sys.executable, str(script)])
+
+    assert ws._run_go(["quote", "sh600519"]).startswith("| code |")
+    assert ws.get_quote("600519")["code"] == "sh600519"
+    for result in (
+        ws.get_hot(),
+        ws.get_news("600519"),
+        ws.get_report("600519"),
+        ws.get_notice("600519"),
+        ws.get_sector_rank(),
+        ws.get_index_constituent("000300"),
+        ws.get_macro("cn_gdp"),
+        ws.get_fund_north("600519"),
+        ws.get_fund_south("hk00700"),
+        ws.get_etf("510300"),
+    ):
+        assert not result.empty
+
+
+@pytest.mark.skipif(
+    os.environ.get("WESTOCK_GO_AUTH_TEST") != "1",
+    reason="opt-in：需要本机 Go CLI 已完成专属 APIKey 授权（WESTOCK_GO_AUTH_TEST=1）",
+)
+def test_authenticated_go_cli_real_network_smoke():
+    """真实鉴权态回归（默认跳过）：逐命令验证非空、可解析、不抛错。
+
+    运行：WESTOCK_GO_AUTH_TEST=1 python -m pytest tests/test_westock_six_categories.py -q
+    失败通常意味着：授权过期、CLI 命令参数漂移或上游返回结构变化。
+    """
+    if not ws.GO_CMD:
+        pytest.skip("Go CLI 未安装")
+
+    assert ws.get_quote("600519"), "quote 应返回非空 dict"
+    for name, result in (
+        ("hot", ws.get_hot()),
+        ("news", ws.get_news("600519")),
+        ("report", ws.get_report("600519")),
+        ("notice", ws.get_notice("600519")),
+        ("sector_rank", ws.get_sector_rank()),
+        ("index_constituent", ws.get_index_constituent("000300")),
+        ("macro", ws.get_macro("cn_gdp")),
+        ("fund_north", ws.get_fund_north("600519")),
+        ("fund_south", ws.get_fund_south("hk00700")),
+        ("etf", ws.get_etf("510300")),
+    ):
+        assert not result.empty, f"{name} 鉴权态返回空结果"
+
+
 def test_index_code_differs_from_stock_code():
     """指数 000300=sh000300（个股规则会错成 sz000300）——独立映射判据。"""
     assert ws._to_index_code("000300") == "sh000300"

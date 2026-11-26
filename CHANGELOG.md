@@ -12,6 +12,8 @@
   `get_fund_north` / `get_fund_south` / `get_etf`，未安装或未鉴权时降级为空结果。
 - `tests/test_westock_six_categories.py`：命令 argv 链契约 + 降级路径测试。
 - `SECURITY.md`：漏洞报告模板（复制填写 + 脱敏要求）
+- 鉴权态回归测试：CI 用 fake CLI 验证解析路径；真实网络 opt-in
+  （`WESTOCK_GO_AUTH_TEST=1`），本机实跑 11 条命令全绿
 - 治理文件：`TODOS.md`、`HANDOVER.md`、`SECURITY.md`、`ROADMAP.md`、
   `CODE_OF_CONDUCT.md`、`CONTRIBUTING.md`、`LICENSE`（MIT）。
 

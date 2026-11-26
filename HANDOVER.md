@@ -1,7 +1,7 @@
 # HANDOVER
 
 > 接手顺序：本文件 → `AGENTS.md`（AI 行为真源）→ `TODOS.md`（任务台账）。
-> 最近更新：2026-11-26 17:55。
+> 最近更新：2026-11-26 18:05。
 
 ## 当前状态
 
@@ -28,10 +28,13 @@
 ## 下一步
 
 1. 网络恢复后执行 `git push origin master`，确认 CI 三平台绿
-2. 鉴权态下再做 westock 六类命令真实网络回归（未鉴权路径已完成）
+2. 鉴权态回归已就绪：默认 CI 跑 fake CLI 解析路径；真实网络需
+   `WESTOCK_GO_AUTH_TEST=1 python -m pytest tests/test_westock_six_categories.py -q`
 3. 公开仓 CI 首周观察；失败按根因修，不压基线
 
 ## 最近变更（摘要）
+
+- 2026-11-26：新增鉴权态回归测试（CI 确定性 + 真实网络 opt-in），本机实跑 30.5s 通过
 
 - 2026-11-26：Go CLI 未鉴权真实回归完成；一次性授权 URL 从日志脱敏；SECURITY 增加报告模板
 
