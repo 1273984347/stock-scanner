@@ -9,18 +9,15 @@
 
 ## 待办
 
-- [ ] `scripts/` 下沉目录定稿：`analysis/` `ops/` `data_ops/` `data_bulk/` 下 49 个文件
-      全是已跟踪根级脚本的**硬链接副本**（同 inode、内容一致），且路径锚定仍是 `parent.parent`，
-      从新位置运行会解析到 `scripts/`（实测 `data_bulk/bulk_paths.py` 把 BULK 指到
-      `scripts/data/exports/bulk`）。需二选一：补齐"向上找 AGENTS.md + lib/"锚点后正式迁移，
-      或删除副本回收根级布局。**未定稿前不要从这些目录运行脚本。**
-- [ ] 清理 `scripts/data/exports/bulk/_integrated/`（路径断链误建，真实数据在 `data/exports/bulk/`）
 - [ ] 公开仓 CI 首周观察：失败按根因修，不通过放宽判据或改基线压红
 - [ ] 公开/内部文档边界复盘：评估 `docs/adr`、`docs/plans` 中可逐步公开的部分
 - [ ] 复核继承 backlog（见下节），删除过时项后再排期
 
 ## 已完成（2026-11-27）
 
+- [x] **清理 `scripts/` 下沉目录**：删除 49 个硬链接副本（同 inode，删名不删数据）+ 误建的
+      `scripts/data/exports/`（清单为截断版，真实数据在 `data/exports/bulk/`）+ 一次性
+      `restructure_project.ps1`。工作区零未跟踪，回到根级布局；未完成的迁移正式放弃。
 - [x] **P0 工作区收尾（4 批提交）**：`af416e9` 忽略 backups；`2b0493b` 因子接入与证伪收口；
       `801d7d9` iFinD 取证脚本 7 个；`9b805b0` 批量取数工具 16 个 + `manifest.json` 入库。
 - [x] iFinD 风险因子加权线**关闭**：严格前瞻两个零重叠窗口符号翻转（+39.95pp / −35.90pp，

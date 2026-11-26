@@ -3659,6 +3659,10 @@ AGENTS.md / CLAUDE.md / RULES.md / README.md / docs/refactor/pitfalls.md`）；�
 **推广升级**：P-141 的修法当时只落在 12 个门禁脚本上，没有变成全仓规约——这类"修一处没修一类"
 的整改，必须同时加机器判据（扫描下沉目录里的 `parent.parent` 锚点）才算收口。
 
+**处置（2026-11-27）**：删除 49 个副本名（同 inode，删名不删数据）+ 误建 `scripts/data/exports/`
+（清单是截断版，真实数据在 `data/exports/bulk/`）+ 一次性 `restructure_project.ps1`，回到根级布局；
+未完成的迁移放弃。若重启迁移，先把标记法锚点与 CI 扫描判据落地，再移动文件。
+
 **路径收口（2026-11-25 同日）**：`scripts/gates/` 已纳入 git 跟踪；`AGENTS.md` §4 全部
 门禁命令 + S6/S9（S9 按 ADR-0014 D2 标记退役）/§2.2 路由门禁/D7 判据均切到 `scripts/gates/`。
 旧路径 `scripts/*.py` 作为同 inode 硬链接保留一个发版周期，期满后 `git rm` 旧名即可
