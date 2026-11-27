@@ -137,6 +137,18 @@ jobs:
         # 全部用**确定性合成数据**（zlib.crc32 种子），跨环境可复现。
         if: matrix.python-version == '3.12'
         run: python scripts/gates/backtest_baseline.py --check --out docs/refactor/backtest-baseline.json
+      # L5/L7/L8 补入 CI（2026-11-28）：此前这三层只在本地/pre-push 跑，
+      # 依赖升级 PR 的 CI 绿灯是"半盲"的 —— akshare 改名能被 L1 抓住，
+      # 但评分口径 / 路由归属 / 阻塞 IO 漂移 CI 看不见。
+      - name: Scoring baseline (评分口径漂移门禁)
+        if: matrix.python-version == '3.12'
+        run: python scripts/gates/scoring_baseline.py --check --out docs/refactor/scoring-baseline.json
+      - name: Route ownership (端点归属门禁)
+        if: matrix.python-version == '3.12'
+        run: python scripts/gates/route_ownership_check.py --check
+      - name: Blocking IO (阻塞调用基线门禁)
+        if: matrix.python-version == '3.12'
+        run: python scripts/gates/blocking_io_check.py --check
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

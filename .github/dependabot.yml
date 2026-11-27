@@ -31,6 +31,12 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "chore(deps)"
+    # akshare 1.20.46 将 stock_zh_a_spot 改名为 stock_zh_a_spot_sina，
+    # CI 三平台实测 1843 errors（PR #4 / run 46076546001）。
+    # 本项目全市场行情强依赖该接口，升级须显式改代码 + 全套门禁，
+    # 不接受 Dependabot 自动提案。精确 pin 仍在 requirements*.txt 中。
+    ignore:
+      - dependency-name: "akshare"
 
   - package-ecosystem: github-actions
     directory: /
