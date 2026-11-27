@@ -66,7 +66,7 @@ jobs:
         python-version: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["3.10","3.11","3.12"]' || '["3.12"]') }}
     steps:
       # 第三方 Action 固定 40 位 commit SHA（防标签劫持）；注释保留可读版本号
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # 门禁用 git show <历史 SHA> 复算迁移等价性；默认 depth=1 会让历史不可读
           fetch-depth: 0
