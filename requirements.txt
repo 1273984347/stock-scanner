@@ -20,7 +20,7 @@ streamlit>=1.28.0,<2.0.0
 httpx>=0.24.0,<1.0.0
 networkx>=3.0,<4.0.0
 # Borrow 2: 跨平台文件锁 (signal_tracker.py + position_manager.py)
-portalocker>=2.0.0,<4.0.0  # Windows 优先; Linux fallback fcntl (内置); 无锁 graceful degradation
+portalocker>=4.4.2,<5.0.0  # Windows 优先; Linux fallback fcntl (内置); 无锁 graceful degradation
 
 # 批次 C / P1-11：ML 链路此前只在 CI 临时补装，requirements 缺失 ⇒ 本地 import 失败。
 xgboost>=2.0.0,<4.0.0
