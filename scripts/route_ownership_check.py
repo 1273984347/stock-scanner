@@ -181,7 +181,10 @@ def capture_frontend_paths() -> dict:
         except (OSError, UnicodeDecodeError):
             continue
         for m in PATH_RE.finditer(text):
-            raw.setdefault(m.group(1), set()).add(str(p.relative_to(ROOT)))
+            # as_posix() 统一为 "/"：str(Path) 在 Windows 产出反斜杠、
+            # 在 Linux/macOS 产出正斜杠，跨平台 CI 比对会因分隔符漂移判红
+            # （2026-11-28 L7 补入 CI 后实测 macOS/ubuntu 判红）。
+            raw.setdefault(m.group(1), set()).add(p.relative_to(ROOT).as_posix())
 
     def normalize(s: str) -> str | None:
         if s in declared:
