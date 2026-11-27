@@ -6,6 +6,10 @@
 
 输出：cache/ifind/YYYYMMDD_HHMMSS_factor_distribution.json
       含每只股票明细 + 分布统计（ESG 等级计数、Sharpe/回撤/波动率分位数）
+
+⚠️ 本条线（iFinD 风险因子纳入评分）已于 2026-11-27 关闭（ADR-0037 §决策4）。
+   本脚本仅作**复跑取证 / 重启资产**，不参与生产路径。已产出的关键快照固化于
+   docs/adr/0037-evidence/（cache/ 同名文件为运行副本，gitignored，会被清理）。
 """
 
 from __future__ import annotations

@@ -2,8 +2,8 @@
   "schema_version": 1,
   "datasets": {
     "blocks": {
-      "files": 5635,
-      "rows": 5635,
+      "files": 5659,
+      "rows": 5659,
       "updated_at": "2026-11-27T04:49:11",
       "last_key": "000833",
       "refresh": {
@@ -14,14 +14,14 @@
         "coverage": 1.0,
         "attempted_at": "2026-11-27T04:49:11"
       },
-      "fresh_files": 5635,
+      "fresh_files": 5659,
       "stale_files": 0
     },
     "events": {
-      "files": 10,
-      "rows": 95,
-      "updated_at": "2026-11-26T17:32:55",
-      "last_key": "lhb/2026-11-26"
+      "files": 12,
+      "rows": 115,
+      "updated_at": "2026-11-27T22:48:19",
+      "last_key": "lhb/2026-11-27"
     },
     "financial": {
       "files": 5580,
@@ -30,35 +30,35 @@
       "last_key": "920067"
     },
     "fundflow": {
-      "files": 5222,
-      "rows": 5222,
-      "updated_at": "2026-11-26T19:31:29",
-      "last_key": "000820"
+      "files": 5225,
+      "rows": 5225,
+      "updated_at": "2026-11-27T05:11:11",
+      "last_key": "688121"
     },
     "index": {
       "files": 3,
-      "rows": 880,
-      "updated_at": "2026-11-26T17:29:52",
+      "rows": 882,
+      "updated_at": "2026-11-27T22:44:22",
       "last_key": "000300"
     },
     "kline": {
       "files": 5868,
-      "rows": 1464404,
-      "updated_at": "2026-11-26T23:15:52",
-      "last_key": "601127"
+      "rows": 1469687,
+      "updated_at": "2026-11-28T00:57:53",
+      "last_key": "688496"
     },
     "kline_raw": {
       "files": 5938,
-      "rows": 1485679,
-      "updated_at": "2026-11-26T22:36:57",
-      "last_key": "002717"
+      "rows": 1491116,
+      "updated_at": "2026-11-28T02:13:37",
+      "last_key": "688496"
     },
     "snapshot": {
       "files": 8,
       "rows": 44407,
-      "updated_at": "2026-11-27T04:47:45",
+      "updated_at": "2026-11-27T22:49:00",
       "last_key": "2026-11-27"
     }
   },
-  "updated_at": "2026-11-27T04:49:11"
+  "updated_at": "2026-11-28T02:13:37"
 }

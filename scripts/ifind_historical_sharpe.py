@@ -8,6 +8,10 @@
 口径不符（起止同日/缺字段）的样本标记 invalid 不参与分组。
 
 输出：cache/ifind/*_historical_sharpe_{T0}.json，含原始帧与口径参数。
+
+⚠️ 本条线（iFinD 风险因子纳入评分）已于 2026-11-27 关闭（ADR-0037 §决策4）。
+   本脚本仅作**复跑取证 / 重启资产**（重启需 ≥3 年历史 + beta 正交化 + 两窗口同号 + 新 ADR）。
+   严格前瞻的关键快照固化于 docs/adr/0037-evidence/。
 """
 
 from __future__ import annotations

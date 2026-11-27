@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞报告
+    url: https://github.com/1273984347/stock-scanner/blob/master/SECURITY.md
+    about: 请勿公开披露漏洞；按 SECURITY.md 的模板私密报告，并提供脱敏片段
+  - name: 贡献指南与开发环境
+    url: https://github.com/1273984347/stock-scanner/blob/master/CONTRIBUTING.md
+    about: 提交前门禁命令、分支命名、PR 要求与 CI 基线

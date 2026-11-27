@@ -1,0 +1,84 @@
+name: Bug 报告
+description: 报告可复现的问题；安全漏洞请勿使用公开 Issue
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请确认：已搜索现有 Issue；**不要在公开 Issue 粘贴 Token、密钥、Cookie 或隐私数据**。
+        安全漏洞请走 [SECURITY.md](https://github.com/1273984347/stock-scanner/blob/master/SECURITY.md) 的私密渠道。
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      options:
+        - Windows
+        - Linux
+        - macOS
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python 版本
+      description: CI 基线为 3.12；3.10/3.11 仅手动验证
+      placeholder: "3.12.x"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 涉及模块
+      options:
+        - 数据获取 / lib/data
+        - 评分 / lib/scoring
+        - 选股策略 / lib/strategy
+        - 回测 / backtest
+        - 路由 / API
+        - 前端 / Dashboard
+        - 文档 / CI
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 现象与预期
+      description: 实际发生了什么、期望是什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 最小可复现命令或代码；日志请脱敏后粘贴
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境与配置
+      description: 依赖版本、数据源配置（不含密钥）、是否使用本地数据仓 data/store/
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前自检
+      options:
+        - label: 已搜索现有 Issue，确认非重复
+          required: true
+        - label: 已脱敏，未包含任何密钥或隐私数据
+          required: true
+        - label: 这不是安全漏洞（漏洞走 SECURITY.md 私密渠道）
+          required: true

@@ -205,3 +205,81 @@ def test_rejected_attempt_recorded_without_touching_updated_at(isolated_store, m
     assert ds["refresh"]["coverage"] == 0.5
     assert ds["updated_at"] == "2020-01-01T00:00:00", "失败尝试不得伪装成已更新"
     assert ds["fresh_files"] == 100, "失败尝试不得覆盖上次成功的 fresh 读数"
+
+
+# ============ 新股覆盖判据（成员级，P-147 防复发）============
+# 背景：总量覆盖率（>=98%）看不见"哪只缺"，23 只新股缺失被稀释成 99.6% 照样通过。
+# 本组锁定成员级判据：上市 >= N 自然日的 A 股必须在 blocks 出现。
+
+def _mock_universe(monkeypatch, items):
+    from lib.data import blocks_health as bh
+    monkeypatch.setattr(bh, "_load_universe_cached", lambda: items)
+    return bh
+
+
+def test_newstock_coverage_detects_missing(tmp_path, monkeypatch):
+    from datetime import date
+    universe = [
+        {"code": "688795", "list_date": "2025-12-05"},  # 仓里有
+        {"code": "688802", "list_date": "2025-12-17"},  # 仓里没有 -> 应报缺
+    ]
+    bh = _mock_universe(monkeypatch, universe)
+    bdir = tmp_path / "blocks"
+    bdir.mkdir()
+    (bdir / "688795.json").write_text('["行业A"]', encoding="utf-8")
+
+    res = bh.check_newstock_coverage(min_listed_days=10, today=date(2026, 11, 27), blocks_dir=bdir)
+    assert res["ok"] is False
+    assert [m["code"] for m in res["missing"]] == ["688802"]
+    assert res["checked"] == 2
+
+
+def test_newstock_coverage_ignores_b_share(tmp_path, monkeypatch):
+    """B 股（200/201/900 段）不在 A 股新股判据范围内——blocks 含 B 股但判据只盯 A 股"""
+    from datetime import date
+    universe = [
+        {"code": "200011", "list_date": "2020-01-01"},
+        {"code": "201872", "list_date": "2020-01-01"},
+        {"code": "900901", "list_date": "2020-01-01"},
+    ]
+    bh = _mock_universe(monkeypatch, universe)
+    bdir = tmp_path / "blocks"
+    bdir.mkdir()
+
+    res = bh.check_newstock_coverage(min_listed_days=10, today=date(2026, 11, 27), blocks_dir=bdir)
+    assert res["ok"] is True
+    assert res["checked"] == 0, "B 股不应计入参检数"
+
+
+def test_newstock_coverage_min_days_filters_too_new(tmp_path, monkeypatch):
+    """上市不足 N 自然日的不参检（给源站收录留窗口，避免误报）"""
+    from datetime import date
+    universe = [{"code": "688888", "list_date": "2026-11-20"}]  # 仅 7 天
+    bh = _mock_universe(monkeypatch, universe)
+    bdir = tmp_path / "blocks"
+    bdir.mkdir()
+
+    res = bh.check_newstock_coverage(min_listed_days=10, today=date(2026, 11, 27), blocks_dir=bdir)
+    assert res["ok"] is True
+    assert res["checked"] == 0
+
+
+def test_newstock_coverage_universe_unavailable_is_not_pass(tmp_path, monkeypatch):
+    """清单取数失败必须判红（ok=False），不得当成'无缺口'放过——空判据防护"""
+    from datetime import date
+    bh = _mock_universe(monkeypatch, [])
+    bdir = tmp_path / "blocks"
+    bdir.mkdir()
+
+    res = bh.check_newstock_coverage(min_listed_days=10, today=date(2026, 11, 27), blocks_dir=bdir)
+    assert res["ok"] is False
+    assert "不可用" in res["reason"]
+
+
+def test_newstock_coverage_missing_blocks_dir_fails(tmp_path, monkeypatch):
+    from datetime import date
+    bh = _mock_universe(monkeypatch, [{"code": "688795", "list_date": "2025-12-05"}])
+    res = bh.check_newstock_coverage(
+        min_listed_days=10, today=date(2026, 11, 27), blocks_dir=tmp_path / "nope")
+    assert res["ok"] is False
+    assert "不存在" in res["reason"]

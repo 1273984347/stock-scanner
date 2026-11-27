@@ -295,6 +295,23 @@ def sync_blocks(sleep):
     if res.failures:
         print(f"  ⚠️ 仍有 {len(res.failures)} 个板块失败，对应标的保留旧映射；"
               f"覆盖率达标故本次不阻断", flush=True)
+
+    # 新股覆盖判据（P-147 防复发）：总量覆盖率看不见"哪只缺"，新股被 98% 阈值稀释。
+    # 只告警不阻断——旧映射仍有效，阻断会让整仓停更；修复走 fill_missing_blocks.py。
+    try:
+        from lib.data.blocks_health import check_newstock_coverage
+        cov = check_newstock_coverage()
+        if cov["ok"]:
+            print(f"  新股覆盖判据：无缺口（参检 {cov['checked']} 只）", flush=True)
+        else:
+            print(f"  ⚠️ 新股覆盖缺口：{cov['reason']}", flush=True)
+            for item in cov["missing"][:10]:
+                print(f"     缺 {item['code']}（上市 {item['list_date']}，"
+                      f"{item['days_listed']} 天）", flush=True)
+            if len(cov["missing"]) > 10:
+                print(f"     ... 共 {len(cov['missing'])} 只", flush=True)
+    except Exception as exc:  # noqa: BLE001 - 判据异常不得影响写仓结果
+        print(f"  新股覆盖判据执行失败（不影响本次写仓）: {exc}", flush=True)
     return ok, 0, 0
 
 

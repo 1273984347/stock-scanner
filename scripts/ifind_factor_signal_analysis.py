@@ -11,6 +11,10 @@
 3. 相关性：Sharpe 与回撤/波动率的相关系数（若高度相关则是同一信息重复）
 4. ESG 分组的单调性检验：等级序数与风险指标的 Spearman 相关性，
    绝对值 < 0.3 视为"ESG 无区分力"（本次取证的核心结论）
+
+⚠️ 本条线（iFinD 风险因子纳入评分）已于 2026-11-27 关闭（ADR-0037 §决策4）。
+   本脚本仅作**复跑取证 / 重启资产**，不参与生产路径。关键快照固化于
+   docs/adr/0037-evidence/factor_signal_analysis.json。
 """
 
 from __future__ import annotations

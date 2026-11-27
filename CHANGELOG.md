@@ -7,6 +7,9 @@
 
 ### Added
 
+- 开源协作配套：`.github/ISSUE_TEMPLATE/`（bug 报告 / 功能建议 / 联系入口）、
+  `.github/PULL_REQUEST_TEMPLATE.md`；`.gitignore` 增补 `config.json` / `config.yaml` /
+  `*.pem` / `*.key` / `*.pfx` / `*.p12` 敏感文件忽略规则。
 - westock Go CLI 六类数据命令封装：`get_hot` / `get_lhb` / `get_news` / `get_report` /
   `get_notice` / `get_sector_rank` / `get_index_constituent` / `get_macro` /
   `get_fund_north` / `get_fund_south` / `get_etf`，未安装或未鉴权时降级为空结果。

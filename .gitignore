@@ -6,6 +6,17 @@ cache/
 .env
 .env.*
 !.env.example
+
+# 本地配置与密钥（iFinD auth_token 走 config.json；证书/私钥一律不入库）
+# 前置 / 限定仓库根目录：不误伤 .github/ISSUE_TEMPLATE/config.yml 等子目录同名文件
+/config.json
+/config.yaml
+/config.yml
+*.pem
+*.key
+*.pfx
+*.p12
+
 .gstack/
 test-results/
 playwright-report/
