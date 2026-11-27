@@ -54,274 +54,274 @@
       "normalized": "/api/alerts/rules",
       "raw": "/api/alerts/rules",
       "sources": [
-        "static\\js\\components\\AlertEditor.js"
+        "static/js/components/AlertEditor.js"
       ]
     },
     {
       "normalized": "/api/alerts/rules/{rule_id}",
       "raw": "/api/alerts/rules/${ruleId}",
       "sources": [
-        "static\\js\\components\\AlertEditor.js"
+        "static/js/components/AlertEditor.js"
       ]
     },
     {
       "normalized": "/api/audit",
       "raw": "/api/audit",
       "sources": [
-        "static\\js\\main.js"
+        "static/js/main.js"
       ]
     },
     {
       "normalized": "/api/audit/{scan_id}",
       "raw": "/api/audit/",
       "sources": [
-        "static\\js\\main.js"
+        "static/js/main.js"
       ]
     },
     {
       "normalized": "/api/dashboard",
       "raw": "/api/dashboard",
       "sources": [
-        "static\\js\\main.js",
-        "static\\js\\polling.js"
+        "static/js/main.js",
+        "static/js/polling.js"
       ]
     },
     {
       "normalized": "/api/errors",
       "raw": "/api/errors",
       "sources": [
-        "static\\js\\error_tracker.js"
+        "static/js/error_tracker.js"
       ]
     },
     {
       "normalized": "/api/export/positions",
       "raw": "/api/export/positions",
       "sources": [
-        "static\\js\\main.js"
+        "static/js/main.js"
       ]
     },
     {
       "normalized": "/api/export/positions/excel",
       "raw": "/api/export/positions/excel",
       "sources": [
-        "static\\js\\main.js"
+        "static/js/main.js"
       ]
     },
     {
       "normalized": "/api/export/trades",
       "raw": "/api/export/trades",
       "sources": [
-        "static\\js\\main.js"
+        "static/js/main.js"
       ]
     },
     {
       "normalized": "/api/export/trades/excel",
       "raw": "/api/export/trades/excel",
       "sources": [
-        "static\\js\\main.js"
+        "static/js/main.js"
       ]
     },
     {
       "normalized": "/api/exposures",
       "raw": "/api/exposures",
       "sources": [
-        "static\\js\\main.js",
-        "static\\js\\polling.js"
+        "static/js/main.js",
+        "static/js/polling.js"
       ]
     },
     {
       "normalized": "/api/factor-eval",
       "raw": "/api/factor-eval",
       "sources": [
-        "static\\js\\renderers\\eval.js"
+        "static/js/renderers/eval.js"
       ]
     },
     {
       "normalized": "/api/factor-ic-history",
       "raw": "/api/factor-ic-history",
       "sources": [
-        "static\\js\\renderers\\eval.js"
+        "static/js/renderers/eval.js"
       ]
     },
     {
       "normalized": "/api/factor-scatter",
       "raw": "/api/factor-scatter",
       "sources": [
-        "static\\js\\renderers\\eval.js"
+        "static/js/renderers/eval.js"
       ]
     },
     {
       "normalized": "/api/factor-weights",
       "raw": "/api/factor-weights",
       "sources": [
-        "static\\js\\renderers\\eval.js"
+        "static/js/renderers/eval.js"
       ]
     },
     {
       "normalized": "/api/import/config",
       "raw": "/api/import/config",
       "sources": [
-        "static\\js\\main.js"
+        "static/js/main.js"
       ]
     },
     {
       "normalized": "/api/kline/{code}",
       "raw": "/api/kline/${code}",
       "sources": [
-        "static\\js\\renderers\\kline.js",
-        "static\\js\\renderers\\scanner.js"
+        "static/js/renderers/kline.js",
+        "static/js/renderers/scanner.js"
       ]
     },
     {
       "normalized": "/api/notifications",
       "raw": "/api/notifications",
       "sources": [
-        "static\\js\\renderers\\notifications.js"
+        "static/js/renderers/notifications.js"
       ]
     },
     {
       "normalized": "/api/notifications/stats",
       "raw": "/api/notifications/stats",
       "sources": [
-        "static\\js\\renderers\\notifications.js"
+        "static/js/renderers/notifications.js"
       ]
     },
     {
       "normalized": "/api/position-distribution",
       "raw": "/api/position-distribution",
       "sources": [
-        "static\\js\\renderers\\positions.js"
+        "static/js/renderers/positions.js"
       ]
     },
     {
       "normalized": "/api/position/{code}",
       "raw": "/api/position/",
       "sources": [
-        "static\\js\\renderers\\positions.js"
+        "static/js/renderers/positions.js"
       ]
     },
     {
       "normalized": "/api/regime-history",
       "raw": "/api/regime-history",
       "sources": [
-        "static\\js\\renderers\\portfolio.js"
+        "static/js/renderers/portfolio.js"
       ]
     },
     {
       "normalized": "/api/reports",
       "raw": "/api/reports",
       "sources": [
-        "static\\js\\main.js"
+        "static/js/main.js"
       ]
     },
     {
       "normalized": "/api/risk",
       "raw": "/api/risk",
       "sources": [
-        "static\\js\\main.js",
-        "static\\js\\polling.js"
+        "static/js/main.js",
+        "static/js/polling.js"
       ]
     },
     {
       "normalized": "/api/risk-exposure",
       "raw": "/api/risk-exposure",
       "sources": [
-        "static\\js\\renderers\\risk.js"
+        "static/js/renderers/risk.js"
       ]
     },
     {
       "normalized": "/api/risk/correlation",
       "raw": "/api/risk/correlation",
       "sources": [
-        "static\\js\\renderers\\risk.js"
+        "static/js/renderers/risk.js"
       ]
     },
     {
       "normalized": "/api/scan",
       "raw": "/api/scan",
       "sources": [
-        "static\\js\\main.js",
-        "static\\js\\polling.js"
+        "static/js/main.js",
+        "static/js/polling.js"
       ]
     },
     {
       "normalized": "/api/scan/status",
       "raw": "/api/scan/status",
       "sources": [
-        "static\\js\\main.js"
+        "static/js/main.js"
       ]
     },
     {
       "normalized": "/api/score/{code}",
       "raw": "/api/score/",
       "sources": [
-        "static\\js\\main.js"
+        "static/js/main.js"
       ]
     },
     {
       "normalized": "/api/sector-heatmap",
       "raw": "/api/sector-heatmap",
       "sources": [
-        "static\\js\\renderers\\scanner.js"
+        "static/js/renderers/scanner.js"
       ]
     },
     {
       "normalized": "/api/settings",
       "raw": "/api/settings",
       "sources": [
-        "static\\js\\renderers\\settings.js"
+        "static/js/renderers/settings.js"
       ]
     },
     {
       "normalized": "/api/signals",
       "raw": "/api/signals",
       "sources": [
-        "static\\js\\main.js",
-        "static\\js\\renderers\\signals.js"
+        "static/js/main.js",
+        "static/js/renderers/signals.js"
       ]
     },
     {
       "normalized": "/api/signals/accuracy-trend",
       "raw": "/api/signals/accuracy-trend",
       "sources": [
-        "static\\js\\renderers\\signals.js"
+        "static/js/renderers/signals.js"
       ]
     },
     {
       "normalized": "/api/stock/{code}",
       "raw": "/api/stock/",
       "sources": [
-        "static\\js\\components\\SearchBar.js",
-        "static\\js\\main.js"
+        "static/js/components/SearchBar.js",
+        "static/js/main.js"
       ]
     },
     {
       "normalized": "/api/strategy/history",
       "raw": "/api/strategy/history",
       "sources": [
-        "static\\js\\renderers\\strategy-compare.js"
+        "static/js/renderers/strategy-compare.js"
       ]
     },
     {
       "normalized": "/api/strategy/recommend",
       "raw": "/api/strategy/recommend",
       "sources": [
-        "static\\js\\renderers\\strategy-compare.js"
+        "static/js/renderers/strategy-compare.js"
       ]
     },
     {
       "normalized": "/api/strategy/save",
       "raw": "/api/strategy/save",
       "sources": [
-        "static\\js\\renderers\\strategy-compare.js"
+        "static/js/renderers/strategy-compare.js"
       ]
     },
     {
       "normalized": "/api/trade-history",
       "raw": "/api/trade-history",
       "sources": [
-        "static\\js\\renderers\\kline.js",
-        "static\\js\\renderers\\trades.js"
+        "static/js/renderers/kline.js",
+        "static/js/renderers/trades.js"
       ]
     }
   ],
