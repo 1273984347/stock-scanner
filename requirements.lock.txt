@@ -1,0 +1,41 @@
+# requirements.lock.txt — 直接依赖精确版本锁定（Python 3.12 基线）
+#
+# 生成依据：本机 Python 3.12.10 验证环境，L1 全量 1841 passed / 0 failed（2026-11-28）。
+# 用途：CI 的 push/PR 主路径（Python 3.12 × 3 OS）用它安装，消除
+#       requirements.txt 区间解析漂移，以及原先 CI 裸装 xgboost/lightgbm/
+#       scikit-learn 无版本约束的问题。
+#
+# 局限（诚实声明）：
+#   1. 仅锁定直接依赖的**版本**，不含传递依赖哈希 —— 同一版本在不同平台的 wheel
+#      哈希不同，且当前环境无法联网生成完整 hash lock（akshare→jsonpath 构建依赖
+#      需下载 setuptools，离线缓存缺失）。
+#   2. Python 3.10/3.11 兼容性探测（仅 workflow_dispatch 手动触发）仍用
+#       requirements.txt 的区间约束 —— 本锁文件的版本基于 3.12 验证，不保证低版本可用。
+#   3. streamlit 本机未安装，无法给出验证过的精确版本，保留 requirements.txt 范围。
+#
+# 更新纪律：升级任一主版本须同步改本文件 + requirements.txt 上界 + 跑全套 L0–L10 门禁。
+# 与 requirements.txt 的关系：后者定义"允许的范围"（上界策略见 P1-11），
+# 本文件定义"已验证的具体版本"，两者不冲突、职责不同。
+
+adata==2.9.5
+akshare==1.18.60
+backtrader==1.9.78.123
+baostock==0.9.1
+fastapi==0.159.1
+httpx==0.28.1
+lightgbm==4.6.0
+matplotlib==3.10.9
+networkx==3.6.1
+numpy==2.4.4
+pandas==2.3.3
+portalocker==3.2.0
+pytest==8.4.2
+pytest-asyncio==1.4.0
+pytest-cov==5.0.0
+requests==2.33.1
+scikit-learn==1.8.0
+scipy==1.17.1
+tushare==1.4.29
+uvicorn==0.46.0
+xgboost==3.2.0
+streamlit>=1.28.0,<2.0.0  # 本机未装，保留范围；升级时补精确版本

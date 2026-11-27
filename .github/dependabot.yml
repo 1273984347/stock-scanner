@@ -1,0 +1,48 @@
+# Dependabot 策略配置（2026-11-28）
+#
+# 目标：在安全补丁及时性与人工审查成本之间取得平衡。
+#   - 补丁/小版本更新分组 → CI 通过后由 GitHub auto-merge 合并（需在仓库设置开启
+#     "Allow auto-merge"，并在分支保护中启用 required status checks）
+#   - 主版本更新单独分组 → 保留人工审查（主版本可能破坏 API/口径，本项目评分与
+#     回测数值有 1e-9 冻结门禁，主版本升级必须显式跑全套 L0-L10）
+#
+# 注意： Dependabot 只负责"开 PR + 打标签"，自动合并依赖 GitHub 设置；
+#        本文件不承诺自动合并一定生效 —— 它是策略载体，不是执行器。
+
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    # 补丁与小版本先合：本仓库有 12 道门禁 + 3 OS CI，绿灯即证明无口径漂移。
+    groups:
+      patch-and-minor:
+        patterns:
+          - "*"
+        update-types:
+          - "patch"
+          - "minor"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: Asia/Shanghai
+    # Actions 已固定 40 位 SHA，Dependabot 会更新 SHA 并保持 # vN 注释同步。
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "chore(ci)"

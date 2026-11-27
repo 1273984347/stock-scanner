@@ -25,6 +25,19 @@ repos:
         stages: [pre-commit]
         require_serial: false
 
+  # Conventional Commits 强制（本地提交时拦截）：近 100 条提交已 100% 合规，
+  # 本钩子把既有习惯机制化。零外部依赖（仅 grep/sed），脚本见 hooks/。
+  # ⚠ stage = commit-msg，需显式安装：pre-commit install --hook-type commit-msg
+  #   （`pre-commit install` 默认只装 pre-commit stage，不会装 commit-msg）。
+  - repo: local
+    hooks:
+      - id: conventional-commit
+        name: conventional commit message
+        description: Enforce Conventional Commits 1.0.0 on commit message first line
+        entry: bash hooks/check-conventional-commit.sh
+        language: system
+        stages: [commit-msg]
+
   # CI 停摆期的回归兜底（评审 P0-4，2026-11-20）：push 前跑 L1 快判（-x 首败即停，
   # 套件实测 ~2min）。启用 = pre-commit install --hook-type pre-push
   # （`pre-commit install` 默认只装 pre-commit stage，pre-push 需显式装一次）。
