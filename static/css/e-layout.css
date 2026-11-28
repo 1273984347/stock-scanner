@@ -1,0 +1,172 @@
+/* ============================================================
+   E 方案 · Apple Stocks 式 —— 真实前端布局层
+   配套：apple-tokens.css（令牌）+ apple-components.css（组件）
+   ============================================================ */
+
+/* ---------- 应用骨架 ---------- */
+.app-layout { display:flex; height:100vh; }
+.main-area { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
+.content-area { flex:1; display:flex; overflow:hidden; min-width:0; }
+.chart-area { flex:1; min-width:0; overflow-y:auto; background:var(--bg); padding:0 0 32px; }
+
+/* ---------- 大标题区（hero） ---------- */
+.hero { padding:20px 24px 14px; }
+.hero h1 {
+  font-size:32px; font-weight:700; letter-spacing:-.02em; line-height:1.15;
+  color:var(--label);
+}
+.hero .sub { font-size:15px; color:var(--label-2); margin-top:4px; }
+.hero-row {
+  display:flex; align-items:flex-end; gap:28px; margin-top:16px; flex-wrap:wrap;
+}
+.hero-stat .k { font-size:12px; color:var(--label-2); }
+.hero-stat .v {
+  font-size:22px; font-weight:600; font-family:var(--font-num);
+  font-variant-numeric:tabular-nums; color:var(--label); margin-top:2px;
+}
+.hero-stat .v.big { font-size:30px; }
+.hero-stat .up { color:var(--up); } .hero-stat .down { color:var(--down); }
+
+/* ---------- 观察列表卡片网格 ---------- */
+.grid {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr));
+  gap:14px; padding:8px 24px 24px;
+}
+.tile {
+  background:var(--surface); border-radius:var(--r-lg);
+  box-shadow:0 1px 2px rgba(0,0,0,.04);
+  padding:14px 16px 12px; cursor:pointer;
+  transition:transform .18s cubic-bezier(.32,.72,0,1), box-shadow .18s ease;
+}
+.tile:hover { transform:translateY(-2px); box-shadow:var(--shadow-2); }
+.tile .t { font-size:17px; font-weight:600; letter-spacing:-.01em; color:var(--label); }
+.tile .c { font-size:13px; color:var(--label-2); font-family:var(--font-num); }
+.tile .price { display:flex; align-items:baseline; gap:8px; margin-top:10px; }
+.tile .price .p {
+  font-size:24px; font-weight:600; font-family:var(--font-num);
+  font-variant-numeric:tabular-nums; color:var(--label);
+}
+.tile .price .d { font-size:14px; font-weight:600; font-family:var(--font-num); }
+.tile .up { color:var(--up); } .tile .down { color:var(--down); }
+.spark { display:flex; align-items:flex-end; gap:1.5px; height:34px; margin-top:12px; }
+.spark i { flex:1; background:var(--label-4); border-radius:1px; min-height:2px; }
+.spark i.u { background:var(--up); } .spark i.d { background:var(--down); }
+
+/* ---------- 右侧检查器 ---------- */
+.inspector {
+  width:300px; flex-shrink:0; overflow-y:auto;
+  border-inline-start:0.5px solid var(--content-sep);
+  background:var(--bg);
+}
+.ins-block { padding:15px 18px; border-bottom:0.5px solid var(--content-sep); }
+.ins-k {
+  font-size:12px; font-weight:600; color:var(--label-2); margin-bottom:9px;
+}
+.ins-name { font-size:22px; font-weight:700; letter-spacing:-.01em; color:var(--label); }
+.ins-code { font-size:13px; color:var(--label-2); font-family:var(--font-num); }
+.ins-row {
+  display:flex; justify-content:space-between; align-items:baseline;
+  padding:4px 0; font-size:14px;
+}
+.ins-row .k { color:var(--label-2); }
+.ins-row .v {
+  font-family:var(--font-num); font-variant-numeric:tabular-nums; color:var(--label);
+}
+.ins-row .v.up { color:var(--up); } .ins-row .v.down { color:var(--down); }
+.ins-bar { height:6px; border-radius:3px; background:var(--label-4); overflow:hidden; margin-top:4px; }
+.ins-bar i { display:block; height:100%; background:var(--accent); border-radius:3px; }
+.ins-bar.u i { background:var(--up); } .ins-bar.d i { background:var(--down); }
+.ins-factor { margin-bottom:10px; }
+.ins-factor .fr { display:flex; justify-content:space-between; font-size:13px; color:var(--label-2); }
+.ins-factor .fv { font-family:var(--font-num); color:var(--label); }
+
+/* ---------- 侧栏（Liquid Glass 层） ---------- */
+.sidebar {
+  width:212px; flex-shrink:0; display:flex; flex-direction:column;
+  border-right:0.5px solid var(--content-sep);
+  position:relative; z-index:10;
+  transition:width .22s cubic-bezier(.32,.72,0,1);
+  overflow:hidden;
+}
+.sidebar.collapsed { width:64px; }
+.sb-group { padding:10px 10px 2px; }
+.sb-head {
+  font-size:11px; font-weight:600; letter-spacing:.02em;
+  color:var(--label-2); text-transform:uppercase; padding:0 8px 5px;
+}
+.sb-item {
+  display:flex; align-items:center; gap:9px; height:34px; padding:0 8px;
+  border-radius:7px; color:var(--label); font-size:14px; cursor:pointer;
+  transition:background .14s ease;
+}
+.sb-item:hover { background:var(--label-4); }
+.sb-item.on { background:var(--accent); color:#fff; font-weight:500; }
+.sb-item svg {
+  width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:1.6;
+  stroke-linecap:round; stroke-linejoin:round; flex-shrink:0;
+}
+.sb-item .count {
+  margin-left:auto; font-size:12px; color:var(--label-3); font-family:var(--font-num);
+}
+.sb-item.on .count { color:rgba(255,255,255,.75); }
+.sidebar.collapsed .sb-label, .sidebar.collapsed .sb-item .count, .sidebar.collapsed .sb-head { display:none; }
+.sidebar.collapsed .sb-item { justify-content:center; padding:0; }
+
+/* ---------- 顶栏（Liquid Glass 层） ---------- */
+.toolbar {
+  position:relative; height:52px; display:flex; align-items:center; gap:8px;
+  padding:0 12px; border-bottom:0.5px solid var(--content-sep); z-index:20;
+}
+.tb-title { font-size:17px; font-weight:600; letter-spacing:-.01em; margin-right:2px; }
+.tb-sub { font-size:13px; color:var(--label-2); }
+.tb-spacer { flex:1; }
+
+/* ---------- 14 面板容器 ---------- */
+.panels-container { display:flex; flex-direction:column; }
+.panel { display:none; }
+.panel.active { display:block; }
+.panel > .portfolio-grid { padding:0 24px 16px; }
+.panel > .portfolio-card { margin:0 24px 16px; }
+.panel .portfolio-grid { gap:0; }
+.panel .portfolio-card {
+  background:var(--surface); border:0.5px solid var(--content-sep);
+  border-radius:var(--r-md); padding:14px 16px;
+}
+.panel .portfolio-card .metric-label {
+  font-size:12px; font-weight:600; color:var(--label-2);
+  margin-bottom:9px; padding-bottom:0; border-bottom:none;
+}
+
+/* ---------- 状态栏 ---------- */
+.statusbar {
+  position:relative; height:28px; display:flex; align-items:center; gap:16px;
+  padding:0 12px; font-size:12px; color:var(--label-2);
+  border-top:0.5px solid var(--content-sep); z-index:20;
+}
+
+/* ---------- 网格区块头 ---------- */
+.grid-head {
+  grid-column:1/-1; display:flex; align-items:baseline; gap:10px;
+  padding:2px 2px 4px;
+}
+.grid-head h2 { font-size:20px; font-weight:700; letter-spacing:-.01em; color:var(--label); }
+.grid-head .sub { font-size:13px; color:var(--label-2); }
+.grid-body {
+  grid-column:1/-1;
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr));
+  gap:14px;
+}
+.tile.on { box-shadow:var(--shadow-2), inset 0 0 0 2px var(--accent); }
+.tile.empty { cursor:default; opacity:.7; }
+.tile.empty:hover { transform:none; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+
+/* 卡片内的次级信息（封板资金标签 / 代表股） */
+.tile .price .p.small { font-size:18px; }
+.tile .price .lbl {
+  font-size:11px; color:var(--label-2); font-family:var(--sans);
+  margin-left:2px;
+}
+.tile .leader {
+  font-size:12px; color:var(--label-2); margin-top:6px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}

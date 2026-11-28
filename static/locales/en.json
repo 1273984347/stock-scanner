@@ -21,8 +21,7 @@
 
   "theme.light": "Light",
   "theme.dark": "Dark",
-  "theme.high-contrast": "High Contrast",
-
+  
   "metric.sentiment": "Sentiment",
   "metric.macro": "Macro Gate",
   "metric.exposure": "Suggested",

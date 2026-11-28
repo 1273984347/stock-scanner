@@ -1,5 +1,5 @@
-import { stateManager } from '../state.js';
-import { esc } from './utils.js';
+import { stateManager } from '/js/state.js';
+import { esc } from '/js/renderers/utils.js';
 
 class AuditRenderer {
   constructor() { this._unsubscribers = []; }

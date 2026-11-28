@@ -69,12 +69,14 @@ export class Onboarding {
   _createOverlay() {
     this._overlay = document.createElement('div');
     this._overlay.id = 'onboardingOverlay';
-    this._overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999;pointer-events:none';
+    // 遮罩只做目标区高亮，不压暗整屏、不拦截交互（避免顶栏被压暗遮挡）
+    this._overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:transparent;z-index:999;pointer-events:none';
     document.body.appendChild(this._overlay);
 
     this._tooltip = document.createElement('div');
     this._tooltip.id = 'onboardingTooltip';
-    this._tooltip.style.cssText = 'position:fixed;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;max-width:300px;z-index:1000;box-shadow:0 4px 20px rgba(0,0,0,0.3)';
+    // 固定在右下角：与顶栏/侧栏零重叠，任何一步都不遮挡操作区
+    this._tooltip.style.cssText = 'position:fixed;right:16px;bottom:16px;width:320px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px;z-index:1000;box-shadow:var(--shadow-lg)';
     document.body.appendChild(this._tooltip);
   }
 
@@ -93,17 +95,16 @@ export class Onboarding {
 
     // Highlight target via clip mask
     const rect = target.getBoundingClientRect();
-    this._overlay.style.background = 'rgba(0,0,0,0.5)';
-    this._overlay.style.clipPath = `polygon(
-      0% 0%, 100% 0%, 100% ${rect.top}px,
-      0% ${rect.top}px, 0% ${rect.bottom}px,
-      100% ${rect.bottom}px, 100% 100%, 0% 100%
-    )`;
+    // 用描边高亮目标区（不做全屏压暗）
+    this._overlay.style.background = 'transparent';
+    this._overlay.style.border = '2px solid var(--accent)';
+    this._overlay.style.borderRadius = 'var(--radius-sm)';
+    this._overlay.style.top = rect.top + 'px';
+    this._overlay.style.left = rect.left + 'px';
+    this._overlay.style.width = rect.width + 'px';
+    this._overlay.style.height = rect.height + 'px';
 
-    // Position tooltip
-    const tooltipY = step.position === 'bottom' ? rect.bottom + 10 : rect.top - 120;
-    this._tooltip.style.top = Math.max(10, tooltipY) + 'px';
-    this._tooltip.style.left = Math.max(10, rect.left) + 'px';
+    // tooltip 位置固定在右下角（CSS），此处无需定位计算
 
     // Build tooltip content with safe DOM methods
     this._tooltip.textContent = '';

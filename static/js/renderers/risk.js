@@ -1,6 +1,6 @@
-import { stateManager } from '../state.js';
-import { apiClient } from '../api.js';
-import { esc } from './utils.js';
+import { stateManager } from '/js/state.js';
+import { apiClient } from '/js/api.js';
+import { esc } from '/js/renderers/utils.js';
 
 /**
  * RiskRenderer — 风控中心面板渲染器

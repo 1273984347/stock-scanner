@@ -1,5 +1,5 @@
-import { apiClient } from '../api.js';
-import { getThemeColor } from '../theme.js';
+import { apiClient } from '/js/api.js';
+import { getThemeColor, seriesColors } from '/js/theme.js';
 
 /**
  * StrategyCompareRenderer — 策略对比界面
@@ -97,7 +97,7 @@ class StrategyCompareRenderer {
     if (!canvas) return;
     if (this._charts.equity) this._charts.equity.destroy();
 
-    const colors = ['#58A6FF', '#3FB950', '#F85149'];
+    const colors = seriesColors(3);
     const datasets = results.map((r, i) => {
       if (!r?.equity_curve) return null;
       return {

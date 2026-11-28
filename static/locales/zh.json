@@ -21,8 +21,7 @@
 
   "theme.light": "亮色",
   "theme.dark": "暗色",
-  "theme.high-contrast": "高对比度",
-
+  
   "metric.sentiment": "市场情绪",
   "metric.macro": "宏观门控",
   "metric.exposure": "建议仓位",

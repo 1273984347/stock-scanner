@@ -10,19 +10,20 @@ export class AppLayout {
         <aside class="sidebar" id="sidebar"></aside>
         <div class="main-area">
           <header class="toolbar" id="toolbar"></header>
+          <!-- E 方案 · 大标题区（hero） -->
+          <div class="hero" id="hero">
+            <h1 id="heroTitle">盘后复盘</h1>
+            <div class="sub" id="heroSub">加载中…</div>
+            <div class="hero-row" id="heroStats"></div>
+          </div>
           <div class="content-area">
             <div class="chart-area" id="chart-area">
-              <div class="metrics-bar">
-                <div class="metric-card"><div class="metric-label">市场情绪</div><div class="metric-value" id="sentiment">--</div><div class="metric-sub" id="sentimentLabel">加载中</div></div>
-                <div class="metric-card"><div class="metric-label">宏观门控</div><div class="metric-value" id="macroState">--</div><div class="metric-sub" id="macroLabel">加载中</div></div>
-                <div class="metric-card"><div class="metric-label">建议仓位</div><div class="metric-value" id="exposure">--</div><div class="metric-sub" id="exposureLabel">加载中</div></div>
-                <div class="metric-card"><div class="metric-label">组合夏普</div><div class="metric-value" id="sharpe">--</div><div class="metric-sub">预期夏普比</div></div>
-                <div class="metric-card"><div class="metric-label">持仓数</div><div class="metric-value" id="nPositions">--</div><div class="metric-sub">优化组合</div></div>
-                <div class="metric-card"><div class="metric-label">候选股</div><div class="metric-value" id="totalCand">--</div><div class="metric-sub" id="candLabel">全部策略</div></div>
-              </div>
+              <!-- E 方案 · 观察列表卡片网格 -->
+              <div class="grid" id="watchGrid"></div>
+
+              <!-- 14 个功能面板（id 不变，renderer 依赖） -->
               <div class="panels-container">
-                <!-- 组合优化面板 -->
-  <div class="panel active" id="panel-portfolio">
+                <div class="panel active" id="panel-portfolio">
     <div class="portfolio-grid">
       <div class="portfolio-card">
         <div class="metric-label">优化组合配置</div>
@@ -423,11 +424,48 @@ export class AppLayout {
       <span id="settingsStatus" style="margin-left:8px;font-size:12px;color:var(--text-sub)"></span>
     </div>
   </div>
-</div>
+</
+              </div>
             </div>
-            <aside class="right-panel" id="right-panel">
-              <div class="panel-section"><div class="panel-title">快捷操作</div><button id="refreshBtn" class="refresh-btn">刷新数据</button><select id="presetSelect" class="preset-select"><option value="balanced">均衡策略</option><option value="aggressive">激进策略</option><option value="conservative">保守策略</option></select></div>
-              <div class="panel-section"><div class="panel-title">观察列表</div><div id="watchList">加载中...</div></div>
+            </div>
+            <!-- E 方案 · 右侧检查器 -->
+            <aside class="inspector" id="right-panel">
+              <div class="ins-block" id="inspectorHead">
+                <div class="ins-k">当前标的</div>
+                <div class="ins-name" id="symbolTicker">全市场扫描</div>
+                <div class="ins-code" id="symbolName">A股 5,600+ 只</div>
+              </div>
+              <div class="ins-block">
+                <div class="ins-k">核心读数</div>
+                <div class="ins-row"><span class="k">候选</span><span class="v" id="totalCand">--</span></div>
+                <div class="ins-row"><span class="k">情绪</span><span class="v" id="sentiment">--</span></div>
+                <div class="ins-row"><span class="k">倾向</span><span class="v" id="sentimentLabel">--</span></div>
+                <div class="ins-row"><span class="k">门控</span><span class="v" id="macroState">--</span></div>
+                <div class="ins-row"><span class="k">依据</span><span class="v" id="macroLabel">--</span></div>
+                <div class="ins-row"><span class="k">仓位</span><span class="v" id="exposure">--</span></div>
+                <div class="ins-row"><span class="k">乘数</span><span class="v" id="exposureLabel">--</span></div>
+                <div class="ins-row"><span class="k">夏普</span><span class="v" id="sharpe">--</span></div>
+                <div class="ins-row"><span class="k">持仓</span><span class="v" id="nPositions">--</span></div>
+                <div class="ins-row"><span class="k">涨跌</span><span class="v" id="symbolChange">--</span></div>
+              </div>
+              <div class="ins-block" id="inspectorFactors">
+                <div class="ins-k">评分构成</div>
+                <div id="factorBreakdown"></div>
+              </div>
+              <div class="ins-block">
+                <div class="ins-k">快捷操作</div>
+                <div id="colorSchemeToggle"></div>
+                <button id="refreshBtn" class="refresh-btn">刷新数据</button>
+                <select id="presetSelect" class="preset-select"><option value="balanced">均衡策略</option><option value="aggressive">激进策略</option><option value="conservative">保守策略</option></select>
+              </div>
+              <div class="ins-block">
+                <div class="ins-k">观察列表</div>
+                <div class="watch-head">
+                  <span class="watch-col-code">代码</span><span class="watch-col-name">名称</span>
+                  <span class="watch-col-last">最新</span><span class="watch-col-chg">涨跌</span>
+                </div>
+                <div id="watchList">加载中...</div>
+              </div>
             </aside>
           </div>
           <footer class="statusbar" id="statusbar"></footer>
@@ -436,5 +474,111 @@ export class AppLayout {
       <div class="modal-overlay" id="stockModal"><div class="modal"><h3 id="stockModalTitle">个股详情</h3><button class="modal-close">&times;</button><div id="stockScorePanel"></div><div id="stockFactorsPanel"></div><div id="stockJudgesPanel"></div></div></div>
       <div class="modal-overlay" id="auditModal"><div class="modal"><h3 id="auditModalTitle">扫描审计</h3><button class="modal-close">&times;</button><div id="auditDetailPanel"></div></div></div>
     `;
+
+    this._splitIntoPanes();
+  }
+
+  /**
+   * TradingView 式窗格拆分 —— 真正的结构重排（不只是换皮）
+   *
+   * TradingView 的工作区是「主图 + 副图」上下窗格，而非单列长滚动。
+   * 本方法把每个面板的子块按内容自动归类：
+   *   · 含 canvas 且不含 table  -> 上窗格（图表区）
+   *   · 含 table  且不含 canvas -> 下窗格（数据区）
+   *   · 两者兼有或皆无          -> 留在主窗格（保持原序）
+   *
+   * 只搬运 DOM 节点，**不改任何 id / 类名** => renderer 按 id 取元素逻辑零影响。
+   */
+  _splitIntoPanes() {
+    document.querySelectorAll('.panels-container .panel').forEach((panel) => {
+      const children = Array.from(panel.children);
+      if (children.length === 0) return;
+
+      const charts = [];
+      const tables = [];
+      const mixed = [];
+
+      children.forEach((child) => {
+        const hasCanvas = child.tagName === 'CANVAS' || !!child.querySelector('canvas');
+        const hasTable = child.tagName === 'TABLE' || !!child.querySelector('table');
+        if (hasCanvas && hasTable) {
+          // 混合容器（如 portfolio-grid）：拆开其直接子元素再分派，
+          // 使纯表格进数据窗格、纯图表进图表窗格
+          const subs = Array.from(child.children);
+          let split = false;
+          subs.forEach(sub => {
+            const subCanvas = sub.tagName === 'CANVAS' || !!sub.querySelector('canvas');
+            const subTable = sub.tagName === 'TABLE' || !!sub.querySelector('table');
+            if (subCanvas && !subTable) { charts.push(sub); split = true; }
+            else if (subTable && !subCanvas) { tables.push(sub); split = true; }
+          });
+          if (split) {
+            // 未被拆走的子元素保持原序留在混合区
+            subs.forEach(sub => {
+              const subCanvas = sub.tagName === 'CANVAS' || !!sub.querySelector('canvas');
+              const subTable = sub.tagName === 'TABLE' || !!sub.querySelector('table');
+              if ((subCanvas && !subTable) || (subTable && !subCanvas)) return;
+              mixed.push(sub);
+            });
+            return;
+          }
+          mixed.push(child);
+        }
+        else if (hasCanvas) charts.push(child);
+        else if (hasTable) tables.push(child);
+        else mixed.push(child);
+      });
+
+      if (charts.length === 0 && tables.length === 0) return;
+
+      const wrap = document.createElement('div');
+      wrap.className = 'pane-split';
+
+      // 窗格标题承载真实信息：取该窗格内子块的标题（而非泛泛的「图表/数据」）
+      const deriveTitle = (nodes, fallback) => {
+        const titles = nodes
+          .map(n => (n.querySelector ? n.querySelector('.metric-label') : null))
+          .filter(Boolean)
+          .map(e => e.textContent.trim())
+          .filter(Boolean);
+        if (titles.length === 0) return fallback;
+        const uniq = Array.from(new Set(titles));
+        return uniq.length <= 2 ? uniq.join(' · ') : uniq.slice(0, 2).join(' · ') + ' +' + (uniq.length - 2);
+      };
+
+      const makePane = (cls, title) => {
+        const pane = document.createElement('section');
+        pane.className = 'pane ' + cls;
+        const head = document.createElement('header');
+        head.className = 'pane-header';
+        const t = document.createElement('span');
+        t.className = 'pane-title';
+        t.textContent = title;
+        head.appendChild(t);
+        const body = document.createElement('div');
+        body.className = 'pane-body';
+        pane.appendChild(head);
+        pane.appendChild(body);
+        wrap.appendChild(pane);
+        return body;
+      };
+
+      let primaryBody = null;
+      if (charts.length > 0) primaryBody = makePane('pane-primary', deriveTitle(charts, '可视化'));
+      if (tables.length > 0) makePane('pane-secondary', deriveTitle(tables, '明细'));
+
+      if (mixed.length > 0) {
+        if (!primaryBody) primaryBody = makePane('pane-primary', deriveTitle(mixed, '概览'));
+        mixed.forEach(n => primaryBody.appendChild(n));
+      }
+
+      charts.forEach(n => primaryBody.appendChild(n));
+      wrap.querySelectorAll('.pane-secondary .pane-body').forEach(body => {
+        tables.forEach(n => body.appendChild(n));
+      });
+
+      panel.innerHTML = '';
+      panel.appendChild(wrap);
+    });
   }
 }

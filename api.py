@@ -6,7 +6,11 @@
 
 import base64
 import os
+import re
 import uuid
+
+from fastapi.responses import Response
+from lib.infra.async_offload import run_blocking
 
 from lib.infra.worker_guard import verify_single_worker
 from routers.common import *  # noqa: F401,F403
@@ -41,6 +45,23 @@ app = FastAPI(
     redoc_url="/redoc" if _DOCS_ON else None,
     openapi_url="/openapi.json" if _DOCS_ON else None,
 )
+
+# ----------------------------------------------------------------------
+# CORS —— 仅本机开发用
+# ----------------------------------------------------------------------
+# 目的：让 `file://` 双击打开的前端页面能直接取本机 API 数据。
+# 约束：
+#   1. allow_origins 只列本机地址与 `null`（file:// 的 Origin），**不含 `*`**；
+#      避免把带鉴权的 API 暴露到任意来源。
+#   2. allow_credentials=False —— 前端用 `X-API-Key` 头传密钥，不依赖 Cookie。
+#   3. 生产部署应置于反向代理之后并收紧来源（见 AGENTS 6.4）。
+ALLOWED_ORIGINS = [
+    "null",  # file:// 打开的页面
+    # 本机任意端口（vite dev / 预览稿 HTTP 服务 / 用户自建端口）
+    "http://127.0.0.1:*",
+    "http://localhost:*",
+]
+
 
 @app.exception_handler(HTTPException)
 async def _http_exception_handler(request: Request, exc: HTTPException):
@@ -113,6 +134,42 @@ def _flush_perf_on_shutdown():
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     return await _add_security_headers(request, call_next)
+
+
+# ----------------------------------------------------------------------
+# CORS —— 仅本机开发用（正则匹配本机任意端口）
+# ----------------------------------------------------------------------
+# 目的：让预览稿（file:// 或本机 HTTP 端口）能直接取本机 API 数据。
+# 约束：
+#   1. 只放行**本机**来源（127.0.0.1 / localhost / file:// 的 null origin），
+#      其余来源一律拒绝 —— 避免把带鉴权的 API 暴露到公网来源；
+#   2. 不带凭据（前端用 X-API-Key 头传密钥，不依赖 Cookie）；
+#   3. 生产部署应置于反向代理之后并收紧来源（见 AGENTS 6.4）。
+_LOCAL_ORIGIN_RE = re.compile(r"^(null|http://(127\.0\.0\.1|localhost)(:[0-9]{1,5})?)$")
+
+
+@app.middleware("http")
+async def local_cors(request: Request, call_next):
+    """本机跨源放行 —— 只对 /api 与 /ws 生效，且只放行本机来源。"""
+    origin = request.headers.get("origin")
+    if origin and _LOCAL_ORIGIN_RE.match(origin):
+        if request.method == "OPTIONS" and request.headers.get("access-control-request-method"):
+            resp = Response(status_code=204)
+        else:
+            resp = await call_next(request)
+        # 用 raw_headers 追加：Response 与 StreamingResponse 的 headers 容器行为不同，
+        # 直接赋值在流式响应上会抛 'tuple' object has no attribute 'encode'
+        cors_headers = (
+            ('access-control-allow-origin', origin),
+            ('access-control-allow-methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH'),
+            ('access-control-allow-headers', 'X-API-Key, Authorization, Content-Type'),
+            ('access-control-max-age', '600'),
+            ('vary', 'Origin'),
+        )
+        for k, v in cors_headers:
+            resp.raw_headers.append((k.encode('latin-1'), v.encode('latin-1')))
+        return resp
+    return await call_next(request)
 
 
 @app.get("/")
@@ -199,7 +256,7 @@ async def _stop_ws_broadcast():
 
 if STATIC_DIR.exists():
     # 挂载 CSS/JS/图片等静态资源
-    for subdir in ["css", "js", "images", "fonts"]:
+    for subdir in ["css", "js", "images", "fonts", "locales", "preview"]:
         subpath = STATIC_DIR / subdir
         if subpath.exists():
             app.mount(f"/{subdir}", StaticFiles(directory=str(subpath)), name=f"static-{subdir}")

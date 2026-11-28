@@ -1,10 +1,13 @@
 // Service Worker — 静态资源缓存 + API Network First
-const CACHE_NAME = 'stock-scanner-v1';
+const CACHE_NAME = 'stock-scanner-v3';
 const STATIC_ASSETS = [
   '/',
   '/css/main.css',
   '/css/layout.css',
-  '/css/variables.css',
+  '/css/apple-tokens.css',
+  '/css/apple-components.css',
+  '/css/e-layout.css',
+  '/css/accessibility.css',
   '/js/main.js',
   '/js/api.js',
   '/js/state.js',

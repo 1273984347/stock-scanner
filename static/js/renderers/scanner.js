@@ -1,10 +1,10 @@
-import { stateManager } from '../state.js';
-import { apiClient } from '../api.js';
-import { ChartPanel } from '../components/ChartPanel.js';
-import { getThemeColor } from '../theme.js';
-import { LazyChart } from '../utils/lazyChart.js';
-import { animateNumber, animateStagger, getAnimationDuration } from '../utils/animation.js';
-import { VirtualTable } from '../utils/virtualTable.js';
+import { stateManager } from '/js/state.js';
+import { apiClient } from '/js/api.js';
+import { ChartPanel } from '/js/components/ChartPanel.js';
+import { getThemeColor } from '/js/theme.js';
+import { LazyChart } from '/js/utils/lazyChart.js';
+import { animateNumber, animateStagger, getAnimationDuration } from '/js/utils/animation.js';
+import { VirtualTable } from '/js/utils/virtualTable.js';
 
 /**
  * ScannerRenderer — 选股结果面板渲染器
@@ -268,6 +268,20 @@ class ScannerRenderer {
         this._currentKlineCode = String(code);
         const title = document.getElementById('klineTitle');
         const name = row['名称'] || row['name'] || '';
+        // TAPE 行情带：选中标的即切换到该标的读数
+        if (typeof window.updateSymbolBar === 'function') {
+          const chg = row['涨跌幅'] != null ? Number(row['涨跌幅']) : null;
+          const score = row['综合评分'] != null ? Number(row['综合评分']) : null;
+          window.updateSymbolBar({
+            ticker: name || code,
+            name: String(code),
+            change_pct: chg,
+            meta: [
+              (row['板块'] || row['行业'] || '—') +
+                (score != null ? ' / 评分 ' + score.toFixed(1) : ''),
+            ],
+          });
+        }
         if (title) title.textContent = name ? `${name} (${code})` : code;
         const section = document.getElementById('klineSection');
         if (section) section.style.display = '';
@@ -321,9 +335,9 @@ class ScannerRenderer {
       type: 'doughnut',
       data: {
         labels: Object.keys(verdicts).map(v => labelMap[v] || v),
-        datasets: [{ data: Object.values(verdicts), backgroundColor: ['#3FB950', '#F85149', '#7D8590'], borderWidth: 0 }]
+        datasets: [{ data: Object.values(verdicts), backgroundColor: [getThemeColor('--up'), getThemeColor('--down'), getThemeColor('--text-dim')], borderWidth: 0 }]
       },
-      options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: getThemeColor('--text-sub'), padding: 12 } } } }
+      options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'bottom', labels: { color: getThemeColor('--text-sub'), padding: 12 } } } }
     });
   }
 

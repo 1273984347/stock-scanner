@@ -98,9 +98,10 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     # 批次 A / P0-2：移除 script-src 的 'unsafe-inline'（注入的 inline handler 不再执行）。
     # style-src 仍需 'unsafe-inline'：前端大量组件使用内联 style 属性。
+    # font-src 'self'：字体全部本地（系统等宽栈），已移除 Google Fonts 外链。
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; "
-        "object-src 'none'; base-uri 'self'"
+        "font-src 'self'; object-src 'none'; base-uri 'self'"
     )
     return response
 

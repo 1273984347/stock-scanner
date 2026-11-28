@@ -1,7 +1,8 @@
-import { stateManager } from '../state.js';
-import { apiClient } from '../api.js';
-import { LazyChart } from '../utils/lazyChart.js';
-import { esc } from './utils.js';
+import { getThemeColor, seriesColors } from '/js/theme.js';
+import { stateManager } from '/js/state.js';
+import { apiClient } from '/js/api.js';
+import { LazyChart } from '/js/utils/lazyChart.js';
+import { esc } from '/js/renderers/utils.js';
 
 class EvalRenderer {
   constructor() {
@@ -184,7 +185,7 @@ class EvalRenderer {
     if (!canvas) return;
     if (this._charts.icHistory) this._charts.icHistory.destroy();
 
-    const colors = ['#58A6FF', '#3FB950', '#F85149', '#D29922', '#9c27b0', '#00bcd4'];
+    const colors = seriesColors(6);
     const datasets = Object.entries(data.factors).map(([name, values], i) => ({
       label: name,
       data: values,

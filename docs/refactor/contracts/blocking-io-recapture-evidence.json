@@ -1122,5 +1122,47 @@
     },
     "untouched_endpoints": 74,
     "untouched_identical": true
+  },
+  {
+    "allowed_endpoints": [
+      "MIDDLEWARE local_cors"
+    ],
+    "comparison": "endpoint records compared field-by-field; lineno excluded (implementation detail, see _normalize_endpoint)",
+    "mode": "refactor",
+    "per_endpoint": [
+      {
+        "added": true,
+        "blocking_after": 0,
+        "blocking_before": 0,
+        "endpoint": "MIDDLEWARE local_cors",
+        "offloaded_after": 0,
+        "offloaded_before": 0,
+        "other_after": 9,
+        "other_before": 0
+      }
+    ],
+    "reason": "批次重构：状态/调用收口、白名单裁剪或线程池迁移；blocking 不得增加，非 allowed 端点逐字段一致",
+    "schema_version": 1,
+    "scope_extended_added": [],
+    "totals_after": {
+      "blocking_calls": 91,
+      "blocking_endpoints": 33,
+      "endpoints": 69,
+      "offloaded_calls": 44,
+      "offloaded_endpoints": 40,
+      "other_calls": 351,
+      "total_calls": 486
+    },
+    "totals_before": {
+      "blocking_calls": 91,
+      "blocking_endpoints": 33,
+      "endpoints": 69,
+      "offloaded_calls": 44,
+      "offloaded_endpoints": 40,
+      "other_calls": 351,
+      "total_calls": 486
+    },
+    "untouched_endpoints": 75,
+    "untouched_identical": true
   }
 ]

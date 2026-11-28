@@ -1,5 +1,5 @@
-import { apiClient } from '../api.js';
-import { VirtualTable } from '../utils/virtualTable.js';
+import { apiClient } from '/js/api.js';
+import { VirtualTable } from '/js/utils/virtualTable.js';
 
 const TYPE_LABELS = {
   signal: '信号',

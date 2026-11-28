@@ -1,5 +1,5 @@
-import { apiClient } from './api.js';
-import { stateManager } from './state.js';
+import { apiClient } from '/js/api.js';
+import { stateManager } from '/js/state.js';
 
 /**
  * PollingController — WebSocket 降级轮询控制器

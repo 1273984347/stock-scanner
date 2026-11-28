@@ -1,7 +1,8 @@
 export class ColorSchemeToggle {
   constructor(container) {
     this.container = container;
-    this.colorScheme = localStorage.getItem('colorScheme') || 'international';
+    // 默认 A 股口径（红涨绿跌）
+    this.colorScheme = localStorage.getItem('colorScheme') || 'china';
     this.render();
     this.bindEvents();
     // Apply saved scheme on init
@@ -11,11 +12,11 @@ export class ColorSchemeToggle {
   render() {
     this.container.innerHTML = `
       <select class="color-scheme-select" title="涨跌配色">
-        <option value="international" ${this.colorScheme === 'international' ? 'selected' : ''}>
-          国际标准 (绿涨红跌)
-        </option>
         <option value="china" ${this.colorScheme === 'china' ? 'selected' : ''}>
-          A股标准 (红涨绿跌)
+          A股 (红涨绿跌)
+        </option>
+        <option value="international" ${this.colorScheme === 'international' ? 'selected' : ''}>
+          国际 (绿涨红跌)
         </option>
       </select>
     `;

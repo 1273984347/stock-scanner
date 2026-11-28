@@ -1,5 +1,5 @@
-import { apiClient } from '../api.js';
-import { i18n } from '../i18n.js';
+import { apiClient } from '/js/api.js';
+import { i18n } from '/js/i18n.js';
 
 export class SettingsRenderer {
   async mount() {

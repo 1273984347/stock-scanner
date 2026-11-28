@@ -1,4 +1,4 @@
-import { LazyChart } from '../utils/lazyChart.js';
+import { LazyChart } from '/js/utils/lazyChart.js';
 
 // backtest.js — 回测可视化（净值曲线 + 交易标记 + 退出分布）
 class BacktestRenderer {

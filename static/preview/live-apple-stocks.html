@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quant A-Share — 盘后复盘（E · Apple Stocks 式，接真实数据）</title>
+<style>
+/* ============================================================
+   Apple HIG 适配层 —— 令牌与材质
+   依据：D:\Anthropic\.cache\apple_hig\（color / materials / layout /
+        buttons / sidebars / toolbars / segmented-controls / dark-mode）
+   要点：
+   1. Liquid Glass 只用于**控件与导航层**，内容层用实色（materials.md）
+   2. 强调色用系统蓝 #007AFF（Apple 标准）；涨跌红绿是独立语义色（color.md：
+      同一颜色不得表达两种含义）
+   3. 暗色不是亮色的反转，而是**更暗的背景 + 更亮的前景**（dark-mode.md）
+   4. 内容层靠**留白与容器形状**分组，不靠描边（layout.md）
+   5. 命中区 ≥ 44pt，按钮必须有按压态（buttons.md）
+   ============================================================ */
+
+:root {
+  /* --- 内容层（实色） --- */
+  --bg: #F2F2F7;              /* systemGroupedBackground 亮 */
+  --surface: #FFFFFF;          /* 次级容器 */
+  --surface-2: #FFFFFF;
+  --content-sep: rgba(60,60,67,.29);   /* separator */
+  --content-sep-opaque: #C6C6C8;
+
+  /* --- 文字（labelColor 四级） --- */
+  --label: #000000;
+  --label-2: rgba(60,60,67,.60);
+  --label-3: rgba(60,60,67,.30);
+  --label-4: rgba(60,60,67,.18);
+
+  /* --- 系统蓝：唯一强调色 --- */
+  --accent: #007AFF;
+  --accent-2: #0A84FF;
+  --accent-ink: #FFFFFF;
+  --accent-fill: rgba(0,122,255,.12);
+
+  /* --- 语义色（涨/跌独立于强调色） --- */
+  --up: #FF3B30;
+  --down: #34C759;
+  --warn: #FF9500;
+  --up-fill: rgba(255,59,48,.12);
+  --down-fill: rgba(52,199,89,.12);
+
+  /* --- 控件层（Liquid Glass） --- */
+  --glass: rgba(255,255,255,.72);
+  --glass-2: rgba(255,255,255,.52);
+  --glass-border: rgba(0,0,0,.06);
+  --glass-hl: rgba(255,255,255,.7);
+  --glass-blur: 20px;
+
+  /* --- 形状 --- */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+
+  /* --- 字体：SF Pro 栈（Apple 官方） --- */
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI Variable', 'Segoe UI', 'Helvetica Neue', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', Arial, sans-serif;
+  --font-num: ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, monospace;
+
+  --shadow-1: 0 1px 2px rgba(0,0,0,.04);
+  --shadow-2: 0 6px 20px -8px rgba(0,0,0,.18);
+  --shadow-3: 0 18px 48px -16px rgba(0,0,0,.26);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #000000;
+    --surface: #1C1C1E;
+    --surface-2: #2C2C2E;
+    --content-sep: rgba(84,84,88,.65);
+    --content-sep-opaque: #38383A;
+
+    --label: #FFFFFF;
+    --label-2: rgba(235,235,245,.60);
+    --label-3: rgba(235,235,245,.30);
+    --label-4: rgba(235,235,245,.18);
+
+    --accent: #0A84FF;
+    --accent-2: #409CFF;
+    --accent-fill: rgba(10,132,255,.20);
+
+    --up: #FF453A;
+    --down: #30D158;
+    --warn: #FF9F0A;
+    --up-fill: rgba(255,69,58,.18);
+    --down-fill: rgba(48,209,88,.18);
+
+    --glass: rgba(28,28,30,.72);
+    --glass-2: rgba(44,44,46,.52);
+    --glass-border: rgba(255,255,255,.10);
+    --glass-hl: rgba(255,255,255,.08);
+
+    --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+    --shadow-2: 0 6px 20px -8px rgba(0,0,0,.6);
+    --shadow-3: 0 18px 48px -16px rgba(0,0,0,.7);
+  }
+}
+
+[data-theme='light'] {
+  --bg: #F2F2F7;
+  --surface: #FFFFFF;
+  --surface-2: #FFFFFF;
+  --content-sep: rgba(60,60,67,.29);
+  --content-sep-opaque: #C6C6C8;
+  --label: #000000;
+  --label-2: rgba(60,60,67,.60);
+  --label-3: rgba(60,60,67,.30);
+  --label-4: rgba(60,60,67,.18);
+  --accent: #007AFF;
+  --accent-2: #0A84FF;
+  --accent-ink: #FFFFFF;
+  --accent-fill: rgba(0,122,255,.12);
+  --up: #FF3B30;
+  --down: #34C759;
+  --warn: #FF9500;
+  --up-fill: rgba(255,59,48,.12);
+  --down-fill: rgba(52,199,89,.12);
+  --glass: rgba(255,255,255,.72);
+  --glass-2: rgba(255,255,255,.52);
+  --glass-border: rgba(0,0,0,.06);
+  --glass-hl: rgba(255,255,255,.7);
+}
+
+[data-color-scheme='international'] { --up: #34C759; --down: #FF3B30;
+  --up-fill: rgba(52,199,89,.12); --down-fill: rgba(255,59,48,.12); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light'])[data-color-scheme='international'] {
+    --up: #30D158; --down: #FF453A;
+    --up-fill: rgba(48,209,88,.18); --down-fill: rgba(255,69,58,.18);
+  }
+}
+[data-theme='light'][data-color-scheme='international'] {
+  --up: #34C759; --down: #FF3B30;
+  --up-fill: rgba(52,199,89,.12); --down-fill: rgba(255,59,48,.12);
+}
+
+/* ============================================================
+   Apple HIG 组件层 —— 共用样式
+   ============================================================ */
+* { box-sizing:border-box; margin:0; padding:0; }
+html,body { height:100%; }
+body {
+  background:var(--bg); color:var(--label);
+  font-family:var(--font); font-size:15px; line-height:1.4;
+  overflow:hidden; -webkit-font-smoothing:antialiased;
+}
+.num { font-family:var(--font-num); font-variant-numeric:tabular-nums; }
+.up { color:var(--up); } .down { color:var(--down); }
+
+/* ---------- Liquid Glass 材质（仅控件层） ---------- */
+.glass {
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(180%);
+  backdrop-filter:blur(var(--glass-blur)) saturate(180%);
+  border:1px solid var(--glass-border);
+}
+.glass-hl::before {
+  content:''; position:absolute; inset:0; border-radius:inherit;
+  pointer-events:none;
+  background:linear-gradient(180deg, var(--glass-hl), transparent 60%);
+}
+
+/* ---------- 工具栏 ---------- */
+.toolbar {
+  position:relative;
+  height:52px; display:flex; align-items:center; gap:8px;
+  padding:0 12px;
+  border-bottom:0.5px solid var(--content-sep);
+  z-index:20;
+}
+.tb-title { font-size:17px; font-weight:600; letter-spacing:-.01em; margin-right:4px; }
+.tb-sub { font-size:13px; color:var(--label-2); }
+.tb-spacer { flex:1; }
+
+/* ---------- 分段控件 ---------- */
+.seg { display:inline-flex; padding:2px; gap:2px; background:var(--label-4); border-radius:9px; }
+.seg button {
+  border:none; background:transparent; cursor:pointer;
+  height:26px; padding:0 11px; border-radius:7px;
+  font-family:var(--font); font-size:13px; font-weight:500; color:var(--label);
+  transition:background .18s ease, box-shadow .18s ease;
+}
+.seg button.on {
+  background:var(--surface);
+  box-shadow:0 1px 3px rgba(0,0,0,.12), 0 0 1px rgba(0,0,0,.06);
+  font-weight:600;
+}
+
+/* ---------- 按钮 ---------- */
+.btn {
+  position:relative;
+  height:32px; min-width:32px; padding:0 12px;
+  border:0.5px solid var(--content-sep-opaque); border-radius:8px;
+  background:var(--surface); color:var(--label);
+  font-family:var(--font); font-size:13px; font-weight:500;
+  cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:5px;
+  transition:background .15s ease, transform .1s ease;
+}
+.btn:hover { background:var(--label-4); }
+.btn:active { transform:scale(.97); opacity:.85; }
+.btn.primary { background:var(--accent); color:#fff; border-color:transparent; }
+.btn.primary:hover { background:var(--accent-2); }
+.btn.icon { padding:0; width:32px; }
+.btn svg { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.6;
+  stroke-linecap:round; stroke-linejoin:round; }
+
+/* ---------- 侧栏 ---------- */
+.sidebar {
+  position:relative; width:212px; flex-shrink:0;
+  display:flex; flex-direction:column;
+  border-right:0.5px solid var(--content-sep);
+  z-index:10;
+  transition:width .22s cubic-bezier(.32,.72,0,1);
+}
+.sidebar.collapsed { width:64px; }
+.sb-group { padding:10px 10px 2px; }
+.sb-head {
+  font-size:11px; font-weight:600; letter-spacing:.02em;
+  color:var(--label-2); text-transform:uppercase; padding:0 8px 5px;
+}
+.sb-item {
+  display:flex; align-items:center; gap:9px;
+  height:34px; padding:0 8px; border-radius:7px;
+  color:var(--label); font-size:14px; cursor:pointer;
+  transition:background .14s ease;
+}
+.sb-item:hover { background:var(--label-4); }
+.sb-item.on { background:var(--accent); color:#fff; font-weight:500; }
+.sb-item svg { width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:1.6;
+  stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+.sb-item .count { margin-left:auto; font-size:12px; color:var(--label-3); font-family:var(--font-num); }
+.sb-item.on .count { color:rgba(255,255,255,.75); }
+.sidebar.collapsed .sb-label, .sidebar.collapsed .sb-item .count { display:none; }
+.sidebar.collapsed .sb-head { display:none; }
+.sidebar.collapsed .sb-item { justify-content:center; padding:0; }
+
+/* ---------- 内容容器 ---------- */
+.content { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
+.card { background:var(--surface); border-radius:var(--r-lg); box-shadow:0 1px 2px rgba(0,0,0,.04); overflow:hidden; }
+.card-h { display:flex; align-items:center; gap:10px; padding:13px 16px 11px; }
+.card-h h2 { font-size:17px; font-weight:600; letter-spacing:-.01em; }
+.card-h .sub { font-size:13px; color:var(--label-2); }
+.card-h .right { margin-left:auto; display:flex; gap:8px; align-items:center; }
+
+/* ---------- 列表 ---------- */
+.inset { margin:0 16px 16px; background:var(--surface); border-radius:var(--r-md); overflow:hidden; }
+.row {
+  display:flex; align-items:center; gap:10px;
+  padding:10px 16px; min-height:44px;
+  border-bottom:0.5px solid var(--content-sep); cursor:pointer;
+}
+.row:last-child { border-bottom:none; }
+.row:hover { background:var(--label-4); }
+.row.on { background:var(--accent-fill); }
+/* 表格选中行：Apple 风格用浅填充 + 行首指示，不铺整行强色 */
+tbody tr.on td { background:var(--accent-fill); }
+.row .lead { width:26px; height:26px; border-radius:7px; background:var(--label-4);
+  display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600;
+  color:var(--label-2); flex-shrink:0; }
+.row .name { font-size:15px; }
+.row .meta { font-size:13px; color:var(--label-2); }
+.row .val { margin-left:auto; font-family:var(--font-num); font-variant-numeric:tabular-nums; }
+
+/* ---------- 表格 ---------- */
+table { width:100%; border-collapse:collapse; }
+th {
+  text-align:left; padding:9px 16px; font-size:12px; font-weight:600;
+  color:var(--label-2); border-bottom:0.5px solid var(--content-sep); white-space:nowrap;
+}
+td {
+  padding:9px 16px; font-size:14px;
+  border-bottom:0.5px solid var(--content-sep); white-space:nowrap;
+}
+tbody tr:last-child td { border-bottom:none; }
+tbody tr { cursor:pointer; }
+tbody tr:hover td { background:var(--label-4); }
+th.r, td.r { text-align:right; }
+td.n { font-family:var(--font-num); font-variant-numeric:tabular-nums; }
+/* 正负号对齐：等宽体下 + 与 - 占位一致 */
+td.r.up::before, td.r.down::before { display:inline-block; width:0; }
+
+/* ---------- 状态栏 ---------- */
+.statusbar {
+  height:28px; display:flex; align-items:center; gap:16px;
+  padding:0 12px; font-size:12px; color:var(--label-2);
+  border-top:0.5px solid var(--content-sep); z-index:20;
+}
+.statusbar .num { font-size:12px; }
+.dot { width:7px; height:7px; border-radius:50%; background:var(--down); display:inline-block;
+  margin-right:5px; vertical-align:1px; }
+
+/* ---------- 搜索框 ---------- */
+.search {
+  height:28px; width:220px; border-radius:8px;
+  background:var(--label-4); border:0.5px solid transparent;
+  display:flex; align-items:center; gap:6px; padding:0 9px;
+  color:var(--label-2); font-size:13px;
+}
+.search:focus-within { background:var(--surface); border-color:var(--accent); }
+.search svg { width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:2; }
+
+/* ============================================================
+   E 方案 · Apple Stocks 式 —— 真实前端布局层
+   配套：apple-tokens.css（令牌）+ apple-components.css（组件）
+   ============================================================ */
+
+/* ---------- 应用骨架 ---------- */
+.app-layout { display:flex; height:100vh; }
+.main-area { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
+.content-area { flex:1; display:flex; overflow:hidden; min-width:0; }
+.chart-area { flex:1; min-width:0; overflow-y:auto; background:var(--bg); padding:0 0 32px; }
+
+/* ---------- 大标题区（hero） ---------- */
+.hero { padding:20px 24px 14px; }
+.hero h1 {
+  font-size:32px; font-weight:700; letter-spacing:-.02em; line-height:1.15;
+  color:var(--label);
+}
+.hero .sub { font-size:15px; color:var(--label-2); margin-top:4px; }
+.hero-row {
+  display:flex; align-items:flex-end; gap:28px; margin-top:16px; flex-wrap:wrap;
+}
+.hero-stat .k { font-size:12px; color:var(--label-2); }
+.hero-stat .v {
+  font-size:22px; font-weight:600; font-family:var(--font-num);
+  font-variant-numeric:tabular-nums; color:var(--label); margin-top:2px;
+}
+.hero-stat .v.big { font-size:30px; }
+.hero-stat .up { color:var(--up); } .hero-stat .down { color:var(--down); }
+
+/* ---------- 观察列表卡片网格 ---------- */
+.grid {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr));
+  gap:14px; padding:8px 24px 24px;
+}
+.tile {
+  background:var(--surface); border-radius:var(--r-lg);
+  box-shadow:0 1px 2px rgba(0,0,0,.04);
+  padding:14px 16px 12px; cursor:pointer;
+  transition:transform .18s cubic-bezier(.32,.72,0,1), box-shadow .18s ease;
+}
+.tile:hover { transform:translateY(-2px); box-shadow:var(--shadow-2); }
+.tile .t { font-size:17px; font-weight:600; letter-spacing:-.01em; color:var(--label); }
+.tile .c { font-size:13px; color:var(--label-2); font-family:var(--font-num); }
+.tile .price { display:flex; align-items:baseline; gap:8px; margin-top:10px; }
+.tile .price .p {
+  font-size:24px; font-weight:600; font-family:var(--font-num);
+  font-variant-numeric:tabular-nums; color:var(--label);
+}
+.tile .price .d { font-size:14px; font-weight:600; font-family:var(--font-num); }
+.tile .up { color:var(--up); } .tile .down { color:var(--down); }
+.spark { display:flex; align-items:flex-end; gap:1.5px; height:34px; margin-top:12px; }
+.spark i { flex:1; background:var(--label-4); border-radius:1px; min-height:2px; }
+.spark i.u { background:var(--up); } .spark i.d { background:var(--down); }
+
+/* ---------- 右侧检查器 ---------- */
+.inspector {
+  width:300px; flex-shrink:0; overflow-y:auto;
+  border-inline-start:0.5px solid var(--content-sep);
+  background:var(--bg);
+}
+.ins-block { padding:15px 18px; border-bottom:0.5px solid var(--content-sep); }
+.ins-k {
+  font-size:12px; font-weight:600; color:var(--label-2); margin-bottom:9px;
+}
+.ins-name { font-size:22px; font-weight:700; letter-spacing:-.01em; color:var(--label); }
+.ins-code { font-size:13px; color:var(--label-2); font-family:var(--font-num); }
+.ins-row {
+  display:flex; justify-content:space-between; align-items:baseline;
+  padding:4px 0; font-size:14px;
+}
+.ins-row .k { color:var(--label-2); }
+.ins-row .v {
+  font-family:var(--font-num); font-variant-numeric:tabular-nums; color:var(--label);
+}
+.ins-row .v.up { color:var(--up); } .ins-row .v.down { color:var(--down); }
+.ins-bar { height:6px; border-radius:3px; background:var(--label-4); overflow:hidden; margin-top:4px; }
+.ins-bar i { display:block; height:100%; background:var(--accent); border-radius:3px; }
+.ins-bar.u i { background:var(--up); } .ins-bar.d i { background:var(--down); }
+.ins-factor { margin-bottom:10px; }
+.ins-factor .fr { display:flex; justify-content:space-between; font-size:13px; color:var(--label-2); }
+.ins-factor .fv { font-family:var(--font-num); color:var(--label); }
+
+/* ---------- 侧栏（Liquid Glass 层） ---------- */
+.sidebar {
+  width:212px; flex-shrink:0; display:flex; flex-direction:column;
+  border-right:0.5px solid var(--content-sep);
+  position:relative; z-index:10;
+  transition:width .22s cubic-bezier(.32,.72,0,1);
+  overflow:hidden;
+}
+.sidebar.collapsed { width:64px; }
+.sb-group { padding:10px 10px 2px; }
+.sb-head {
+  font-size:11px; font-weight:600; letter-spacing:.02em;
+  color:var(--label-2); text-transform:uppercase; padding:0 8px 5px;
+}
+.sb-item {
+  display:flex; align-items:center; gap:9px; height:34px; padding:0 8px;
+  border-radius:7px; color:var(--label); font-size:14px; cursor:pointer;
+  transition:background .14s ease;
+}
+.sb-item:hover { background:var(--label-4); }
+.sb-item.on { background:var(--accent); color:#fff; font-weight:500; }
+.sb-item svg {
+  width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:1.6;
+  stroke-linecap:round; stroke-linejoin:round; flex-shrink:0;
+}
+.sb-item .count {
+  margin-left:auto; font-size:12px; color:var(--label-3); font-family:var(--font-num);
+}
+.sb-item.on .count { color:rgba(255,255,255,.75); }
+.sidebar.collapsed .sb-label, .sidebar.collapsed .sb-item .count, .sidebar.collapsed .sb-head { display:none; }
+.sidebar.collapsed .sb-item { justify-content:center; padding:0; }
+
+/* ---------- 顶栏（Liquid Glass 层） ---------- */
+.toolbar {
+  position:relative; height:52px; display:flex; align-items:center; gap:8px;
+  padding:0 12px; border-bottom:0.5px solid var(--content-sep); z-index:20;
+}
+.tb-title { font-size:17px; font-weight:600; letter-spacing:-.01em; margin-right:2px; }
+.tb-sub { font-size:13px; color:var(--label-2); }
+.tb-spacer { flex:1; }
+
+/* ---------- 14 面板容器 ---------- */
+.panels-container { display:flex; flex-direction:column; }
+.panel { display:none; }
+.panel.active { display:block; }
+.panel > .portfolio-grid { padding:0 24px 16px; }
+.panel > .portfolio-card { margin:0 24px 16px; }
+.panel .portfolio-grid { gap:0; }
+.panel .portfolio-card {
+  background:var(--surface); border:0.5px solid var(--content-sep);
+  border-radius:var(--r-md); padding:14px 16px;
+}
+.panel .portfolio-card .metric-label {
+  font-size:12px; font-weight:600; color:var(--label-2);
+  margin-bottom:9px; padding-bottom:0; border-bottom:none;
+}
+
+/* ---------- 状态栏 ---------- */
+.statusbar {
+  position:relative; height:28px; display:flex; align-items:center; gap:16px;
+  padding:0 12px; font-size:12px; color:var(--label-2);
+  border-top:0.5px solid var(--content-sep); z-index:20;
+}
+
+/* ---------- 网格区块头 ---------- */
+.grid-head {
+  grid-column:1/-1; display:flex; align-items:baseline; gap:10px;
+  padding:2px 2px 4px;
+}
+.grid-head h2 { font-size:20px; font-weight:700; letter-spacing:-.01em; color:var(--label); }
+.grid-head .sub { font-size:13px; color:var(--label-2); }
+.grid-body {
+  grid-column:1/-1;
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr));
+  gap:14px;
+}
+.tile.on { box-shadow:var(--shadow-2), inset 0 0 0 2px var(--accent); }
+.tile.empty { cursor:default; opacity:.7; }
+.tile.empty:hover { transform:none; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+
+/* 卡片内的次级信息（封板资金标签 / 代表股） */
+.tile .price .p.small { font-size:18px; }
+.tile .price .lbl {
+  font-size:11px; color:var(--label-2); font-family:var(--sans);
+  margin-left:2px;
+}
+.tile .leader {
+  font-size:12px; color:var(--label-2); margin-top:6px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+</style>
+</head>
+<body>
+
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-area">
+    <header class="toolbar">
+      <div class="toolbar-group toolbar-brand-group">
+        <div class="toolbar-brand">Quant A-Share</div>
+        <div class="toolbar-breadcrumb">盘后复盘</div>
+      </div>
+      <div class="toolbar-spacer"></div>
+      <button class="btn icon" id="themeBtn" title="主题"></button>
+      <button class="btn" id="csBtn">红涨绿跌</button>
+    </header>
+    <div class="content-area">
+      <div class="chart-area">
+        <div class="hero">
+          <h1>盘后复盘</h1>
+          <div class="sub" id="heroSub">加载中…</div>
+          <div class="hero-row" id="heroStats"></div>
+        </div>
+        <div class="grid">
+          <div class="grid-head"><h2>观察列表</h2><span class="sub">候选与持仓</span></div>
+          <div class="grid-body" id="gridBody"></div>
+        </div>
+      </div>
+      <aside class="inspector">
+        <div class="ins-block">
+          <div class="ins-k">当前标的</div>
+          <div class="ins-name" id="insName">全市场扫描</div>
+          <div class="ins-code" id="insCode">A股 5,600+ 只</div>
+        </div>
+        <div class="ins-block">
+          <div class="ins-k">核心读数</div>
+          <div class="ins-row"><span class="k">情绪</span><span class="v" id="insSentiment">--</span></div>
+          <div class="ins-row"><span class="k">门控</span><span class="v" id="insMacro">--</span></div>
+          <div class="ins-row"><span class="k">依据</span><span class="v" id="insMacroReason">--</span></div>
+          <div class="ins-row"><span class="k">仓位</span><span class="v" id="insExposure">--</span></div>
+        </div>
+        <div class="ins-block">
+          <div class="ins-k">评分构成</div>
+          <div id="factorBreakdown"></div>
+        </div>
+        <div class="ins-block">
+          <div class="ins-k">连接设置</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <input id="baseInput" placeholder="后端地址（如 http://127.0.0.1:8000）" style="width:100%;height:26px;padding:0 8px;border:1px solid var(--border);background:var(--surface);color:var(--label);border-radius:var(--radius-xs);font-size:12px">
+            <input id="keyInput" placeholder="API Key" style="width:100%;height:26px;padding:0 8px;border:1px solid var(--border);background:var(--surface);color:var(--label);border-radius:var(--radius-xs);font-size:12px">
+            <button class="btn primary" id="connBtn" style="width:100%;justify-content:center">连接并刷新</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+    <footer class="statusbar">
+      <span><i class="dot ok"></i>WebSocket</span>
+      <span>数据源 TDX</span>
+      <span id="statusText">正在连接…</span>
+      <span class="status-spacer"></span>
+      <span>沪深300: --</span>
+    </footer>
+  </div>
+</div>
+
+<script src="live-apple-stocks.js"></script>
+</body>
+</html>

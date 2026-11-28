@@ -5,8 +5,8 @@
     "source": "static/**/*.js|html|json literal /api/ strings"
   },
   "counts": {
-    "normalized_paths": 38,
-    "raw_strings": 38,
+    "normalized_paths": 39,
+    "raw_strings": 39,
     "unmapped": 0
   },
   "normalized_paths": [
@@ -27,6 +27,7 @@
     "/api/factor-weights",
     "/api/import/config",
     "/api/kline/{code}",
+    "/api/market",
     "/api/notifications",
     "/api/notifications/stats",
     "/api/position-distribution",
@@ -173,6 +174,13 @@
       ]
     },
     {
+      "normalized": "/api/market",
+      "raw": "/api/market",
+      "sources": [
+        "static/preview/live-apple-stocks.js"
+      ]
+    },
+    {
       "normalized": "/api/notifications",
       "raw": "/api/notifications",
       "sources": [
@@ -240,8 +248,10 @@
       "normalized": "/api/scan",
       "raw": "/api/scan",
       "sources": [
+        "static/js/apple_deck.js",
         "static/js/main.js",
-        "static/js/polling.js"
+        "static/js/polling.js",
+        "static/preview/live-apple-stocks.js"
       ]
     },
     {
@@ -291,8 +301,10 @@
       "normalized": "/api/stock/{code}",
       "raw": "/api/stock/",
       "sources": [
+        "static/js/apple_deck.js",
         "static/js/components/SearchBar.js",
-        "static/js/main.js"
+        "static/js/main.js",
+        "static/preview/live-apple-stocks.js"
       ]
     },
     {

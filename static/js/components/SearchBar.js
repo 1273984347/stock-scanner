@@ -1,4 +1,4 @@
-import { apiClient } from '../api.js';
+import { apiClient } from '/js/api.js';
 
 /**
  * SearchBar — 全局搜索组件

@@ -1,0 +1,164 @@
+/* ============================================================
+   Apple HIG 组件层 —— 共用样式
+   ============================================================ */
+* { box-sizing:border-box; margin:0; padding:0; }
+html,body { height:100%; }
+body {
+  background:var(--bg); color:var(--label);
+  font-family:var(--font); font-size:15px; line-height:1.4;
+  overflow:hidden; -webkit-font-smoothing:antialiased;
+}
+.num { font-family:var(--font-num); font-variant-numeric:tabular-nums; }
+.up { color:var(--up); } .down { color:var(--down); }
+
+/* ---------- Liquid Glass 材质（仅控件层） ---------- */
+.glass {
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(180%);
+  backdrop-filter:blur(var(--glass-blur)) saturate(180%);
+  border:1px solid var(--glass-border);
+}
+.glass-hl::before {
+  content:''; position:absolute; inset:0; border-radius:inherit;
+  pointer-events:none;
+  background:linear-gradient(180deg, var(--glass-hl), transparent 60%);
+}
+
+/* ---------- 工具栏 ---------- */
+.toolbar {
+  position:relative;
+  height:52px; display:flex; align-items:center; gap:8px;
+  padding:0 12px;
+  border-bottom:0.5px solid var(--content-sep);
+  z-index:20;
+}
+.tb-title { font-size:17px; font-weight:600; letter-spacing:-.01em; margin-right:4px; }
+.tb-sub { font-size:13px; color:var(--label-2); }
+.tb-spacer { flex:1; }
+
+/* ---------- 分段控件 ---------- */
+.seg { display:inline-flex; padding:2px; gap:2px; background:var(--label-4); border-radius:9px; }
+.seg button {
+  border:none; background:transparent; cursor:pointer;
+  height:26px; padding:0 11px; border-radius:7px;
+  font-family:var(--font); font-size:13px; font-weight:500; color:var(--label);
+  transition:background .18s ease, box-shadow .18s ease;
+}
+.seg button.on {
+  background:var(--surface);
+  box-shadow:0 1px 3px rgba(0,0,0,.12), 0 0 1px rgba(0,0,0,.06);
+  font-weight:600;
+}
+
+/* ---------- 按钮 ---------- */
+.btn {
+  position:relative;
+  height:32px; min-width:32px; padding:0 12px;
+  border:0.5px solid var(--content-sep-opaque); border-radius:8px;
+  background:var(--surface); color:var(--label);
+  font-family:var(--font); font-size:13px; font-weight:500;
+  cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:5px;
+  transition:background .15s ease, transform .1s ease;
+}
+.btn:hover { background:var(--label-4); }
+.btn:active { transform:scale(.97); opacity:.85; }
+.btn.primary { background:var(--accent); color:#fff; border-color:transparent; }
+.btn.primary:hover { background:var(--accent-2); }
+.btn.icon { padding:0; width:32px; }
+.btn svg { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.6;
+  stroke-linecap:round; stroke-linejoin:round; }
+
+/* ---------- 侧栏 ---------- */
+.sidebar {
+  position:relative; width:212px; flex-shrink:0;
+  display:flex; flex-direction:column;
+  border-right:0.5px solid var(--content-sep);
+  z-index:10;
+  transition:width .22s cubic-bezier(.32,.72,0,1);
+}
+.sidebar.collapsed { width:64px; }
+.sb-group { padding:10px 10px 2px; }
+.sb-head {
+  font-size:11px; font-weight:600; letter-spacing:.02em;
+  color:var(--label-2); text-transform:uppercase; padding:0 8px 5px;
+}
+.sb-item {
+  display:flex; align-items:center; gap:9px;
+  height:34px; padding:0 8px; border-radius:7px;
+  color:var(--label); font-size:14px; cursor:pointer;
+  transition:background .14s ease;
+}
+.sb-item:hover { background:var(--label-4); }
+.sb-item.on { background:var(--accent); color:#fff; font-weight:500; }
+.sb-item svg { width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:1.6;
+  stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+.sb-item .count { margin-left:auto; font-size:12px; color:var(--label-3); font-family:var(--font-num); }
+.sb-item.on .count { color:rgba(255,255,255,.75); }
+.sidebar.collapsed .sb-label, .sidebar.collapsed .sb-item .count { display:none; }
+.sidebar.collapsed .sb-head { display:none; }
+.sidebar.collapsed .sb-item { justify-content:center; padding:0; }
+
+/* ---------- 内容容器 ---------- */
+.content { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
+.card { background:var(--surface); border-radius:var(--r-lg); box-shadow:0 1px 2px rgba(0,0,0,.04); overflow:hidden; }
+.card-h { display:flex; align-items:center; gap:10px; padding:13px 16px 11px; }
+.card-h h2 { font-size:17px; font-weight:600; letter-spacing:-.01em; }
+.card-h .sub { font-size:13px; color:var(--label-2); }
+.card-h .right { margin-left:auto; display:flex; gap:8px; align-items:center; }
+
+/* ---------- 列表 ---------- */
+.inset { margin:0 16px 16px; background:var(--surface); border-radius:var(--r-md); overflow:hidden; }
+.row {
+  display:flex; align-items:center; gap:10px;
+  padding:10px 16px; min-height:44px;
+  border-bottom:0.5px solid var(--content-sep); cursor:pointer;
+}
+.row:last-child { border-bottom:none; }
+.row:hover { background:var(--label-4); }
+.row.on { background:var(--accent-fill); }
+/* 表格选中行：Apple 风格用浅填充 + 行首指示，不铺整行强色 */
+tbody tr.on td { background:var(--accent-fill); }
+.row .lead { width:26px; height:26px; border-radius:7px; background:var(--label-4);
+  display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600;
+  color:var(--label-2); flex-shrink:0; }
+.row .name { font-size:15px; }
+.row .meta { font-size:13px; color:var(--label-2); }
+.row .val { margin-left:auto; font-family:var(--font-num); font-variant-numeric:tabular-nums; }
+
+/* ---------- 表格 ---------- */
+table { width:100%; border-collapse:collapse; }
+th {
+  text-align:left; padding:9px 16px; font-size:12px; font-weight:600;
+  color:var(--label-2); border-bottom:0.5px solid var(--content-sep); white-space:nowrap;
+}
+td {
+  padding:9px 16px; font-size:14px;
+  border-bottom:0.5px solid var(--content-sep); white-space:nowrap;
+}
+tbody tr:last-child td { border-bottom:none; }
+tbody tr { cursor:pointer; }
+tbody tr:hover td { background:var(--label-4); }
+th.r, td.r { text-align:right; }
+td.n { font-family:var(--font-num); font-variant-numeric:tabular-nums; }
+/* 正负号对齐：等宽体下 + 与 - 占位一致 */
+td.r.up::before, td.r.down::before { display:inline-block; width:0; }
+
+/* ---------- 状态栏 ---------- */
+.statusbar {
+  height:28px; display:flex; align-items:center; gap:16px;
+  padding:0 12px; font-size:12px; color:var(--label-2);
+  border-top:0.5px solid var(--content-sep); z-index:20;
+}
+.statusbar .num { font-size:12px; }
+.dot { width:7px; height:7px; border-radius:50%; background:var(--down); display:inline-block;
+  margin-right:5px; vertical-align:1px; }
+
+/* ---------- 搜索框 ---------- */
+.search {
+  height:28px; width:220px; border-radius:8px;
+  background:var(--label-4); border:0.5px solid transparent;
+  display:flex; align-items:center; gap:6px; padding:0 9px;
+  color:var(--label-2); font-size:13px;
+}
+.search:focus-within { background:var(--surface); border-color:var(--accent); }
+.search svg { width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:2; }

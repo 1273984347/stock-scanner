@@ -1,5 +1,5 @@
-import { stateManager } from './state.js';
-import { sendBrowserNotification } from './notifications.js';
+import { stateManager } from '/js/state.js';
+import { sendBrowserNotification } from '/js/notifications.js';
 
 /**
  * WebSocketManager — WebSocket 连接管理 + 心跳 + 断线重连

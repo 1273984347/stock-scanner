@@ -1,5 +1,5 @@
-import { stateManager } from '../state.js';
-import { getThemeColor } from '../theme.js';
+import { stateManager } from '/js/state.js';
+import { getThemeColor } from '/js/theme.js';
 // 批次 A / P0-2：本文件原有 esc() 却从未调用，因子名被直接拼进 innerHTML。
 // 现改为 createElement + textContent，从数据源头断开 HTML 解释，不再依赖转义。
 

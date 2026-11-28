@@ -1,4 +1,4 @@
-import { helpCenter } from '../components/HelpCenter.js';
+import { helpCenter } from '/js/components/HelpCenter.js';
 
 const PANELS = ['portfolio', 'scanner', 'risk', 'positions', 'factors', 'backtest', 'audit', 'reports', 'settings'];
 

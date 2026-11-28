@@ -1,8 +1,8 @@
-import { apiClient } from '../api.js';
-import { stateManager } from '../state.js';
-import { Pagination } from '../utils/pagination.js';
-import { LazyChart } from '../utils/lazyChart.js';
-import { esc } from './utils.js';
+import { apiClient } from '/js/api.js';
+import { stateManager } from '/js/state.js';
+import { Pagination } from '/js/utils/pagination.js';
+import { LazyChart } from '/js/utils/lazyChart.js';
+import { esc } from '/js/renderers/utils.js';
 
 export class SignalsRenderer {
   constructor() {
@@ -152,7 +152,7 @@ export class SignalsRenderer {
           {
             label: '准确率(%)',
             data: data.trend.map(t => (t.accuracy * 100).toFixed(1)),
-            borderColor: '#58A6FF',
+            borderColor: getThemeColor('--accent'),
             backgroundColor: 'rgba(88,166,255,0.1)',
             fill: true,
             tension: 0.3,

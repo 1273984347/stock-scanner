@@ -1,9 +1,9 @@
-import { stateManager } from '../state.js';
-import { apiClient } from '../api.js';
-import { getThemeColor } from '../theme.js';
-import { LazyChart } from '../utils/lazyChart.js';
-import { VirtualTable } from '../utils/virtualTable.js';
-import { exportChartJs, addExportButton, generateFilename } from '../utils/chartExport.js';
+import { stateManager } from '/js/state.js';
+import { apiClient } from '/js/api.js';
+import { getThemeColor, seriesColors } from '/js/theme.js';
+import { LazyChart } from '/js/utils/lazyChart.js';
+import { VirtualTable } from '/js/utils/virtualTable.js';
+import { exportChartJs, addExportButton, generateFilename } from '/js/utils/chartExport.js';
 
 /**
  * PortfolioRenderer — 组合优化面板渲染器
@@ -122,7 +122,7 @@ class PortfolioRenderer {
       type: 'doughnut',
       data: {
         labels,
-        datasets: [{ data: values, backgroundColor: ['#58A6FF','#3FB950','#F85149','#D29922','#7D8590','#E6EDF3'], borderWidth: 0 }]
+        datasets: [{ data: values, backgroundColor: seriesColors(6), borderWidth: 0 }]
       },
       options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: getThemeColor('--text-sub'), padding: 10, font: { size: 11 } } } } }
     });
@@ -279,7 +279,7 @@ class PortfolioRenderer {
         datasets: [{
           label: '总市值',
           data: values,
-          borderColor: '#58A6FF',
+          borderColor: getThemeColor('--accent'),
           backgroundColor: 'rgba(88,166,255,0.1)',
           fill: true,
           borderWidth: 1.5,

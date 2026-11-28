@@ -1,5 +1,5 @@
-import { apiClient } from '../api.js';
-import { Pagination } from '../utils/pagination.js';
+import { apiClient } from '/js/api.js';
+import { Pagination } from '/js/utils/pagination.js';
 
 export class TradesRenderer {
   constructor() {
@@ -24,7 +24,7 @@ export class TradesRenderer {
   async fetch() {
     try {
       const sortBy = document.getElementById('tradeSortSelect')?.value || 'date';
-      const data = await apiClient.get('/api/trade-history', { days: 30, sort_by: sortBy, limit: 500 });
+      const data = await apiClient.get('/api/trade-history', { days: 30, sort_by: sortBy, limit: 200 });
       if (data) {
         this._allTrades = data.trades || [];
         if (this._pagination) {

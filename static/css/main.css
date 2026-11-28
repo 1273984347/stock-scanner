@@ -3,65 +3,41 @@
    ============================================ */
 
 /* Dark mode (default) */
-:root {
-  /* 背景与卡片 */
-  --bg: #0D1117;
-  --card: #161B22;
-  --card-hover: #1C2128;
 
-  /* 边框 */
-  --border: #21262D;
 
-  /* 文字 */
-  --text: #E6EDF3;
-  --text-sub: #7D8590;
-  --text-dim: #484F58;
-
-  /* 强调色 */
-  --accent: #58A6FF;
-  --accent-hover: #79B8FF;
-
-  /* 语义色 */
-  --up: #3FB950;
-  --down: #F85149;
-  --warn: #D29922;
-
-  /* 图表/侧边栏背景（比 --bg 更深） */
-  --bg-chart: #0D1117;
-
-  /* 布局 */
-  --sidebar-width: 52px;
-  --sidebar-expanded: 200px;
-  --toolbar-height: 48px;
-  --statusbar-height: 28px;
-  --right-panel-width: 240px;
-  --radius: 8px;
-  --gap: 12px;
-  --card-pad: 14px;
+/* ============================================
+   图表容器 —— 修 canvas 塌缩为 0 尺寸
+   ============================================
+   现象：canvas 未渲染时保持 HTML 默认 300×150；
+   面板 .panel { display:none } 时 clientWidth/Height 均为 0，
+   Chart.js 在 0 尺寸容器初始化后再显示 ⇒ 图不重绘 ⇒ 空白。
+   对策：① canvas 显式 block + 宽度 100%；
+        ② 图表卡给出确定高度（按卡型分级）；
+        ③ 激活面板时派发 resize（见 static/js/layouts/AppLayout.js）。
+   ============================================ */
+.panel canvas {
+  display: block;
+  width: 100%;
+  height: var(--chart-h-md);
+  min-height: var(--chart-h-md);
 }
 
-/* Light mode */
-[data-theme="light"] {
-  --bg: #ffffff;
-  --card: #ffffff;
-  --card-hover: #f6f8fa;
-  --border: #d0d7de;
-  --text: #24292f;
-  --text-sub: #656d76;
-  --text-dim: #8b949e;
-  --accent: #0969da;
-  --accent-hover: #0550ae;
-  --up: #1a7f37;
-  --down: #cf222e;
-  --warn: #9a6700;
-  --bg-chart: #f0f2f5;
+.portfolio-card canvas {
+  height: var(--chart-h-md);
 }
 
-/* Reset */
+/* 热力图 / 时间线等需要更大画布的卡 */
+#sectorHeatmapChart { height: var(--chart-h-lg); min-height: var(--chart-h-lg); }
+#regimeTimelineChart { height: var(--chart-h-sm); min-height: var(--chart-h-sm); }
+#correlationHeatmap { height: var(--chart-h-lg); min-height: var(--chart-h-lg); }
+#sectorChart { height: var(--chart-h-sm); min-height: var(--chart-h-sm); }
+
+/* ============================================
+   Reset */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100dvh;

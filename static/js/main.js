@@ -29,6 +29,10 @@ import { SearchBar } from '/js/components/SearchBar.js';
 import { multiWindowManager } from '/js/components/MultiWindow.js';
 import { helpCenter } from '/js/components/HelpCenter.js';
 import { VirtualTable } from '/js/utils/virtualTable.js';
+import { AppleDeck } from '/js/apple_deck.js';
+import { ColorSchemeToggle } from '/js/components/ColorSchemeToggle.js';
+// 副作用导入：安装全局图表尺寸兜底（ResizeObserver）
+import '/js/utils/lazyChart.js';
 
 const renderers = {};
 
@@ -91,34 +95,37 @@ function renderWatchlist() {
     row.dataset.code = item.code;
     row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer';
 
-    const info = document.createElement('div');
-    info.style.cssText = 'flex:1;min-width:0';
-    info.addEventListener('click', () => openStockDetail(item.code, item.name));
+    const codeCell = document.createElement('span');
+    codeCell.className = 'watch-item-code';
+    codeCell.textContent = item.code;
 
-    const nameEl = document.createElement('div');
-    nameEl.style.cssText = 'font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
-    nameEl.textContent = item.name || item.code;
-    info.appendChild(nameEl);
+    const nameCell = document.createElement('span');
+    nameCell.className = 'watch-item-name';
+    nameCell.textContent = item.name || item.code;
 
-    const codeEl = document.createElement('div');
-    codeEl.style.cssText = 'font-size:11px;color:var(--text-dim)';
-    codeEl.textContent = item.code;
-    info.appendChild(codeEl);
+    const lastCell = document.createElement('span');
+    lastCell.className = 'watch-item-last';
+    lastCell.textContent = item.price != null ? Number(item.price).toFixed(2) : '--';
+
+    const chgCell = document.createElement('span');
+    const chgNum = item.change_pct != null ? Number(item.change_pct) : null;
+    chgCell.className = 'watch-item-chg' + (chgNum == null ? '' : (chgNum >= 0 ? ' up' : ' down'));
+    chgCell.textContent = chgNum == null ? '--' : (chgNum >= 0 ? '+' : '') + chgNum.toFixed(2) + '%';
+
+    row.appendChild(codeCell);
+    row.appendChild(nameCell);
+    row.appendChild(lastCell);
+    row.appendChild(chgCell);
 
     const removeBtn = document.createElement('button');
-    removeBtn.className = 'watchlist-remove';
+    removeBtn.className = 'watch-item-remove';
     removeBtn.dataset.code = item.code;
-    removeBtn.style.cssText = 'flex-shrink:0;width:20px;height:20px;border:none;background:none;color:var(--text-dim);cursor:pointer;font-size:14px;line-height:1;padding:0;opacity:0.5;transition:opacity 0.15s';
     removeBtn.title = '移除';
     removeBtn.textContent = '×';
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       removeFromWatchlist(removeBtn.dataset.code);
     });
-    removeBtn.addEventListener('mouseenter', () => { removeBtn.style.opacity = '1'; removeBtn.style.color = 'var(--danger, #ff6b6b)'; });
-    removeBtn.addEventListener('mouseleave', () => { removeBtn.style.opacity = '0.5'; removeBtn.style.color = 'var(--text-dim)'; });
-
-    row.appendChild(info);
     row.appendChild(removeBtn);
     container.appendChild(row);
   });
@@ -137,12 +144,63 @@ function applyChartDefaults() {
 }
 
 function initTheme() {
+    // 三主题：深色 / 浅色 / 跟随系统；默认跟随系统
     const saved = localStorage.getItem('theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const theme = saved || (prefersDark ? 'dark' : 'light');
+    const theme = ['dark', 'light', 'system'].includes(saved) ? saved : 'system';
     document.documentElement.setAttribute('data-theme', theme);
+    // 涨跌配色：A股口径（红涨绿跌）默认，可切国际口径
+    const cs = localStorage.getItem('colorScheme');
+    document.documentElement.setAttribute('data-color-scheme', cs === 'international' ? 'international' : 'china');
     applyChartDefaults();
 }
+
+// ─── Symbol bar（TradingView 式：当前标的 / 价格 / 涨跌） ──────
+// 市场概览 → symbol bar（真实字段，不假设 dashboard 含指数点位）
+function updateSymbolBarOverview(dash) {
+  if (!dash) return;
+  const m = dash.market || {};
+  updateSymbolBar({
+    ticker: '全市场扫描',
+    name: 'A股 5,600+ 只',
+    meta: [
+      '情绪 ' + (m.sentiment != null ? Number(m.sentiment).toFixed(2) : '--') +
+        ' / ' + (m.macro_gate?.state || '--'),
+    ],
+  });
+}
+
+function updateSymbolBar(data) {
+  if (!data) return;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  // TAPE 语义：ticker=标的名，name=代码，price=读数，change_pct=涨跌
+  set('symbolTicker', data.ticker || data.symbol || data.name || '全市场扫描');
+  set('symbolName', data.code || data.symbol_code || data.name || 'A股 5,600+ 只');
+  const chg = data.change_pct != null ? Number(data.change_pct) : null;
+  const chgEl = document.getElementById('symbolChange');
+  if (chgEl) {
+    chgEl.textContent = chg == null ? '--' : (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+    chgEl.className = 'tape-delta ' + (chg == null ? 'flat' : (chg >= 0 ? 'up' : 'down'));
+  }
+  const meta = Array.isArray(data.meta) ? data.meta : [];
+  set('symbolMeta3', meta[0] || (data.score != null ? '评分 ' + Number(data.score).toFixed(1) : '--'));
+  const clock = document.getElementById('symbolClock');
+  if (clock) {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    clock.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  }
+}
+
+window.updateSymbolBar = updateSymbolBar;
+
+// 定期刷新时钟
+setInterval(() => {
+  const clock = document.getElementById('symbolClock');
+  if (!clock) return;
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  clock.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}, 1000);
 
 function updateWsIndicator(status) {
   const indicator = document.getElementById('wsIndicator');
@@ -178,7 +236,26 @@ async function init() {
     if (panelId === 'notifications') renderers.notifications?.mount();
     // 触发面板可见性变化（用于图表懒加载）
     document.dispatchEvent(new CustomEvent('panelchange', { detail: { panelId } }));
+    // 兜底：面板从 display:none 变为可见后容器才有真实尺寸。
+    // 未走 LazyChart 的图表（risk/exposures/positions/strategy-compare）在 0 尺寸下
+    // 初始化会渲染成空白，此处按需触发一次 resize 让 Chart.js 重绘。
+    requestAnimationFrame(() => {
+      if (typeof Chart === 'undefined' || !Chart.instances) return;
+      const activePanel = document.getElementById('panel-' + panelId);
+      if (!activePanel) return;
+      Object.values(Chart.instances).forEach(inst => {
+        const cv = inst && inst.canvas;
+        if (!cv || !activePanel.contains(cv)) return;
+        if (cv.clientWidth > 0 && cv.clientHeight > 0) {
+          try { inst.resize(); } catch (e) { /* 单图表失败不阻断其余 */ }
+        }
+      });
+    });
   }
+
+  // 涨跌配色切换（A股红涨绿跌 / 国际绿涨红跌）
+  const csHost = document.getElementById('colorSchemeToggle');
+  if (csHost) new ColorSchemeToggle(csHost);
 
   const sidebar = new Sidebar(document.getElementById('sidebar'), switchPanel);
   const toolbar = new Toolbar(document.getElementById('toolbar'), (theme) => {
@@ -203,6 +280,50 @@ async function init() {
   document.querySelectorAll('table thead th').forEach(th => {
     th.setAttribute('scope', 'col');
   });
+  // 数值型列右对齐：表头名含数值语义（权重/评分/收益/率/量/额/IC 等）时标记 num
+  const NUM_HINT = /(权重|评分|收益|率|涨跌|涨幅|跌幅|市值|仓位|价格|现价|成本|盈亏|夏普|回撤|胜率|数量|成交|资金|IC|分|元|量)$/;
+  document.querySelectorAll('table thead th').forEach(th => {
+    const t = (th.textContent || '').trim();
+    if (NUM_HINT.test(t)) {
+      th.classList.add('num');
+      th.dataset.numCol = '1';
+    }
+  });
+
+  // 表头标记后，同列的单元格同步右对齐
+  const syncNumCols = () => {
+    document.querySelectorAll('table').forEach(table => {
+      const heads = Array.from(table.querySelectorAll('thead th'));
+      const numIdx = heads.map((h, i) => (h.dataset.numCol === '1' ? i : -1)).filter(i => i >= 0);
+      if (numIdx.length === 0) return;
+      table.querySelectorAll('tbody tr').forEach(tr => {
+        const tds = tr.children;
+        numIdx.forEach(i => { if (tds[i]) tds[i].classList.add('num'); });
+      });
+    });
+  };
+  syncNumCols();
+  window.addEventListener('table-rendered', syncNumCols);
+
+  // 运行时生成的表头（如选股结果表）无法在初始化时标记，
+  // 用 MutationObserver 兜底：表体变化后按内容判断数字列并右对齐。
+  const NUM_RE = /^-?[\d,]+(\.\d+)?%?$/;
+  const isNumText = (s) => {
+    const t = (s || '').trim();
+    if (!t || t === '--') return false;
+    return NUM_RE.test(t.replace(/\s/g, ''));
+  };
+  const applyNumByContent = () => {
+    document.querySelectorAll('table tbody tr').forEach(tr => {
+      Array.from(tr.children).forEach(td => {
+        if (isNumText(td.textContent)) td.classList.add('num');
+      });
+    });
+  };
+  const tableObserver = new MutationObserver(() => {
+    requestAnimationFrame(applyNumByContent);
+  });
+  tableObserver.observe(document.body, { childList: true, subtree: true });
 
   // 为所有 canvas 图表添加 role="img" 和 aria-label
   document.querySelectorAll('canvas').forEach(canvas => {
@@ -244,6 +365,13 @@ async function init() {
   renderers.settings = new SettingsRenderer();
   renderers.strategy = new StrategyCompareRenderer();
 
+  // symbol bar 初始刷新（数据到达后由 dashboard 订阅再更新）
+  updateSymbolBar(null);
+
+  // E 方案：hero 读数 / 卡片网格 / 右侧检查器 接真实数据
+  const appleDeck = new AppleDeck();
+  appleDeck.mount();
+
   Object.values(renderers).forEach(r => r.mount?.());
   renderers.backtest.init();
   renderers.signals.fetch();
@@ -273,6 +401,7 @@ async function init() {
         ['/api/exposures', {}],
       ]);
       if (dashRes) stateManager.updateAll({ dashboard: dashRes });
+      if (dashRes) updateSymbolBarOverview(dashRes);
       if (riskRes) stateManager.updateAll({ risk: riskRes });
       if (auditRes) stateManager.updateAll({ audit: auditRes });
       if (sigRes) stateManager.updateAll({ signals: sigRes });
@@ -333,6 +462,7 @@ async function init() {
       console.log('[App] IIFE 结果:', dashRes?.status, riskRes?.status, auditRes?.status, expRes?.status);
       if (dashRes.status === 'fulfilled' && dashRes.value) {
         stateManager.set('dashboard', dashRes.value);
+      if (dashRes.value) updateSymbolBarOverview(dashRes.value);
       }
       if (riskRes.status === 'fulfilled' && riskRes.value) {
         stateManager.set('risk', riskRes.value);

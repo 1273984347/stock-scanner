@@ -1,0 +1,133 @@
+/* ============================================================
+   Apple HIG 适配层 —— 令牌与材质
+   依据：D:\Anthropic\.cache\apple_hig\（color / materials / layout /
+        buttons / sidebars / toolbars / segmented-controls / dark-mode）
+   要点：
+   1. Liquid Glass 只用于**控件与导航层**，内容层用实色（materials.md）
+   2. 强调色用系统蓝 #007AFF（Apple 标准）；涨跌红绿是独立语义色（color.md：
+      同一颜色不得表达两种含义）
+   3. 暗色不是亮色的反转，而是**更暗的背景 + 更亮的前景**（dark-mode.md）
+   4. 内容层靠**留白与容器形状**分组，不靠描边（layout.md）
+   5. 命中区 ≥ 44pt，按钮必须有按压态（buttons.md）
+   ============================================================ */
+
+:root {
+  /* --- 内容层（实色） --- */
+  --bg: #F2F2F7;              /* systemGroupedBackground 亮 */
+  --surface: #FFFFFF;          /* 次级容器 */
+  --surface-2: #FFFFFF;
+  --content-sep: rgba(60,60,67,.29);   /* separator */
+  --content-sep-opaque: #C6C6C8;
+
+  /* --- 文字（labelColor 四级） --- */
+  --label: #000000;
+  --label-2: rgba(60,60,67,.60);
+  --label-3: rgba(60,60,67,.30);
+  --label-4: rgba(60,60,67,.18);
+
+  /* --- 系统蓝：唯一强调色 --- */
+  --accent: #007AFF;
+  --accent-2: #0A84FF;
+  --accent-ink: #FFFFFF;
+  --accent-fill: rgba(0,122,255,.12);
+
+  /* --- 语义色（涨/跌独立于强调色） --- */
+  --up: #FF3B30;
+  --down: #34C759;
+  --warn: #FF9500;
+  --up-fill: rgba(255,59,48,.12);
+  --down-fill: rgba(52,199,89,.12);
+
+  /* --- 控件层（Liquid Glass） --- */
+  --glass: rgba(255,255,255,.72);
+  --glass-2: rgba(255,255,255,.52);
+  --glass-border: rgba(0,0,0,.06);
+  --glass-hl: rgba(255,255,255,.7);
+  --glass-blur: 20px;
+
+  /* --- 形状 --- */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+
+  /* --- 字体：SF Pro 栈（Apple 官方） --- */
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI Variable', 'Segoe UI', 'Helvetica Neue', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', Arial, sans-serif;
+  --font-num: ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, monospace;
+
+  --shadow-1: 0 1px 2px rgba(0,0,0,.04);
+  --shadow-2: 0 6px 20px -8px rgba(0,0,0,.18);
+  --shadow-3: 0 18px 48px -16px rgba(0,0,0,.26);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #000000;
+    --surface: #1C1C1E;
+    --surface-2: #2C2C2E;
+    --content-sep: rgba(84,84,88,.65);
+    --content-sep-opaque: #38383A;
+
+    --label: #FFFFFF;
+    --label-2: rgba(235,235,245,.60);
+    --label-3: rgba(235,235,245,.30);
+    --label-4: rgba(235,235,245,.18);
+
+    --accent: #0A84FF;
+    --accent-2: #409CFF;
+    --accent-fill: rgba(10,132,255,.20);
+
+    --up: #FF453A;
+    --down: #30D158;
+    --warn: #FF9F0A;
+    --up-fill: rgba(255,69,58,.18);
+    --down-fill: rgba(48,209,88,.18);
+
+    --glass: rgba(28,28,30,.72);
+    --glass-2: rgba(44,44,46,.52);
+    --glass-border: rgba(255,255,255,.10);
+    --glass-hl: rgba(255,255,255,.08);
+
+    --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+    --shadow-2: 0 6px 20px -8px rgba(0,0,0,.6);
+    --shadow-3: 0 18px 48px -16px rgba(0,0,0,.7);
+  }
+}
+
+[data-theme='light'] {
+  --bg: #F2F2F7;
+  --surface: #FFFFFF;
+  --surface-2: #FFFFFF;
+  --content-sep: rgba(60,60,67,.29);
+  --content-sep-opaque: #C6C6C8;
+  --label: #000000;
+  --label-2: rgba(60,60,67,.60);
+  --label-3: rgba(60,60,67,.30);
+  --label-4: rgba(60,60,67,.18);
+  --accent: #007AFF;
+  --accent-2: #0A84FF;
+  --accent-ink: #FFFFFF;
+  --accent-fill: rgba(0,122,255,.12);
+  --up: #FF3B30;
+  --down: #34C759;
+  --warn: #FF9500;
+  --up-fill: rgba(255,59,48,.12);
+  --down-fill: rgba(52,199,89,.12);
+  --glass: rgba(255,255,255,.72);
+  --glass-2: rgba(255,255,255,.52);
+  --glass-border: rgba(0,0,0,.06);
+  --glass-hl: rgba(255,255,255,.7);
+}
+
+[data-color-scheme='international'] { --up: #34C759; --down: #FF3B30;
+  --up-fill: rgba(52,199,89,.12); --down-fill: rgba(255,59,48,.12); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light'])[data-color-scheme='international'] {
+    --up: #30D158; --down: #FF453A;
+    --up-fill: rgba(48,209,88,.18); --down-fill: rgba(255,69,58,.18);
+  }
+}
+[data-theme='light'][data-color-scheme='international'] {
+  --up: #34C759; --down: #FF3B30;
+  --up-fill: rgba(52,199,89,.12); --down-fill: rgba(255,59,48,.12);
+}

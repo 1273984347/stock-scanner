@@ -204,6 +204,15 @@
         "blocking_before": 94,
         "mode": "refactor",
         "reason": "批次重构：状态/调用收口、白名单裁剪或线程池迁移；blocking 不得增加，非 allowed 端点逐字段一致"
+      },
+      {
+        "allowed_endpoints": [
+          "MIDDLEWARE local_cors"
+        ],
+        "blocking_after": 91,
+        "blocking_before": 91,
+        "mode": "refactor",
+        "reason": "批次重构：状态/调用收口、白名单裁剪或线程池迁移；blocking 不得增加，非 allowed 端点逐字段一致"
       }
     ],
     "scan_scope": "HTTP /api/ endpoints (L7-aligned) + non-API routes + websocket + http middlewares; sync AND async top-level helpers expanded (depth<=2)",
@@ -5529,11 +5538,11 @@
   "extended_counts": {
     "blocking_calls": 11,
     "blocking_endpoints": 3,
-    "endpoints": 6,
+    "endpoints": 7,
     "offloaded_calls": 0,
     "offloaded_endpoints": 0,
-    "other_calls": 53,
-    "total_calls": 64
+    "other_calls": 62,
+    "total_calls": 73
   },
   "extended_endpoints": [
     {
@@ -5546,7 +5555,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "api.py",
-          "lineno": 115,
+          "lineno": 179,
           "tail": "exists"
         },
         {
@@ -5554,7 +5563,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 116,
+          "lineno": 180,
           "tail": "FileResponse"
         },
         {
@@ -5562,14 +5571,14 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 116,
+          "lineno": 180,
           "tail": "str"
         }
       ],
       "file": "api.py",
       "handler": "index",
       "key": "GET /",
-      "lineno": 112,
+      "lineno": 176,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -5586,7 +5595,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 202,
+          "lineno": 266,
           "tail": "FileResponse"
         },
         {
@@ -5594,14 +5603,14 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 202,
+          "lineno": 266,
           "tail": "str"
         }
       ],
       "file": "api.py",
       "handler": "favicon",
       "key": "GET /favicon.svg",
-      "lineno": 201,
+      "lineno": 265,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -5618,7 +5627,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 206,
+          "lineno": 270,
           "tail": "FileResponse"
         },
         {
@@ -5626,14 +5635,14 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 206,
+          "lineno": 270,
           "tail": "str"
         }
       ],
       "file": "api.py",
       "handler": "service_worker",
       "key": "GET /sw.js",
-      "lineno": 205,
+      "lineno": 269,
       "method": "GET",
       "offloaded": {},
       "other": {
@@ -5655,7 +5664,7 @@
           "category": "other",
           "depth": 1,
           "file": "api.py",
-          "lineno": 131,
+          "lineno": 195,
           "tail": "get"
         },
         {
@@ -5663,7 +5672,7 @@
           "category": "other",
           "depth": 1,
           "file": "api.py",
-          "lineno": 132,
+          "lineno": 196,
           "tail": "lower"
         },
         {
@@ -5671,7 +5680,7 @@
           "category": "other",
           "depth": 1,
           "file": "api.py",
-          "lineno": 132,
+          "lineno": 196,
           "tail": "startswith"
         },
         {
@@ -5679,7 +5688,7 @@
           "category": "other",
           "depth": 1,
           "file": "api.py",
-          "lineno": 133,
+          "lineno": 197,
           "tail": "len"
         },
         {
@@ -5687,7 +5696,7 @@
           "category": "other",
           "depth": 1,
           "file": "api.py",
-          "lineno": 133,
+          "lineno": 197,
           "tail": "strip"
         },
         {
@@ -5695,7 +5704,7 @@
           "category": "other",
           "depth": 1,
           "file": "api.py",
-          "lineno": 134,
+          "lineno": 198,
           "tail": "get"
         },
         {
@@ -5703,7 +5712,7 @@
           "category": "other",
           "depth": 1,
           "file": "api.py",
-          "lineno": 135,
+          "lineno": 199,
           "tail": "strip"
         },
         {
@@ -5711,7 +5720,7 @@
           "category": "other",
           "depth": 1,
           "file": "api.py",
-          "lineno": 135,
+          "lineno": 199,
           "tail": "split"
         },
         {
@@ -5719,7 +5728,7 @@
           "category": "other",
           "depth": 1,
           "file": "api.py",
-          "lineno": 136,
+          "lineno": 200,
           "tail": "startswith"
         },
         {
@@ -5727,7 +5736,7 @@
           "category": "other",
           "depth": 1,
           "file": "api.py",
-          "lineno": 137,
+          "lineno": 201,
           "tail": "len"
         },
         {
@@ -5735,7 +5744,7 @@
           "category": "other",
           "depth": 1,
           "file": "api.py",
-          "lineno": 139,
+          "lineno": 203,
           "tail": "len"
         },
         {
@@ -5743,7 +5752,7 @@
           "category": "other",
           "depth": 1,
           "file": "api.py",
-          "lineno": 140,
+          "lineno": 204,
           "tail": "urlsafe_b64decode"
         },
         {
@@ -5751,7 +5760,7 @@
           "category": "other",
           "depth": 1,
           "file": "api.py",
-          "lineno": 140,
+          "lineno": 204,
           "tail": "decode"
         },
         {
@@ -5759,7 +5768,7 @@
           "category": "other",
           "depth": 1,
           "file": "api.py",
-          "lineno": 140,
+          "lineno": 204,
           "tail": "encode"
         },
         {
@@ -5767,7 +5776,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 149,
+          "lineno": 213,
           "tail": "_ws_credentials"
         },
         {
@@ -5775,7 +5784,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 150,
+          "lineno": 214,
           "tail": "verify_ws_token"
         },
         {
@@ -5783,7 +5792,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 151,
+          "lineno": 215,
           "tail": "close"
         },
         {
@@ -5791,7 +5800,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 153,
+          "lineno": 217,
           "tail": "connect"
         },
         {
@@ -5799,7 +5808,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 159,
+          "lineno": 223,
           "tail": "send_json"
         },
         {
@@ -5807,7 +5816,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 161,
+          "lineno": 225,
           "tail": "now"
         },
         {
@@ -5815,7 +5824,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 161,
+          "lineno": 225,
           "tail": "isoformat"
         },
         {
@@ -5823,7 +5832,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 162,
+          "lineno": 226,
           "tail": "_get_ws_data"
         },
         {
@@ -5831,7 +5840,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 168,
+          "lineno": 232,
           "tail": "receive_text"
         },
         {
@@ -5839,7 +5848,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 170,
+          "lineno": 234,
           "tail": "disconnect"
         },
         {
@@ -5847,7 +5856,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 172,
+          "lineno": 236,
           "tail": "error"
         },
         {
@@ -5855,7 +5864,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 173,
+          "lineno": 237,
           "tail": "disconnect"
         },
         {
@@ -6030,7 +6039,7 @@
       "file": "api.py",
       "handler": "websocket_endpoint",
       "key": "WEBSOCKET /ws",
-      "lineno": 147,
+      "lineno": 211,
       "method": "WEBSOCKET",
       "offloaded": {},
       "other": {
@@ -6077,20 +6086,113 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 108,
+          "lineno": 136,
           "tail": "_add_security_headers"
         }
       ],
       "file": "api.py",
       "handler": "add_security_headers",
       "key": "MIDDLEWARE add_security_headers",
-      "lineno": 107,
+      "lineno": 135,
       "method": "MIDDLEWARE",
       "offloaded": {},
       "other": {
         "_add_security_headers": 1
       },
       "path": "middleware:add_security_headers"
+    },
+    {
+      "blocking": {},
+      "calls": [
+        {
+          "callee": "request.headers.get",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 154,
+          "tail": "get"
+        },
+        {
+          "callee": "_LOCAL_ORIGIN_RE.match",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 155,
+          "tail": "match"
+        },
+        {
+          "callee": "request.headers.get",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 156,
+          "tail": "get"
+        },
+        {
+          "callee": "Response",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 157,
+          "tail": "Response"
+        },
+        {
+          "callee": "call_next",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 159,
+          "tail": "call_next"
+        },
+        {
+          "callee": "k.encode",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 170,
+          "tail": "encode"
+        },
+        {
+          "callee": "resp.raw_headers.append",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 170,
+          "tail": "append"
+        },
+        {
+          "callee": "v.encode",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 170,
+          "tail": "encode"
+        },
+        {
+          "callee": "call_next",
+          "category": "other",
+          "depth": 0,
+          "file": "api.py",
+          "lineno": 172,
+          "tail": "call_next"
+        }
+      ],
+      "file": "api.py",
+      "handler": "local_cors",
+      "key": "MIDDLEWARE local_cors",
+      "lineno": 152,
+      "method": "MIDDLEWARE",
+      "offloaded": {},
+      "other": {
+        "Response": 1,
+        "_LOCAL_ORIGIN_RE.match": 1,
+        "call_next": 2,
+        "k.encode": 1,
+        "request.headers.get": 2,
+        "resp.raw_headers.append": 1,
+        "v.encode": 1
+      },
+      "path": "middleware:local_cors"
     },
     {
       "blocking": {
@@ -6102,7 +6204,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 92,
+          "lineno": 120,
           "tail": "time"
         },
         {
@@ -6110,7 +6212,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 93,
+          "lineno": 121,
           "tail": "call_next"
         },
         {
@@ -6118,7 +6220,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 94,
+          "lineno": 122,
           "tail": "time"
         },
         {
@@ -6126,7 +6228,7 @@
           "category": "other",
           "depth": 0,
           "file": "api.py",
-          "lineno": 95,
+          "lineno": 123,
           "tail": "startswith"
         },
         {
@@ -6134,7 +6236,7 @@
           "category": "blocking",
           "depth": 0,
           "file": "api.py",
-          "lineno": 96,
+          "lineno": 124,
           "tail": "_record_metric"
         },
         {
@@ -6173,7 +6275,7 @@
       "file": "api.py",
       "handler": "track_performance",
       "key": "MIDDLEWARE track_performance",
-      "lineno": 90,
+      "lineno": 118,
       "method": "MIDDLEWARE",
       "offloaded": {},
       "other": {

@@ -1,7 +1,7 @@
-import { stateManager } from '../state.js';
-import { apiClient } from '../api.js';
-import { fmtMoney } from './utils.js';
-import { Pagination } from '../utils/pagination.js';
+import { stateManager } from '/js/state.js';
+import { apiClient } from '/js/api.js';
+import { fmtMoney } from '/js/renderers/utils.js';
+import { Pagination } from '/js/utils/pagination.js';
 
 class PositionsRenderer {
   constructor() {

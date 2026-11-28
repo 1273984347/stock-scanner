@@ -4,17 +4,20 @@
 <meta charset="UTF-8">
 <!-- 批次 A / P0-2：dev (vite / npx serve) 下后端不返回 CSP 响应头，此处兜底。
      内容与 api_core.add_security_headers 保持一致；style-src 保留 unsafe-inline
-     是因为组件大量使用内联 style 属性。 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'">
+     是因为组件大量使用内联 style 属性。font-src 'self' 显式声明本地字体：
+     前端已移除 Google Fonts 外链（曾被 CSP 拦截而永不生效）。 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quant A-Share</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <script src="/js/lib/chart.umd.min.js"></script>
 <script src="/js/lib/lightweight-charts.standalone.production.js"></script>
+<link rel="stylesheet" href="/css/apple-tokens.css">
+<link rel="stylesheet" href="/css/apple-components.css">
 <link rel="stylesheet" href="/css/main.css">
+<link rel="stylesheet" href="/css/e-layout.css">
 <link rel="stylesheet" href="/css/layout.css">
 <link rel="stylesheet" href="/css/accessibility.css">
-<link rel="stylesheet" href="/css/high-contrast.css">
 </head>
 <body>
 <a href="#main-content" class="skip-link">跳到主内容</a>

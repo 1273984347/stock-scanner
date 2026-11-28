@@ -1,5 +1,5 @@
-import { apiClient } from '../api.js';
-import { getThemeColor } from '../theme.js';
+import { apiClient } from '/js/api.js';
+import { getThemeColor } from '/js/theme.js';
 
 /**
  * KlineRenderer — K线图渲染器
@@ -110,7 +110,7 @@ class KlineRenderer {
     const volumes = data.map(d => d.volume);
 
     // Color candles: green if close >= open, red if close < open
-    const colors = data.map(d => d.close >= d.open ? '#3FB950' : '#F85149');
+    const colors = data.map(d => d.close >= d.open ? getThemeColor('--up') : getThemeColor('--down'));
 
     // Technical indicator data
     const ema5Data = data.map(d => d.ema5);
@@ -144,12 +144,12 @@ class KlineRenderer {
         label: `${code} 收盘价`,
         data: closes,
         type: 'line',
-        borderColor: '#58A6FF',
+        borderColor: getThemeColor('--accent'),
         backgroundColor: 'transparent',
         borderWidth: 1.5,
         pointRadius: 0,
         pointHoverRadius: 3,
-        pointHoverBackgroundColor: '#58A6FF',
+        pointHoverBackgroundColor: getThemeColor('--accent'),
         yAxisID: 'y',
         order: 1,
       },
@@ -171,7 +171,7 @@ class KlineRenderer {
         type: 'line',
         borderColor: 'transparent',
         pointRadius: buyMarkers.map(v => v !== null ? 8 : 0),
-        pointBackgroundColor: '#3FB950',
+        pointBackgroundColor: getThemeColor('--up'),
         pointBorderColor: '#fff',
         pointBorderWidth: 2,
         pointStyle: 'triangle',
@@ -186,7 +186,7 @@ class KlineRenderer {
         type: 'line',
         borderColor: 'transparent',
         pointRadius: sellMarkers.map(v => v !== null ? 8 : 0),
-        pointBackgroundColor: '#F85149',
+        pointBackgroundColor: getThemeColor('--down'),
         pointBorderColor: '#fff',
         pointBorderWidth: 2,
         pointStyle: 'rectRot',
