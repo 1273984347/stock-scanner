@@ -47,6 +47,71 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 2026-11-28 CI 耗时优化：把 6 道**平台无关**的确定性门禁从 3 OS 矩阵里
+  # 拆到单个 Ubuntu job。测量依据（run 46084781150）：Windows job 343s 中
+  # Backtest 77s + Dual-run 17s + Scoring 4s + Route 2s + Contract 5s ≈ 105s
+  # 是纯重复劳动 —— 这些门禁用确定性合成数据（zlib.crc32 种子）或固定 commit
+  # AST，跨平台结果相同。拆分后预计总墙钟 351s → ~240s（-30%）。
+  #
+  # 刻意保留在 test 矩阵的步骤：
+  #   - Run tests（跨平台行为差异是真价值，Windows 文件锁/路径问题多次实证）
+  #   - Coverage baseline gate（按**平台各自**的历史基线比对，分支覆盖三平台本就不同）
+  # 不可改的约束：
+  #   - fetch-depth: 0 仍需保留（L9 门禁用 git show <历史 SHA> 复算 AST 等价）
+  #   - 不缩 OS 矩阵、不放宽任何判据、不改 paths-ignore。
+  gates:
+    permissions:
+      contents: read   # actions/checkout 读源码
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # 第三方 Action 固定 40 位 commit SHA（防标签劫持）；注释保留可读版本号
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 门禁用 git show <历史 SHA> 复算迁移等价性；默认 depth=1 会让历史不可读
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+          # 两个依赖文件都进 key：requirements.txt（3.10/3.11 区间）与
+          # requirements.lock.txt（3.12 精确版本）任一变更都换 key，避免串版。
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
+            requirements.lock.txt
+      - name: Install dependencies (locked, Python 3.12)
+        run: pip install -r requirements.lock.txt
+      - name: Contract snapshot check (API 契约漂移门禁)
+        # 放在 pytest 之前：门禁须能快速失败，不受全量测试耗时影响
+        env:
+          # 跳过 api 模块 import 期的 akshare 行情预取，保证门禁零网络副作用
+          SKIP_HS300_PREFETCH: '1'
+        run: python scripts/gates/contract_snapshot.py --check
+      - name: Dual-run diff (行为漂移门禁)
+        # 同一份注入数据下比对 3 条链路的**实际结果**（比契约快照更深：
+        # 契约快照只看路径+schema，这里看数值与字段内容）。
+        # 基线来自 docs/refactor/dual-run-baseline.json（由旧实现 --capture 生成），
+        # Phase N 改动后本步骤即判定"行为是否改变"。
+        run: python scripts/gates/dual_run_diff.py --check --out docs/refactor/dual-run-baseline.json
+      - name: Backtest baseline (回测口径漂移门禁)
+        # 回测数值是**策略决策依据**（RF-01 风险登记 R6：错一位可能误导后续所有优化）。
+        # 本门禁比对 4 条链路的输出：
+        #   entry_signals          —— 三份 check_entry 的判定序列（口径本身）
+        #   core_factor_backtest   —— 因子回测主链路
+        #   engine_donchian_entry  —— 单股信号回测（Donchian 口径）
+        #   engine_multi_signal_entry —— 同上（多信号口径）
+        # 全部用**确定性合成数据**（zlib.crc32 种子），跨环境可复现。
+        run: python scripts/gates/backtest_baseline.py --check --out docs/refactor/backtest-baseline.json
+      # L5/L7/L8 补入 CI（2026-11-28）：此前这三层只在本地/pre-push 跑，
+      # 依赖升级 PR 的 CI 绿灯是"半盲"的 —— akshare 改名能被 L1 抓住，
+      # 但评分口径 / 路由归属 / 阻塞 IO 漂移 CI 看不见。
+      - name: Scoring baseline (评分口径漂移门禁)
+        run: python scripts/gates/scoring_baseline.py --check --out docs/refactor/scoring-baseline.json
+      - name: Route ownership (端点归属门禁)
+        run: python scripts/gates/route_ownership_check.py --check
+      - name: Blocking IO (阻塞调用基线门禁)
+        run: python scripts/gates/blocking_io_check.py --check
+
   test:
     permissions:
       contents: read   # actions/checkout 读源码
@@ -68,7 +133,8 @@ jobs:
       # 第三方 Action 固定 40 位 commit SHA（防标签劫持）；注释保留可读版本号
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # 门禁用 git show <历史 SHA> 复算迁移等价性；默认 depth=1 会让历史不可读
+          # 测试步骤本身不读历史；保留 depth=0 是为了与本仓既有取证口径一致，
+          # 真正的门禁历史依赖已移到 gates job（同样 fetch-depth: 0）。
           fetch-depth: 0
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -98,14 +164,6 @@ jobs:
       - name: Install dependencies (range, Python 3.10/3.11)
         if: matrix.python-version != '3.12'
         run: pip install -r requirements.txt
-      - name: Contract snapshot check (API 契约漂移门禁)
-        # 契约与 Python 小版本无关 —— 只在 3.12 上跑，覆盖 3 个 OS 而非 9 个 job
-        # 放在 pytest 之前：门禁须能快速失败，不受全量测试耗时影响
-        if: matrix.python-version == '3.12'
-        env:
-          # 跳过 api 模块 import 期的 akshare 行情预取，保证门禁零网络副作用
-          SKIP_HS300_PREFETCH: '1'
-        run: python scripts/gates/contract_snapshot.py --check
       - name: Run tests (with coverage baseline)
         # 只在 3.12 上带覆盖率跑：覆盖率高才能给出可比的基线，
         # 且**替换**普通测试步骤（不额外再跑一遍，避免 CI 时间翻倍）
@@ -118,37 +176,9 @@ jobs:
       - name: Coverage baseline gate
         # 按平台与自己的历史基线比对（分支覆盖在三平台本就不同，
         # 单一阈值硬卡必然误判）。该平台尚无基线时只报告不阻断。
+        # ⚠️ 平台相关，**刻意留在 test 矩阵**，不随其它门禁移到单 OS gates job。
         if: matrix.python-version == '3.12'
         run: python scripts/gates/coverage_baseline.py --check --coverage-file coverage.json
-      - name: Dual-run diff (行为漂移门禁)
-        # 同一份注入数据下比对 3 条链路的**实际结果**（比契约快照更深：
-        # 契约快照只看路径+schema，这里看数值与字段内容）。
-        # 基线来自 docs/refactor/dual-run-baseline.json（由旧实现 --capture 生成），
-        # Phase N 改动后本步骤即判定"行为是否改变"。
-        if: matrix.python-version == '3.12'
-        run: python scripts/gates/dual_run_diff.py --check --out docs/refactor/dual-run-baseline.json
-      - name: Backtest baseline (回测口径漂移门禁)
-        # 回测数值是**策略决策依据**（RF-01 风险登记 R6：错一位可能误导后续所有优化）。
-        # 本门禁比对 4 条链路的输出：
-        #   entry_signals          —— 三份 check_entry 的判定序列（口径本身）
-        #   core_factor_backtest   —— 因子回测主链路
-        #   engine_donchian_entry  —— 单股信号回测（Donchian 口径）
-        #   engine_multi_signal_entry —— 同上（多信号口径）
-        # 全部用**确定性合成数据**（zlib.crc32 种子），跨环境可复现。
-        if: matrix.python-version == '3.12'
-        run: python scripts/gates/backtest_baseline.py --check --out docs/refactor/backtest-baseline.json
-      # L5/L7/L8 补入 CI（2026-11-28）：此前这三层只在本地/pre-push 跑，
-      # 依赖升级 PR 的 CI 绿灯是"半盲"的 —— akshare 改名能被 L1 抓住，
-      # 但评分口径 / 路由归属 / 阻塞 IO 漂移 CI 看不见。
-      - name: Scoring baseline (评分口径漂移门禁)
-        if: matrix.python-version == '3.12'
-        run: python scripts/gates/scoring_baseline.py --check --out docs/refactor/scoring-baseline.json
-      - name: Route ownership (端点归属门禁)
-        if: matrix.python-version == '3.12'
-        run: python scripts/gates/route_ownership_check.py --check
-      - name: Blocking IO (阻塞调用基线门禁)
-        if: matrix.python-version == '3.12'
-        run: python scripts/gates/blocking_io_check.py --check
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
